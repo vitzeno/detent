@@ -1,0 +1,178 @@
+# Held-out generalization set. Written AFTER all four criteria-wording rounds,
+# using goals never seen during any wording iteration, to check whether the
+# 96% accuracy and the 0.8/0.1 thresholds hold up on genuinely unseen inputs
+# rather than being overfit to fixtures.yaml's specific 25.
+#
+# Real machine data throughout, captured 2026-09-19, same methodology as
+# fixtures.yaml — different repos/processes/files than the main set where
+# practical, so this isn't just the same underlying data with new phrasing.
+
+# --- single-step ---------------------------------------------------------------
+- goal: "show me the recent commits in the sift project"
+  expected_sequence: [git_log]
+  world:
+    git_log: |
+      2859baf Close each directly constructed source in the csv tests
+      2056e70 Close the source on every driver exit path instead of leaking its handle
+      c69e930 Bump the Go directive to 1.26.6 to clear a reachable encoding/xml vulnerability
+      b5976ca Rework CI into per-concern jobs with pinned actions and a composite Go setup
+      903b920 Pin every text file to LF so byte-exact fixture tests hold on Windows
+    git_status: |
+      (nothing to commit, working tree clean)
+  reduced:
+    git_log:
+      recent: ["2859baf Close each directly constructed source in the csv tests",
+                "2056e70 Close the source on every driver exit path instead of leaking its handle"]
+    git_status: {changed: [], untracked: []}
+
+- goal: "what's eating the most memory right now"
+  expected_sequence: [process_list]
+  world:
+    process_list: |
+      USER     PID    %CPU  %MEM  COMMAND
+      devuser  69017  24.9   2.0  Google Chrome Beta
+      devuser  69218  19.9   1.5  Google Chrome Helper
+      devuser  11647   0.0   1.4  Code Helper (Renderer)
+      devuser  76042   9.1   1.2  claude
+    disk_usage: |
+      508M	/Users/devuser/Documents/Projects/borderline/
+      227M	/Users/devuser/Documents/Projects/driftmark/
+  reduced:
+    process_list:
+      top_mem:
+        - {pid: 69017, mem: 2.0, cmd: "Google Chrome Beta"}
+        - {pid: 69218, mem: 1.5, cmd: "Google Chrome Helper"}
+    disk_usage: {largest: [{path: /Users/devuser/Documents/Projects/borderline, size: 508M}]}
+
+# --- genuine multi-step ---------------------------------------------------------
+- goal: "kill the process using port 7000"
+  expected_sequence: [port_listeners, kill_process]
+  world:
+    port_listeners: |
+      COMMAND    PID   USER     FD   TYPE  DEVICE          SIZE/OFF NODE NAME
+      ControlCe  1345  devuser  9u   IPv4  0xce72aaee4fe9d0      0t0  TCP *:7000 (LISTEN)
+      ControlCe  1345  devuser  10u  IPv6  0x5901cd17906a01      0t0  TCP *:7000 (LISTEN)
+    process_list: |
+      USER     PID    %CPU  %MEM  COMMAND
+      devuser  69017  24.9   2.0  Google Chrome Beta
+    kill_process: |
+      (no output)
+  reduced:
+    port_listeners: {port_7000: {pid: 1345, cmd: ControlCenter}}
+    process_list: {top_mem: [{pid: 69017, mem: 2.0, cmd: "Google Chrome Beta"}]}
+    kill_process: {result: terminated}
+
+- goal: "search the glow project for where cobra is used and show that file"
+  expected_sequence: [search_content, read_file]
+  world:
+    search_content: |
+      cmd/inspect.go:10:	"github.com/spf13/cobra"
+      cmd/inspect.go:29:func newInspectCmd() *cobra.Command {
+      cmd/inspect.go:32:	cmd := &cobra.Command{
+      cmd/version.go:7:	"github.com/spf13/cobra"
+    read_file: |
+      package cmd
+
+      import (
+      	"encoding/json"
+      	"fmt"
+      	"io"
+      	"os"
+      	"text/tabwriter"
+
+      	"github.com/spf13/cobra"
+
+      	"github.com/example/glow/internal/icc"
+      	"github.com/example/glow/internal/jpegseg"
+      )
+
+      type inspection struct {
+      	File        string `json:"file"`
+      	Width       int    `json:"width"`
+      	Height      int    `json:"height"`
+      	Chroma      string `json:"chroma"`
+    list_files: |
+      enums.go  inspect.go  root.go  version.go
+  reduced:
+    search_content:
+      matches: [{file: cmd/inspect.go, line: 10}, {file: cmd/inspect.go, line: 29}, {file: cmd/version.go, line: 7}]
+    read_file:
+      file: cmd/inspect.go
+      summary: "defines the inspect subcommand using cobra.Command, imports icc and jpegseg"
+    list_files: {names: [enums.go, inspect.go, root.go, version.go]}
+
+# --- referential -----------------------------------------------------------------
+- goal: "find whatever changed most recently in the postgresql project and show it"
+  expected_sequence: [find_files, read_file]
+  world:
+    find_files: |
+      raycast-env.d.ts
+      src/connections.tsx
+      src/table_query.tsx
+    read_file: |
+      /// <reference types="@raycast/api">
+
+      /* 🚧 🚧 🚧
+       * This file is auto-generated from the extension's manifest.
+       * Do not modify manually. Instead, update the `package.json` file.
+       * 🚧 🚧 🚧 */
+
+      /* eslint-disable @typescript-eslint/ban-types */
+
+      type ExtensionPreferences = {}
+    list_files: |
+      assets  CHANGELOG.md  node_modules  package-lock.json  package.json  raycast-env.d.ts  README.md  screenshots  src  tsconfig.json
+  reduced:
+    find_files:
+      newest: {path: raycast-env.d.ts}
+    read_file:
+      file: raycast-env.d.ts
+      summary: "auto-generated Raycast extension preference types; do not modify manually"
+    list_files:
+      names: [assets, CHANGELOG.md, node_modules, package-lock.json, package.json, raycast-env.d.ts, README.md, screenshots, src, tsconfig.json]
+
+# --- unsatisfiable -----------------------------------------------------------------
+- goal: "refactor this function"
+  expected_sequence: [cannot_proceed]
+  world:
+    read_file: |
+      package imageio
+
+      func Decode(r io.Reader) (*image.NRGBA, error) {
+    list_files: |
+      hdr  icc  imageio  jpegseg  pq
+  reduced:
+    read_file: {file: imageio.go}
+    list_files: {names: [hdr, icc, imageio, jpegseg, pq]}
+
+- goal: "update the go dependencies to their latest versions"
+  expected_sequence: [cannot_proceed]
+  world:
+    read_file: |
+      module github.com/example/glow
+
+      go 1.26.1
+
+      require (
+      	github.com/gen2brain/jpegli v0.4.2
+      	github.com/spf13/cobra v1.10.2
+      	golang.org/x/image v0.46.0
+      )
+    search_content: |
+      go.mod:5:	github.com/gen2brain/jpegli v0.4.2
+  reduced:
+    read_file: {requires: [github.com/gen2brain/jpegli, github.com/spf13/cobra, golang.org/x/image]}
+    search_content: {matches: [{file: go.mod, line: 5}]}
+
+# --- already satisfied -----------------------------------------------------------------
+- goal: "are there any uncommitted changes in the sift project"
+  expected_sequence: [git_status]
+  world:
+    git_status: |
+      (nothing to commit, working tree clean)
+    git_log: |
+      2859baf Close each directly constructed source in the csv tests
+      2056e70 Close the source on every driver exit path instead of leaking its handle
+  reduced:
+    git_status: {changed: [], untracked: []}
+    git_log: {recent: ["2859baf Close each directly constructed source in the csv tests"]}

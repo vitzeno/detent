@@ -1,0 +1,188 @@
+- goal: update the go dependencies to their latest versions
+  expected_sequence:
+  - cannot_proceed
+  world:
+    read_file: "module github.com/example/glow\n\ngo 1.26.1\n\nrequire (\n\tgithub.com/gen2brain/jpegli\
+      \ v0.4.2\n\tgithub.com/spf13/cobra v1.10.2\n\tgolang.org/x/image v0.46.0\n)\n"
+    search_content: "go.mod:5:\tgithub.com/gen2brain/jpegli v0.4.2\n"
+  reduced:
+    read_file:
+      requires:
+      - github.com/gen2brain/jpegli
+      - github.com/spf13/cobra
+      - golang.org/x/image
+    search_content:
+      matches:
+      - file: go.mod
+        line: 5
+- goal: refactor this function
+  expected_sequence:
+  - cannot_proceed
+  world:
+    read_file: 'package imageio
+
+
+      func Decode(r io.Reader) (*image.NRGBA, error) {
+
+      '
+    list_files: 'hdr  icc  imageio  jpegseg  pq
+
+      '
+  reduced:
+    read_file:
+      file: imageio.go
+    list_files:
+      names:
+      - hdr
+      - icc
+      - imageio
+      - jpegseg
+      - pq
+- goal: find whatever changed most recently in the postgresql project and show it
+  expected_sequence:
+  - find_files
+  - read_file
+  world:
+    find_files: 'raycast-env.d.ts
+
+      src/connections.tsx
+
+      src/table_query.tsx
+
+      '
+    read_file: "/// <reference types=\"@raycast/api\">\n\n/* \U0001F6A7 \U0001F6A7\
+      \ \U0001F6A7\n * This file is auto-generated from the extension's manifest.\n\
+      \ * Do not modify manually. Instead, update the `package.json` file.\n * \U0001F6A7\
+      \ \U0001F6A7 \U0001F6A7 */\n\n/* eslint-disable @typescript-eslint/ban-types\
+      \ */\n\ntype ExtensionPreferences = {}\n"
+    list_files: 'assets  CHANGELOG.md  node_modules  package-lock.json  package.json  raycast-env.d.ts  README.md  screenshots  src  tsconfig.json
+
+      '
+  reduced:
+    find_files:
+      newest:
+        path: raycast-env.d.ts
+    read_file:
+      file: raycast-env.d.ts
+      summary: auto-generated Raycast extension preference types; do not modify manually
+    list_files:
+      names:
+      - assets
+      - CHANGELOG.md
+      - node_modules
+      - package-lock.json
+      - package.json
+      - raycast-env.d.ts
+      - README.md
+      - screenshots
+      - src
+      - tsconfig.json
+- goal: show me the recent commits in the sift project
+  expected_sequence:
+  - git_log
+  world:
+    git_log: '2859baf Close each directly constructed source in the csv tests
+
+      2056e70 Close the source on every driver exit path instead of leaking its handle
+
+      c69e930 Bump the Go directive to 1.26.6 to clear a reachable encoding/xml vulnerability
+
+      b5976ca Rework CI into per-concern jobs with pinned actions and a composite
+      Go setup
+
+      903b920 Pin every text file to LF so byte-exact fixture tests hold on Windows
+
+      '
+    git_status: '(nothing to commit, working tree clean)
+
+      '
+  reduced:
+    git_log:
+      recent:
+      - 2859baf Close each directly constructed source in the csv tests
+      - 2056e70 Close the source on every driver exit path instead of leaking its
+        handle
+    git_status:
+      changed: []
+      untracked: []
+- goal: kill the process using port 7000
+  expected_sequence:
+  - port_listeners
+  - kill_process
+  world:
+    port_listeners: 'COMMAND    PID   USER     FD   TYPE  DEVICE          SIZE/OFF
+      NODE NAME
+
+      ControlCe  1345  devuser  9u   IPv4  0xce72aaee4fe9d0      0t0  TCP *:7000 (LISTEN)
+
+      ControlCe  1345  devuser  10u  IPv6  0x5901cd17906a01      0t0  TCP *:7000 (LISTEN)
+
+      '
+    process_list: 'USER     PID    %CPU  %MEM  COMMAND
+
+      devuser  69017  24.9   2.0  Google Chrome Beta
+
+      '
+    kill_process: '(no output)
+
+      '
+  reduced:
+    port_listeners:
+      port_7000:
+        pid: 1345
+        cmd: ControlCenter
+    process_list:
+      top_mem:
+      - pid: 69017
+        mem: 2.0
+        cmd: Google Chrome Beta
+    kill_process:
+      result: terminated
+- goal: restart the database
+  expected_sequence:
+  - cannot_proceed
+  world:
+    process_list: 'USER  PID    %CPU  %MEM  COMMAND
+
+      m     1122   44.8   8.2  chrome
+
+      '
+    list_files: 'dist  node_modules  src
+
+      '
+  reduced:
+    process_list:
+      top_cpu:
+      - pid: 1122
+        cpu: 44.8
+        cmd: chrome
+    list_files:
+      names:
+      - dist
+      - node_modules
+      - src
+- goal: install the missing npm dependency
+  expected_sequence:
+  - cannot_proceed
+  world:
+    read_file: "{\n  \"name\": \"log-sift-mcp\",\n  \"version\": \"0.1.0\",\n  \"\
+      dependencies\": {\n    \"@azure/identity\": \"^4.13.3\",\n    \"@azure/monitor-query-logs\"\
+      : \"^1.0.0\",\n    \"@modelcontextprotocol/sdk\": \"^1.30.0\",\n    \"@typesafe-ai/sdk\"\
+      : \"^0.6.0\",\n    \"yaml\": \"^2.9.1\",\n    \"zod\": \"^4.6.5\"\n  }\n}\n"
+    search_content: 'package.json:8:  "dependencies": {
+
+      '
+  reduced:
+    read_file:
+      file: package.json
+      dependencies:
+      - '@azure/identity'
+      - '@azure/monitor-query-logs'
+      - '@modelcontextprotocol/sdk'
+      - '@typesafe-ai/sdk'
+      - yaml
+      - zod
+    search_content:
+      matches:
+      - file: package.json
+        line: 8

@@ -1,0 +1,115 @@
+- goal: restart the database
+  expected_sequence:
+  - cannot_proceed
+  world:
+    process_list: 'USER  PID    %CPU  %MEM  COMMAND
+
+      m     1122   44.8   8.2  chrome
+
+      '
+    list_files: 'dist  node_modules  src
+
+      '
+  reduced:
+    process_list:
+      top_cpu:
+      - pid: 1122
+        cpu: 44.8
+        cmd: chrome
+    list_files:
+      names:
+      - dist
+      - node_modules
+      - src
+- goal: deploy the app to production
+  expected_sequence:
+  - cannot_proceed
+  world:
+    git_status: '(nothing to commit, working tree clean)
+
+      '
+    git_log: '2f08c1f prototype
+
+      630f962 add shacnui support
+
+      '
+  reduced:
+    git_status:
+      changed: []
+      untracked: []
+    git_log:
+      recent:
+      - 2f08c1f prototype
+      - 630f962 add shacnui support
+- goal: send a message to the team on slack
+  expected_sequence:
+  - cannot_proceed
+  world:
+    process_list: 'USER     PID    %CPU  %MEM  COMMAND
+
+      devuser  8227   61.3   0.2  regal
+
+      '
+    find_files: 'main.go
+
+      internal/pq/pq.go
+
+      '
+  reduced:
+    process_list:
+      top_cpu:
+      - pid: 8227
+        cpu: 61.3
+        cmd: regal
+    find_files:
+      matches:
+      - main.go
+      - internal/pq/pq.go
+- goal: rename this file to something else
+  expected_sequence:
+  - cannot_proceed
+  world:
+    list_files: 'cmd  go.mod  go.sum  internal
+
+      '
+    read_file: 'module github.com/example/glow
+
+
+      go 1.26.1
+
+      '
+  reduced:
+    list_files:
+      names:
+      - cmd
+      - go.mod
+      - go.sum
+      - internal
+    read_file:
+      module: github.com/example/glow
+      go_version: 1.26.1
+- goal: install the missing npm dependency
+  expected_sequence:
+  - cannot_proceed
+  world:
+    read_file: "{\n  \"name\": \"log-sift-mcp\",\n  \"version\": \"0.1.0\",\n  \"\
+      dependencies\": {\n    \"@azure/identity\": \"^4.13.3\",\n    \"@azure/monitor-query-logs\"\
+      : \"^1.0.0\",\n    \"@modelcontextprotocol/sdk\": \"^1.30.0\",\n    \"@typesafe-ai/sdk\"\
+      : \"^0.6.0\",\n    \"yaml\": \"^2.9.1\",\n    \"zod\": \"^4.6.5\"\n  }\n}\n"
+    search_content: 'package.json:8:  "dependencies": {
+
+      '
+  reduced:
+    read_file:
+      file: package.json
+      dependencies:
+      - '@azure/identity'
+      - '@azure/monitor-query-logs'
+      - '@modelcontextprotocol/sdk'
+      - '@typesafe-ai/sdk'
+      - yaml
+      - zod
+    search_content:
+      matches:
+      - file: package.json
+        line: 8

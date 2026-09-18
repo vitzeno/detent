@@ -1,0 +1,98 @@
+# Ambient world/reduced facts — captured 2026-09-19 from the same real machine
+# as fixtures.yaml. These cover capabilities that don't take a goal-specific
+# target (port_listeners, process_list, disk_usage, kill_process) or that a
+# fixture didn't itself need but the model might still wrongly pick
+# (git_status/git_log/list_files/find_files/read_file/search_content/tail_log).
+#
+# spike.py merges this UNDER each fixture's own world/reduced (fixture-specific
+# entries always win), so a wrong pick never gets an empty/fabricated finding —
+# it gets real output from this machine, just not scenario-specific output.
+# This exists because make_fact() previously returned "" for any capability
+# missing from a fixture's world, silently corrupting every step downstream of
+# a wrong pick — the exact "reduction, not the model" trap SPIKE.md warns about.
+
+world:
+  port_listeners: |
+    COMMAND     PID    USER    FD   TYPE  DEVICE          SIZE/OFF NODE NAME
+    rapportd   1002   devuser  12u  IPv4  0xdcbcb1d9        0t0    TCP *:52899 (LISTEN)
+    ControlCe  1345   devuser  11u  IPv4  0xd8fc4a8c        0t0    TCP *:5000 (LISTEN)
+    ControlCe  1345   devuser   9u  IPv4  0xce72aaee        0t0    TCP *:7000 (LISTEN)
+    Spotify    7698   devuser  50u  IPv4  0xca3edc7a        0t0    TCP *:52913 (LISTEN)
+  process_list: |
+    USER     PID    %CPU  %MEM  COMMAND
+    devuser  8227   61.3   0.2  regal
+    devuser  69218  20.6   1.4  Google Chrome Helper
+    devuser  1937    0.0   2.3  Microsoft Teams WebView Helper
+    devuser  69017   0.5   2.2  Google Chrome Beta
+    devuser  58439  13.5   0.6  stable
+  disk_usage: |
+    508M	/Users/devuser/Documents/Projects/borderline/
+    227M	/Users/devuser/Documents/Projects/driftmark/
+    148M	/Users/devuser/Documents/Projects/log-analytics/
+     91M	/Users/devuser/Documents/Projects/manifold/
+     87M	/Users/devuser/Documents/Projects/postgresql/
+  git_status: |
+    (nothing to commit, working tree clean)
+  git_log: |
+    2f08c1f prototype
+    630f962 add shacnui support
+    51f9464 default map view
+    efd957a scaffold project using bun, vite and react
+    6c9b0af first commit
+  list_files: |
+    cmd  go.mod  go.sum  internal
+  find_files: |
+    internal/hdr
+    internal/icc
+    internal/imageio
+    internal/jpegseg
+    internal/pq
+  read_file: |
+    module github.com/example/glow
+
+    go 1.26.1
+
+    require (
+    	github.com/gen2brain/jpegli v0.4.2
+    	github.com/spf13/cobra v1.10.2
+    	golang.org/x/image v0.46.0
+    )
+  search_content: |
+    internal/imageio/imageio.go:14:	"github.com/gen2brain/jpegli"
+    internal/imageio/imageio.go:67:	err := jpegli.Encode(&buf, img, &jpegli.EncodingOptions{
+  tail_log: |
+    11 silly logfile start cleaning logs, removing 1 files
+    12 silly logfile done cleaning log files
+    13 verbose cwd /Users/devuser/Documents/Projects/log-analytics
+    14 verbose os Darwin 25.6.0
+    15 verbose node v23.1.0
+    16 verbose npm  v10.9.0
+    17 verbose exit 0
+    18 info ok
+  kill_process: |
+    (no output)
+
+reduced:
+  port_listeners:
+    listening: [{port: 52899, pid: 1002, cmd: rapportd}, {port: 5000, pid: 1345, cmd: ControlCenter}]
+  process_list:
+    top_cpu:
+      - {pid: 8227, cpu: 61.3, cmd: regal}
+      - {pid: 69218, cpu: 20.6, cmd: "Google Chrome Helper"}
+  disk_usage:
+    largest: [{path: /Users/devuser/Documents/Projects/borderline, size: 508M},
+              {path: /Users/devuser/Documents/Projects/driftmark, size: 227M}]
+  git_status: {changed: [], untracked: []}
+  git_log:
+    recent: ["2f08c1f prototype", "630f962 add shacnui support", "51f9464 default map view"]
+  list_files: {names: [cmd, go.mod, go.sum, internal]}
+  find_files: {matches: [internal/hdr, internal/icc, internal/imageio, internal/jpegseg, internal/pq]}
+  read_file:
+    module: github.com/example/glow
+    go_version: "1.26.1"
+    requires: [github.com/gen2brain/jpegli, github.com/spf13/cobra, golang.org/x/image]
+  search_content:
+    matches: [{file: internal/imageio/imageio.go, line: 14}, {file: internal/imageio/imageio.go, line: 67}]
+  tail_log:
+    matched_lines: ["17 verbose exit 0", "18 info ok"]
+  kill_process: {result: terminated}
