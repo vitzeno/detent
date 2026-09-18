@@ -1,0 +1,303 @@
+# Phase 0b: target/argument resolution fixtures. See docs/SPIKE_TARGET_RESOLUTION.md.
+#
+# Capability selection and candidate extraction are both held fixed here —
+# each fixture supplies a goal, a capability that's already run, and the
+# code-built candidate list its output produced. Only "which candidate does
+# the goal mean" is being tested.
+#
+# Candidate values are reused from the real machine captures in fixtures.yaml
+# and ambient.yaml wherever the category allows. The "ambiguous" category is
+# the one deliberate exception: an exact tie is a specific structural case to
+# test, not something likely to occur naturally in one capture, so those
+# values are constructed (still realistic units/ranges) rather than found.
+
+# --- unambiguous ---------------------------------------------------------------
+- goal: "kill the node process"
+  capability: kill_process
+  category: unambiguous
+  candidates:
+    - id: pid_4821
+      desc: "node server.js, PID 4821 — 2.1% CPU, 1.4% memory"
+      fields: {pid: 4821, cmd: "node server.js", cpu_pct: 2.1, mem_pct: 1.4}
+    - id: pid_1122
+      desc: "chrome, PID 1122 — 44.8% CPU, 8.2% memory"
+      fields: {pid: 1122, cmd: chrome, cpu_pct: 44.8, mem_pct: 8.2}
+    - id: pid_9930
+      desc: "zsh, PID 9930 — 0.3% CPU, 0.5% memory"
+      fields: {pid: 9930, cmd: zsh, cpu_pct: 0.3, mem_pct: 0.5}
+  expected_target: pid_4821
+
+- goal: "kill whatever's listening on port 3000"
+  capability: port_listeners
+  category: unambiguous
+  candidates:
+    - id: port_52899
+      desc: "rapportd, PID 1002, port 52899"
+      fields: {port: 52899, pid: 1002, cmd: rapportd}
+    - id: port_5000
+      desc: "ControlCenter, PID 1345, port 5000"
+      fields: {port: 5000, pid: 1345, cmd: ControlCenter}
+    - id: port_3000
+      desc: "node server.js, PID 4821, port 3000"
+      fields: {port: 3000, pid: 4821, cmd: "node server.js"}
+  expected_target: port_3000
+
+- goal: "read the go module file"
+  capability: read_file
+  category: unambiguous
+  candidates:
+    - id: file_gomod
+      desc: "go.mod"
+      fields: {name: go.mod}
+    - id: file_gosum
+      desc: "go.sum"
+      fields: {name: go.sum}
+    - id: file_main
+      desc: "main.go"
+      fields: {name: main.go}
+  expected_target: file_gomod
+
+- goal: "kill process 1122"
+  capability: kill_process
+  category: unambiguous
+  candidates:
+    - id: pid_4821
+      desc: "node server.js, PID 4821"
+      fields: {pid: 4821, cmd: "node server.js"}
+    - id: pid_1122
+      desc: "chrome, PID 1122"
+      fields: {pid: 1122, cmd: chrome}
+  expected_target: pid_1122
+
+# --- superlative: resolving requires comparing a field across rows -------------
+- goal: "kill the process eating the most CPU"
+  capability: kill_process
+  category: superlative
+  candidates:
+    - id: pid_8227
+      desc: "regal, PID 8227 — 61.3% CPU, 0.2% memory"
+      fields: {pid: 8227, cmd: regal, cpu_pct: 61.3, mem_pct: 0.2}
+    - id: pid_69218
+      desc: "Google Chrome Helper, PID 69218 — 20.6% CPU, 1.4% memory"
+      fields: {pid: 69218, cmd: "Google Chrome Helper", cpu_pct: 20.6, mem_pct: 1.4}
+    - id: pid_58439
+      desc: "stable, PID 58439 — 13.5% CPU, 0.6% memory"
+      fields: {pid: 58439, cmd: stable, cpu_pct: 13.5, mem_pct: 0.6}
+  expected_target: pid_8227
+
+- goal: "kill the process using the most memory"
+  capability: kill_process
+  category: superlative
+  candidates:
+    - id: pid_1937
+      desc: "Microsoft Teams WebView Helper, PID 1937 — 0.0% CPU, 2.3% memory"
+      fields: {pid: 1937, cmd: "Microsoft Teams WebView Helper", cpu_pct: 0.0, mem_pct: 2.3}
+    - id: pid_69017
+      desc: "Google Chrome Beta, PID 69017 — 0.5% CPU, 2.2% memory"
+      fields: {pid: 69017, cmd: "Google Chrome Beta", cpu_pct: 0.5, mem_pct: 2.2}
+    - id: pid_8227
+      desc: "regal, PID 8227 — 61.3% CPU, 0.2% memory"
+      fields: {pid: 8227, cmd: regal, cpu_pct: 61.3, mem_pct: 0.2}
+  expected_target: pid_1937
+
+- goal: "show the contents of whichever file changed most recently"
+  capability: read_file
+  category: superlative
+  candidates:
+    - id: file_raycast
+      desc: "raycast-env.d.ts, modified 2026-09-19 01:45"
+      fields: {name: raycast-env.d.ts, modified: "2026-09-19T01:45"}
+    - id: file_conn
+      desc: "src/connections.tsx, modified 2026-09-18 22:10"
+      fields: {name: src/connections.tsx, modified: "2026-09-18T22:10"}
+    - id: file_table
+      desc: "src/table_query.tsx, modified 2026-09-18 19:30"
+      fields: {name: src/table_query.tsx, modified: "2026-09-18T19:30"}
+  expected_target: file_raycast
+
+- goal: "tail whichever log has the most content in it"
+  capability: tail_log
+  category: superlative
+  candidates:
+    - id: log_a
+      desc: "2026-09-18T17_19_16_118Z-debug-0.log, 954 bytes"
+      fields: {name: "2026-09-18T17_19_16_118Z-debug-0.log", size_bytes: 954}
+    - id: log_b
+      desc: "2026-09-18T17_25_52_005Z-debug-0.log, 27340 bytes"
+      fields: {name: "2026-09-18T17_25_52_005Z-debug-0.log", size_bytes: 27340}
+    - id: log_c
+      desc: "2026-09-18T17_27_35_962Z-debug-0.log, 954 bytes"
+      fields: {name: "2026-09-18T17_27_35_962Z-debug-0.log", size_bytes: 954}
+  expected_target: log_b
+
+# --- distractor-heavy: several candidates share a superficial trait -----------
+- goal: "kill the chrome helper using the least memory"
+  capability: kill_process
+  category: distractor-heavy
+  candidates:
+    - id: pid_69218
+      desc: "Google Chrome Helper, PID 69218 — 20.6% CPU, 1.4% memory"
+      fields: {pid: 69218, cmd: "Google Chrome Helper", cpu_pct: 20.6, mem_pct: 1.4}
+    - id: pid_69241
+      desc: "Google Chrome Helper (Aperitif Renderer), PID 69241 — 0.1% CPU, 1.7% memory"
+      fields: {pid: 69241, cmd: "Google Chrome Helper (Aperitif Renderer)", cpu_pct: 0.1, mem_pct: 1.7}
+    - id: pid_31947
+      desc: "Google Chrome Helper (Aperitif Renderer), PID 31947 — 0.0% CPU, 1.3% memory"
+      fields: {pid: 31947, cmd: "Google Chrome Helper (Aperitif Renderer)", cpu_pct: 0.0, mem_pct: 1.3}
+  expected_target: pid_31947
+
+- goal: "kill whatever's listening on port 5000"
+  capability: port_listeners
+  category: distractor-heavy
+  candidates:
+    - id: port_5000
+      desc: "ControlCenter, PID 1345, port 5000"
+      fields: {port: 5000, pid: 1345, cmd: ControlCenter}
+    - id: port_7000
+      desc: "ControlCenter, PID 1345, port 7000"
+      fields: {port: 7000, pid: 1345, cmd: ControlCenter}
+  expected_target: port_5000
+
+- goal: "read the readme in the skills project"
+  capability: read_file
+  category: distractor-heavy
+  candidates:
+    - id: file_debug
+      desc: "debug-dataroom.md"
+      fields: {name: debug-dataroom.md}
+    - id: file_quiz
+      desc: "quiz.md"
+      fields: {name: quiz.md}
+    - id: file_readme
+      desc: "README.md"
+      fields: {name: README.md}
+    - id: file_save
+      desc: "save-learning.md"
+      fields: {name: save-learning.md}
+  expected_target: file_readme
+
+- goal: "kill the google chrome process, the beta one not the helper"
+  capability: kill_process
+  category: distractor-heavy
+  candidates:
+    - id: pid_69017
+      desc: "Google Chrome Beta, PID 69017 — 0.5% CPU, 2.2% memory"
+      fields: {pid: 69017, cmd: "Google Chrome Beta", cpu_pct: 0.5, mem_pct: 2.2}
+    - id: pid_69218
+      desc: "Google Chrome Helper, PID 69218 — 20.6% CPU, 1.4% memory"
+      fields: {pid: 69218, cmd: "Google Chrome Helper", cpu_pct: 20.6, mem_pct: 1.4}
+  expected_target: pid_69017
+
+# --- genuinely ambiguous: two candidates tie on the distinguishing field ------
+# (constructed ties, not found by chance — see file header note)
+- goal: "kill the process using the most memory"
+  capability: kill_process
+  category: ambiguous
+  candidates:
+    - id: pid_a
+      desc: "Google Chrome Helper, PID 69218 — 20.6% CPU, 1.4% memory"
+      fields: {pid: 69218, cmd: "Google Chrome Helper", cpu_pct: 20.6, mem_pct: 1.4}
+    - id: pid_b
+      desc: "node server.js, PID 4821 — 2.1% CPU, 1.4% memory"
+      fields: {pid: 4821, cmd: "node server.js", cpu_pct: 2.1, mem_pct: 1.4}
+  expected_target: no_match
+
+- goal: "show the contents of whichever file changed most recently"
+  capability: read_file
+  category: ambiguous
+  candidates:
+    - id: file_a
+      desc: "src/connections.tsx, modified 2026-09-18 22:10"
+      fields: {name: src/connections.tsx, modified: "2026-09-18T22:10"}
+    - id: file_b
+      desc: "src/table_query.tsx, modified 2026-09-18 22:10"
+      fields: {name: src/table_query.tsx, modified: "2026-09-18T22:10"}
+  expected_target: no_match
+
+- goal: "tail whichever log has the most content in it"
+  capability: tail_log
+  category: ambiguous
+  candidates:
+    - id: log_a
+      desc: "2026-09-18T17_19_16_118Z-debug-0.log, 954 bytes"
+      fields: {name: "2026-09-18T17_19_16_118Z-debug-0.log", size_bytes: 954}
+    - id: log_b
+      desc: "2026-09-18T17_27_35_962Z-debug-0.log, 954 bytes"
+      fields: {name: "2026-09-18T17_27_35_962Z-debug-0.log", size_bytes: 954}
+    - id: log_c
+      desc: "2026-09-18T17_19_16_118Z-debug-1.log, 806 bytes"
+      fields: {name: "2026-09-18T17_19_16_118Z-debug-1.log", size_bytes: 806}
+  expected_target: no_match
+
+- goal: "kill the chrome process"
+  capability: kill_process
+  category: ambiguous
+  candidates:
+    - id: pid_69017
+      desc: "Google Chrome Beta, PID 69017"
+      fields: {pid: 69017, cmd: "Google Chrome Beta"}
+    - id: pid_69218
+      desc: "Google Chrome Helper, PID 69218"
+      fields: {pid: 69218, cmd: "Google Chrome Helper"}
+    - id: pid_69073
+      desc: "Google Chrome Helper, PID 69073"
+      fields: {pid: 69073, cmd: "Google Chrome Helper"}
+  expected_target: no_match
+
+# --- not present: the goal's target isn't in the candidate list at all --------
+- goal: "kill the postgres process"
+  capability: kill_process
+  category: not-present
+  candidates:
+    - id: pid_4821
+      desc: "node server.js, PID 4821"
+      fields: {pid: 4821, cmd: "node server.js"}
+    - id: pid_1122
+      desc: "chrome, PID 1122"
+      fields: {pid: 1122, cmd: chrome}
+    - id: pid_9930
+      desc: "zsh, PID 9930"
+      fields: {pid: 9930, cmd: zsh}
+  expected_target: no_match
+
+- goal: "kill whatever's listening on port 9999"
+  capability: port_listeners
+  category: not-present
+  candidates:
+    - id: port_52899
+      desc: "rapportd, PID 1002, port 52899"
+      fields: {port: 52899, pid: 1002, cmd: rapportd}
+    - id: port_5000
+      desc: "ControlCenter, PID 1345, port 5000"
+      fields: {port: 5000, pid: 1345, cmd: ControlCenter}
+    - id: port_52913
+      desc: "Spotify, PID 7698, port 52913"
+      fields: {port: 52913, pid: 7698, cmd: Spotify}
+  expected_target: no_match
+
+- goal: "read the changelog file"
+  capability: read_file
+  category: not-present
+  candidates:
+    - id: file_gomod
+      desc: "go.mod"
+      fields: {name: go.mod}
+    - id: file_gosum
+      desc: "go.sum"
+      fields: {name: go.sum}
+    - id: file_main
+      desc: "main.go"
+      fields: {name: main.go}
+  expected_target: no_match
+
+- goal: "tail the error log"
+  capability: tail_log
+  category: not-present
+  candidates:
+    - id: log_a
+      desc: "2026-09-18T17_19_16_118Z-debug-0.log, 954 bytes"
+      fields: {name: "2026-09-18T17_19_16_118Z-debug-0.log", size_bytes: 954}
+    - id: log_b
+      desc: "2026-09-18T17_25_52_005Z-debug-0.log, 27340 bytes"
+      fields: {name: "2026-09-18T17_25_52_005Z-debug-0.log", size_bytes: 27340}
+  expected_target: no_match

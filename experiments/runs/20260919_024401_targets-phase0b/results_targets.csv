@@ -1,0 +1,61 @@
+fixture_id,category,n_candidates,repeat,chosen,expected,correct,confidence,probabilities_json,resolvable_noul,expected_resolvable,state_tokens,input_tokens,latency_ms,model
+kill the node process,unambiguous,3,0,pid_4821,pid_4821,1,1.0,"{""pid_1122"": 0.0, ""no_match"": 0.0, ""pid_9930"": 0.0, ""pid_4821"": 1.0}",0.96,1,82,714,607.9,jev-1.13.0
+kill whatever's listening on port 3000,unambiguous,3,0,port_3000,port_3000,1,1.0,"{""port_3000"": 1.0, ""port_52899"": 0.0, ""port_5000"": 0.0, ""no_match"": 0.0}",0.98,1,78,687,296.4,jev-1.13.0
+read the go module file,unambiguous,3,0,file_gomod,file_gomod,1,1.0,"{""no_match"": 0.0, ""file_main"": 0.0, ""file_gomod"": 1.0, ""file_gosum"": 0.0}",0.95,1,49,551,279.4,jev-1.13.0
+kill process 1122,unambiguous,2,0,pid_1122,pid_1122,1,1.0,"{""no_match"": 0.0, ""pid_1122"": 1.0, ""pid_4821"": 0.0}",0.98,1,45,561,244.5,jev-1.13.0
+kill the process eating the most CPU,superlative,3,0,pid_8227,pid_8227,1,1.0,"{""no_match"": 0.0, ""pid_69218"": 0.0, ""pid_8227"": 1.0, ""pid_58439"": 0.0}",0.97,1,90,729,218.5,jev-1.13.0
+kill the process using the most memory,superlative,3,0,pid_1937,pid_1937,1,0.98,"{""pid_1937"": 0.98, ""pid_8227"": 0.0, ""no_match"": 0.02, ""pid_69017"": 0.0}",0.94,1,95,731,305.7,jev-1.13.0
+show the contents of whichever file changed most recently,superlative,3,0,file_raycast,file_raycast,1,0.99,"{""file_conn"": 0.0, ""file_raycast"": 0.99, ""no_match"": 0.01, ""file_table"": 0.0}",0.96,1,91,699,259.0,jev-1.13.0
+tail whichever log has the most content in it,superlative,3,0,log_b,log_b,1,0.99,"{""log_a"": 0.0, ""log_b"": 0.99, ""log_c"": 0.0, ""no_match"": 0.01}",0.96,1,88,754,264.4,jev-1.13.0
+kill the chrome helper using the least memory,distractor-heavy,3,0,pid_31947,pid_31947,1,0.73,"{""pid_69218"": 0.02, ""no_match"": 0.18, ""pid_69241"": 0.0, ""pid_31947"": 0.8}",0.67,1,109,758,261.7,jev-1.13.0
+kill whatever's listening on port 5000,distractor-heavy,2,0,port_5000,port_5000,1,1.0,"{""port_5000"": 1.0, ""port_7000"": 0.0, ""no_match"": 0.0}",0.97,1,60,609,261.8,jev-1.13.0
+read the readme in the skills project,distractor-heavy,4,0,file_readme,file_readme,1,0.99,"{""file_quiz"": 0.0, ""file_save"": 0.0, ""file_debug"": 0.0, ""no_match"": 0.01, ""file_readme"": 0.99}",0.94,1,69,596,254.4,jev-1.13.0
+"kill the google chrome process, the beta one not the helper",distractor-heavy,2,0,pid_69017,pid_69017,1,1.0,"{""pid_69218"": 0.0, ""pid_69017"": 1.0, ""no_match"": 0.0}",0.97,1,78,644,269.7,jev-1.13.0
+kill the process using the most memory,ambiguous,2,0,no_match,no_match,1,0.99,"{""pid_b"": 0.0, ""no_match"": 1.0, ""pid_a"": 0.0}",0.26,0,69,617,259.0,jev-1.13.0
+show the contents of whichever file changed most recently,ambiguous,2,0,no_match,no_match,1,1.0,"{""file_b"": 0.0, ""file_a"": 0.0, ""no_match"": 1.0}",0.14,0,68,615,332.3,jev-1.13.0
+tail whichever log has the most content in it,ambiguous,3,0,no_match,no_match,1,0.99,"{""log_b"": 0.0, ""no_match"": 1.0, ""log_a"": 0.0, ""log_c"": 0.0}",0.16,0,87,750,284.9,jev-1.13.0
+kill the chrome process,ambiguous,3,0,no_match,no_match,1,0.63,"{""pid_69017"": 0.28, ""pid_69073"": 0.0, ""pid_69218"": 0.0, ""no_match"": 0.72}",0.33,0,69,634,321.9,jev-1.13.0
+kill the postgres process,not-present,3,0,no_match,no_match,1,1.0,"{""pid_9930"": 0.0, ""pid_4821"": 0.0, ""no_match"": 1.0, ""pid_1122"": 0.0}",0.14,0,59,616,373.1,jev-1.13.0
+kill whatever's listening on port 9999,not-present,3,0,no_match,no_match,1,1.0,"{""port_52913"": 0.0, ""port_5000"": 0.0, ""port_52899"": 0.0, ""no_match"": 1.0}",0.16,0,76,689,223.2,jev-1.13.0
+read the changelog file,not-present,3,0,no_match,no_match,1,1.0,"{""no_match"": 1.0, ""file_gomod"": 0.0, ""file_main"": 0.0, ""file_gosum"": 0.0}",0.22,0,49,551,299.7,jev-1.13.0
+tail the error log,not-present,2,0,no_match,no_match,1,0.7,"{""no_match"": 0.79, ""log_b"": 0.19, ""log_a"": 0.02}",0.4,0,60,648,227.7,jev-1.13.0
+kill the node process,unambiguous,3,1,pid_4821,pid_4821,1,1.0,"{""no_match"": 0.0, ""pid_9930"": 0.0, ""pid_4821"": 1.0, ""pid_1122"": 0.0}",0.97,1,82,714,298.5,jev-1.13.0
+kill whatever's listening on port 3000,unambiguous,3,1,port_3000,port_3000,1,1.0,"{""port_52899"": 0.0, ""port_5000"": 0.0, ""port_3000"": 1.0, ""no_match"": 0.0}",0.98,1,78,687,242.5,jev-1.13.0
+read the go module file,unambiguous,3,1,file_gomod,file_gomod,1,1.0,"{""file_main"": 0.0, ""file_gomod"": 1.0, ""no_match"": 0.0, ""file_gosum"": 0.0}",0.95,1,49,551,278.8,jev-1.13.0
+kill process 1122,unambiguous,2,1,pid_1122,pid_1122,1,1.0,"{""no_match"": 0.0, ""pid_4821"": 0.0, ""pid_1122"": 1.0}",0.98,1,45,561,524.0,jev-1.13.0
+kill the process eating the most CPU,superlative,3,1,pid_8227,pid_8227,1,1.0,"{""pid_69218"": 0.0, ""pid_8227"": 1.0, ""pid_58439"": 0.0, ""no_match"": 0.0}",0.97,1,90,729,221.0,jev-1.13.0
+kill the process using the most memory,superlative,3,1,pid_1937,pid_1937,1,0.98,"{""pid_69017"": 0.0, ""pid_1937"": 0.99, ""pid_8227"": 0.0, ""no_match"": 0.01}",0.95,1,95,731,302.9,jev-1.13.0
+show the contents of whichever file changed most recently,superlative,3,1,file_raycast,file_raycast,1,0.99,"{""file_conn"": 0.0, ""file_raycast"": 0.99, ""no_match"": 0.01, ""file_table"": 0.0}",0.96,1,91,699,231.3,jev-1.13.0
+tail whichever log has the most content in it,superlative,3,1,log_b,log_b,1,0.99,"{""log_b"": 1.0, ""log_a"": 0.0, ""log_c"": 0.0, ""no_match"": 0.0}",0.96,1,88,754,292.4,jev-1.13.0
+kill the chrome helper using the least memory,distractor-heavy,3,1,pid_31947,pid_31947,1,0.65,"{""pid_69218"": 0.02, ""no_match"": 0.24, ""pid_69241"": 0.0, ""pid_31947"": 0.74}",0.63,1,109,758,239.5,jev-1.13.0
+kill whatever's listening on port 5000,distractor-heavy,2,1,port_5000,port_5000,1,1.0,"{""port_5000"": 1.0, ""port_7000"": 0.0, ""no_match"": 0.0}",0.96,1,60,609,285.2,jev-1.13.0
+read the readme in the skills project,distractor-heavy,4,1,file_readme,file_readme,1,0.98,"{""no_match"": 0.01, ""file_debug"": 0.0, ""file_quiz"": 0.0, ""file_readme"": 0.99, ""file_save"": 0.0}",0.94,1,69,596,242.7,jev-1.13.0
+"kill the google chrome process, the beta one not the helper",distractor-heavy,2,1,pid_69017,pid_69017,1,1.0,"{""no_match"": 0.0, ""pid_69017"": 1.0, ""pid_69218"": 0.0}",0.97,1,78,644,300.7,jev-1.13.0
+kill the process using the most memory,ambiguous,2,1,no_match,no_match,1,0.99,"{""pid_a"": 0.0, ""pid_b"": 0.0, ""no_match"": 1.0}",0.27,0,69,617,518.7,jev-1.13.0
+show the contents of whichever file changed most recently,ambiguous,2,1,no_match,no_match,1,1.0,"{""file_b"": 0.0, ""file_a"": 0.0, ""no_match"": 1.0}",0.14,0,68,615,231.0,jev-1.13.0
+tail whichever log has the most content in it,ambiguous,3,1,no_match,no_match,1,0.99,"{""log_b"": 0.0, ""log_a"": 0.0, ""no_match"": 1.0, ""log_c"": 0.0}",0.15,0,87,750,284.5,jev-1.13.0
+kill the chrome process,ambiguous,3,1,no_match,no_match,1,0.69,"{""pid_69073"": 0.0, ""pid_69218"": 0.0, ""no_match"": 0.77, ""pid_69017"": 0.23}",0.32,0,69,634,211.9,jev-1.13.0
+kill the postgres process,not-present,3,1,no_match,no_match,1,1.0,"{""pid_9930"": 0.0, ""pid_1122"": 0.0, ""no_match"": 1.0, ""pid_4821"": 0.0}",0.14,0,59,616,306.1,jev-1.13.0
+kill whatever's listening on port 9999,not-present,3,1,no_match,no_match,1,1.0,"{""port_5000"": 0.0, ""no_match"": 1.0, ""port_52899"": 0.0, ""port_52913"": 0.0}",0.15,0,76,689,220.1,jev-1.13.0
+read the changelog file,not-present,3,1,no_match,no_match,1,1.0,"{""file_gosum"": 0.0, ""file_gomod"": 0.0, ""file_main"": 0.0, ""no_match"": 1.0}",0.2,0,49,551,303.8,jev-1.13.0
+tail the error log,not-present,2,1,no_match,no_match,1,0.77,"{""log_a"": 0.01, ""no_match"": 0.85, ""log_b"": 0.14}",0.37,0,60,648,297.5,jev-1.13.0
+kill the node process,unambiguous,3,2,pid_4821,pid_4821,1,0.99,"{""no_match"": 0.0, ""pid_1122"": 0.0, ""pid_9930"": 0.0, ""pid_4821"": 1.0}",0.97,1,82,714,224.1,jev-1.13.0
+kill whatever's listening on port 3000,unambiguous,3,2,port_3000,port_3000,1,1.0,"{""no_match"": 0.0, ""port_5000"": 0.0, ""port_52899"": 0.0, ""port_3000"": 1.0}",0.98,1,78,687,229.9,jev-1.13.0
+read the go module file,unambiguous,3,2,file_gomod,file_gomod,1,1.0,"{""file_main"": 0.0, ""file_gosum"": 0.0, ""file_gomod"": 1.0, ""no_match"": 0.0}",0.95,1,49,551,346.6,jev-1.13.0
+kill process 1122,unambiguous,2,2,pid_1122,pid_1122,1,1.0,"{""pid_1122"": 1.0, ""no_match"": 0.0, ""pid_4821"": 0.0}",0.98,1,45,561,262.6,jev-1.13.0
+kill the process eating the most CPU,superlative,3,2,pid_8227,pid_8227,1,1.0,"{""pid_69218"": 0.0, ""no_match"": 0.0, ""pid_8227"": 1.0, ""pid_58439"": 0.0}",0.97,1,90,729,227.3,jev-1.13.0
+kill the process using the most memory,superlative,3,2,pid_1937,pid_1937,1,0.98,"{""pid_8227"": 0.0, ""no_match"": 0.01, ""pid_1937"": 0.99, ""pid_69017"": 0.0}",0.95,1,95,731,294.5,jev-1.13.0
+show the contents of whichever file changed most recently,superlative,3,2,file_raycast,file_raycast,1,0.99,"{""file_conn"": 0.0, ""file_raycast"": 0.99, ""file_table"": 0.0, ""no_match"": 0.01}",0.96,1,91,699,231.0,jev-1.13.0
+tail whichever log has the most content in it,superlative,3,2,log_b,log_b,1,0.99,"{""no_match"": 0.0, ""log_b"": 1.0, ""log_c"": 0.0, ""log_a"": 0.0}",0.96,1,88,754,268.5,jev-1.13.0
+kill the chrome helper using the least memory,distractor-heavy,3,2,pid_31947,pid_31947,1,0.71,"{""pid_69218"": 0.02, ""pid_69241"": 0.0, ""pid_31947"": 0.79, ""no_match"": 0.19}",0.67,1,109,758,264.3,jev-1.13.0
+kill whatever's listening on port 5000,distractor-heavy,2,2,port_5000,port_5000,1,1.0,"{""port_5000"": 1.0, ""port_7000"": 0.0, ""no_match"": 0.0}",0.97,1,60,609,215.0,jev-1.13.0
+read the readme in the skills project,distractor-heavy,4,2,file_readme,file_readme,1,0.98,"{""file_readme"": 0.98, ""file_quiz"": 0.0, ""no_match"": 0.02, ""file_save"": 0.0, ""file_debug"": 0.0}",0.94,1,69,596,278.8,jev-1.13.0
+"kill the google chrome process, the beta one not the helper",distractor-heavy,2,2,pid_69017,pid_69017,1,1.0,"{""no_match"": 0.0, ""pid_69218"": 0.0, ""pid_69017"": 1.0}",0.97,1,78,644,265.6,jev-1.13.0
+kill the process using the most memory,ambiguous,2,2,no_match,no_match,1,0.99,"{""no_match"": 1.0, ""pid_b"": 0.0, ""pid_a"": 0.0}",0.26,0,69,617,257.3,jev-1.13.0
+show the contents of whichever file changed most recently,ambiguous,2,2,no_match,no_match,1,1.0,"{""file_a"": 0.0, ""no_match"": 1.0, ""file_b"": 0.0}",0.16,0,68,615,251.0,jev-1.13.0
+tail whichever log has the most content in it,ambiguous,3,2,no_match,no_match,1,0.99,"{""log_c"": 0.0, ""log_b"": 0.0, ""no_match"": 1.0, ""log_a"": 0.0}",0.16,0,87,750,275.7,jev-1.13.0
+kill the chrome process,ambiguous,3,2,no_match,no_match,1,0.72,"{""pid_69017"": 0.21, ""pid_69218"": 0.0, ""pid_69073"": 0.0, ""no_match"": 0.79}",0.29,0,69,634,233.9,jev-1.13.0
+kill the postgres process,not-present,3,2,no_match,no_match,1,1.0,"{""no_match"": 1.0, ""pid_9930"": 0.0, ""pid_4821"": 0.0, ""pid_1122"": 0.0}",0.14,0,59,616,287.6,jev-1.13.0
+kill whatever's listening on port 9999,not-present,3,2,no_match,no_match,1,1.0,"{""no_match"": 1.0, ""port_52913"": 0.0, ""port_5000"": 0.0, ""port_52899"": 0.0}",0.16,0,76,689,242.9,jev-1.13.0
+read the changelog file,not-present,3,2,no_match,no_match,1,1.0,"{""no_match"": 1.0, ""file_main"": 0.0, ""file_gosum"": 0.0, ""file_gomod"": 0.0}",0.21,0,49,551,280.0,jev-1.13.0
+tail the error log,not-present,2,2,no_match,no_match,1,0.72,"{""log_a"": 0.01, ""no_match"": 0.82, ""log_b"": 0.17}",0.38,0,60,648,244.6,jev-1.13.0
