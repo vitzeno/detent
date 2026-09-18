@@ -1,0 +1,169 @@
+# description/not_for wording below is ported verbatim from phase 0's
+# validated CAPABILITIES dict (experiments/scripts/spike.py) — four rounds
+# of wording iteration against real fixtures, not authored fresh here.
+domain: unix
+description: "Local filesystem and process operations"
+available_when: always
+
+actions:
+  - name: list_files
+    description: >-
+      List the file and directory names inside one specific, already-known
+      directory.
+    not_for: >-
+      Renaming, moving, deleting, creating, or changing a file — listing
+      what exists does not accomplish any of those. If the directory
+      itself is not yet known, that's find_files instead.
+    danger: safe
+    view: table
+    produces: path[]
+    reducer: path_lines
+    args:
+      - name: path
+        type: path
+        required: false
+
+  - name: read_file
+    description: >-
+      Show the full contents of one specific file — including one
+      identified by a strict, tool-enforced naming convention (such as a
+      Go module file, always exactly go.mod) even if that exact filename
+      wasn't spelled out, since there's only one possible name and
+      location for it.
+    not_for: >-
+      Installing, modifying, fixing, or otherwise acting on what the file
+      contains — reading it is not the same as acting on it. Also not for
+      searching across many files (use search_content), or a file whose
+      name varies by project rather than being fixed by convention (e.g. a
+      readme could be README.md, readme.txt, or something else) — list
+      the directory first to see what's actually there.
+    danger: safe
+    view: viewport
+    produces: text
+    reducer: text_summary
+    args:
+      - name: path
+        type: path
+        required: true
+
+  - name: port_listeners
+    description: >-
+      Show which single process is listening on one specific network
+      port.
+    not_for: >-
+      Listing all running processes in general — use process_list for
+      that.
+    danger: safe
+    view: table
+    produces: pid[]
+    reducer: port_listener_lines
+
+  - name: disk_usage
+    description: >-
+      Show how much disk space directories or files are using, to find
+      what's largest.
+    not_for: >-
+      Listing file names for their own sake (use list_files or
+      find_files) or freeing up space — it only reports sizes.
+    danger: safe
+    view: table
+    produces: text
+    reducer: disk_usage_lines
+    args:
+      - name: path
+        type: path
+        required: false
+
+  - name: find_files
+    description: >-
+      Search across a directory tree for files, recursively — for when
+      the directory containing the target isn't already known.
+    not_for: >-
+      Listing everything in one specific, already-known directory (use
+      list_files instead) or searching inside file contents (use
+      search_content). Merely mentioning "file" or "this file" in a goal
+      does not by itself mean a file needs to be located — check whether
+      the goal's actual action is even something a file-related
+      capability can do.
+    danger: safe
+    view: table
+    produces: path[]
+    reducer: path_lines
+    args:
+      - name: path
+        type: path
+        required: false
+
+  - name: tail_log
+    description: >-
+      Show the most recent lines of one specific, already-known log file.
+    not_for: >-
+      Reading a full non-log file top to bottom (use read_file), or
+      searching a log for a specific string across its whole history (use
+      search_content).
+    danger: safe
+    view: viewport
+    produces: text
+    reducer: text_summary
+    args:
+      - name: path
+        type: path
+        required: true
+
+  - name: git_status
+    description: >-
+      Show which tracked files have uncommitted changes (differences from
+      the last commit), and which files are untracked.
+    not_for: >-
+      Deploying, publishing, or shipping code — it only reports local
+      working-tree state. Also not for finding which file was most
+      recently modified by filesystem timestamp (use find_files) — that's
+      a disk-mtime question, not a git question, even though both can be
+      described as a file that "changed".
+    danger: safe
+    view: table
+    produces: path[]
+    reducer: git_status_lines
+
+  - name: git_log
+    description: >-
+      Show recent commit history for the current repository.
+    not_for: >-
+      What is currently modified but not yet committed — use git_status
+      for that; this only shows already-committed history. Also not for
+      finding which file was most recently modified on disk (use
+      find_files) — that's a filesystem timestamp question, unrelated to
+      git, even when the goal says a file "changed" recently.
+    danger: safe
+    view: table
+    produces: text
+    reducer: git_log_lines
+
+  - name: process_list
+    description: >-
+      List running processes with their CPU and memory usage, to identify
+      one by resource usage.
+    not_for: >-
+      Restarting, reconfiguring, or otherwise changing how a service runs
+      — it only shows what is currently running.
+    danger: safe
+    view: table
+    produces: pid[]
+    reducer: process_lines
+
+  - name: kill_process
+    description: >-
+      Terminate one specific, already-identified running process by PID.
+    not_for: >-
+      Restarting a service or any lifecycle action beyond ending that one
+      process. If no relevant process has been identified yet, or the
+      goal needs more than terminating a process, this alone does not
+      make progress.
+    danger: destructive
+    view: detail
+    produces: none
+    reducer: none
+    args:
+      - name: pid
+        type: pid
+        required: true
