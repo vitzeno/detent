@@ -1,31 +1,21 @@
-// cmd/detent is the entry point. Default mode launches the Bubble Tea
-// TUI (§8, §9) — the real front end, goal entered interactively. -cli
-// keeps the old synchronous, stdin-confirm print flow from steps 5-8
-// around for scripting and debugging: same Loop, same behavior, just
-// driven via l.Run instead of the TUI's step-by-step NewRun/Prepare/
-// Commit.
+// cmd/detent runs the full-screen TUI, or one goal headlessly with -goal.
 package main
 
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
-	"os/user"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/vitzeno/detent/internal/capabilities"
+	"github.com/vitzeno/detent/internal/agentloop"
 	"github.com/vitzeno/detent/internal/classify"
-	"github.com/vitzeno/detent/internal/exec"
-	"github.com/vitzeno/detent/internal/extract"
-	"github.com/vitzeno/detent/internal/gate"
-	"github.com/vitzeno/detent/internal/loop"
-	"github.com/vitzeno/detent/internal/reduce"
-	"github.com/vitzeno/detent/internal/tui"
+	"github.com/vitzeno/detent/internal/config"
+	"github.com/vitzeno/detent/internal/propose"
+	"github.com/vitzeno/detent/internal/ui"
 )
 
 func main() {
@@ -37,143 +27,111 @@ func main() {
 
 func run() error {
 	loadDotenv(".env")
-	apiKey := os.Getenv("TYPESAFE_API_KEY")
-	if apiKey == "" {
-		return fmt.Errorf("TYPESAFE_API_KEY not set (checked environment and .env)")
-	}
 
-	cliMode := flag.Bool("cli", false, "run the plain stdin/print flow instead of the TUI")
-	goal := flag.String("goal", "what files are in this directory?", "natural-language goal (-cli mode only)")
+	baseURL := flag.String("url", "", "OpenAI-compatible base URL (default: config file, else LM Studio local)")
+	model := flag.String("model", "", "model name (default: config file, else "+config.DefaultModel+")")
+	apiKey := flag.String("key", "", "API key (default: config file, else env; empty for local LM Studio)")
+	configPath := flag.String("config", "", "config file path (default: ./.detent.yaml, then ~/.config/detent/config.yaml)")
+	goal := flag.String("goal", "", "run one goal headlessly and exit (empty = launch the TUI)")
+	steps := flag.Int("steps", -1, "per-goal step cap, 0 = unbounded (default: config file, else unbounded)")
 	flag.Parse()
 
-	l, err := buildLoop(apiKey)
+	fileCfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
 	}
+	resolved := config.Resolve(fileCfg, *baseURL, *model, *apiKey, *steps)
 
-	if *cliMode {
-		l.Confirm = confirmMutation
-		return runCLI(l, *goal)
-	}
-	return runTUI(l)
-}
-
-// buildLoop is the wiring shared by both modes: schema, handlers,
-// reducers, gate rules, the provider — identical regardless of which
-// front end drives it.
-func buildLoop(apiKey string) (*loop.Loop, error) {
-	domain, err := capabilities.LoadFile("capabilities/unix.yaml")
-	if err != nil {
-		return nil, err
-	}
-	capReg := capabilities.NewRegistry()
-	if err := capReg.Load(domain); err != nil {
-		return nil, err
+	if err := propose.Ping(context.Background(), resolved.BaseURL, resolved.APIKey); err != nil {
+		return fmt.Errorf("%v\n\nis the model endpoint up? Wanted %s with model %s — for LM Studio, load the model and Start Server; otherwise point -url/-model (or a config file) at your provider",
+			err, resolved.BaseURL, resolved.Model)
 	}
 
-	execReg := exec.NewRegistry()
-	exec.RegisterUnix(execReg)
-	if err := capReg.Validate(execReg.Names()); err != nil {
-		return nil, err
+	sess := &agentloop.Session{
+		Proposer: propose.New(
+			propose.WithBaseURL(resolved.BaseURL),
+			propose.WithModel(resolved.Model),
+			propose.WithAPIKey(resolved.APIKey),
+			propose.WithHeaders(resolved.Headers),
+		),
+		Confirm:       confirmHeadless,
+		StepBudget:    resolved.Steps,
+		RiskThreshold: resolved.RiskThreshold,
+	}
+	// No judge without a key: TYPESAFE_API_KEY env or jev_api_key file.
+	if resolved.JevAPIKey != "" {
+		sess.Judge = classify.NewJevJudge(resolved.JevAPIKey,
+			classify.WithModel(resolved.JevModel),
+			classify.WithEndpoint(resolved.JevEndpoint),
+		)
 	}
 
-	reduceReg := reduce.NewRegistry()
-	reduce.RegisterUnix(reduceReg)
-	if err := capReg.ValidateReducers(reduceReg.Names()); err != nil {
-		return nil, err
+	if *goal != "" {
+		return printGoalResult(sess.RunGoal(context.Background(), *goal))
 	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
+	judgeName := ""
+	if sess.Judge != nil {
+		judgeName = classify.DefaultModel
 	}
-	currentUser, err := user.Current()
-	if err != nil {
-		return nil, err
-	}
-
-	return &loop.Loop{
-		Capabilities: capReg,
-		Exec:         execReg,
-		Reduce:       reduceReg,
-		Judge:        classify.NewJevJudge(apiKey),
-		Constructor:  &extract.DeterministicConstructor{},
-		Budgets:      loop.DefaultBudgets,
-		PathRules:    gate.PathRules{AllowedRoots: []string{cwd}},
-		CurrentUser:  currentUser.Username,
-	}, nil
-}
-
-func runTUI(l *loop.Loop) error {
-	ctx := context.Background()
-	p := tea.NewProgram(tui.New(ctx, l))
-	_, err := p.Run()
+	p := tea.NewProgram(ui.New(context.Background(), sess, resolved.Model, judgeName), tea.WithAltScreen())
+	_, err = p.Run()
 	return err
 }
 
-func runCLI(l *loop.Loop, goal string) error {
-	// l.Run always returns the state accumulated so far, even on a hard
-	// error (loop.go: "return run.State(), Termination{}, err") — printing
-	// steps taken before returning the error is what makes that visible,
-	// instead of silently discarding real progress on a failure.
-	state, term, runErr := l.Run(context.Background(), goal)
-
-	fmt.Printf("goal: %q\n", goal)
-	if runErr == nil {
-		fmt.Printf("terminated: %s", term.Reason)
-		if term.Detail != "" {
-			fmt.Printf(" (%s)", term.Detail)
-		}
-		fmt.Println()
-	} else {
-		fmt.Printf("error: %s\n", runErr)
+func printGoalResult(res agentloop.GoalResult, err error) error {
+	if err != nil {
+		fmt.Printf("error: %s\n", err)
 	}
-
-	for _, f := range state.Findings {
-		fmt.Printf("\nstep %d: %s\n", f.Step, f.Action)
-		facts, _ := json.MarshalIndent(f.Facts, "", "  ")
-		fmt.Println(string(facts))
+	fmt.Printf("goal %q ended: %s\n", res.Goal, res.End)
+	for i, c := range res.Commands {
+		fmt.Printf("  %d. %s — %s\n", i+1, c.Command, c.Result.Summary())
 	}
-	if len(state.Findings) == 0 {
-		fmt.Println("\nnothing was run.")
+	if len(res.Commands) == 0 {
+		fmt.Println("  (nothing ran)")
 	}
-
-	if len(state.Resolved) > 0 {
-		fmt.Println("\nresolved:")
-		for _, r := range state.Resolved {
-			fmt.Printf("  step %d: %s.%s = %v (target_resolvable noul %.2f)\n",
-				r.Step, r.Capability, r.Arg, r.Value, r.TargetResolvableNoul)
-		}
+	if res.Summary != "" {
+		fmt.Printf("summary: %s\n", res.Summary)
 	}
-	return runErr
+	return err
 }
 
-// confirmMutation is the -cli mode's stdin stand-in for §4.3's confirm
-// dialog — same data (loop.ConfirmRequest), same rule ("every mutation
-// stops, no exceptions"), just plain text instead of the TUI's bordered
-// panel (internal/tui/view.go's viewConfirm).
-func confirmMutation(req loop.ConfirmRequest) bool {
-	fmt.Printf("\ngoal: %q\n\n", req.Goal)
-	if len(req.Done) == 0 {
+func confirmHeadless(req agentloop.ConfirmRequest) bool {
+	fmt.Printf("\ngoal: %q\n", req.Goal)
+	if len(req.History) == 0 {
 		fmt.Println("done so far: (nothing yet)")
 	} else {
 		fmt.Println("done so far:")
-		for _, f := range req.Done {
-			fmt.Printf("  %d. %s\n", f.Step, f.Action)
+		for i, h := range req.History {
+			fmt.Printf("  %d. %s — %s\n", i+1, h.Command, h.Result.Summary())
 		}
 	}
-	fmt.Printf("\nnext — %s:\n  %s — %s\n\n", strings.ToUpper(string(req.Danger)), req.Capability, req.TargetDesc)
-	fmt.Printf("write %d of %d allowed · step %d of %d\n", req.WritesUsed+1, req.WriteBudget, req.Step, req.StepBudget)
-	fmt.Print("[y] run   [n] stop run: ")
+	header := "next:"
+	if req.Dangerous {
+		header = "next — !! LOOK TWICE !!"
+	}
+	fmt.Printf("\n%s\n  %s\n", header, req.Command)
+	if req.Rationale != "" {
+		fmt.Printf("why: %s\n", req.Rationale)
+	}
+	if req.Mutability != "" {
+		fmt.Printf("scope: %s\n", req.Mutability)
+	}
+	if req.Dangerous {
+		fmt.Printf("flagged: %s\n", req.RiskNote)
+	}
+	fmt.Printf("step %d", req.Step)
+	if req.StepBudget > 0 {
+		fmt.Printf(" of %d", req.StepBudget)
+	}
+	fmt.Printf(" · goal %d of this session done\n", req.GoalsDone)
+	fmt.Print("[y] run   [n] stop goal: ")
 
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
 	return strings.TrimSpace(strings.ToLower(line)) == "y"
 }
 
-// loadDotenv is a minimal .env loader — same discipline as the phase-0
-// spike harness (experiments/scripts/spike.py): real environment variables
-// always win, .env only fills gaps, and a missing file is not an error.
+// loadDotenv fills gaps from .env; real environment variables always win.
 func loadDotenv(path string) {
 	f, err := os.Open(path)
 	if err != nil {
