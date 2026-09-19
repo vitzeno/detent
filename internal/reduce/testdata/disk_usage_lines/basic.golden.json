@@ -1,0 +1,19 @@
+{
+  "facts": {
+    "count": 3,
+    "usage": [
+      {
+        "path": "./cmd",
+        "size": "8.0K"
+      },
+      {
+        "path": "./capabilities",
+        "size": "4.0K"
+      },
+      {
+        "path": "./bin",
+        "size": "10M"
+      }
+    ]
+  }
+}

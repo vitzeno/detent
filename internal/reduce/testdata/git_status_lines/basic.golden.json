@@ -1,0 +1,33 @@
+{
+  "facts": {
+    "changes": [
+      {
+        "path": ".gitignore",
+        "status": "M"
+      },
+      {
+        "path": "Makefile",
+        "status": "??"
+      },
+      {
+        "path": "capabilities/",
+        "status": "??"
+      }
+    ],
+    "count": 3
+  },
+  "values": [
+    {
+      "type": "path",
+      "value": ".gitignore"
+    },
+    {
+      "type": "path",
+      "value": "Makefile"
+    },
+    {
+      "type": "path",
+      "value": "capabilities/"
+    }
+  ]
+}
