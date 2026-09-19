@@ -41,9 +41,15 @@ func (m Model) owner() keyOwner {
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global first: these preempt every state.
-	switch msg.String() {
-	case "ctrl+c":
+	// The usage overlay owns every key but ctrl+c while open — esc
+	// closes it instead of aborting the run underneath.
+	if msg.String() == "ctrl+c" {
 		return m, tea.Quit
+	}
+	if m.showUsage {
+		return m.usageKey(msg)
+	}
+	switch msg.String() {
 	case "esc":
 		return m.onEscape()
 	case "tab":
