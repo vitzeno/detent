@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/vitzeno/detent/internal/usage"
 )
 
 // Model is required by the wire format but ignored by LM Studio.
@@ -106,11 +108,16 @@ type wireResponse struct {
 			Reasoning string `json:"reasoning"`
 		} `json:"message"`
 	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
+	Model string `json:"model"`
 }
 
-func (p *OpenAIProposer) Propose(ctx context.Context, messages []Message) (Proposal, error) {
+func (p *OpenAIProposer) Propose(ctx context.Context, messages []Message) (Proposal, usage.Usage, error) {
 	if len(messages) == 0 {
-		return Proposal{}, fmt.Errorf("propose: empty transcript, nothing to propose for")
+		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: empty transcript, nothing to propose for")
 	}
 
 	wireMsgs := make([]wireMessage, 0, len(messages)+1)
@@ -118,7 +125,7 @@ func (p *OpenAIProposer) Propose(ctx context.Context, messages []Message) (Propo
 	for _, m := range messages {
 		wm, err := toWireMessage(m)
 		if err != nil {
-			return Proposal{}, err
+			return Proposal{}, usage.Usage{}, err
 		}
 		wireMsgs = append(wireMsgs, wm)
 	}
@@ -130,13 +137,13 @@ func (p *OpenAIProposer) Propose(ctx context.Context, messages []Message) (Propo
 		Temperature:    0.2,
 	})
 	if err != nil {
-		return Proposal{}, fmt.Errorf("propose: encoding request: %w", err)
+		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: encoding request: %w", err)
 	}
 
 	url := p.baseURL() + "/chat/completions"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return Proposal{}, fmt.Errorf("propose: building request: %w", err)
+		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: building request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if p.APIKey != "" {
@@ -146,31 +153,42 @@ func (p *OpenAIProposer) Propose(ctx context.Context, messages []Message) (Propo
 		req.Header.Set(k, v)
 	}
 
+	t0 := time.Now()
 	resp, err := p.httpClient().Do(req)
+	latency := time.Since(t0)
 	if err != nil {
-		return Proposal{}, fmt.Errorf("propose: request failed: %w", err)
+		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return Proposal{}, fmt.Errorf("propose: reading response: %w", err)
+		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: reading response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return Proposal{}, fmt.Errorf("propose: HTTP %d: %s", resp.StatusCode, truncateStr(string(respBody), 500))
+		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: HTTP %d: %s", resp.StatusCode, truncateStr(string(respBody), 500))
 	}
 
 	var wireResp wireResponse
 	if err := json.Unmarshal(respBody, &wireResp); err != nil {
-		return Proposal{}, fmt.Errorf("propose: decoding response: %w", err)
+		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: decoding response: %w", err)
 	}
 	if len(wireResp.Choices) == 0 {
-		return Proposal{}, fmt.Errorf("propose: response contained no choices")
+		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: response contained no choices")
 	}
-
-	return parseProposal(cmp.Or(
+	used := usage.Usage{
+		PromptTokens:     wireResp.Usage.PromptTokens,
+		CompletionTokens: wireResp.Usage.CompletionTokens,
+		Latency:          latency,
+		Model:            cmp.Or(wireResp.Model, p.model()),
+	}
+	proposal, err := parseProposal(cmp.Or(
 		wireResp.Choices[0].Message.Content,
 		wireResp.Choices[0].Message.ReasoningContent,
 		wireResp.Choices[0].Message.Reasoning,
 	))
+	if err != nil {
+		return Proposal{}, used, err
+	}
+	return proposal, used, nil
 }

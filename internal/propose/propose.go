@@ -1,7 +1,11 @@
 // Package propose proposes the next shell command from a session transcript.
 package propose
 
-import "context"
+import (
+	"context"
+
+	"github.com/vitzeno/detent/internal/usage"
+)
 
 // Role is a chat message role.
 type Role string
@@ -26,7 +30,8 @@ type Proposal struct {
 	Summary   string // shown once, when this goal finishes
 }
 
-// Proposer proposes the next step for the currently open goal.
+// Proposer proposes the next step for the currently open goal, plus
+// what the call consumed.
 type Proposer interface {
-	Propose(ctx context.Context, messages []Message) (Proposal, error)
+	Propose(ctx context.Context, messages []Message) (Proposal, usage.Usage, error)
 }
