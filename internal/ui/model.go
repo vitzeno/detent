@@ -13,8 +13,10 @@ import (
 	"github.com/vitzeno/detent/internal/agentloop"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/shell"
+	"github.com/vitzeno/detent/internal/ui/editor"
 	"github.com/vitzeno/detent/internal/ui/slash"
 	"github.com/vitzeno/detent/internal/ui/status"
+	"github.com/vitzeno/detent/internal/ui/tree"
 	"github.com/vitzeno/detent/internal/usage"
 )
 
@@ -31,6 +33,10 @@ type mode int
 const (
 	modeInput mode = iota
 	modeConfirm
+	// modeSaveConfirm shows a diff instead of a command, for a
+	// direct file write the harness makes itself — never model-proposed
+	// (see saveConfirmBox and Driver.RecordFileSave).
+	modeSaveConfirm
 )
 
 type stepRow struct {
@@ -52,17 +58,52 @@ type stepRow struct {
 	tableCursor int    // selected table row
 	styled      string // cached transformed output (markdown/JSON/colors)
 	styledWidth int    // viewport width the cache was built for
+
+	// editPath is set at approve() time from the proposal's File field —
+	// known before the command even runs, so the row's identity as
+	// "this one edits a file" is stable throughout. editor is filled in
+	// once the command finishes and the file is read from disk — the
+	// same reusable component a tree-opened file uses.
+	editPath string
+	editor   *editor.Model
+
+	// toolKind is non-empty for a slash-command's own row (a /tree,
+	// /usage, or /help invocation, or a file opened by selecting it in
+	// a tree) instead of a real executed command — set instead of ec,
+	// never both. command holds whatever's worth showing in the history
+	// line (a path, "/usage") since there's no real shell command text.
+	toolKind string
+	tree     *tree.Model // populated for toolKind == "tree"
+	// usageCursor/usageExpand are toolKind == "usage"'s own navigation
+	// state — which goal row is selected and which one (if any) is
+	// expanded — kept per-row so more than one /usage invocation could
+	// coexist with independent state, same as a table row's own cursor.
+	usageCursor int
+	usageExpand int
 }
 
 type goalBlock struct {
 	goal      string
-	res       *agentloop.GoalResult
+	res       *agentloop.GoalResult // nil for a tool block
 	steps     []*stepRow
 	ended     bool
 	end       agentloop.EndReason
 	summary   string
 	judgeNote string
 	fatalErr  error
+
+	// tool names a slash-command invocation (/tree, /usage, /help, or a
+	// file opened from a tree) rather than a goal driven by propose/
+	// confirm/execute — "" for a real goal. Created already ended, never
+	// becomes m.cur, and skips the goal-header/banner lines in history:
+	// its one step's own line is the whole entry.
+	tool string
+}
+
+type beginGoalMsg struct {
+	goal string
+	res  *agentloop.GoalResult
+	err  error
 }
 
 type proposeMsg struct {
@@ -87,15 +128,24 @@ type judgeMsg struct {
 	post agentloop.PostJudgment
 }
 
+type saveDoneMsg struct {
+	row     *stepRow
+	content string
+	err     error
+}
+
 // Driver is the session surface ui needs.
 type Driver interface {
-	BeginGoal(goal string) (*agentloop.GoalResult, error)
+	BeginGoal(ctx context.Context, goal string) (*agentloop.GoalResult, error)
 	ProposeNext(ctx context.Context, goal string) (propose.Proposal, agentloop.PreJudgment, usage.Usage, error)
 	Execute(ctx context.Context, res *agentloop.GoalResult, ustep *usage.Step, p propose.Proposal, pre agentloop.PreJudgment, onEvent func(shell.StreamEvent)) (*agentloop.ExecutedCommand, error)
 	JudgeResult(ctx context.Context, goal, command string, result shell.Result) agentloop.PostJudgment
 	RecordDecline(res *agentloop.GoalResult, command string)
 	RecordDone(res *agentloop.GoalResult, p propose.Proposal)
 	RecordProposerError(res *agentloop.GoalResult, err error)
+	// RecordFileSave notes a direct editor save in the transcript —
+	// never a proposed command, see internal/editfile.Write.
+	RecordFileSave(path, diff string)
 	Tracker() *usage.Tracker
 }
 
@@ -125,10 +175,12 @@ type Model struct {
 	// confirmShownAt starts the human-dwell clock on the modal.
 	confirmShownAt time.Time
 
-	// Usage overlay state.
-	showUsage   bool
-	usageCursor int
-	usageExpand int // expanded goal index, -1 when none
+	// editing is true once the focused row's editor has been explicitly
+	// entered (not just loaded) — while true it owns every key ahead of
+	// mode/focus, the same way modeConfirm does. saveRow is which row's
+	// editor modeSaveConfirm is showing a diff for.
+	editing bool
+	saveRow *stepRow
 
 	// UI prep cost, measured around viewport refreshes.
 	uiPrep  time.Duration
@@ -144,9 +196,17 @@ type Model struct {
 	histOffset int
 	cursorLine int
 
+	// Body row outer widths (history and output sit side by side) —
+	// set once per resize by sizeViewport, read by baseView's island.Render
+	// calls and by history.go/view.go's width-dependent truncation.
+	// Never assume a pane's width equals m.width; only the full-width
+	// overlays (confirm box, usage overlay) may still use m.width itself.
+	outputColW int
+	histColW   int
+
 	// focus decides who owns single-letter keys. Typing and shortcuts
 	// can't share one focus, so tab toggles: input owns text, history
-	// owns j/k/space/v/q. Slash commands work from input regardless.
+	// owns arrows/space/v/q. Slash commands work from input regardless.
 	focus  focusPane
 	notice string // one-shot status flash, e.g. unknown slash command
 
@@ -213,7 +273,6 @@ func New(ctx context.Context, sess Driver, proposerName, judgeName string) Model
 		spinner:      sp,
 		streamCh:     make(chan streamMsg, streamBufSize),
 		follow:       true,
-		usageExpand:  -1,
 	}
 }
 
@@ -277,6 +336,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
+	case beginGoalMsg:
+		return m.onBeginGoal(msg)
+
 	case proposeMsg:
 		return m.onPropose(msg)
 
@@ -297,6 +359,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refreshViewport()
 		return m, nil
+
+	case saveDoneMsg:
+		return m.onSaveDone(msg)
 	}
 
 	var cmd tea.Cmd
