@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -14,6 +15,7 @@ import (
 	"github.com/vitzeno/detent/internal/shell"
 	"github.com/vitzeno/detent/internal/ui/slash"
 	"github.com/vitzeno/detent/internal/ui/status"
+	"github.com/vitzeno/detent/internal/usage"
 )
 
 const (
@@ -41,6 +43,7 @@ type stepRow struct {
 	post      *agentloop.PostJudgment
 	running   bool
 	expanded  bool
+	usage     *usage.Step
 	// Component state for the detail zone.
 	tableCursor int    // selected table row
 	styled      string // cached transformed output (markdown/JSON/colors)
@@ -61,6 +64,7 @@ type goalBlock struct {
 type proposeMsg struct {
 	proposal propose.Proposal
 	pre      agentloop.PreJudgment
+	used     usage.Usage
 	err      error
 }
 
@@ -75,20 +79,20 @@ type execDoneMsg struct {
 }
 
 type judgeMsg struct {
-	block *goalBlock
-	row   *stepRow
-	post  agentloop.PostJudgment
+	row  *stepRow
+	post agentloop.PostJudgment
 }
 
 // Driver is the session surface ui needs.
 type Driver interface {
 	BeginGoal(goal string) (*agentloop.GoalResult, error)
-	ProposeNext(ctx context.Context, goal string) (propose.Proposal, agentloop.PreJudgment, error)
-	Execute(ctx context.Context, res *agentloop.GoalResult, p propose.Proposal, pre agentloop.PreJudgment, onEvent func(shell.StreamEvent)) (*agentloop.ExecutedCommand, error)
+	ProposeNext(ctx context.Context, goal string) (propose.Proposal, agentloop.PreJudgment, usage.Usage, error)
+	Execute(ctx context.Context, res *agentloop.GoalResult, ustep *usage.Step, p propose.Proposal, pre agentloop.PreJudgment, onEvent func(shell.StreamEvent)) (*agentloop.ExecutedCommand, error)
 	JudgeResult(ctx context.Context, goal, command string, result shell.Result) agentloop.PostJudgment
 	RecordDecline(res *agentloop.GoalResult, command string)
 	RecordDone(res *agentloop.GoalResult, p propose.Proposal)
 	RecordProposerError(res *agentloop.GoalResult, err error)
+	Tracker() *usage.Tracker
 }
 
 // Model is the TUI state.
@@ -113,6 +117,18 @@ type Model struct {
 
 	pending    propose.Proposal
 	pendingPre agentloop.PreJudgment
+	pendingUse usage.Usage
+	// confirmShownAt starts the human-dwell clock on the modal.
+	confirmShownAt time.Time
+
+	// Usage overlay state.
+	showUsage   bool
+	usageCursor int
+	usageExpand int // expanded goal index, -1 when none
+
+	// UI prep cost, measured around viewport refreshes.
+	uiPrep  time.Duration
+	uiPreps int
 
 	streamCh chan streamMsg
 
@@ -193,6 +209,7 @@ func New(ctx context.Context, sess Driver, proposerName, judgeName string) Model
 		spinner:      sp,
 		streamCh:     make(chan streamMsg, streamBufSize),
 		follow:       true,
+		usageExpand:  -1,
 	}
 }
 
@@ -223,9 +240,18 @@ func (m *Model) focused() *stepRow {
 }
 
 func (m *Model) trackNewest() {
-	if m.follow {
-		m.cursor = len(m.rows()) - 1
+	if !m.follow {
+		return
 	}
+	// A reader parked in the output pane stays parked: jumping the
+	// cursor on every new command yanks the row out from under them.
+	// Unfollowing too, so the history stops scrolling past as well —
+	// navigating back to the bottom re-follows naturally.
+	if m.focus == focusOutput {
+		m.follow = false
+		return
+	}
+	m.cursor = len(m.rows()) - 1
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -258,6 +284,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case judgeMsg:
 		msg.row.post = &msg.post
+		msg.row.usage.SetJudgePost(msg.post.JudgeUsage, msg.post.Attention, msg.post.GoalAchieved)
 		if msg.post.Attention >= status.AttentionThreshold {
 			msg.row.expanded = true
 		}
