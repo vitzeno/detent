@@ -2,6 +2,7 @@ package status
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -38,4 +39,13 @@ func TestBar(t *testing.T) {
 
 	out = Bar("", "idle", "[tab] history", "abort sent", false)
 	assert.Contains(t, out, "abort sent")
+}
+
+func TestDurTokens(t *testing.T) {
+	assert.Equal(t, "412ms", Dur(412*time.Millisecond))
+	assert.Equal(t, "3.2s", Dur(3200*time.Millisecond))
+	assert.Equal(t, "2m10s", Dur(130*time.Second))
+	assert.Equal(t, "847", Tokens(847))
+	assert.Equal(t, "9.4k", Tokens(9400))
+	assert.Equal(t, "2.1M", Tokens(2100000))
 }
