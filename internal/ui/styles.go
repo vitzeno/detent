@@ -8,8 +8,7 @@ import (
 )
 
 var (
-	accent    = theme.Accent
-	accentDim = theme.AccentDim
+	accent = theme.Accent
 
 	safe    = theme.Safe
 	caution = theme.Caution
@@ -35,16 +34,30 @@ var (
 	styleKey       = lipgloss.NewStyle().Foreground(accent).Bold(true)
 	styleHint      = lipgloss.NewStyle().Foreground(textFaint).Italic(true)
 
-	styleConfirmBox = lipgloss.NewStyle().
+	// Allocated once: diff/error styling runs per output line.
+	styleDiffAdd = lipgloss.NewStyle().Foreground(safe)
+	styleDiffDel = lipgloss.NewStyle().Foreground(danger)
+
+	// Islands: one rounded border per zone, accent when focused.
+	styleIsland = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(border).
-			Padding(1, 2)
+			Padding(0, 1)
+	styleIslandActive = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(accent).
+				Padding(0, 1)
+
 	styleConfirmDanger = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(danger).
 				Padding(1, 2)
-
-	styleStderr = lipgloss.NewStyle().Foreground(caution)
+	// The confirm modal is always focused while visible, so its resting
+	// border is accent — danger overrides it, never the reverse.
+	styleConfirmAccent = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(accent).
+				Padding(1, 2)
 )
 
 // Unknown scope renders neutral, never safe-looking.

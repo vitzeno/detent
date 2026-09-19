@@ -3,7 +3,9 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/vitzeno/detent/internal/ui/island"
 	"github.com/vitzeno/detent/internal/ui/markdown"
 	"github.com/vitzeno/detent/internal/ui/slash"
 	"github.com/vitzeno/detent/internal/ui/status"
@@ -13,12 +15,17 @@ import (
 )
 
 func (m *Model) sizeViewport() {
-	bottom := 3
+	// Bottom zone: input island content (dropdown + line + border), or
+	// the self-bordered confirm box, measured not guessed — its content
+	// varies with rationale and danger flags.
+	bottom := m.slashRows() + 1 + 2
 	if m.mode == modeConfirm {
-		bottom = 12
+		bottom = len(strings.Split(m.confirmBox(), "\n"))
 	}
-	bottom += m.slashRows()
-	avail := m.height - 1 - 1 - bottom - 3
+	// Fixed chrome: session bar, status line, and both islands' chrome
+	// (header + border each). The rest splits between history rows and
+	// viewport lines.
+	avail := m.height - 2 - 2*islandOverhead - bottom
 	if avail < 10 {
 		avail = 10
 	}
@@ -27,9 +34,18 @@ func (m *Model) sizeViewport() {
 		vpH = 6
 	}
 	m.histHeight = avail - vpH
-	m.output.Width = m.width - 4
+	m.output.Width = m.islandInner()
 	m.output.Height = vpH
 	m.refreshViewport()
+}
+
+// islandOverhead is a titled zone island's non-content lines: its
+// header plus the top and bottom border.
+const islandOverhead = 3
+
+// islandInner is the content width inside an island border.
+func (m Model) islandInner() int {
+	return max(20, m.width-2-2)
 }
 
 // slashRows is the dropdown's screen height, capped so it can't eat the history.
@@ -38,19 +54,53 @@ func (m Model) slashRows() int {
 }
 
 func (m Model) View() string {
+	if m.showUsage {
+		return m.usageOverlay()
+	}
+	return m.baseView()
+}
+
+func (m Model) baseView() string {
 	if m.width <= 0 {
 		return "loading…"
 	}
 	var b strings.Builder
 	b.WriteString(m.sessionBar())
 	b.WriteString("\n")
+	b.WriteString(island.Render(m.historyHeader(), m.focus == focusHistory, m.historyWindow(), m.width, m.histHeight+1))
+	b.WriteString("\n")
+	b.WriteString(island.Render(m.viewportHeader(), m.focus == focusOutput, m.detailLines(), m.width, m.output.Height+1))
+	b.WriteString("\n")
+	b.WriteString(m.statusLine() + "\n")
 
+	if m.mode == modeConfirm {
+		b.WriteString(m.confirmBox())
+	} else {
+		b.WriteString(island.Render("", m.focus == focusInput, strings.Split(m.inputBar(), "\n"), m.width, m.slashRows()+1))
+	}
+	return b.String()
+}
+
+// historyWindow returns the visible history slice; the island pads
+// short content. Entries flatten to lines first: expanded rows and
+// two-line banners span several lines each, and windowing entries
+// instead would let the island grow past the terminal height and push
+// the session bar off the top.
+func (m Model) historyWindow() []string {
 	histLines := m.historyLines()
-	// Window the history: follow the tail, or keep the cursor visible.
+	var lines []string
+	cursorLine := 0
+	for i, e := range histLines {
+		if i == m.cursorLine {
+			cursorLine = len(lines)
+		}
+		lines = append(lines, strings.Split(e, "\n")...)
+	}
+	m.cursorLine = cursorLine
 	start := 0
-	if len(histLines) > m.histHeight {
+	if len(lines) > m.histHeight {
 		if m.follow {
-			start = len(histLines) - m.histHeight
+			start = len(lines) - m.histHeight
 		} else {
 			start = m.histOffset
 			if m.cursorLine < start {
@@ -66,27 +116,30 @@ func (m Model) View() string {
 	}
 	m.histOffset = start
 	end := start + m.histHeight
-	if end > len(histLines) {
-		end = len(histLines)
+	if end > len(lines) {
+		end = len(lines)
 	}
-	for _, l := range histLines[start:end] {
-		b.WriteString(l + "\n")
-	}
-	for i := end - start; i < m.histHeight; i++ {
-		b.WriteString("\n")
-	}
+	return append([]string(nil), lines[start:end]...)
+}
 
-	b.WriteString(styleFaint.Render(strings.Repeat("─", max(1, m.width-2))) + "\n")
-	b.WriteString(m.viewportHeader() + "\n")
-	b.WriteString(m.detailView() + "\n")
-	b.WriteString(m.statusLine() + "\n")
-
-	if m.mode == modeConfirm {
-		b.WriteString(m.confirmBox())
-	} else {
-		b.WriteString(m.inputBar())
+// paneMark is the active/inactive marker shared by every zone header:
+// a filled accent dot for the focused pane, a faint ring otherwise.
+func paneMark(active bool) string {
+	if active {
+		return styleBrand.Render("●")
 	}
-	return b.String()
+	return styleFaint.Render("○")
+}
+
+func (m Model) historyHeader() string {
+	return fmt.Sprintf("%s %s", paneMark(m.focus == focusHistory), paneLabel("history", m.focus == focusHistory))
+}
+
+func paneLabel(name string, active bool) string {
+	if active {
+		return styleBrand.Render(name)
+	}
+	return styleFaint.Render(name)
 }
 
 func (m Model) sessionBar() string {
@@ -103,24 +156,26 @@ func (m Model) sessionBar() string {
 	if m.cur != nil {
 		goals++
 	}
-	return fmt.Sprintf("%s %s · %d goal(s) · %d cmd(s)",
+	snap := m.sess.Tracker().Snapshot()
+	usage := styleFaint.Render(fmt.Sprintf("⏱ %s · %stok",
+		status.Dur(snap.MachineTime()), status.Tokens(snap.ProposerTokens+snap.JudgeTokens)))
+	return fmt.Sprintf("%s %s · %d goal(s) · %d cmd(s)  %s  %s",
 		styleBrand.Render("◆ detent v2"), styleFaint.Render(m.proposerName),
-		goals, m.totalCmds) + "  " + jev
+		goals, m.totalCmds, usage, jev)
 }
 
 func (m Model) viewportHeader() string {
+	active := m.focus == focusOutput
 	r := m.focused()
 	if r == nil {
-		return styleFaint.Render("output")
+		return fmt.Sprintf("%s %s", paneMark(active), paneLabel("output", active))
 	}
 	label := "output"
 	if k := rowKind(r); k != "" {
 		label = kindLabel(k)
 	}
-	if m.focus == focusOutput {
-		label = styleRowCursor.Render("▸ ") + label
-	}
-	return styleMuted.Render(label+" — ") + styleGoal.Render(truncateWidth(r.command, m.width-18))
+	return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(label, active),
+		styleGoal.Render(truncateWidth(r.command, m.width-24)))
 }
 
 func kindLabel(k string) string {
@@ -144,13 +199,14 @@ func kindLabel(k string) string {
 	}
 }
 
-// detailView renders the focused row's component: a real table for
-// tabular output, the scrolling viewport for everything else.
-func (m Model) detailView() string {
-	if content, ok := m.focusedTable(); ok {
-		return content
+// detailLines renders the focused row's component as lines: a real
+// table for tabular output, the scrolling viewport for everything
+// else. The island pads to height.
+func (m Model) detailLines() []string {
+	if t, ok := m.focusedTable(); ok {
+		return strings.Split(t, "\n")
 	}
-	return m.output.View()
+	return strings.Split(m.output.View(), "\n")
 }
 
 // focusedTable builds the table component for a table-kind row. Falls
@@ -172,6 +228,11 @@ func (m Model) focusedTable() (string, bool) {
 }
 
 func (m *Model) refreshViewport() {
+	t0 := time.Now()
+	defer func() {
+		m.uiPrep += time.Since(t0)
+		m.uiPreps++
+	}()
 	r := m.focused()
 	if r == nil {
 		m.setViewContent(styleFaint.Render("(no output yet)"))
@@ -269,7 +330,7 @@ func (m Model) statusLine() string {
 			}
 		}
 	}
-	keys := "[tab] history · [enter] run goal · type / for commands"
+	keys := "[tab] history · [↑/↓] rows · [enter] run · type / for cmds"
 	if m.waiting && m.focus == focusInput {
 		keys = "[tab] history · type / + enter for commands · [esc] abort"
 	}
@@ -289,7 +350,12 @@ func (m Model) statusLine() string {
 }
 
 func (m Model) inputBar() string {
-	return slash.View(m.slash, m.slashCursor) + "  " + m.input.View()
+	active := m.focus == focusInput
+	m.input.PromptStyle = styleFaint
+	if active {
+		m.input.PromptStyle = styleRowCursor
+	}
+	return fmt.Sprintf("%s %s%s", paneMark(active), slash.View(m.slash, m.slashCursor), m.input.View())
 }
 
 func truncateWidth(s string, w int) string {

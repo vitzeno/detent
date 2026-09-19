@@ -6,8 +6,7 @@ package theme
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	Accent    = lipgloss.Color("#45D6C4")
-	AccentDim = lipgloss.Color("#2A8578")
+	Accent = lipgloss.Color("#45D6C4")
 
 	Safe    = lipgloss.Color("#6FD98C")
 	Caution = lipgloss.Color("#E8B24D")
