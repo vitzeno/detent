@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/vitzeno/detent/internal/classify"
+	"github.com/vitzeno/detent/internal/usage"
 )
 
 // Mut* tiers; "" means unknown, renders neutral never safe.
@@ -25,6 +27,8 @@ type PreJudgment struct {
 	// Dangerous/RiskNote is escalate-only: FlagDanger or scope risk above threshold.
 	Dangerous bool
 	RiskNote  string
+	// JudgeUsage is what the batch consumed; zero on fallback.
+	JudgeUsage usage.Usage
 }
 
 // Status* values; "" means unknown.
@@ -56,6 +60,8 @@ type PostJudgment struct {
 	RenderKind       string
 	Attention        float64
 	GoalAchieved     float64
+	// JudgeUsage is what the batch consumed; zero on fallback.
+	JudgeUsage usage.Usage
 }
 
 func preQuestions() classify.Questions {
@@ -126,13 +132,15 @@ func (s *Session) judgePre(ctx context.Context, goal, command string) PreJudgmen
 	if s.Judge == nil {
 		return fb
 	}
-	answers, _, err := s.Judge.Ask(ctx,
+	t0 := time.Now()
+	answers, ju, err := s.Judge.Ask(ctx,
 		classify.State(map[string]any{"goal": goal, "command": command}),
 		preQuestions())
 	if err != nil {
 		return fb
 	}
-	out := PreJudgment{FromJudge: true, ScopeRisk: -1, Dangerous: dangerous, RiskNote: note}
+	out := PreJudgment{FromJudge: true, ScopeRisk: -1, Dangerous: dangerous, RiskNote: note,
+		JudgeUsage: convertUsage(ju, time.Since(t0))}
 	if a, ok := answers["mutability"]; ok && a.Choice != "" {
 		out.Mutability = a.Choice
 		out.MutabilityConfidence = a.Confidence
@@ -156,7 +164,8 @@ func (s *Session) judgePost(ctx context.Context, goal, command string, res resul
 	if s.Judge == nil {
 		return fb
 	}
-	answers, _, err := s.Judge.Ask(ctx,
+	t0 := time.Now()
+	answers, ju, err := s.Judge.Ask(ctx,
 		classify.State(map[string]any{
 			"goal":      goal,
 			"command":   command,
@@ -167,7 +176,8 @@ func (s *Session) judgePost(ctx context.Context, goal, command string, res resul
 	if err != nil {
 		return fb
 	}
-	out := PostJudgment{FromJudge: true, Attention: -1, GoalAchieved: -1}
+	out := PostJudgment{FromJudge: true, Attention: -1, GoalAchieved: -1,
+		JudgeUsage: convertUsage(ju, time.Since(t0))}
 	if a, ok := answers["result_status"]; ok && a.Choice != "" {
 		out.Status = a.Choice
 		out.StatusConfidence = a.Confidence
@@ -186,6 +196,17 @@ func (s *Session) judgePost(ctx context.Context, goal, command string, res resul
 		out.GoalAchieved = a.Noul
 	}
 	return out
+}
+
+// convertUsage translates a Judge report; wall time wins over the
+// adapter's own clock for consistent spans.
+func convertUsage(u classify.Usage, wall time.Duration) usage.Usage {
+	return usage.Usage{
+		PromptTokens:     u.InputTokens,
+		CompletionTokens: u.OutputTokens,
+		Latency:          wall,
+		Model:            u.Model,
+	}
 }
 
 type resultView struct {

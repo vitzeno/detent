@@ -114,7 +114,7 @@ func TestDriver_FullBatchFlowsThrough(t *testing.T) {
 
 	res, err := s.BeginGoal("g")
 	require.NoError(t, err)
-	p, gotPre, err := s.ProposeNext(context.Background(), "g")
+	p, gotPre, _, err := s.ProposeNext(context.Background(), "g")
 	require.NoError(t, err)
 	assert.True(t, gotPre.FromJudge)
 	assert.Equal(t, MutReadOnly, gotPre.Mutability)
@@ -129,7 +129,7 @@ func TestDriver_FullBatchFlowsThrough(t *testing.T) {
 	require.NotNil(t, confirmedReq)
 	assert.Equal(t, MutReadOnly, confirmedReq.Mutability)
 
-	ec, err := s.Execute(context.Background(), res, p, gotPre, nil)
+	ec, err := s.Execute(context.Background(), res, nil, p, gotPre, nil)
 	require.NoError(t, err)
 	post := s.JudgeResult(context.Background(), "g", ec.Command, ec.Result)
 	ec.Post = &post
