@@ -5,18 +5,17 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-
-	"github.com/vitzeno/detent/internal/ui/island"
 	"github.com/vitzeno/detent/internal/ui/status"
 	"github.com/vitzeno/detent/internal/usage"
 )
 
-// usageOverlay renders the drilldown: session totals, per-goal rows,
-// and the selected goal's per-step spans. Boxed and centered over the
-// normal screen; esc closes.
-func (m Model) usageOverlay() string {
+// usageLines renders the /usage tool row's content: session totals,
+// per-goal rows, and the selected goal's per-step spans — the same
+// content the old full-screen overlay showed, now living in the output
+// pane like any other focusable entry. Cursor/expand state lives on
+// the row (r.usageCursor/usageExpand) rather than the Model, so it's
+// per-invocation the same way a table row's own cursor is.
+func (m Model) usageLines(r *stepRow) []string {
 	goals := m.sess.Tracker().Goals()
 	snap := m.sess.Tracker().Snapshot()
 
@@ -39,7 +38,7 @@ func (m Model) usageOverlay() string {
 	}
 	for i, g := range shown {
 		mark := "  "
-		if i == m.usageCursor {
+		if i == r.usageCursor {
 			mark = styleRowCursor.Render("▸ ")
 		}
 		ptok, jtok := 0, 0
@@ -54,19 +53,14 @@ func (m Model) usageOverlay() string {
 		lines = append(lines, fmt.Sprintf("%s%d. %s (%s) · %d steps · %s · %s tok",
 			mark, i+1, truncateWidth(g.Text, 40), end, len(g.Steps),
 			status.Dur(g.MachineTime()), status.Tokens(ptok+jtok)))
-		if i == m.usageExpand {
+		if i == r.usageExpand {
 			lines = append(lines, usageSteps(g)...)
 		}
 	}
 	if moreGoals > 0 {
 		lines = append(lines, styleFaint.Render(fmt.Sprintf("  … +%d more goals", moreGoals)))
 	}
-	lines = append(lines, "", styleHint.Render("[j/k] goal · [enter] expand · [esc] close"))
-
-	boxW := min(100, max(40, m.width-4))
-	boxH := min(len(lines)+2, max(8, m.height-2))
-	box := islandBox(lines, boxW, boxH)
-	return spliceCentered(strings.Split(m.baseView(), "\n"), box, m.width, m.height)
+	return lines
 }
 
 // usageSteps renders one goal's per-step spans, capped.
@@ -103,65 +97,4 @@ func usageSteps(g *usage.Goal) []string {
 		out = append(out, styleFaint.Render(fmt.Sprintf("    … +%d more steps", more)))
 	}
 	return out
-}
-
-// usageKey navigates the overlay: goals, expand, close.
-func (m Model) usageKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	n := len(m.sess.Tracker().Goals())
-	switch msg.String() {
-	case "esc", "q":
-		m.showUsage = false
-		return m, nil
-	case "up", "k":
-		if m.usageCursor > 0 {
-			m.usageCursor--
-		}
-		return m, nil
-	case "down", "j":
-		if m.usageCursor < n-1 {
-			m.usageCursor++
-		}
-		return m, nil
-	case "enter":
-		if m.usageExpand == m.usageCursor {
-			m.usageExpand = -1
-		} else {
-			m.usageExpand = m.usageCursor
-		}
-		return m, nil
-	}
-	return m, nil
-}
-
-// spliceCentered overlays box lines (already full-width) onto the
-// middle of base lines.
-func spliceCentered(base, box []string, width, height int) string {
-	for len(base) < height {
-		base = append(base, "")
-	}
-	top := (height - len(box)) / 2
-	if top < 0 {
-		top = 0
-	}
-	for i, line := range box {
-		if top+i < len(base) {
-			base[top+i] = centerLine(line, width)
-		}
-	}
-	return strings.Join(base[:height], "\n")
-}
-
-func centerLine(line string, width int) string {
-	return lipgloss.PlaceHorizontal(width, lipgloss.Center, line)
-}
-
-// islandBox borders content like the zone islands.
-func islandBox(lines []string, width, height int) []string {
-	for len(lines) < height-2 {
-		lines = append(lines, "")
-	}
-	if len(lines) > height-2 {
-		lines = lines[:height-2]
-	}
-	return strings.Split(island.Render("", false, lines, width, height-2), "\n")
 }

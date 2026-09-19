@@ -9,6 +9,11 @@ import (
 	"github.com/vitzeno/detent/internal/ui/tabular"
 )
 
+// Editing and modeSaveConfirm are deliberately not keyOwner values:
+// both take over every key unconditionally, the same way modeConfirm
+// already does, and handleKey short-circuits to them before owner()
+// is even consulted — see handleKey.
+
 // keyOwner names who owns a keystroke. mode × focus × waiting collapse
 // to five real states; handleKey computes exactly one and switches on
 // it, so priority is visible in one place instead of emerging from
@@ -41,13 +46,14 @@ func (m Model) owner() keyOwner {
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global first: these preempt every state.
-	// The usage overlay owns every key but ctrl+c while open — esc
-	// closes it instead of aborting the run underneath.
 	if msg.String() == "ctrl+c" {
 		return m, tea.Quit
 	}
-	if m.showUsage {
-		return m.usageKey(msg)
+	if m.mode == modeSaveConfirm {
+		return m.saveConfirmKey(msg)
+	}
+	if m.editing {
+		return m.editorKey(msg)
 	}
 	switch msg.String() {
 	case "esc":
@@ -91,9 +97,46 @@ func (m Model) confirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) saveConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y":
+		return m.confirmSave()
+	case "n", "N", "esc":
+		return m.cancelSave()
+	}
+	return m, nil
+}
+
+// editorKey owns every key while editing: esc leaves edit mode
+// (the buffer, unsaved changes included, is untouched — only a
+// confirmed save via ctrl+s ever touches disk), ctrl+s opens the diff
+// confirm, everything else goes straight to the textarea.
+func (m Model) editorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	r := m.focused()
+	if r == nil || r.editor == nil {
+		m.editing = false
+		return m, nil
+	}
+	switch msg.String() {
+	case "esc":
+		r.editor.Blur()
+		m.editing = false
+		return m, nil
+	case "ctrl+s":
+		return m.startSave()
+	}
+	var cmd tea.Cmd
+	*r.editor, cmd = r.editor.Update(msg)
+	return m, cmd
+}
+
 // inputKey gives a focused idle input every keystroke — typing a goal
-// containing "q", "v", "j", "k" or space must never trigger navigation.
-// Only arrows/pgup/pgdn (never text) and enter (submit) bypass it.
+// containing "q", "v", "j", "k" or space must never trigger navigation,
+// and neither does up/down: while input has focus, arrows are the
+// input's own (textinput no-ops them by default; only pgup/pgdn peek at
+// the output viewport) rather than silently scrolling history out from
+// under whatever the human is typing. Only pgup/pgdn and enter (submit)
+// bypass the input entirely.
 func (m Model) inputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if next, _, handled := m.slashKey(msg); handled {
 		return next, nil
@@ -101,10 +144,6 @@ func (m Model) inputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		return m.startGoal()
-	case "up":
-		return m.navUp()
-	case "down":
-		return m.navDown()
 	case "pgup", "pgdown":
 		return m.scrollViewport(msg.String())
 	}
@@ -117,16 +156,13 @@ func (m Model) inputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // busyKey narrows a focused waiting input to slash entry: plain goals
 // can't start mid-run, but /abort and /quit stay reachable — exactly
-// when they matter most.
+// when they matter most. Up/down are left to fall through to the guard
+// below rather than scrolling history — same reasoning as inputKey.
 func (m Model) busyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if next, _, handled := m.slashKey(msg); handled {
 		return next, nil
 	}
 	switch msg.String() {
-	case "up":
-		return m.navUp()
-	case "down":
-		return m.navDown()
 	case "pgup", "pgdown":
 		return m.scrollViewport(msg.String())
 	}
@@ -178,9 +214,9 @@ func (m Model) slashKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 // outputKey acts inside the detail component instead of moving rows.
 func (m Model) outputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "up", "k":
+	case "up":
 		return m.outputNav(-1)
-	case "down", "j":
+	case "down":
 		return m.outputNav(1)
 	case "pgup":
 		m.output.HalfViewUp()
@@ -190,6 +226,21 @@ func (m Model) outputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter", "v", " ":
 		if r := m.focused(); r != nil {
+			if r.editor != nil {
+				m.editing = true
+				return m, r.editor.Focus()
+			}
+			switch r.toolKind {
+			case "tree":
+				return m.openTreeSelection(r)
+			case "usage":
+				if r.usageExpand == r.usageCursor {
+					r.usageExpand = -1
+				} else {
+					r.usageExpand = r.usageCursor
+				}
+				return m, nil
+			}
 			r.expanded = !r.expanded
 			m.refreshViewport()
 		}
@@ -204,9 +255,9 @@ func (m Model) outputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) historyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "up", "k":
+	case "up":
 		return m.navUp()
-	case "down", "j":
+	case "down":
 		return m.navDown()
 	case "pgup", "pgdown":
 		return m.scrollViewport(msg.String())
@@ -239,6 +290,26 @@ func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
 				r.tableCursor = min(max(r.tableCursor+d, 0), len(rows)-1)
 				return m, nil
 			}
+		}
+		switch r.toolKind {
+		case "tree":
+			if r.tree != nil {
+				if d < 0 {
+					r.tree.Up()
+				} else {
+					r.tree.Down()
+				}
+			}
+			return m, nil
+		case "usage":
+			n := len(m.sess.Tracker().Goals())
+			if d < 0 && r.usageCursor > 0 {
+				r.usageCursor--
+			}
+			if d > 0 && r.usageCursor < n-1 {
+				r.usageCursor++
+			}
+			return m, nil
 		}
 	}
 	if d < 0 {

@@ -6,10 +6,21 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/vitzeno/detent/internal/agentloop"
+	"github.com/vitzeno/detent/internal/editfile"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/shell"
 	"github.com/vitzeno/detent/internal/usage"
 )
+
+// beginGoalCmd runs BeginGoal off the update loop — it now does real
+// work (probe collection: a Jev call plus up to a few shell execs), so
+// calling it inline would freeze the TUI until it returns.
+func beginGoalCmd(ctx context.Context, sess Driver, goal string) tea.Cmd {
+	return func() tea.Msg {
+		res, err := sess.BeginGoal(ctx, goal)
+		return beginGoalMsg{goal: goal, res: res, err: err}
+	}
+}
 
 func proposeCmd(ctx context.Context, sess Driver, goal string) tea.Cmd {
 	return func() tea.Msg {
@@ -45,6 +56,20 @@ func judgeCmd(ctx context.Context, sess Driver, goal, command string, result she
 	return func() tea.Msg {
 		post := sess.JudgeResult(ctx, goal, command, result)
 		return judgeMsg{row: row, post: post}
+	}
+}
+
+// saveCmd writes content to path — a direct, deterministic write, not
+// a shell command — and only on success records it in the transcript,
+// so a failed write never claims a change that didn't happen.
+func saveCmd(ctx context.Context, sess Driver, row *stepRow, path, content string) tea.Cmd {
+	return func() tea.Msg {
+		diff := row.editor.Diff()
+		if err := editfile.Write(path, content); err != nil {
+			return saveDoneMsg{row: row, err: err}
+		}
+		sess.RecordFileSave(path, diff)
+		return saveDoneMsg{row: row, content: content}
 	}
 }
 

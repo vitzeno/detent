@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -65,17 +66,15 @@ func testSession() *agentloop.Session {
 }
 
 func TestUI_EndToEnd_GoalToDone(t *testing.T) {
+	// ls -la is never flagged Dangerous (fullJudge reports MutReadOnly,
+	// low scope_risk), so it runs straight through with no confirm step —
+	// this proves the rest of the pipeline (execute, judge, done) still
+	// works end to end without one.
 	m := New(context.Background(), testSession(), "test-model", "jev-test")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 40))
 
 	tm.Type("what files are here?")
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
-
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("ls -la")) && bytes.Contains(out, []byte("[y]"))
-	}, teatest.WithDuration(3*time.Second), teatest.WithCheckInterval(10*time.Millisecond))
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("saw two files"))
@@ -99,7 +98,16 @@ func TestUI_EndToEnd_GoalToDone(t *testing.T) {
 }
 
 func TestUI_DeclineStopsGoal(t *testing.T) {
-	m := New(context.Background(), testSession(), "test-model", "")
+	// A command flagged Dangerous by FlagDanger's regex backstop, so
+	// confirm actually shows — declining a command that's never shown a
+	// confirm screen isn't something a human can do.
+	sess := &agentloop.Session{
+		Proposer: &scriptProposer{script: []propose.Proposal{
+			{Command: "rm -rf /tmp/x", Rationale: "remove"},
+		}},
+		Run: instantRun,
+	}
+	m := New(context.Background(), sess, "test-model", "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 40))
 
 	tm.Type("goal")
@@ -158,8 +166,52 @@ func TestUI_TypingReachesInput(t *testing.T) {
 	require.Equal(t, modeInput, m.mode, "typing must not change mode or quit")
 }
 
+// TestUI_ArrowsDoNotScrollHistoryWhileInputFocused is the reported bug,
+// locked: with the input focused, up/down must be the input's own
+// (bubbles/textinput no-ops them absent suggestions) rather than
+// silently moving the history cursor out from under whatever's typed.
+func TestUI_ArrowsDoNotScrollHistoryWhileInputFocused(t *testing.T) {
+	m := New(context.Background(), testSession(), "test-model", "")
+	m.width, m.height = 120, 40
+	m.sizeViewport()
+	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{{command: "a"}, {command: "b"}}}}
+	m.cursor = 1
+	m.follow = false
+	require.True(t, m.input.Focused())
+
+	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyUp})
+	m = nm.(Model)
+	require.Equal(t, 1, m.cursor, "history cursor must not move while typing")
+
+	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
+	m = nm.(Model)
+	require.Equal(t, 1, m.cursor, "history cursor must not move while typing")
+}
+
+// TestUI_JKNoLongerNavigate is the counterpart to the arrow-keys-only
+// preference: j/k must do nothing special anywhere navigation used to
+// accept them — only up/down do.
+func TestUI_JKNoLongerNavigate(t *testing.T) {
+	m := New(context.Background(), testSession(), "test-model", "")
+	m.width, m.height = 120, 40
+	m.sizeViewport()
+	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{{command: "a"}, {command: "b"}}}}
+	m.input.Blur()
+	m.focus = focusHistory
+	m.cursor = 0
+	m.follow = false
+
+	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m = nm.(Model)
+	require.Equal(t, 0, m.cursor, "j must not move the history cursor")
+
+	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
+	m = nm.(Model)
+	require.Equal(t, 1, m.cursor, "down still does")
+}
+
 // TestUI_NavKeysWorkWhenInputBlurred ensures navigation still works while
-// a command runs (input blurred): j/k move the cursor, space toggles.
+// a command runs (input blurred): arrows move the cursor, space toggles.
 func TestUI_NavKeysWorkWhenInputBlurred(t *testing.T) {
 	m := New(context.Background(), testSession(), "test-model", "")
 	m.width, m.height = 120, 40
@@ -172,7 +224,7 @@ func TestUI_NavKeysWorkWhenInputBlurred(t *testing.T) {
 	m.cursor = 0
 	m.follow = false
 
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
 	m = nm.(Model)
 	require.Equal(t, 1, m.cursor)
 
@@ -263,7 +315,7 @@ func TestUI_SlashEntryWhileBusy(t *testing.T) {
 	nm, _ = m.handleKey(typeKey("/"))
 	m = nm.(Model)
 	require.Equal(t, "/", m.input.Value())
-	require.Len(t, m.slash, 4)
+	require.Len(t, m.slash, 5)
 
 	nm, _ = m.handleKey(typeKey("a"))
 	m = nm.(Model)
@@ -297,23 +349,109 @@ func TestUI_StartGoalIsCancellable(t *testing.T) {
 	require.NotNil(t, m.abort, "pending propose must be abortable")
 }
 
+func TestUI_OnPropose_AutoRunsWhenNotDangerous(t *testing.T) {
+	m := testUIModel()
+	m.blocks = []*goalBlock{{goal: "g", res: &agentloop.GoalResult{Goal: "g"}}}
+	m.cur = m.blocks[0]
+
+	nm, cmd := m.onPropose(proposeMsg{
+		proposal: propose.Proposal{Command: "ls", Rationale: "list"},
+		pre:      agentloop.PreJudgment{Dangerous: false},
+	})
+	m = nm.(Model)
+	assert.NotEqual(t, modeConfirm, m.mode, "a non-dangerous command must never enter confirm mode")
+	require.Len(t, m.cur.steps, 1, "it must have run directly, via approve()")
+	assert.Equal(t, "ls", m.cur.steps[0].command)
+	assert.NotNil(t, cmd, "must dispatch execCmd the same as pressing y would")
+}
+
+func TestUI_OnPropose_StillConfirmsWhenDangerous(t *testing.T) {
+	m := testUIModel()
+	m.blocks = []*goalBlock{{goal: "g", res: &agentloop.GoalResult{Goal: "g"}}}
+	m.cur = m.blocks[0]
+
+	nm, _ := m.onPropose(proposeMsg{
+		proposal: propose.Proposal{Command: "rm -rf /tmp/x", Rationale: "remove"},
+		pre:      agentloop.PreJudgment{Dangerous: true, RiskNote: "recursive remove"},
+	})
+	m = nm.(Model)
+	assert.Equal(t, modeConfirm, m.mode)
+	assert.Empty(t, m.cur.steps, "must not run until the human presses y")
+}
+
 func TestUI_AbortedProposeClosesBlock(t *testing.T) {
 	sess := testSession()
 	m := New(context.Background(), sess, "test-model", "")
 	m.width, m.height = 120, 40
 	m.sizeViewport()
-	m.input.SetValue("some goal")
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
-	m = nm.(Model)
+
+	// Establish "goal begun, propose in flight" directly — BeginGoal
+	// itself now runs off the update loop (see TestUI_BeginGoalRunsAsync),
+	// so this targets onPropose's own cancellation handling.
+	res, err := sess.BeginGoal(context.Background(), "some goal")
+	require.NoError(t, err)
+	m.blocks = []*goalBlock{{goal: "some goal", res: res}}
+	m.cur = m.blocks[0]
 	require.Len(t, m.blocks, 1)
 
-	nm, _ = m.Update(proposeMsg{err: context.Canceled})
+	nm, _ := m.Update(proposeMsg{err: context.Canceled})
 	m = nm.(Model)
 	require.True(t, m.blocks[0].ended)
 	require.Equal(t, agentloop.EndAborted, m.blocks[0].end)
 	require.Equal(t, focusInput, m.focus)
 	require.Len(t, sess.Transcript, 1, "aborted propose adds nothing beyond the goal turn")
 	require.Equal(t, "some goal", sess.Transcript[0].Content)
+}
+
+// TestUI_BeginGoalRunsAsync covers onBeginGoal directly: BeginGoal now
+// does real work (a Jev call plus possible shell execs for probe
+// collection), so it must run off the update loop via beginGoalCmd
+// rather than block startGoal, and its outcome must route the same way
+// onPropose's does — success advances into propose, cancellation and
+// other errors both close the block, but distinctly.
+func TestUI_BeginGoalRunsAsync(t *testing.T) {
+	t.Run("success attaches res and advances into propose", func(t *testing.T) {
+		m := testUIModel()
+		m.blocks = []*goalBlock{{goal: "g"}}
+		m.cur = m.blocks[0]
+
+		res := &agentloop.GoalResult{Goal: "g"}
+		nm, cmd := m.onBeginGoal(beginGoalMsg{goal: "g", res: res})
+		m = nm.(Model)
+		require.NotNil(t, cmd, "must dispatch the first proposeCmd")
+		assert.Same(t, res, m.cur.res)
+		assert.True(t, m.waiting)
+		assert.NotNil(t, m.abort)
+	})
+
+	t.Run("cancellation closes the block as aborted", func(t *testing.T) {
+		m := testUIModel()
+		m.blocks = []*goalBlock{{goal: "g"}}
+		m.cur = m.blocks[0]
+
+		nm, cmd := m.onBeginGoal(beginGoalMsg{goal: "g", err: context.Canceled})
+		m = nm.(Model)
+		assert.Nil(t, cmd)
+		require.True(t, m.blocks[0].ended)
+		assert.Equal(t, agentloop.EndAborted, m.blocks[0].end)
+		assert.Nil(t, m.cur)
+		assert.Equal(t, focusInput, m.focus)
+	})
+
+	t.Run("other error closes the block with fatalErr, not EndAborted", func(t *testing.T) {
+		m := testUIModel()
+		m.blocks = []*goalBlock{{goal: "g"}}
+		m.cur = m.blocks[0]
+
+		wantErr := errors.New("no proposer wired")
+		nm, cmd := m.onBeginGoal(beginGoalMsg{goal: "g", err: wantErr})
+		m = nm.(Model)
+		assert.Nil(t, cmd)
+		require.True(t, m.blocks[0].ended)
+		assert.Equal(t, wantErr, m.blocks[0].fatalErr)
+		assert.Empty(t, m.blocks[0].end, "not the abort path")
+		assert.Nil(t, m.cur)
+	})
 }
 
 func tableRow() *stepRow {
@@ -343,18 +481,18 @@ func TestUI_OutputNavMovesTableCursor(t *testing.T) {
 	m.cursor = 0
 	m.focus = focusOutput
 
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
 	m = nm.(Model)
 	require.Equal(t, 1, m.blocks[0].steps[0].tableCursor)
 
 	// Clamped at the last row.
-	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
 	m = nm.(Model)
-	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
 	m = nm.(Model)
 	require.Equal(t, 1, m.blocks[0].steps[0].tableCursor)
 
-	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyUp})
 	m = nm.(Model)
 	require.Equal(t, 0, m.blocks[0].steps[0].tableCursor)
 }
@@ -438,7 +576,7 @@ func TestUI_TableScrollNeverMovesHistory(t *testing.T) {
 	m.focus = focusOutput
 	m.refreshViewport()
 	for i := 0; i < 10; i++ {
-		nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
 		m = nm.(Model)
 		_ = m.View()
 		require.Equal(t, 0, m.cursor, "history cursor must not move")
@@ -483,24 +621,27 @@ func usageModel() (Model, *usage.Tracker) {
 	return m, tr
 }
 
-func TestUI_UsageOverlay(t *testing.T) {
+func TestUI_UsageToolBlock(t *testing.T) {
 	m, _ := usageModel()
-	m.showUsage = true
+
+	nm, _ := m.runSlash("/usage")
+	m = nm.(Model)
+	require.Equal(t, focusOutput, m.focus, "/usage jumps straight to viewing it")
 
 	v := m.View()
 	require.Contains(t, v, "session · 1 goal(s)")
 	require.Contains(t, v, "find it")
 	require.NotContains(t, v, "ls -la", "steps hidden until expanded")
 
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)
 	require.Contains(t, m.View(), "ls -la")
 	require.Contains(t, m.View(), "dwell")
 
 	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
 	m = nm.(Model)
-	require.False(t, m.showUsage)
-	require.NotContains(t, m.View(), "session · 1 goal(s)")
+	require.Equal(t, focusHistory, m.focus, "esc steps back to history like any other output-pane view")
+	require.Contains(t, m.View(), "session · 1 goal(s)", "the tool block itself is untouched by esc")
 }
 
 func TestUI_ExpandedRowsCannotPushOutSessionBar(t *testing.T) {
