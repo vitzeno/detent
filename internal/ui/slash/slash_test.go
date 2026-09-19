@@ -8,7 +8,7 @@ import (
 )
 
 func TestMatchSlash(t *testing.T) {
-	assert.Len(t, Match("/"), 4)
+	assert.Len(t, Match("/"), 5)
 	assert.Equal(t, []Cmd{{"/quit", "quit detent"}}, Match("/q"))
 	assert.Equal(t, []Cmd{{"/abort", "abort the running command"}}, Match("/a"))
 	assert.Empty(t, Match("/x"))
@@ -21,6 +21,7 @@ func TestView(t *testing.T) {
 	v := View(Match("/"), 0)
 	require.Contains(t, v, "/quit")
 	require.Contains(t, v, "/abort")
+	require.Contains(t, v, "/tree")
 	require.Contains(t, v, "/usage")
 	require.Contains(t, v, "/help")
 	assert.Empty(t, View(nil, 0))

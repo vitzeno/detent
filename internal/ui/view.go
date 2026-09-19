@@ -5,7 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vitzeno/detent/internal/editfile"
+	"github.com/vitzeno/detent/internal/ui/editor"
 	"github.com/vitzeno/detent/internal/ui/island"
+	"github.com/vitzeno/detent/internal/ui/layout"
 	"github.com/vitzeno/detent/internal/ui/markdown"
 	"github.com/vitzeno/detent/internal/ui/slash"
 	"github.com/vitzeno/detent/internal/ui/status"
@@ -14,28 +17,42 @@ import (
 	"github.com/vitzeno/detent/internal/agentloop"
 )
 
+// bodyWeights sizes the body row's two panes: output (left) gets the
+// larger share — it's where a running or just-finished command's
+// output actually lives — history (right) the smaller. Rebalancing or
+// swapping the arrangement is a change here and in baseView's Row
+// call, not a rederivation of this sizing math.
+var bodyWeights = []int{3, 2} // [output, history]
+
+// minPaneWidth is the outer-width floor below which a pane stops being
+// worth rendering as its own island.
+const minPaneWidth = 28
+
 func (m *Model) sizeViewport() {
 	// Bottom zone: input island content (dropdown + line + border), or
 	// the self-bordered confirm box, measured not guessed — its content
 	// varies with rationale and danger flags.
 	bottom := m.slashRows() + 1 + 2
-	if m.mode == modeConfirm {
+	switch m.mode {
+	case modeConfirm:
 		bottom = len(strings.Split(m.confirmBox(), "\n"))
+	case modeSaveConfirm:
+		bottom = len(strings.Split(m.saveConfirmBox(), "\n"))
 	}
-	// Fixed chrome: session bar, status line, and both islands' chrome
-	// (header + border each). The rest splits between history rows and
-	// viewport lines.
-	avail := m.height - 2 - 2*islandOverhead - bottom
-	if avail < 10 {
-		avail = 10
+	// Fixed chrome: session bar, status line, and the body row's one
+	// set of island chrome (header + border) — output and history sit
+	// side by side at the same height now, so there's only one row's
+	// worth to account for, not two.
+	avail := m.height - 2 - islandOverhead - bottom
+	if avail < 6 {
+		avail = 6
 	}
-	vpH := avail / 3
-	if vpH < 6 {
-		vpH = 6
-	}
-	m.histHeight = avail - vpH
-	m.output.Width = m.islandInner()
-	m.output.Height = vpH
+	m.histHeight = avail
+	m.output.Height = avail
+
+	widths := layout.Split(m.width, bodyWeights, minPaneWidth)
+	m.outputColW, m.histColW = widths[0], widths[1]
+	m.output.Width = paneInner(m.outputColW)
 	m.refreshViewport()
 }
 
@@ -43,9 +60,10 @@ func (m *Model) sizeViewport() {
 // header plus the top and bottom border.
 const islandOverhead = 3
 
-// islandInner is the content width inside an island border.
-func (m Model) islandInner() int {
-	return max(20, m.width-2-2)
+// paneInner is the content width inside an island border of the given
+// outer width — matches island.Render's own inner := width-4.
+func paneInner(outer int) int {
+	return max(20, outer-4)
 }
 
 // slashRows is the dropdown's screen height, capped so it can't eat the history.
@@ -54,9 +72,6 @@ func (m Model) slashRows() int {
 }
 
 func (m Model) View() string {
-	if m.showUsage {
-		return m.usageOverlay()
-	}
 	return m.baseView()
 }
 
@@ -64,18 +79,25 @@ func (m Model) baseView() string {
 	if m.width <= 0 {
 		return "loading…"
 	}
+	// Output (left, primary) and history (right, smaller) side by
+	// side — see bodyWeights. Swapping or restacking this arrangement
+	// is this one Row call, not a resizing rewrite.
+	outputBlock := island.Render(m.viewportHeader(), m.focus == focusOutput, m.detailLines(), m.outputColW, m.output.Height+1)
+	historyBlock := island.Render(m.historyHeader(), m.focus == focusHistory, m.historyWindow(), m.histColW, m.histHeight+1)
+
 	var b strings.Builder
 	b.WriteString(m.sessionBar())
 	b.WriteString("\n")
-	b.WriteString(island.Render(m.historyHeader(), m.focus == focusHistory, m.historyWindow(), m.width, m.histHeight+1))
-	b.WriteString("\n")
-	b.WriteString(island.Render(m.viewportHeader(), m.focus == focusOutput, m.detailLines(), m.width, m.output.Height+1))
+	b.WriteString(layout.Row(outputBlock, historyBlock))
 	b.WriteString("\n")
 	b.WriteString(m.statusLine() + "\n")
 
-	if m.mode == modeConfirm {
+	switch m.mode {
+	case modeConfirm:
 		b.WriteString(m.confirmBox())
-	} else {
+	case modeSaveConfirm:
+		b.WriteString(m.saveConfirmBox())
+	default:
 		b.WriteString(island.Render("", m.focus == focusInput, strings.Split(m.inputBar(), "\n"), m.width, m.slashRows()+1))
 	}
 	return b.String()
@@ -149,7 +171,7 @@ func (m Model) sessionBar() string {
 	}
 	goals := 0
 	for _, b := range m.blocks {
-		if b.ended {
+		if b.ended && b.tool == "" {
 			goals++
 		}
 	}
@@ -170,22 +192,76 @@ func (m Model) viewportHeader() string {
 	if r == nil {
 		return fmt.Sprintf("%s %s", paneMark(active), paneLabel("output", active))
 	}
+	if r.editor != nil && r.editor.Err() == nil {
+		label := "file"
+		if m.editing {
+			label = "editing — ctrl+s save"
+		}
+		dirty := ""
+		if r.editor.Dirty() {
+			dirty = styleCaution.Render(" ●")
+		}
+		return fmt.Sprintf("%s %s — %s%s", paneMark(active), paneLabel(label, active),
+			styleGoal.Render(truncateWidth(r.editor.Path, m.outputColW-28)), dirty)
+	}
+	if r.toolKind != "" {
+		return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(r.toolKind, active),
+			styleGoal.Render(truncateWidth(r.command, m.outputColW-24)))
+	}
 	label := "output"
 	if k := rowKind(r); k != "" {
 		label = status.KindLabel(k)
 	}
 	return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(label, active),
-		styleGoal.Render(truncateWidth(r.command, m.width-24)))
+		styleGoal.Render(truncateWidth(r.command, m.outputColW-24)))
 }
 
-// detailLines renders the focused row's component as lines: a real
-// table for tabular output, the scrolling viewport for everything
-// else. The island pads to height.
+// detailLines renders the focused row's component as lines: the
+// editor when this row has one — it's the whole point of a row that
+// wrote a file, so it takes priority over a table or the plain
+// viewport — otherwise a real table for tabular output, or the
+// scrolling viewport for everything else. The island pads to height.
 func (m Model) detailLines() []string {
+	if r := m.focused(); r != nil {
+		if r.editor != nil {
+			return m.editorLines(r.editor)
+		}
+		switch r.toolKind {
+		case "tree":
+			return r.tree.View(paneInner(m.outputColW), m.output.Height)
+		case "usage":
+			return m.usageLines(r)
+		case "help":
+			return helpLines()
+		}
+	}
 	if t, ok := m.focusedTable(); ok {
 		return strings.Split(t, "\n")
 	}
 	return strings.Split(m.output.View(), "\n")
+}
+
+// helpLines lists every slash command from the registry — Match("/")
+// with an empty suffix matches all of them, so there's no separate
+// list to keep in sync with slash's own.
+func helpLines() []string {
+	var lines []string
+	for _, c := range slash.Match("/") {
+		lines = append(lines, fmt.Sprintf("  %-10s %s", c.Name, c.Desc))
+	}
+	return lines
+}
+
+func (m Model) editorLines(e *editor.Model) []string {
+	if e.Err() != nil {
+		return []string{styleDanger.Render(e.View())} // "could not open <path>: <err>"
+	}
+	e.Resize(paneInner(m.outputColW), m.output.Height)
+	lines := strings.Split(e.View(), "\n")
+	if e.Truncated() {
+		lines = append(lines, styleCaution.Render(fmt.Sprintf("… file truncated at %d bytes", editfile.MaxBytes)))
+	}
+	return lines
 }
 
 // focusedTable builds the table component for a table-kind row. Falls
@@ -316,13 +392,19 @@ func (m Model) statusLine() string {
 // question handleKey's owner() answers for routing, asked again here
 // for display, so the two never fall out of sync on which state wins.
 func (m Model) statusHint() string {
+	if m.mode == modeSaveConfirm {
+		return "[y] save · [n] keep editing"
+	}
+	if m.editing {
+		return "[ctrl+s] save · [esc] done editing"
+	}
 	switch m.owner() {
 	case ownerConfirm:
 		return "[y] run · [n] stop goal"
 	case ownerOutput:
-		return "[tab] input · [j/k] inside · [pgup/pgdn] scroll · [esc] history · [q] quit"
+		return "[tab] input · [↑/↓] inside · [pgup/pgdn] scroll · [esc] history · [q] quit"
 	case ownerHistory:
-		return "[tab] output · [j/k] move · [space] expand · [enter] expand · [q] quit"
+		return "[tab] output · [↑/↓] move · [space] expand · [enter] expand · [q] quit"
 	case ownerBusy:
 		if len(m.slash) > 0 {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
@@ -332,7 +414,7 @@ func (m Model) statusHint() string {
 		if len(m.slash) > 0 {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
 		}
-		return "[tab] history · [↑/↓] rows · [enter] run · type / for cmds"
+		return "[tab] history · [enter] run · type / for cmds"
 	}
 }
 

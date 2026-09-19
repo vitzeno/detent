@@ -25,6 +25,7 @@ type Cmd struct {
 var commands = []Cmd{
 	{"/quit", "quit detent"},
 	{"/abort", "abort the running command"},
+	{"/tree", "browse files and directories"},
 	{"/usage", "show usage and timings"},
 	{"/help", "show slash commands"},
 }
