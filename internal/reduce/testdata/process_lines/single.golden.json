@@ -1,0 +1,22 @@
+{
+  "facts": {
+    "count": 1,
+    "processes": [
+      {
+        "cmd": "sleep",
+        "owner": "alice",
+        "pid": 501
+      }
+    ]
+  },
+  "values": [
+    {
+      "type": "pid",
+      "value": {
+        "cmd": "sleep",
+        "owner": "alice",
+        "pid": 501
+      }
+    }
+  ]
+}
