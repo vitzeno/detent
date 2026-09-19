@@ -6,6 +6,7 @@ package status
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -99,4 +100,28 @@ func Bar(spinner, phase, keys, notice string, waiting bool) string {
 		return fmt.Sprintf("  %s %s   %s", spinner, muted.Render(phase), hint.Render(keys))
 	}
 	return fmt.Sprintf("  %s   %s", muted.Render(phase), hint.Render(keys))
+}
+
+// Dur compacts a duration for status lines: 412ms, 3.2s, 2m10s.
+func Dur(d time.Duration) string {
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	m := int(d.Minutes())
+	return fmt.Sprintf("%dm%ds", m, int(d.Seconds())-60*m)
+}
+
+// Tokens compacts a token count: 847, 9.4k, 2.1M.
+func Tokens(n int) string {
+	switch {
+	case n < 1000:
+		return fmt.Sprintf("%d", n)
+	case n < 1000*1000:
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
+	default:
+		return fmt.Sprintf("%.1fM", float64(n)/1000000)
+	}
 }
