@@ -1,0 +1,14 @@
+{
+  "facts": {
+    "count": 1,
+    "paths": [
+      "only.txt"
+    ]
+  },
+  "values": [
+    {
+      "type": "path",
+      "value": "only.txt"
+    }
+  ]
+}

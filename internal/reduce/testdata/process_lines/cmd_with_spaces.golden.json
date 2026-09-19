@@ -1,0 +1,22 @@
+{
+  "facts": {
+    "count": 1,
+    "processes": [
+      {
+        "cmd": "/usr/local/bin/node server.js --port 3000",
+        "owner": "mohamed",
+        "pid": 4821
+      }
+    ]
+  },
+  "values": [
+    {
+      "type": "pid",
+      "value": {
+        "cmd": "/usr/local/bin/node server.js --port 3000",
+        "owner": "mohamed",
+        "pid": 4821
+      }
+    }
+  ]
+}

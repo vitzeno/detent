@@ -1,0 +1,24 @@
+{
+  "facts": {
+    "count": 3,
+    "paths": [
+      "a.txt",
+      "b.txt",
+      "sub/"
+    ]
+  },
+  "values": [
+    {
+      "type": "path",
+      "value": "a.txt"
+    },
+    {
+      "type": "path",
+      "value": "b.txt"
+    },
+    {
+      "type": "path",
+      "value": "sub"
+    }
+  ]
+}

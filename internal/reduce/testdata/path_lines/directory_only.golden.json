@@ -1,0 +1,14 @@
+{
+  "facts": {
+    "count": 1,
+    "paths": [
+      "sub/"
+    ]
+  },
+  "values": [
+    {
+      "type": "path",
+      "value": "sub"
+    }
+  ]
+}
