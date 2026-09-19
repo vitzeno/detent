@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/shell"
+	"github.com/vitzeno/detent/internal/usage"
 )
 
 type scriptProposer struct {
@@ -22,12 +24,12 @@ type scriptProposer struct {
 	n      int
 }
 
-func (s *scriptProposer) Propose(_ context.Context, _ []propose.Message) (propose.Proposal, error) {
+func (s *scriptProposer) Propose(_ context.Context, _ []propose.Message) (propose.Proposal, usage.Usage, error) {
 	p := s.script[s.n]
 	if s.n < len(s.script)-1 {
 		s.n++
 	}
-	return p, nil
+	return p, usage.Usage{}, nil
 }
 
 func instantRun(_ context.Context, _ string, _ func(shell.StreamEvent)) (shell.Result, error) {
@@ -257,7 +259,7 @@ func TestUI_SlashEntryWhileBusy(t *testing.T) {
 	nm, _ = m.handleKey(typeKey("/"))
 	m = nm.(Model)
 	require.Equal(t, "/", m.input.Value())
-	require.Len(t, m.slash, 3)
+	require.Len(t, m.slash, 4)
 
 	nm, _ = m.handleKey(typeKey("a"))
 	m = nm.(Model)
@@ -371,4 +373,160 @@ func TestUI_StyledBodyKinds(t *testing.T) {
 	assert.Contains(t, got, "+a")
 	raw := m.styledBody(mk("unknown-kind", "plain\n"))
 	assert.Equal(t, "plain", raw)
+}
+
+func TestUI_PaneMarkersFollowFocus(t *testing.T) {
+	m := testUIModel()
+
+	v := m.View()
+	require.Contains(t, v, "○ history")
+	require.Contains(t, v, "○ output")
+	require.Contains(t, v, "● ❯", "input marker active on input focus")
+
+	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	m = nm.(Model)
+	v = m.View()
+	require.Contains(t, v, "● history")
+	require.Contains(t, v, "○ output")
+	require.Contains(t, v, "○ ❯")
+
+	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	m = nm.(Model)
+	v = m.View()
+	require.Contains(t, v, "○ history")
+	require.Contains(t, v, "● output")
+	require.Contains(t, v, "○ ❯")
+}
+
+func TestUI_IslandsRender(t *testing.T) {
+	m := testUIModel()
+	v := m.View()
+	require.GreaterOrEqual(t, strings.Count(v, "╭"), 3, "history, output and input islands")
+	lines := strings.Count(v, "\n") + 1
+	require.Equal(t, m.height, lines, "islands must tile the terminal exactly")
+}
+
+func tableBlock() *goalBlock {
+	mkrow := func(cmd, out, kind string) *stepRow {
+		return &stepRow{command: cmd, result: &shell.Result{Stdout: out},
+			post: &agentloop.PostJudgment{FromJudge: true, Status: agentloop.StatusClean, RenderKind: kind}}
+	}
+	steps := []*stepRow{mkrow("ps aux", "USER PID COMMAND\nroot 1 init\na 2 x\nb 3 y\nc 4 z\nd 5 w\ne 6 v\n", agentloop.KindTable)}
+	for i := 0; i < 30; i++ {
+		steps = append(steps, mkrow("echo x", "x\n", agentloop.KindInline))
+	}
+	return &goalBlock{goal: "g", steps: steps}
+}
+
+// TestUI_TableScrollNeverMovesHistory is the reported bug, locked:
+// scrolling inside an output table must not disturb history position.
+func TestUI_TableScrollNeverMovesHistory(t *testing.T) {
+	m := testUIModel()
+	m.blocks = []*goalBlock{tableBlock()}
+	m.cursor = 0
+	m.follow = true
+	m.focus = focusOutput
+	m.refreshViewport()
+	for i := 0; i < 10; i++ {
+		nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		m = nm.(Model)
+		_ = m.View()
+		require.Equal(t, 0, m.cursor, "history cursor must not move")
+		require.Equal(t, 0, m.histOffset, "history window must not scroll")
+	}
+	require.Greater(t, m.blocks[0].steps[0].tableCursor, 0, "table cursor must move")
+}
+
+func TestUI_TrackNewestParksOutputReaders(t *testing.T) {
+	m := testUIModel()
+	m.blocks = []*goalBlock{tableBlock()}
+	m.cursor = 0
+	m.follow = true
+
+	m.focus = focusOutput
+	m.blocks[0].steps = append(m.blocks[0].steps, tableBlock().steps[0])
+	m.trackNewest()
+	require.Equal(t, 0, m.cursor, "parked reader keeps its row")
+	require.False(t, m.follow, "parking unfollows")
+
+	m.focus = focusHistory
+	m.follow = true // re-followed by navigating to the bottom
+	m.trackNewest()
+	require.Equal(t, len(m.rows())-1, m.cursor, "history focus still follows")
+	require.True(t, m.follow)
+}
+
+func usageModel() (Model, *usage.Tracker) {
+	tr := &usage.Tracker{}
+	g := tr.StartGoal("find it")
+	s := g.AddStep("ls -la")
+	s.SetPropose(usage.Usage{PromptTokens: 100, CompletionTokens: 20, Latency: 200 * time.Millisecond, Model: "m"})
+	s.SetDwell(1500 * time.Millisecond)
+	s.SetExec(90*time.Millisecond, 0, 12)
+	s.SetJudgePost(usage.Usage{PromptTokens: 60, Latency: 120 * time.Millisecond}, 0.2, 0.9)
+	g.Finish("done", "found")
+	sess := testSession()
+	sess.Stats = tr
+	m := New(context.Background(), sess, "test-model", "")
+	m.width, m.height = 120, 40
+	m.sizeViewport()
+	return m, tr
+}
+
+func TestUI_UsageOverlay(t *testing.T) {
+	m, _ := usageModel()
+	m.showUsage = true
+
+	v := m.View()
+	require.Contains(t, v, "session · 1 goal(s)")
+	require.Contains(t, v, "find it")
+	require.NotContains(t, v, "ls -la", "steps hidden until expanded")
+
+	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	require.Contains(t, m.View(), "ls -la")
+	require.Contains(t, m.View(), "dwell")
+
+	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	m = nm.(Model)
+	require.False(t, m.showUsage)
+	require.NotContains(t, m.View(), "session · 1 goal(s)")
+}
+
+func TestUI_ExpandedRowsCannotPushOutSessionBar(t *testing.T) {
+	m := testUIModel()
+	steps := []*stepRow{}
+	for i := 0; i < 30; i++ {
+		steps = append(steps, &stepRow{command: "cmd", result: &shell.Result{Stdout: "out\n"},
+			post:     &agentloop.PostJudgment{RenderKind: agentloop.KindInline},
+			expanded: true,
+		})
+	}
+	m.blocks = []*goalBlock{{goal: "g", steps: steps, ended: true, end: agentloop.EndDone, summary: "s\nsecond line"}}
+	m.cursor = len(steps) - 1
+	m.follow = false
+	v := m.View()
+	lines := strings.Count(v, "\n") + 1
+	require.Equal(t, m.height, lines, "expanded rows and multiline banners must not grow the frame")
+	require.Contains(t, v, "detent v2", "session bar stays on screen")
+}
+
+func TestUI_WideLinesCannotPushOutSessionBar(t *testing.T) {
+	m := testUIModel()
+	wide := strings.Repeat("w", 500)
+	steps := []*stepRow{}
+	for i := 0; i < 30; i++ {
+		steps = append(steps, &stepRow{command: "cmd " + wide, result: &shell.Result{Stdout: wide + "\n"},
+			post: &agentloop.PostJudgment{RenderKind: agentloop.KindLog}})
+	}
+	m.blocks = []*goalBlock{{goal: "g", steps: steps}}
+	m.cursor = 5
+	m.follow = false
+	_ = m.View()
+	m.cursor = 25
+	v := m.View()
+	lines := strings.Count(v, "\n") + 1
+	require.Equal(t, m.height, lines, "wide content must not grow the frame")
+	require.Contains(t, v, "detent v2", "session bar stays on screen")
+	require.Contains(t, v, "…", "cuts marked visibly")
 }
