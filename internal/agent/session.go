@@ -1,5 +1,5 @@
-// Package agentloop proposes, confirms, executes, and observes commands one goal at a time.
-package agentloop
+// Package agent proposes, confirms, executes, and observes commands one goal at a time.
+package agent
 
 import (
 	"context"
@@ -78,14 +78,31 @@ type GoalResult struct {
 // RunFunc executes a command, defaulting to shell.Stream.
 type RunFunc func(ctx context.Context, command string, onEvent func(shell.StreamEvent)) (shell.Result, error)
 
+// Proposer proposes the next step for the currently open goal, plus
+// what the call consumed. Declared here, not in propose, since this is
+// the only place it's consumed — propose ships just the data types
+// (Message, Proposal) plus OpenAIProposer, its one implementation.
+type Proposer interface {
+	Propose(ctx context.Context, messages []propose.Message) (propose.Proposal, usage.Usage, error)
+}
+
+// Judge returns typed judgments; Ask batches one iteration into a
+// single call. Declared here rather than in classify for the same
+// reason as Proposer above; probe.Judge is a separate, identically
+// shaped declaration at probe's own boundary, since probe sits below
+// agent and can't import back up to it.
+type Judge interface {
+	Ask(ctx context.Context, state classify.State, questions classify.Questions) (classify.Answers, classify.Usage, error)
+}
+
 // Session is one running instance with an append-only transcript across goals.
 type Session struct {
-	Proposer propose.Proposer
+	Proposer Proposer
 	Confirm  ConfirmFunc
 	Run      RunFunc
 
 	// Judge is a classifier only; nil disables both batches.
-	Judge         classify.Judge
+	Judge         Judge
 	RiskThreshold float64
 
 	// StepBudget caps iterations per goal; <=0 means unbounded.
@@ -106,7 +123,7 @@ func WithRun(run RunFunc) Option {
 	return func(s *Session) { s.Run = run }
 }
 
-func WithJudge(judge classify.Judge) Option {
+func WithJudge(judge Judge) Option {
 	return func(s *Session) { s.Judge = judge }
 }
 
@@ -123,7 +140,7 @@ func WithStats(t *usage.Tracker) Option {
 }
 
 // New builds a session around a proposer and confirm function.
-func New(proposer propose.Proposer, confirm ConfirmFunc, opts ...Option) *Session {
+func New(proposer Proposer, confirm ConfirmFunc, opts ...Option) *Session {
 	s := &Session{Proposer: proposer, Confirm: confirm}
 	for _, opt := range opts {
 		opt(s)
@@ -162,6 +179,17 @@ func (s *Session) runFunc() RunFunc {
 
 func (s *Session) append(m propose.Message) {
 	s.Transcript = append(s.Transcript, m)
+}
+
+// finish closes res as reason and syncs GoalsDone with it, so every
+// terminal path (Record*, RecordAbort, Execute's own failure path)
+// updates both exactly once instead of each hand-rolling the same
+// two-step bookkeeping — see the finding in the review that RunGoal's
+// no-Confirm bypass and Execute's error path used to disagree on it.
+func (s *Session) finish(res *GoalResult, reason EndReason, summary string) {
+	res.End = reason
+	res.Stats.Finish(string(reason), summary, reason == EndDeclined)
+	s.GoalsDone++
 }
 
 func formatToolResult(command string, r shell.Result) string {

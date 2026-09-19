@@ -55,13 +55,14 @@ func (t *Tracker) Goals() []*Goal {
 
 // Goal is one user goal and its steps.
 type Goal struct {
-	mu      sync.Mutex
-	Text    string
-	Started time.Time
-	Ended   time.Time
-	End     string
-	Summary string
-	Steps   []*Step
+	mu       sync.Mutex
+	Text     string
+	Started  time.Time
+	Ended    time.Time
+	End      string
+	Summary  string
+	Steps    []*Step
+	declined bool
 }
 
 // AddStep records a proposed command (run or declined); nil-safe.
@@ -76,8 +77,11 @@ func (g *Goal) AddStep(command string) *Step {
 	return s
 }
 
-// Finish closes the goal; nil-safe.
-func (g *Goal) Finish(end, summary string) {
+// Finish closes the goal; nil-safe. declined is the only per-goal
+// classification Snapshot needs — the caller (agent, which owns the
+// EndReason vocabulary) decides it, rather than Snapshot re-deriving
+// meaning from the raw end string this package doesn't own.
+func (g *Goal) Finish(end, summary string, declined bool) {
 	if g == nil {
 		return
 	}
@@ -85,6 +89,7 @@ func (g *Goal) Finish(end, summary string) {
 	g.End = end
 	g.Summary = summary
 	g.Ended = time.Now()
+	g.declined = declined
 	g.mu.Unlock()
 }
 
@@ -201,7 +206,6 @@ type Snapshot struct {
 	Goals          int
 	Commands       int // steps with an exit code
 	Declined       int
-	Errors         int // goals ended by error
 	Propose        time.Duration
 	Judge          time.Duration
 	Dwell          time.Duration
@@ -218,11 +222,8 @@ func (t *Tracker) Snapshot() Snapshot {
 	var out Snapshot
 	for _, g := range t.Goals() {
 		out.Goals++
-		switch g.End {
-		case "declined":
+		if g.declined {
 			out.Declined++
-		case "proposer_error", "confirm_missing":
-			out.Errors++
 		}
 		for _, s := range g.Steps {
 			out.Propose += s.Propose

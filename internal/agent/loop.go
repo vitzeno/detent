@@ -1,4 +1,4 @@
-package agentloop
+package agent
 
 import (
 	"context"
@@ -19,10 +19,10 @@ import (
 // message right after the goal, the same as any other command's output.
 func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, error) {
 	if strings.TrimSpace(goal) == "" {
-		return nil, fmt.Errorf("agentloop: empty goal")
+		return nil, fmt.Errorf("agent: empty goal")
 	}
 	if s.Proposer == nil {
-		return nil, fmt.Errorf("agentloop: no Proposer wired")
+		return nil, fmt.Errorf("agent: no Proposer wired")
 	}
 	s.append(propose.Message{Role: propose.RoleUser, Content: goal})
 	if out := probe.Run(ctx, s.runFunc(), probe.Select(ctx, s.Judge, goal)); out != "" {
@@ -47,7 +47,7 @@ func (s *Session) ProposeNext(ctx context.Context, goal string) (propose.Proposa
 	}
 	p, used, err := s.Proposer.Propose(ctx, s.Transcript)
 	if err != nil {
-		return propose.Proposal{}, PreJudgment{}, used, fmt.Errorf("agentloop: %w", err)
+		return propose.Proposal{}, PreJudgment{}, used, fmt.Errorf("agent: %w", err)
 	}
 	if p.Done {
 		return p, PreJudgment{}, used, nil
@@ -56,18 +56,16 @@ func (s *Session) ProposeNext(ctx context.Context, goal string) (propose.Proposa
 }
 
 func (s *Session) RecordDone(res *GoalResult, p propose.Proposal) {
-	res.End = EndDone
 	res.Summary = p.Summary
 	s.append(propose.Message{Role: propose.RoleAssistant,
 		Content: propose.EncodeAssistantTurn(p)})
-	res.Stats.Finish(string(res.End), p.Summary)
-	s.GoalsDone++
+	s.finish(res, EndDone, p.Summary)
 }
 
 // RecordFileSave notes that the human — not a proposed command — wrote
 // path directly through the editor, so a later goal in this session
 // sees what changed without needing to re-read the file itself. diff
-// is the unified diff of what changed (editfile.Diff), not goal-scoped:
+// is the unified diff of what changed (fileio.Diff), not goal-scoped:
 // this happens outside RunGoal/BeginGoal entirely, so there's no
 // GoalResult to attach it to the way command output attaches to one.
 func (s *Session) RecordFileSave(path, diff string) {
@@ -76,27 +74,35 @@ func (s *Session) RecordFileSave(path, diff string) {
 }
 
 func (s *Session) RecordDecline(res *GoalResult, command string) {
-	res.End = EndDeclined
 	s.append(propose.Message{Role: propose.RoleUser, Content: fmt.Sprintf(
 		"[goal ended by human: declined command `%s` after %d command(s)]",
 		command, len(res.Commands))})
-	res.Stats.Finish(string(res.End), "")
-	s.GoalsDone++
+	s.finish(res, EndDeclined, "")
 }
 
 func (s *Session) RecordBudget(res *GoalResult, budget int) {
-	res.End = EndBudget
 	s.append(propose.Message{Role: propose.RoleUser, Content: fmt.Sprintf(
 		"[goal ended: step budget exhausted (%d/%d), goal not confirmed done]", budget, budget)})
-	res.Stats.Finish(string(res.End), "")
-	s.GoalsDone++
+	s.finish(res, EndBudget, "")
 }
 
 func (s *Session) RecordProposerError(res *GoalResult, err error) {
-	res.End = EndProposerError
 	s.append(propose.Message{Role: propose.RoleUser, Content: fmt.Sprintf(
 		"[goal ended: proposer error: %v]", err)})
-	res.Stats.Finish(string(res.End), "")
+	s.finish(res, EndProposerError, "")
+}
+
+// RecordAbort notes the human aborted (Esc or /abort). res is nil when
+// the abort landed before BeginGoal produced one — still mid probe
+// collection, so no Stats.Goal was ever started — in which case only
+// the transcript needs closing, so a later goal doesn't see this one's
+// request left dangling with no resolution.
+func (s *Session) RecordAbort(res *GoalResult) {
+	s.append(propose.Message{Role: propose.RoleUser, Content: "[goal ended by human: aborted]"})
+	if res == nil {
+		return
+	}
+	s.finish(res, EndAborted, "")
 }
 
 // Execute runs an approved proposal against its usage step: links the
@@ -113,14 +119,12 @@ func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Ste
 			Content: fmt.Sprintf("Command `%s` failed to execute: %v", p.Command, err)})
 		ec := &ExecutedCommand{Command: p.Command, Pre: pre, Usage: ustep}
 		res.Commands = append(res.Commands, ec)
+		reason := EndProposerError
 		if ctx.Err() == context.Canceled {
-			res.End = EndAborted
-		} else {
-			res.End = EndProposerError
+			reason = EndAborted
 		}
-		res.Stats.Finish(string(res.End), "")
-		s.GoalsDone++
-		return nil, fmt.Errorf("agentloop: run %q: %w", p.Command, err)
+		s.finish(res, reason, "")
+		return nil, fmt.Errorf("agent: run %q: %w", p.Command, err)
 	}
 	ec := &ExecutedCommand{Command: p.Command, Result: outcome, Pre: pre, Usage: ustep}
 	ustep.SetExec(elapsed, outcome.ExitCode, len(outcome.Stdout)+len(outcome.Stderr))
@@ -163,8 +167,8 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 			Content: "[goal ended without running: no confirm function wired]"})
 		res := GoalResult{Goal: goal, End: EndConfirmMissing}
 		res.Stats = s.Stats.StartGoal(goal)
-		res.Stats.Finish(string(res.End), "")
-		return res, fmt.Errorf("agentloop: no Confirm function wired, refusing to run")
+		res.Stats.Finish(string(res.End), "", false)
+		return res, fmt.Errorf("agent: no Confirm function wired, refusing to run")
 	}
 	res, err := s.BeginGoal(ctx, goal)
 	if err != nil {
@@ -186,7 +190,7 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 		proposal, pre, used, err := s.ProposeNext(ctx, goal)
 		if err != nil {
 			if ctx.Err() != nil {
-				return *res, fmt.Errorf("agentloop: %w", ctx.Err())
+				return *res, fmt.Errorf("agent: %w", ctx.Err())
 			}
 			s.RecordProposerError(res, err)
 			return *res, err

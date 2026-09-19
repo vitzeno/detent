@@ -20,7 +20,7 @@ func TestNilSafe(t *testing.T) {
 		s.SetDwell(time.Second)
 		s.SetExec(time.Second, 0, 10)
 		s.SetJudgePost(Usage{}, 0.1, 0.9)
-		g.Finish("done", "s")
+		g.Finish("done", "s", false)
 		assert.Equal(t, Snapshot{}, tr.Snapshot())
 		assert.Empty(t, tr.Goals())
 		assert.Zero(t, g.Duration())
@@ -39,7 +39,7 @@ func TestRollups(t *testing.T) {
 	s.SetJudgePost(Usage{PromptTokens: 60, CompletionTokens: 0, Latency: 120 * time.Millisecond}, 0.2, 0.9)
 	d := g.AddStep("rm x")
 	d.SetDwell(300 * time.Millisecond)
-	g.Finish("declined", "")
+	g.Finish("declined", "", true)
 
 	snap := tr.Snapshot()
 	assert.Equal(t, 1, snap.Goals)

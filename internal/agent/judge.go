@@ -1,4 +1,4 @@
-package agentloop
+package agent
 
 import (
 	"context"
@@ -62,6 +62,21 @@ type PostJudgment struct {
 	GoalAchieved     float64
 	// JudgeUsage is what the batch consumed; zero on fallback.
 	JudgeUsage usage.Usage
+}
+
+// NewPreJudgment returns a PreJudgment with ScopeRisk defaulted to -1
+// ("unknown" — a real score is always in [0,1]). Both judgePre's
+// fallback and its Jev-answered path start from this same shape, so a
+// future call site can't silently default ScopeRisk to 0.0 — a
+// valid-looking "no risk" score — instead of "unknown".
+func NewPreJudgment(dangerous bool, note string) PreJudgment {
+	return PreJudgment{ScopeRisk: -1, Dangerous: dangerous, RiskNote: note}
+}
+
+// NewPostJudgment returns a PostJudgment with Attention/GoalAchieved
+// defaulted to -1 ("unknown"), for the same reason as NewPreJudgment.
+func NewPostJudgment() PostJudgment {
+	return PostJudgment{Attention: -1, GoalAchieved: -1}
 }
 
 func preQuestions() classify.Questions {
@@ -168,15 +183,16 @@ func postQuestions() classify.Questions {
 
 func (s *Session) judgePre(ctx context.Context, goal, command string) PreJudgment {
 	dangerous, note := FlagDanger(command)
-	fb := PreJudgment{ScopeRisk: -1, Dangerous: dangerous, RiskNote: note}
+	fb := NewPreJudgment(dangerous, note)
 	answers, ju, ok := classify.AskOrFallback(ctx, s.Judge,
 		classify.State(map[string]any{"goal": goal, "command": command}),
 		preQuestions())
 	if !ok {
 		return fb
 	}
-	out := PreJudgment{FromJudge: true, ScopeRisk: -1, Dangerous: dangerous, RiskNote: note,
-		JudgeUsage: convertUsage(ju)}
+	out := NewPreJudgment(dangerous, note)
+	out.FromJudge = true
+	out.JudgeUsage = convertUsage(ju)
 	if a, ok := answers["mutability"]; ok && a.Choice != "" {
 		out.Mutability = a.Choice
 		out.MutabilityConfidence = a.Confidence
@@ -208,8 +224,9 @@ func (s *Session) judgePost(ctx context.Context, goal, command string, res resul
 	if !ok {
 		return fb
 	}
-	out := PostJudgment{FromJudge: true, Attention: -1, GoalAchieved: -1,
-		JudgeUsage: convertUsage(ju)}
+	out := NewPostJudgment()
+	out.FromJudge = true
+	out.JudgeUsage = convertUsage(ju)
 	if a, ok := answers["result_status"]; ok && a.Choice != "" {
 		out.Status = a.Choice
 		out.StatusConfidence = a.Confidence
@@ -248,7 +265,7 @@ type resultView struct {
 }
 
 func heuristicPost(res resultView) PostJudgment {
-	out := PostJudgment{Attention: -1, GoalAchieved: -1}
+	out := NewPostJudgment()
 	switch {
 	case res.ExitCode != 0:
 		out.Status = StatusFailed

@@ -6,12 +6,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/vitzeno/detent/internal/agentloop"
+	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/config"
 	"github.com/vitzeno/detent/internal/propose"
@@ -42,7 +43,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	resolved := config.Resolve(fileCfg, *baseURL, *model, *apiKey, *steps)
+	flagCfg := config.Config{BaseURL: *baseURL, Model: *model, APIKey: *apiKey}
+	resolved := config.Resolve(fileCfg, flagCfg, *steps)
 
 	if err := propose.Ping(context.Background(), resolved.BaseURL, resolved.APIKey); err != nil {
 		return fmt.Errorf("%v\n\nis the model endpoint up? Wanted %s with model %s — for LM Studio, load the model and Start Server; otherwise point -url/-model (or a config file) at your provider",
@@ -55,33 +57,33 @@ func run() error {
 		propose.WithAPIKey(resolved.APIKey),
 		propose.WithHeaders(resolved.Headers),
 	)
-	sessOpts := []agentloop.Option{
-		agentloop.WithStepBudget(resolved.Steps),
-		agentloop.WithRiskThreshold(resolved.RiskThreshold),
-		agentloop.WithStats(usage.New()),
+	sessOpts := []agent.Option{
+		agent.WithStepBudget(resolved.Steps),
+		agent.WithRiskThreshold(resolved.RiskThreshold),
+		agent.WithStats(usage.New()),
 	}
 	// No judge without a key: TYPESAFE_API_KEY env or jev_api_key file.
 	if resolved.JevAPIKey != "" {
-		sessOpts = append(sessOpts, agentloop.WithJudge(classify.NewJevJudge(resolved.JevAPIKey,
+		sessOpts = append(sessOpts, agent.WithJudge(classify.NewJevJudge(resolved.JevAPIKey,
 			classify.WithModel(resolved.JevModel),
 			classify.WithEndpoint(resolved.JevEndpoint),
 		)))
 	}
-	sess := agentloop.New(proposer, confirmHeadless, sessOpts...)
+	sess := agent.New(proposer, confirmHeadless, sessOpts...)
 
 	if *goal != "" {
 		return printGoalResult(sess.RunGoal(context.Background(), *goal))
 	}
 	judgeName := ""
 	if sess.Judge != nil {
-		judgeName = classify.DefaultModel
+		judgeName = resolved.JevModel
 	}
 	p := tea.NewProgram(ui.New(context.Background(), sess, resolved.Model, judgeName), tea.WithAltScreen())
 	_, err = p.Run()
 	return err
 }
 
-func printGoalResult(res agentloop.GoalResult, err error) error {
+func printGoalResult(res agent.GoalResult, err error) error {
 	if err != nil {
 		fmt.Printf("error: %s\n", err)
 	}
@@ -122,7 +124,7 @@ func printUsage(g *usage.Goal) {
 	fmt.Printf("  goal machine %s · session %s\n", status.Dur(g.MachineTime()), status.Dur(g.Duration()))
 }
 
-func confirmHeadless(req agentloop.ConfirmRequest) bool {
+func confirmHeadless(req agent.ConfirmRequest) bool {
 	fmt.Printf("\ngoal: %q\n", req.Goal)
 	if len(req.History) == 0 {
 		fmt.Println("done so far: (nothing yet)")
@@ -154,7 +156,13 @@ func confirmHeadless(req agentloop.ConfirmRequest) bool {
 	fmt.Print("[y] run   [n] stop goal: ")
 
 	reader := bufio.NewReader(os.Stdin)
-	line, _ := reader.ReadString('\n')
+	line, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		// Stdin gone or unreadable: treat as decline, but say so rather
+		// than silently falling through — this is the approval gate for
+		// potentially dangerous commands.
+		fmt.Fprintf(os.Stderr, "detent: reading confirm response: %v (treating as decline)\n", err)
+	}
 	return strings.TrimSpace(strings.ToLower(line)) == "y"
 }
 

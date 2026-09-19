@@ -1,4 +1,4 @@
-package agentloop
+package agent
 
 import (
 	"context"
@@ -285,7 +285,7 @@ func TestRunGoal_JevBackstopEscalatesOnly(t *testing.T) {
 
 	for _, tc := range []struct {
 		name  string
-		judge classify.Judge
+		judge Judge
 		want  bool
 	}{
 		{"low noul", &fakeJudge{noul: 0.1}, false},
