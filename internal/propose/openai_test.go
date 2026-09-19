@@ -45,7 +45,7 @@ func TestOpenAIProposer_CommandRoundTrip(t *testing.T) {
 		http.StatusOK, &captured)
 	defer srv.Close()
 
-	got, err := testProposer(srv).Propose(context.Background(), []Message{
+	got, _, err := testProposer(srv).Propose(context.Background(), []Message{
 		{Role: RoleUser, Content: "what files are here?"},
 	})
 	require.NoError(t, err)
@@ -71,7 +71,7 @@ func TestOpenAIProposer_DoneRoundTrip(t *testing.T) {
 		http.StatusOK, nil)
 	defer srv.Close()
 
-	got, err := testProposer(srv).Propose(context.Background(), []Message{
+	got, _, err := testProposer(srv).Propose(context.Background(), []Message{
 		{Role: RoleUser, Content: "what files are here?"},
 		{Role: RoleAssistant, Content: `{"command":"ls","rationale":"list","done":false,"summary":""}`},
 		{Role: RoleTool, Content: "Command `ls` exited with code 0.\nstdout:\na b c"},
@@ -88,7 +88,7 @@ func TestOpenAIProposer_ToolRoleMappedToUser(t *testing.T) {
 		http.StatusOK, &captured)
 	defer srv.Close()
 
-	_, err := testProposer(srv).Propose(context.Background(), []Message{
+	_, _, err := testProposer(srv).Propose(context.Background(), []Message{
 		{Role: RoleUser, Content: "goal"},
 		{Role: RoleTool, Content: "Command `ls` exited with code 0."},
 	})
@@ -110,7 +110,7 @@ func TestOpenAIProposer_ToleratesFences(t *testing.T) {
 		http.StatusOK, nil)
 	defer srv.Close()
 
-	got, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
+	got, _, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
 	require.NoError(t, err)
 	assert.Equal(t, "pwd", got.Command)
 }
@@ -119,7 +119,7 @@ func TestOpenAIProposer_Errors(t *testing.T) {
 	t.Run("non-200 is an error", func(t *testing.T) {
 		srv := serveProposal(t, "", http.StatusUnauthorized, nil)
 		defer srv.Close()
-		_, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
+		_, _, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
 		assert.Error(t, err)
 	})
 
@@ -128,7 +128,7 @@ func TestOpenAIProposer_Errors(t *testing.T) {
 			_, _ = w.Write([]byte(`{"choices": []}`))
 		}))
 		defer srv.Close()
-		_, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
+		_, _, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
 		assert.Error(t, err)
 	})
 
@@ -136,14 +136,14 @@ func TestOpenAIProposer_Errors(t *testing.T) {
 		srv := serveProposal(t, `{"command": "", "rationale": "x", "done": false, "summary": ""}`,
 			http.StatusOK, nil)
 		defer srv.Close()
-		_, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
+		_, _, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
 		assert.ErrorContains(t, err, "empty command")
 	})
 
 	t.Run("non-JSON is an error", func(t *testing.T) {
 		srv := serveProposal(t, `just some prose, no object`, http.StatusOK, nil)
 		defer srv.Close()
-		_, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
+		_, _, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
 		assert.Error(t, err)
 	})
 
@@ -153,7 +153,7 @@ func TestOpenAIProposer_Errors(t *testing.T) {
 			called = true
 		}))
 		defer srv.Close()
-		_, err := testProposer(srv).Propose(context.Background(), nil)
+		_, _, err := testProposer(srv).Propose(context.Background(), nil)
 		assert.Error(t, err)
 		assert.False(t, called)
 	})
@@ -161,7 +161,7 @@ func TestOpenAIProposer_Errors(t *testing.T) {
 	t.Run("unknown role is an error", func(t *testing.T) {
 		srv := serveProposal(t, `{"command": "x", "done": false}`, http.StatusOK, nil)
 		defer srv.Close()
-		_, err := testProposer(srv).Propose(context.Background(),
+		_, _, err := testProposer(srv).Propose(context.Background(),
 			[]Message{{Role: "bogus", Content: "g"}})
 		assert.ErrorContains(t, err, "unknown message role")
 	})
@@ -176,12 +176,12 @@ func TestOpenAIProposer_AuthHeaderOptional(t *testing.T) {
 	defer srv.Close()
 
 	p := New(WithBaseURL(srv.URL), WithModel("m"))
-	_, err := p.Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
+	_, _, err := p.Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
 	require.NoError(t, err)
 	assert.Empty(t, gotAuth)
 
 	p.APIKey = "sk-x"
-	_, err = p.Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
+	_, _, err = p.Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
 	require.NoError(t, err)
 	assert.Equal(t, "Bearer sk-x", gotAuth)
 }
@@ -220,7 +220,7 @@ func TestOpenAIProposer_ReasoningContentFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := New(WithBaseURL(srv.URL), WithModel("m")).Propose(
+	got, _, err := New(WithBaseURL(srv.URL), WithModel("m")).Propose(
 		context.Background(), []Message{{Role: RoleUser, Content: "g"}})
 	require.NoError(t, err)
 	assert.Equal(t, "ls", got.Command)
@@ -235,7 +235,7 @@ func TestOpenAIProposer_ReasoningFieldFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := New(WithBaseURL(srv.URL), WithModel("m")).Propose(
+	got, _, err := New(WithBaseURL(srv.URL), WithModel("m")).Propose(
 		context.Background(), []Message{{Role: RoleUser, Content: "g"}})
 	require.NoError(t, err)
 	assert.Equal(t, "pwd", got.Command)
@@ -252,7 +252,7 @@ func TestOpenAIProposer_ExtraHeadersSent(t *testing.T) {
 
 	p := New(WithBaseURL(srv.URL), WithModel("m"),
 		WithHeaders(map[string]string{"HTTP-Referer": "https://example.com", "X-Title": "detent"}))
-	_, err := p.Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
+	_, _, err := p.Propose(context.Background(), []Message{{Role: RoleUser, Content: "g"}})
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com", gotReferer)
 	assert.Equal(t, "detent", gotTitle)
