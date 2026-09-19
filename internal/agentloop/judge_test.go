@@ -12,6 +12,26 @@ import (
 	"github.com/vitzeno/detent/internal/shell"
 )
 
+// TestRenderKindCriteria_AreStructured guards against a future edit
+// quietly flattening render_kind's criteria back to plain strings —
+// with nine options it's exactly where that calibration regression
+// this project already hit once (and fixed) would reappear silently.
+func TestRenderKindCriteria_AreStructured(t *testing.T) {
+	q := postQuestions()["render_kind"]
+	require.NotNil(t, q.Choice)
+	wantKinds := []string{KindInline, KindQuiet, KindLog, KindTable, KindFiles, KindContent, KindError, KindDiff, KindJSON}
+	require.Len(t, q.Choice.Criteria, len(wantKinds))
+	for _, kind := range wantKinds {
+		v, ok := q.Choice.Criteria[kind]
+		require.True(t, ok, "missing criteria for %s", kind)
+		c, ok := v.(map[string]any)
+		require.True(t, ok, "%s criteria must be a structured object, not a flat string", kind)
+		assert.NotEmpty(t, c["what"], "%s missing what", kind)
+		assert.NotEmpty(t, c["not_for"], "%s missing not_for", kind)
+		assert.NotEmpty(t, c["examples"], "%s missing examples", kind)
+	}
+}
+
 func TestRunGoal_UnboundedByDefault(t *testing.T) {
 	script := make([]propose.Proposal, 0, 9)
 	for i := 0; i < 8; i++ {
@@ -112,7 +132,7 @@ func TestDriver_FullBatchFlowsThrough(t *testing.T) {
 		},
 	}
 
-	res, err := s.BeginGoal("g")
+	res, err := s.BeginGoal(context.Background(), "g")
 	require.NoError(t, err)
 	p, gotPre, _, err := s.ProposeNext(context.Background(), "g")
 	require.NoError(t, err)

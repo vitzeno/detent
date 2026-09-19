@@ -32,7 +32,11 @@ type ConfirmRequest struct {
 	GoalsDone  int
 }
 
-// ConfirmFunc approves the exact command text; every command requires approval.
+// ConfirmFunc approves the exact command text. Only shown for a command
+// PreJudgment flags Dangerous (Jev's mutability/scope_risk escalation,
+// or the FlagDanger regex backstop); every other command runs straight
+// through — a nil ConfirmFunc still fails the whole session closed,
+// since something must be wired for the commands that do need it.
 // A nil ConfirmFunc fails closed.
 type ConfirmFunc func(req ConfirmRequest) bool
 
@@ -167,10 +171,7 @@ func formatToolResult(command string, r shell.Result) string {
 		if s == "" {
 			return
 		}
-		if len(s) > MaxTranscriptOutputBytes {
-			s = s[:MaxTranscriptOutputBytes] + "\n…[truncated]"
-		}
-		fmt.Fprintf(&b, "\n%s:\n%s", name, s)
+		fmt.Fprintf(&b, "\n%s:\n%s", name, boundStr(s))
 	}
 	bounded("stdout", r.Stdout)
 	bounded("stderr", r.Stderr)
@@ -178,6 +179,16 @@ func formatToolResult(command string, r shell.Result) string {
 		b.WriteString("\n[output truncated at capture]")
 	}
 	return b.String()
+}
+
+// boundStr caps s at MaxTranscriptOutputBytes, the same discipline
+// every transcript entry (command output, probe output, a saved
+// file's diff) follows so no single turn can blow the context budget.
+func boundStr(s string) string {
+	if len(s) <= MaxTranscriptOutputBytes {
+		return s
+	}
+	return s[:MaxTranscriptOutputBytes] + "\n…[truncated]"
 }
 
 func joinNote(a, b string) string {

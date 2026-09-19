@@ -97,18 +97,58 @@ func postQuestions() classify.Questions {
 				StatusEmpty:    "ran fine but produced no useful output",
 			}},
 		},
+		// Structured {what, not_for, examples} criteria, not flat strings:
+		// with nine options this Choice is exactly where option count
+		// makes confidence calibration suffer without it — the same
+		// fix this project already validated for next_action/goal_satisfiable.
 		"render_kind": {
 			Instructions: "What shape is this command's output? Pick how a human should read it.",
 			Choice: &classify.ChoiceQuestion{Criteria: map[string]any{
-				KindInline:  "a few short lines — fits inline under the command",
-				KindLog:     "a long log, listing, or build output — needs a scrollable viewport",
-				KindTable:   "aligned columns with a header row (ps, df, ls -la) — reads as a table",
-				KindFiles:   "a list of paths or items to pick from — reads best one per line",
-				KindContent: "a file's prose or code body — reads with line numbers",
-				KindError:   "an error, traceback, or compiler complaint — reads in full, in order",
-				KindDiff:    "a unified diff (+/- lines) — reads with added/removed coloring",
-				KindJSON:    "JSON or other structured data — reads pretty-printed",
-				KindQuiet:   "barely any output from a long-running command — a one-line done suffices",
+				KindInline: map[string]any{
+					"what":     "a few short lines that fit inline under the command — naturally brief, not just truncated",
+					"not_for":  "a long-running command that happened to produce little output — that's KindQuiet, not this",
+					"examples": []string{"pwd", "echo done", "git rev-parse HEAD"},
+				},
+				KindQuiet: map[string]any{
+					"what":     "a long-running or build-like command that produced almost no output — a one-line done suffices",
+					"not_for":  "a command that is always naturally short — that's KindInline even if it also ran quickly",
+					"examples": []string{"npm install, finished with a minimal log", "a background service start with no output"},
+				},
+				KindLog: map[string]any{
+					"what":     "a long log, listing, or build/test output — many lines, read top to bottom for events over time",
+					"not_for":  "a file's own prose or code body (KindContent), or output whose main point is one failure (KindError)",
+					"examples": []string{"go test ./... output", "a docker build log", "tail -n 200 app.log"},
+				},
+				KindTable: map[string]any{
+					"what":     "aligned columns with a header row — reads as a table, one record per row",
+					"not_for":  "a bare list of paths or names with no header or columns — that's KindFiles",
+					"examples": []string{"ps aux", "df -h", "ls -la"},
+				},
+				KindFiles: map[string]any{
+					"what":     "a list of paths or items to pick from, one per line, with no header or aligned columns",
+					"not_for":  "the same kind of listing but with a header row and aligned columns — that's KindTable",
+					"examples": []string{"find . -name '*.go'", "git diff --name-only", "plain ls, one entry per line"},
+				},
+				KindContent: map[string]any{
+					"what":     "a file's own prose or code body, read in full like a document — reads best with line numbers",
+					"not_for":  "well-formed JSON even if it came from cat — that's KindJSON; or scanning output for events — that's KindLog",
+					"examples": []string{"cat main.go", "cat README.md"},
+				},
+				KindError: map[string]any{
+					"what":     "an error, traceback, or compiler complaint that is the command's main point — reads in full, in order",
+					"not_for":  "a log that merely contains some warnings among mostly normal output — that's still KindLog",
+					"examples": []string{"a failed build's compiler error", "a stack trace", "command not found"},
+				},
+				KindDiff: map[string]any{
+					"what":     "a unified diff — +/- lines with @@ hunk headers — reads with added/removed coloring",
+					"not_for":  "output that merely describes changes in prose — must be the literal unified diff format",
+					"examples": []string{"git diff", "diff -u a.txt b.txt"},
+				},
+				KindJSON: map[string]any{
+					"what":     "JSON or other structured data, meant to be read as data — reads pretty-printed",
+					"not_for":  "a file's prose or code body that merely happens not to be JSON",
+					"examples": []string{"curl ... returning a JSON body", "kubectl get pod -o json"},
+				},
 			}},
 		},
 		"attention": {
@@ -129,18 +169,14 @@ func postQuestions() classify.Questions {
 func (s *Session) judgePre(ctx context.Context, goal, command string) PreJudgment {
 	dangerous, note := FlagDanger(command)
 	fb := PreJudgment{ScopeRisk: -1, Dangerous: dangerous, RiskNote: note}
-	if s.Judge == nil {
-		return fb
-	}
-	t0 := time.Now()
-	answers, ju, err := s.Judge.Ask(ctx,
+	answers, ju, ok := classify.AskOrFallback(ctx, s.Judge,
 		classify.State(map[string]any{"goal": goal, "command": command}),
 		preQuestions())
-	if err != nil {
+	if !ok {
 		return fb
 	}
 	out := PreJudgment{FromJudge: true, ScopeRisk: -1, Dangerous: dangerous, RiskNote: note,
-		JudgeUsage: convertUsage(ju, time.Since(t0))}
+		JudgeUsage: convertUsage(ju)}
 	if a, ok := answers["mutability"]; ok && a.Choice != "" {
 		out.Mutability = a.Choice
 		out.MutabilityConfidence = a.Confidence
@@ -161,11 +197,7 @@ func (s *Session) judgePre(ctx context.Context, goal, command string) PreJudgmen
 
 func (s *Session) judgePost(ctx context.Context, goal, command string, res resultView) PostJudgment {
 	fb := heuristicPost(res)
-	if s.Judge == nil {
-		return fb
-	}
-	t0 := time.Now()
-	answers, ju, err := s.Judge.Ask(ctx,
+	answers, ju, ok := classify.AskOrFallback(ctx, s.Judge,
 		classify.State(map[string]any{
 			"goal":      goal,
 			"command":   command,
@@ -173,11 +205,11 @@ func (s *Session) judgePost(ctx context.Context, goal, command string, res resul
 			"output":    res.Output,
 		}),
 		postQuestions())
-	if err != nil {
+	if !ok {
 		return fb
 	}
 	out := PostJudgment{FromJudge: true, Attention: -1, GoalAchieved: -1,
-		JudgeUsage: convertUsage(ju, time.Since(t0))}
+		JudgeUsage: convertUsage(ju)}
 	if a, ok := answers["result_status"]; ok && a.Choice != "" {
 		out.Status = a.Choice
 		out.StatusConfidence = a.Confidence
@@ -198,13 +230,13 @@ func (s *Session) judgePost(ctx context.Context, goal, command string, res resul
 	return out
 }
 
-// convertUsage translates a Judge report; wall time wins over the
-// adapter's own clock for consistent spans.
-func convertUsage(u classify.Usage, wall time.Duration) usage.Usage {
+// convertUsage translates a Judge report; LatencyMS is always wall time
+// measured by AskOrFallback, not the adapter's own clock.
+func convertUsage(u classify.Usage) usage.Usage {
 	return usage.Usage{
 		PromptTokens:     u.InputTokens,
 		CompletionTokens: u.OutputTokens,
-		Latency:          wall,
+		Latency:          time.Duration(u.LatencyMS * float64(time.Millisecond)),
 		Model:            u.Model,
 	}
 }
