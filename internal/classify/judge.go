@@ -1,7 +1,10 @@
 // Package classify provides the Judge interface and question/answer types.
 package classify
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // State is the context handed to a Judge alongside Questions.
 type State any
@@ -54,4 +57,22 @@ type Usage struct {
 	InputTokens, OutputTokens int
 	LatencyMS                 float64
 	Model                     string
+}
+
+// AskOrFallback calls judge.Ask, reporting ok=false when judge is nil or
+// the call errors — every caller's fallback path collapses to one
+// branch instead of hand-rolling the same nil-check/error-check dance.
+// LatencyMS is wall time measured here, overriding whatever the adapter
+// itself reports, so every caller's timing is directly comparable.
+func AskOrFallback(ctx context.Context, judge Judge, state State, questions Questions) (Answers, Usage, bool) {
+	if judge == nil {
+		return nil, Usage{}, false
+	}
+	t0 := time.Now()
+	answers, u, err := judge.Ask(ctx, state, questions)
+	if err != nil {
+		return nil, Usage{}, false
+	}
+	u.LatencyMS = float64(time.Since(t0).Microseconds()) / 1000.0
+	return answers, u, true
 }

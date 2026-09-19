@@ -11,6 +11,7 @@ type proposalWire struct {
 	Rationale string `json:"rationale"`
 	Done      bool   `json:"done"`
 	Summary   string `json:"summary"`
+	File      string `json:"file"`
 }
 
 // EncodeAssistantTurn renders a Proposal in the JSON shape the model emits.
@@ -20,6 +21,7 @@ func EncodeAssistantTurn(p Proposal) string {
 		Rationale: p.Rationale,
 		Done:      p.Done,
 		Summary:   p.Summary,
+		File:      p.File,
 	})
 	return string(raw)
 }
@@ -52,6 +54,7 @@ func parseProposal(content string) (Proposal, error) {
 	return Proposal{
 		Command:   w.Command,
 		Rationale: strings.TrimSpace(w.Rationale),
+		File:      strings.TrimSpace(w.File),
 	}, nil
 }
 
