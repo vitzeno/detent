@@ -9,6 +9,7 @@ import (
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/shell"
+	"github.com/vitzeno/detent/internal/usage"
 )
 
 // MaxTranscriptOutputBytes caps each recorded output stream.
@@ -41,6 +42,8 @@ type ExecutedCommand struct {
 	Result  shell.Result
 	Pre     PreJudgment
 	Post    *PostJudgment
+	// Usage links the measured step; nil when untracked.
+	Usage *usage.Step
 }
 
 // EndReason names how a goal stopped.
@@ -61,6 +64,8 @@ type GoalResult struct {
 	Commands []ExecutedCommand
 	Summary  string
 	End      EndReason
+	// Stats links the measured goal; nil when untracked.
+	Stats *usage.Goal
 }
 
 // RunFunc executes a command, defaulting to shell.Stream.
@@ -79,8 +84,52 @@ type Session struct {
 	// StepBudget caps iterations per goal; <=0 means unbounded.
 	StepBudget int
 
+	// Stats receives timings and token counts; nil disables tracking.
+	Stats *usage.Tracker
+
 	Transcript []propose.Message
 	GoalsDone  int
+}
+
+// Option configures a Session. Only set what differs: no Judge, no
+// cap, and no tracking unless asked.
+type Option func(*Session)
+
+func WithRun(run RunFunc) Option {
+	return func(s *Session) { s.Run = run }
+}
+
+func WithJudge(judge classify.Judge) Option {
+	return func(s *Session) { s.Judge = judge }
+}
+
+func WithRiskThreshold(t float64) Option {
+	return func(s *Session) { s.RiskThreshold = t }
+}
+
+func WithStepBudget(n int) Option {
+	return func(s *Session) { s.StepBudget = n }
+}
+
+func WithStats(t *usage.Tracker) Option {
+	return func(s *Session) { s.Stats = t }
+}
+
+// New builds a session around a proposer and confirm function.
+func New(proposer propose.Proposer, confirm ConfirmFunc, opts ...Option) *Session {
+	s := &Session{Proposer: proposer, Confirm: confirm}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// Tracker exposes the usage tracker for front-ends rendering stats.
+func (s *Session) Tracker() *usage.Tracker {
+	if s == nil {
+		return nil
+	}
+	return s.Stats
 }
 
 func (s *Session) bounded() (int, bool) {

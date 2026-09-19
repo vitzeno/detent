@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/shell"
+	"github.com/vitzeno/detent/internal/usage"
 )
 
 // BeginGoal opens a goal; only RunGoal (not this) fails closed without Confirm.
@@ -18,22 +20,25 @@ func (s *Session) BeginGoal(goal string) (*GoalResult, error) {
 		return nil, fmt.Errorf("agentloop: no Proposer wired")
 	}
 	s.append(propose.Message{Role: propose.RoleUser, Content: goal})
-	return &GoalResult{Goal: goal}, nil
+	res := &GoalResult{Goal: goal}
+	res.Stats = s.Stats.StartGoal(goal)
+	return res, nil
 }
 
-// ProposeNext returns one proposal plus its pre-confirm judgment.
-func (s *Session) ProposeNext(ctx context.Context, goal string) (propose.Proposal, PreJudgment, error) {
+// ProposeNext returns one proposal, its pre-confirm judgment, and what
+// the propose call consumed.
+func (s *Session) ProposeNext(ctx context.Context, goal string) (propose.Proposal, PreJudgment, usage.Usage, error) {
 	if err := ctx.Err(); err != nil {
-		return propose.Proposal{}, PreJudgment{}, err
+		return propose.Proposal{}, PreJudgment{}, usage.Usage{}, err
 	}
-	p, err := s.Proposer.Propose(ctx, s.Transcript)
+	p, used, err := s.Proposer.Propose(ctx, s.Transcript)
 	if err != nil {
-		return propose.Proposal{}, PreJudgment{}, fmt.Errorf("agentloop: %w", err)
+		return propose.Proposal{}, PreJudgment{}, used, fmt.Errorf("agentloop: %w", err)
 	}
 	if p.Done {
-		return p, PreJudgment{}, nil
+		return p, PreJudgment{}, used, nil
 	}
-	return p, s.judgePre(ctx, goal, p.Command), nil
+	return p, s.judgePre(ctx, goal, p.Command), used, nil
 }
 
 func (s *Session) RecordDone(res *GoalResult, p propose.Proposal) {
@@ -41,6 +46,7 @@ func (s *Session) RecordDone(res *GoalResult, p propose.Proposal) {
 	res.Summary = p.Summary
 	s.append(propose.Message{Role: propose.RoleAssistant,
 		Content: propose.EncodeAssistantTurn(p)})
+	res.Stats.Finish(string(res.End), p.Summary)
 	s.GoalsDone++
 }
 
@@ -49,6 +55,7 @@ func (s *Session) RecordDecline(res *GoalResult, command string) {
 	s.append(propose.Message{Role: propose.RoleUser, Content: fmt.Sprintf(
 		"[goal ended by human: declined command `%s` after %d command(s)]",
 		command, len(res.Commands))})
+	res.Stats.Finish(string(res.End), "")
 	s.GoalsDone++
 }
 
@@ -56,6 +63,7 @@ func (s *Session) RecordBudget(res *GoalResult, budget int) {
 	res.End = EndBudget
 	s.append(propose.Message{Role: propose.RoleUser, Content: fmt.Sprintf(
 		"[goal ended: step budget exhausted (%d/%d), goal not confirmed done]", budget, budget)})
+	res.Stats.Finish(string(res.End), "")
 	s.GoalsDone++
 }
 
@@ -63,26 +71,34 @@ func (s *Session) RecordProposerError(res *GoalResult, err error) {
 	res.End = EndProposerError
 	s.append(propose.Message{Role: propose.RoleUser, Content: fmt.Sprintf(
 		"[goal ended: proposer error: %v]", err)})
+	res.Stats.Finish(string(res.End), "")
 }
 
-// Execute runs an approved proposal; Post stays nil until the caller attaches JudgeResult.
-func (s *Session) Execute(ctx context.Context, res *GoalResult, p propose.Proposal, pre PreJudgment, onEvent func(shell.StreamEvent)) (*ExecutedCommand, error) {
+// Execute runs an approved proposal against its usage step: links the
+// step, times the run, and records the outcome. Post stays nil until
+// the caller attaches JudgeResult.
+func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Step, p propose.Proposal, pre PreJudgment, onEvent func(shell.StreamEvent)) (*ExecutedCommand, error) {
+	t0 := time.Now()
 	outcome, err := s.runFunc()(ctx, p.Command, onEvent)
+	elapsed := time.Since(t0)
 	if err != nil {
 		s.append(propose.Message{Role: propose.RoleAssistant,
 			Content: propose.EncodeAssistantTurn(p)})
 		s.append(propose.Message{Role: propose.RoleTool,
 			Content: fmt.Sprintf("Command `%s` failed to execute: %v", p.Command, err)})
-		res.Commands = append(res.Commands, ExecutedCommand{Command: p.Command, Pre: pre})
+		ec := ExecutedCommand{Command: p.Command, Pre: pre, Usage: ustep}
+		res.Commands = append(res.Commands, ec)
 		if ctx.Err() == context.Canceled {
 			res.End = EndAborted
 		} else {
 			res.End = EndProposerError
 		}
+		res.Stats.Finish(string(res.End), "")
 		s.GoalsDone++
 		return nil, fmt.Errorf("agentloop: run %q: %w", p.Command, err)
 	}
-	ec := ExecutedCommand{Command: p.Command, Result: outcome, Pre: pre}
+	ec := ExecutedCommand{Command: p.Command, Result: outcome, Pre: pre, Usage: ustep}
+	ustep.SetExec(elapsed, outcome.ExitCode, len(outcome.Stdout)+len(outcome.Stderr))
 	res.Commands = append(res.Commands, ec)
 	s.append(propose.Message{Role: propose.RoleAssistant,
 		Content: propose.EncodeAssistantTurn(p)})
@@ -120,8 +136,10 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 		s.append(propose.Message{Role: propose.RoleUser, Content: goal})
 		s.append(propose.Message{Role: propose.RoleUser,
 			Content: "[goal ended without running: no confirm function wired]"})
-		return GoalResult{Goal: goal, End: EndConfirmMissing},
-			fmt.Errorf("agentloop: no Confirm function wired, refusing to run")
+		res := GoalResult{Goal: goal, End: EndConfirmMissing}
+		res.Stats = s.Stats.StartGoal(goal)
+		res.Stats.Finish(string(res.End), "")
+		return res, fmt.Errorf("agentloop: no Confirm function wired, refusing to run")
 	}
 	res, err := s.BeginGoal(goal)
 	if err != nil {
@@ -140,7 +158,7 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 			return *res, nil
 		}
 
-		proposal, pre, err := s.ProposeNext(ctx, goal)
+		proposal, pre, used, err := s.ProposeNext(ctx, goal)
 		if err != nil {
 			if ctx.Err() != nil {
 				return *res, fmt.Errorf("agentloop: %w", ctx.Err())
@@ -154,6 +172,11 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 			return *res, nil
 		}
 
+		ustep := res.Stats.AddStep(proposal.Command)
+		ustep.SetPropose(used)
+		ustep.SetJudgePre(pre.JudgeUsage)
+
+		t0 := time.Now()
 		approved := s.Confirm(ConfirmRequest{
 			Goal:       goal,
 			Command:    proposal.Command,
@@ -166,16 +189,18 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 			History:    append([]ExecutedCommand(nil), res.Commands...),
 			GoalsDone:  s.GoalsDone,
 		})
+		ustep.SetDwell(time.Since(t0))
 		if !approved {
 			s.RecordDecline(res, proposal.Command)
 			return *res, nil
 		}
 
-		ec, err := s.Execute(ctx, res, proposal, pre, nil)
+		ec, err := s.Execute(ctx, res, ustep, proposal, pre, nil)
 		if err != nil {
 			return *res, err
 		}
 		post := s.JudgeResult(ctx, goal, ec.Command, ec.Result)
+		ec.Usage.SetJudgePost(post.JudgeUsage, post.Attention, post.GoalAchieved)
 		ec.Post = &post
 	}
 }

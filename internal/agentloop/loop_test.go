@@ -12,6 +12,7 @@ import (
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/shell"
+	"github.com/vitzeno/detent/internal/usage"
 )
 
 type stubProposer struct {
@@ -21,18 +22,18 @@ type stubProposer struct {
 	callErr error
 }
 
-func (s *stubProposer) Propose(_ context.Context, messages []propose.Message) (propose.Proposal, error) {
+func (s *stubProposer) Propose(_ context.Context, messages []propose.Message) (propose.Proposal, usage.Usage, error) {
 	cp := append([]propose.Message(nil), messages...)
 	s.seen = append(s.seen, cp)
 	if s.callErr != nil {
-		return propose.Proposal{}, s.callErr
+		return propose.Proposal{}, usage.Usage{}, s.callErr
 	}
 	if s.calls >= len(s.script) {
-		return propose.Proposal{Done: true, Summary: "script exhausted"}, nil
+		return propose.Proposal{Done: true, Summary: "script exhausted"}, usage.Usage{}, nil
 	}
 	p := s.script[s.calls]
 	s.calls++
-	return p, nil
+	return p, usage.Usage{}, nil
 }
 
 func okRun(result shell.Result) RunFunc {
