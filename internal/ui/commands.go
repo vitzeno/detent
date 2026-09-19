@@ -21,7 +21,7 @@ func proposeCmd(ctx context.Context, sess Driver, goal string) tea.Cmd {
 // Live lines go to streamCh (drops counted, never block); Msg carries only the final result.
 func execCmd(ctx context.Context, sess Driver, res *agentloop.GoalResult, ustep *usage.Step, p propose.Proposal, pre agentloop.PreJudgment, streamCh chan<- streamMsg, runCtx context.Context) tea.Cmd {
 	return func() tea.Msg {
-		_, err := sess.Execute(ctx, res, ustep, p, pre, func(e shell.StreamEvent) {
+		ec, err := sess.Execute(ctx, res, ustep, p, pre, func(e shell.StreamEvent) {
 			select {
 			case streamCh <- streamMsg{stderr: e.Stderr, line: e.Line}:
 			case <-runCtx.Done():
@@ -36,8 +36,7 @@ func execCmd(ctx context.Context, sess Driver, res *agentloop.GoalResult, ustep 
 		if err != nil {
 			return execDoneMsg{err: err}
 		}
-		last := res.Commands[len(res.Commands)-1]
-		return execDoneMsg{result: last.Result}
+		return execDoneMsg{ec: ec}
 	}
 }
 

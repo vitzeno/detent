@@ -75,6 +75,29 @@ func Badge(s Row, spinner string) (icon, detail string) {
 	}
 }
 
+// KindLabel names a render kind for the viewport header — the
+// display-label half of RenderKind, alongside Badge's Status half.
+func KindLabel(k string) string {
+	switch k {
+	case agentloop.KindTable:
+		return "table"
+	case agentloop.KindError:
+		return "errors"
+	case agentloop.KindDiff:
+		return "diff"
+	case agentloop.KindJSON:
+		return "json"
+	case agentloop.KindContent:
+		return "file"
+	case agentloop.KindFiles:
+		return "files"
+	case agentloop.KindLog:
+		return "log"
+	default:
+		return "output"
+	}
+}
+
 func statusWord(s string) string {
 	switch s {
 	case agentloop.StatusClean:
