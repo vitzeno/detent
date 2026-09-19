@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -38,6 +40,35 @@ func testProposer(srv *httptest.Server) *OpenAIProposer {
 	return New(WithBaseURL(srv.URL), WithModel("test-model"), WithAPIKey("test-key"))
 }
 
+func TestDefaultSystemPrompt_StatesEnvironmentOnce(t *testing.T) {
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+
+	prompt := defaultSystemPrompt()
+	assert.Contains(t, prompt, runtime.GOOS+"/"+runtime.GOARCH,
+		"OS/arch must be stated so the proposer doesn't have to discover it via uname")
+	assert.Contains(t, prompt, cwd,
+		"cwd must be stated so the proposer doesn't have to discover it via pwd")
+	assert.Contains(t, prompt, "does not persist to the next command",
+		"must warn that a bare cd has no effect across sh -c invocations")
+}
+
+func TestOpenAIProposer_SystemPromptOverrideSkipsEnvironmentPreamble(t *testing.T) {
+	var captured []byte
+	srv := serveProposal(t, `{"command":"ls","rationale":"r","done":false,"summary":""}`, http.StatusOK, &captured)
+	defer srv.Close()
+
+	p := New(WithBaseURL(srv.URL), WithModel("test-model"), WithSystemPrompt("custom prompt, nothing else"))
+	_, _, err := p.Propose(context.Background(), []Message{{Role: RoleUser, Content: "goal"}})
+	require.NoError(t, err)
+
+	var req wireRequest
+	require.NoError(t, json.Unmarshal(captured, &req))
+	require.NotEmpty(t, req.Messages)
+	assert.Equal(t, "custom prompt, nothing else", req.Messages[0].Content,
+		"an explicit SystemPrompt takes full control, same as before — no auto-prepended environment block")
+}
+
 func TestOpenAIProposer_CommandRoundTrip(t *testing.T) {
 	var captured []byte
 	srv := serveProposal(t,
@@ -57,7 +88,7 @@ func TestOpenAIProposer_CommandRoundTrip(t *testing.T) {
 	rf := reqBody["response_format"].(map[string]any)
 	assert.Equal(t, "json_schema", rf["type"])
 	schema := rf["json_schema"].(map[string]any)["schema"].(map[string]any)
-	assert.ElementsMatch(t, []any{"command", "rationale", "done", "summary"}, schema["required"])
+	assert.ElementsMatch(t, []any{"command", "rationale", "done", "summary", "file"}, schema["required"])
 	msgs := reqBody["messages"].([]any)
 	require.Len(t, msgs, 2)
 	assert.Equal(t, "system", msgs[0].(map[string]any)["role"])
@@ -192,6 +223,49 @@ func TestEncodeAssistantTurn_RoundTrips(t *testing.T) {
 	p, err := parseProposal(enc)
 	require.NoError(t, err)
 	assert.Equal(t, "ls", p.Command)
+}
+
+func TestOpenAIProposer_FileRoundTrips(t *testing.T) {
+	t.Run("populated when the model writes one", func(t *testing.T) {
+		srv := serveProposal(t,
+			`{"command": "cat > out.py <<'EOF'\nprint(1)\nEOF", "rationale": "write it", "done": false, "summary": "", "file": "out.py"}`,
+			http.StatusOK, nil)
+		defer srv.Close()
+
+		got, _, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "write a script"}})
+		require.NoError(t, err)
+		assert.Equal(t, "out.py", got.File)
+	})
+
+	t.Run("populated when the model just cats one", func(t *testing.T) {
+		srv := serveProposal(t,
+			`{"command": "cat out.py", "rationale": "show it", "done": false, "summary": "", "file": "out.py"}`,
+			http.StatusOK, nil)
+		defer srv.Close()
+
+		got, _, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "show me out.py"}})
+		require.NoError(t, err)
+		assert.Equal(t, "out.py", got.File)
+	})
+
+	t.Run("empty for a command that doesn't center on one file", func(t *testing.T) {
+		srv := serveProposal(t,
+			`{"command": "ls", "rationale": "list", "done": false, "summary": "", "file": ""}`,
+			http.StatusOK, nil)
+		defer srv.Close()
+
+		got, _, err := testProposer(srv).Propose(context.Background(), []Message{{Role: RoleUser, Content: "goal"}})
+		require.NoError(t, err)
+		assert.Empty(t, got.File)
+	})
+
+	t.Run("round-trips through EncodeAssistantTurn", func(t *testing.T) {
+		enc := EncodeAssistantTurn(Proposal{Command: "cat > f.txt <<'EOF'\nx\nEOF", File: "f.txt"})
+		assert.Contains(t, enc, `"file":"f.txt"`)
+		p, err := parseProposal(enc)
+		require.NoError(t, err)
+		assert.Equal(t, "f.txt", p.File)
+	})
 }
 
 func TestPing(t *testing.T) {

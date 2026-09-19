@@ -50,7 +50,7 @@ func (p *OpenAIProposer) systemPrompt() string {
 	if p.SystemPrompt != "" {
 		return p.SystemPrompt
 	}
-	return defaultSystemPrompt
+	return defaultSystemPrompt()
 }
 
 func (p *OpenAIProposer) httpClient() *http.Client {
