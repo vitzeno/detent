@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -80,8 +81,13 @@ func (m Model) runSlash(cmd string) (tea.Model, tea.Cmd) {
 			m.notice = "nothing running"
 		}
 		return m, nil
+	case "/usage":
+		m.showUsage = true
+		m.usageCursor = 0
+		m.usageExpand = -1
+		return m, nil
 	case "/help":
-		m.notice = "/quit · /abort · tab switches input/history"
+		m.notice = "/quit · /abort · /usage · tab switches input/history"
 		return m, nil
 	default:
 		m.notice = "unknown command " + cmd + " (try /help)"
@@ -128,7 +134,10 @@ func (m Model) onPropose(msg proposeMsg) (tea.Model, tea.Cmd) {
 	}
 	m.pending = msg.proposal
 	m.pendingPre = msg.pre
+	m.pendingUse = msg.used
+	m.confirmShownAt = time.Now()
 	m.mode = modeConfirm
+	m.sizeViewport()
 	return m, nil
 }
 
@@ -138,18 +147,23 @@ func (m Model) approve() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	p, pre := m.pending, m.pendingPre
-	row := &stepRow{command: p.Command, rationale: p.Rationale, pre: pre, running: true}
+	ustep := m.cur.res.Stats.AddStep(p.Command)
+	ustep.SetPropose(m.pendingUse)
+	ustep.SetJudgePre(pre.JudgeUsage)
+	ustep.SetDwell(time.Since(m.confirmShownAt))
+	row := &stepRow{command: p.Command, rationale: p.Rationale, pre: pre, running: true, usage: ustep}
 	m.cur.steps = append(m.cur.steps, row)
 	m.totalCmds++
 	m.mode = modeInput
 	m.waiting = true
 	m.trackNewest()
+	m.sizeViewport()
 	m.refreshViewport()
 
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.abort = cancel
 	return m, tea.Batch(m.spinner.Tick, streamWaitCmd(m.streamCh, ctx),
-		execCmd(m.ctx, m.sess, m.cur.res, p, pre, m.streamCh, ctx))
+		execCmd(m.ctx, m.sess, m.cur.res, ustep, p, pre, m.streamCh, ctx))
 }
 
 func (m Model) decline() (tea.Model, tea.Cmd) {
@@ -157,11 +171,16 @@ func (m Model) decline() (tea.Model, tea.Cmd) {
 		m.mode = modeInput
 		return m, nil
 	}
+	dstep := m.cur.res.Stats.AddStep(m.pending.Command)
+	dstep.SetPropose(m.pendingUse)
+	dstep.SetJudgePre(m.pendingPre.JudgeUsage)
+	dstep.SetDwell(time.Since(m.confirmShownAt))
 	m.sess.RecordDecline(m.cur.res, m.pending.Command)
 	m.cur.ended = true
 	m.cur.end = m.cur.res.End
 	m.cur = nil
 	m = m.backToInput()
+	m.sizeViewport()
 	return m, nil
 }
 
@@ -209,7 +228,7 @@ func (m Model) onExecDone(msg execDoneMsg) (tea.Model, tea.Cmd) {
 	}
 	row.result = &msg.result
 	cmds := []tea.Cmd{
-		judgeCmd(m.ctx, m.sess, m.cur.goal, row.command, msg.result, m.cur, row),
+		judgeCmd(m.ctx, m.sess, m.cur.goal, row.command, msg.result, row),
 		proposeCmd(m.ctx, m.sess, m.cur.goal),
 	}
 	m.waiting = true

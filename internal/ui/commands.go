@@ -8,19 +8,20 @@ import (
 	"github.com/vitzeno/detent/internal/agentloop"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/shell"
+	"github.com/vitzeno/detent/internal/usage"
 )
 
 func proposeCmd(ctx context.Context, sess Driver, goal string) tea.Cmd {
 	return func() tea.Msg {
-		proposal, pre, err := sess.ProposeNext(ctx, goal)
-		return proposeMsg{proposal: proposal, pre: pre, err: err}
+		proposal, pre, used, err := sess.ProposeNext(ctx, goal)
+		return proposeMsg{proposal: proposal, pre: pre, used: used, err: err}
 	}
 }
 
 // Live lines go to streamCh (drops counted, never block); Msg carries only the final result.
-func execCmd(ctx context.Context, sess Driver, res *agentloop.GoalResult, p propose.Proposal, pre agentloop.PreJudgment, streamCh chan<- streamMsg, runCtx context.Context) tea.Cmd {
+func execCmd(ctx context.Context, sess Driver, res *agentloop.GoalResult, ustep *usage.Step, p propose.Proposal, pre agentloop.PreJudgment, streamCh chan<- streamMsg, runCtx context.Context) tea.Cmd {
 	return func() tea.Msg {
-		_, err := sess.Execute(ctx, res, p, pre, func(e shell.StreamEvent) {
+		_, err := sess.Execute(ctx, res, ustep, p, pre, func(e shell.StreamEvent) {
 			select {
 			case streamCh <- streamMsg{stderr: e.Stderr, line: e.Line}:
 			case <-runCtx.Done():
@@ -41,10 +42,10 @@ func execCmd(ctx context.Context, sess Driver, res *agentloop.GoalResult, p prop
 }
 
 // Slow judgment only delays the row upgrade; provisional row is already on screen.
-func judgeCmd(ctx context.Context, sess Driver, goal, command string, result shell.Result, block *goalBlock, row *stepRow) tea.Cmd {
+func judgeCmd(ctx context.Context, sess Driver, goal, command string, result shell.Result, row *stepRow) tea.Cmd {
 	return func() tea.Msg {
 		post := sess.JudgeResult(ctx, goal, command, result)
-		return judgeMsg{block: block, row: row, post: post}
+		return judgeMsg{row: row, post: post}
 	}
 }
 
