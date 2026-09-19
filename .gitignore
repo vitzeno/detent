@@ -1,6 +1,9 @@
 # secrets
 .env
 
+# local play config (see detent.example.yaml for the template)
+.detent.yaml
+
 docs/
 
 # python
