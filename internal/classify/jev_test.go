@@ -89,14 +89,13 @@ func TestJevJudge_Ask(t *testing.T) {
 		{
 			name:      "question with none of Choice/Noul/Score set is rejected before any request",
 			questions: Questions{"broken": {Instructions: "??"}},
-			wantErr:   true, // no server started: this must fail without making a network call
+			wantErr:   true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			j := &JevJudge{Model: DefaultModel, APIKey: "test-key"}
-
+			var opts []Option
 			if tt.startServer {
 				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					assert.Equal(t, http.MethodPost, r.Method)
@@ -105,8 +104,9 @@ func TestJevJudge_Ask(t *testing.T) {
 					_, _ = w.Write([]byte(tt.serverBody))
 				}))
 				defer srv.Close()
-				j.Endpoint = srv.URL
+				opts = append(opts, WithEndpoint(srv.URL))
 			}
+			j := NewJevJudge("test-key", opts...)
 
 			answers, usage, err := j.Ask(context.Background(), State(map[string]any{"goal": "test"}), tt.questions)
 			if tt.wantErr {
@@ -122,10 +122,6 @@ func TestJevJudge_Ask(t *testing.T) {
 	}
 }
 
-// TestJevJudge_Ask_RequestShape checks the outgoing JSON directly — this is
-// what catches a Score criteria regression back to a map (PLAN.md §6's
-// original sketch) instead of the ordered array TypeSafe's API actually
-// requires, since the round-trip tests above only exercise responses.
 func TestJevJudge_Ask_RequestShape(t *testing.T) {
 	var capturedBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +131,7 @@ func TestJevJudge_Ask_RequestShape(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	j := &JevJudge{Model: DefaultModel, APIKey: "test-key", Endpoint: srv.URL}
+	j := NewJevJudge("test-key", WithEndpoint(srv.URL))
 	questions := Questions{
 		"next_action":   {Instructions: "pick one", Choice: &ChoiceQuestion{Criteria: map[string]any{"a": "A"}}},
 		"goal_achieved": {Instructions: "done?", Noul: &NoulQuestion{}},
@@ -162,5 +158,5 @@ func TestJevJudge_Ask_RequestShape(t *testing.T) {
 
 	score := qs["severity"].(map[string]any)
 	assert.Equal(t, "score", score["type"])
-	assert.Equal(t, []any{"low", "high"}, score["criteria"]) // ordered array, not a map
+	assert.Equal(t, []any{"low", "high"}, score["criteria"])
 }
