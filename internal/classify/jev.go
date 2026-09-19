@@ -10,34 +10,43 @@ import (
 	"time"
 )
 
-// jevEndpoint and DefaultModel are pinned, verified constants, not
-// defaults chosen for convenience — see the adapter-level rules below.
 const jevEndpoint = "https://api.typesafe.ai/v1/systemone"
 
-// DefaultModel is the pinned model id validated by phase 0/0b's spikes.
-// Adapter-level rule (§6.1): pin the model id, never an alias like
-// "jev-latest" — an alias moving mid-run invalidates every threshold
-// tuned against it. JevJudge.Model defaults to this but can be overridden
-// (still expected to be a pinned id, never an alias).
+// DefaultModel is the pinned model id; never use an alias.
 const DefaultModel = "jev-1.13.0"
 
-// JevJudge is the reference Judge implementation (§6.1) — TypeSafe's Jev
-// model over HTTP. This function is the entire TypeSafe dependency in the
-// codebase; nothing outside this file may import net/http for this purpose.
+// JevJudge is the Judge implementation over HTTP.
 type JevJudge struct {
-	Model      string // pinned, e.g. "jev-1.13.0" — never an alias
+	Model      string
 	APIKey     string
-	Endpoint   string       // optional; defaults to jevEndpoint. Overridable for tests.
-	HTTPClient *http.Client // optional; defaults to a client with a 60s timeout
+	Endpoint   string
+	HTTPClient *http.Client
 }
 
-// NewJevJudge builds a JevJudge with the pinned default model and a sane
-// request timeout, matching phase 0's spike harness.
-func NewJevJudge(apiKey string) *JevJudge {
-	return &JevJudge{
+func NewJevJudge(apiKey string, opts ...Option) *JevJudge {
+	j := &JevJudge{
 		Model:  DefaultModel,
 		APIKey: apiKey,
 	}
+	for _, opt := range opts {
+		opt(j)
+	}
+	return j
+}
+
+// Option overrides a NewJevJudge default.
+type Option func(*JevJudge)
+
+func WithModel(model string) Option {
+	return func(j *JevJudge) { j.Model = model }
+}
+
+func WithEndpoint(endpoint string) Option {
+	return func(j *JevJudge) { j.Endpoint = endpoint }
+}
+
+func WithHTTPClient(client *http.Client) Option {
+	return func(j *JevJudge) { j.HTTPClient = client }
 }
 
 func (j *JevJudge) endpoint() string {
@@ -54,11 +63,6 @@ func (j *JevJudge) httpClient() *http.Client {
 	return &http.Client{Timeout: 60 * time.Second}
 }
 
-// wire* types are TypeSafe's actual JSON shape (confirmed against
-// docs.typesafe.ai/api.md and /primitives/score.md while building this
-// adapter) — kept private and separate from Questions/Answers so a
-// protocol quirk here never leaks into the Judge interface everything
-// else depends on.
 type wireRequest struct {
 	Model     string                  `json:"model"`
 	State     any                     `json:"state"`
@@ -68,7 +72,7 @@ type wireRequest struct {
 type wireQuestion struct {
 	Type         string `json:"type"`
 	Instructions string `json:"instructions"`
-	Criteria     any    `json:"criteria,omitempty"` // map[string]string (choice) | []string (score)
+	Criteria     any    `json:"criteria,omitempty"`
 }
 
 type wireResponse struct {
@@ -90,9 +94,7 @@ type wireAnswer struct {
 	Legend        map[string]string  `json:"legend"`
 }
 
-// Ask implements Judge. Builds one TypeSafe request, translates
-// Choice/Noul/Score questions into TypeSafe's criteria shape, translates
-// the response back into Answers + Usage.
+// Ask implements Judge.
 func (j *JevJudge) Ask(ctx context.Context, state State, qs Questions) (Answers, Usage, error) {
 	if j.Model == "" {
 		return nil, Usage{}, fmt.Errorf("classify: JevJudge.Model is empty")
@@ -149,7 +151,7 @@ func (j *JevJudge) Ask(ctx context.Context, state State, qs Questions) (Answers,
 		InputTokens:  wireResp.Usage.InputTokens,
 		OutputTokens: wireResp.Usage.OutputTokens,
 		LatencyMS:    float64(latency.Microseconds()) / 1000.0,
-		Model:        wireResp.Model, // resolved id, reported even if it drifts from what we requested
+		Model:        wireResp.Model,
 	}
 	return answers, usage, nil
 }
