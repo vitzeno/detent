@@ -7,17 +7,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 detent is a TUI harness that pairs a small/local LLM (via any OpenAI-compatible
 `/chat/completions` endpoint — LM Studio by default, OpenRouter or OpenAI also
 work) with a human. The model proposes one shell command at a time toward a
-stated goal; nothing ever runs without explicit human confirmation of the
-literal command text. There is no closed capability registry — the model can
-propose arbitrary `sh -c` commands, and the safety story rests entirely on
-mandatory confirm, not on structural/typed restrictions.
+stated goal. There is no closed capability registry — the model can propose
+arbitrary `sh -c` commands, and the safety story rests entirely on the
+Dangerous flag, not on structural/typed restrictions.
 
-A second, optional model — TypeSafe's Jev — classifies commands before and
-after execution (mutability tier, scope risk, result status, render kind,
-etc.) to drive confirm emphasis and output rendering. It's a pure classifier
-with no control over what runs; without a `jev_api_key` configured, rows fall
-back to heuristics and confirms stay neutral (see `internal/agentloop/risk.go`
-`heuristicPost`/`FlagDanger`).
+A command flagged Dangerous is shown to a human, who reads the literal text
+and must explicitly approve it; every other command runs straight through
+with no confirm at all. Dangerous comes from a second, optional model —
+TypeSafe's Jev — classifying mutability and scope risk before execution
+(also driving result-status/render-kind classification after execution), OR'd
+with `FlagDanger`, a regex backstop (`internal/agentloop/risk.go`). Without a
+`jev_api_key` configured, only the regex backstop applies and rows fall back
+to heuristics for post-execution rendering. Widening what counts as Dangerous
+(e.g. also confirming `writes_workspace`-tier commands, not just
+`system_affecting`/`likely_irreversible`) is a one-line change in the
+`pre.Dangerous` check in both `driver.go` and `ui/flow.go`'s `onPropose`.
 
 ## Commands
 
@@ -131,8 +135,8 @@ cmd/detent  →  ui  →  agentloop  →  propose, shell, classify, usage
   documents or section numbers.
 - `docs/` is gitignored — planning documents live there but are never
   committed to the repo.
-- Every command the model proposes requires an explicit human `y`/`n`
-  confirm, with no exceptions and no auto-run path. Any change that could
-  weaken this (auto-approval, skipping confirm for a "safe" command class,
-  etc.) is out of scope by design — see the `ConfirmFunc` doc comment in
-  `internal/agentloop/loop.go`.
+- Confirm is conditional on `PreJudgment.Dangerous`, not universal — see the
+  `ConfirmFunc` doc comment in `internal/agentloop/loop.go`. A nil
+  `ConfirmFunc` still fails the whole session closed even for an all-safe
+  goal, since relying on "it happens not to be called" isn't a substitute
+  for wiring one at all.
