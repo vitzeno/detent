@@ -4,6 +4,12 @@ A terminal UI harness that pairs a small or local LLM with a human to drive a sh
 
 Works with any OpenAI-compatible `/chat/completions` endpoint — LM Studio by default, OpenRouter or OpenAI also work.
 
+## Screenshots
+
+![detent TUI](screenshots/tui-1.png)
+
+![detent TUI](screenshots/tui-2.png)
+
 ## How safety works
 
 - Commands run straight through, no confirm per step.
