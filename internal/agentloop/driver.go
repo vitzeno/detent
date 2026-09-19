@@ -6,13 +6,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vitzeno/detent/internal/probe"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/shell"
 	"github.com/vitzeno/detent/internal/usage"
 )
 
 // BeginGoal opens a goal; only RunGoal (not this) fails closed without Confirm.
-func (s *Session) BeginGoal(goal string) (*GoalResult, error) {
+// It also primes the transcript with whatever fixed, read-only probes
+// Jev thinks are relevant (internal/probe) — never model-proposed, so
+// they run without confirm, and appear to the proposer as one RoleTool
+// message right after the goal, the same as any other command's output.
+func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, error) {
 	if strings.TrimSpace(goal) == "" {
 		return nil, fmt.Errorf("agentloop: empty goal")
 	}
@@ -20,6 +25,15 @@ func (s *Session) BeginGoal(goal string) (*GoalResult, error) {
 		return nil, fmt.Errorf("agentloop: no Proposer wired")
 	}
 	s.append(propose.Message{Role: propose.RoleUser, Content: goal})
+	if out := probe.Run(ctx, s.runFunc(), probe.Select(ctx, s.Judge, goal)); out != "" {
+		s.append(propose.Message{Role: propose.RoleTool, Content: out})
+	}
+	// Abort during probe collection must behave like abort during
+	// propose or exec: the caller (ui.onBeginGoal) closes the goal as
+	// aborted rather than silently continuing into the first Propose.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	res := &GoalResult{Goal: goal}
 	res.Stats = s.Stats.StartGoal(goal)
 	return res, nil
@@ -48,6 +62,17 @@ func (s *Session) RecordDone(res *GoalResult, p propose.Proposal) {
 		Content: propose.EncodeAssistantTurn(p)})
 	res.Stats.Finish(string(res.End), p.Summary)
 	s.GoalsDone++
+}
+
+// RecordFileSave notes that the human — not a proposed command — wrote
+// path directly through the editor, so a later goal in this session
+// sees what changed without needing to re-read the file itself. diff
+// is the unified diff of what changed (editfile.Diff), not goal-scoped:
+// this happens outside RunGoal/BeginGoal entirely, so there's no
+// GoalResult to attach it to the way command output attaches to one.
+func (s *Session) RecordFileSave(path, diff string) {
+	s.append(propose.Message{Role: propose.RoleTool, Content: fmt.Sprintf(
+		"The human edited `%s` directly in the editor and saved this change:\n%s", path, boundStr(diff))})
 }
 
 func (s *Session) RecordDecline(res *GoalResult, command string) {
@@ -141,7 +166,7 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 		res.Stats.Finish(string(res.End), "")
 		return res, fmt.Errorf("agentloop: no Confirm function wired, refusing to run")
 	}
-	res, err := s.BeginGoal(goal)
+	res, err := s.BeginGoal(ctx, goal)
 	if err != nil {
 		return GoalResult{}, err
 	}
@@ -176,20 +201,27 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 		ustep.SetPropose(used)
 		ustep.SetJudgePre(pre.JudgeUsage)
 
-		t0 := time.Now()
-		approved := s.Confirm(ConfirmRequest{
-			Goal:       goal,
-			Command:    proposal.Command,
-			Rationale:  proposal.Rationale,
-			Dangerous:  pre.Dangerous,
-			RiskNote:   pre.RiskNote,
-			Mutability: pre.Mutability,
-			Step:       step,
-			StepBudget: confirmBudget,
-			History:    append([]*ExecutedCommand(nil), res.Commands...),
-			GoalsDone:  s.GoalsDone,
-		})
-		ustep.SetDwell(time.Since(t0))
+		// Confirm is only shown for a command Dangerous flags — Jev's
+		// mutability/scope_risk escalation or the FlagDanger regex
+		// backstop (risk.go). Everything else runs straight through: no
+		// dwell to measure, nothing to record beyond the run itself.
+		approved := true
+		if pre.Dangerous {
+			t0 := time.Now()
+			approved = s.Confirm(ConfirmRequest{
+				Goal:       goal,
+				Command:    proposal.Command,
+				Rationale:  proposal.Rationale,
+				Dangerous:  pre.Dangerous,
+				RiskNote:   pre.RiskNote,
+				Mutability: pre.Mutability,
+				Step:       step,
+				StepBudget: confirmBudget,
+				History:    append([]*ExecutedCommand(nil), res.Commands...),
+				GoalsDone:  s.GoalsDone,
+			})
+			ustep.SetDwell(time.Since(t0))
+		}
 		if !approved {
 			s.RecordDecline(res, proposal.Command)
 			return *res, nil
