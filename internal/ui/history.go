@@ -13,14 +13,14 @@ func (m *Model) historyLines() []string {
 	var lines []string
 	rows := m.rows()
 	for _, b := range m.blocks {
-		lines = append(lines, styleMuted.Render("goal · ")+styleGoal.Render(truncateWidth(b.goal, m.width-10)))
+		lines = append(lines, styleMuted.Render("goal · ")+styleGoal.Render(truncateWidth(b.goal, m.width-14)))
 		for _, r := range b.steps {
 			if r == rows[m.cursorClamped()] && len(rows) > 0 {
 				m.cursorLine = len(lines)
 			}
 			lines = append(lines, m.stepLine(r))
 			if r.expanded {
-				lines = append(lines, previewLines(r, m.width-6)...)
+				lines = append(lines, previewLines(r, m.width-10)...)
 			}
 		}
 		if b.ended {
@@ -74,7 +74,7 @@ func (m Model) stepLine(r *stepRow) string {
 		}
 	}
 	icon, detail := status.Badge(s, m.spinner.View())
-	cmd := truncateWidth(r.command, m.width-30)
+	cmd := truncateWidth(r.command, m.width-34)
 	return fmt.Sprintf("%s%s %s %s", mark, icon, cmd, styleMuted.Render("· "+detail))
 }
 
@@ -92,7 +92,7 @@ func (m Model) goalBanner(b *goalBlock) string {
 	case b.fatalErr != nil:
 		return "  " + styleDanger.Render("✗ error: "+b.fatalErr.Error())
 	case b.end == agentloop.EndDone:
-		s := "  " + styleSafe.Render("✔ "+truncateWidth(b.summary, m.width-8))
+		s := "  " + styleSafe.Render("✔ "+truncateWidth(b.summary, m.width-12))
 		if b.judgeNote != "" {
 			s += "\n  " + styleCaution.Render("⚠ "+b.judgeNote)
 		}

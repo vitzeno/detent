@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Viewport content transforms for the detail zone. Jev's render_kind
@@ -69,9 +67,9 @@ func diffClass(l string) string {
 func styleDiffLine(l string) string {
 	switch diffClass(l) {
 	case "add":
-		return lipgloss.NewStyle().Foreground(safe).Render(l)
+		return styleDiffAdd.Render(l)
 	case "del":
-		return lipgloss.NewStyle().Foreground(danger).Render(l)
+		return styleDiffDel.Render(l)
 	case "hunk":
 		return styleFaint.Render(l)
 	case "meta":
