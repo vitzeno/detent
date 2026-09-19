@@ -8,7 +8,7 @@ import (
 )
 
 func (m Model) confirmBox() string {
-	style := styleConfirmBox
+	style := styleConfirmAccent
 	if m.pendingPre.Dangerous {
 		style = styleConfirmDanger
 	}
@@ -31,5 +31,9 @@ func (m Model) confirmBox() string {
 	}
 	fmt.Fprintf(&b, "\n%s\n", styleMuted.Render(fmt.Sprintf("command %d this session · step %d this goal", m.totalCmds+1, stepNo)))
 	fmt.Fprintf(&b, "\n%s run   %s stop goal", styleKey.Render("[y]"), styleKey.Render("[n]"))
-	return style.Width(max(20, m.width-4)).Render(b.String())
+	// Bottom-centered popup: fixed comfortable width, centered — not a
+	// full-bleed strip. History and output stay visible above, which is
+	// the context the decision needs.
+	w := min(72, max(24, m.width-8))
+	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, style.Width(w).Render(b.String()))
 }
