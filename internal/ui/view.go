@@ -172,31 +172,10 @@ func (m Model) viewportHeader() string {
 	}
 	label := "output"
 	if k := rowKind(r); k != "" {
-		label = kindLabel(k)
+		label = status.KindLabel(k)
 	}
 	return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(label, active),
 		styleGoal.Render(truncateWidth(r.command, m.width-24)))
-}
-
-func kindLabel(k string) string {
-	switch k {
-	case agentloop.KindTable:
-		return "table"
-	case agentloop.KindError:
-		return "errors"
-	case agentloop.KindDiff:
-		return "diff"
-	case agentloop.KindJSON:
-		return "json"
-	case agentloop.KindContent:
-		return "file"
-	case agentloop.KindFiles:
-		return "files"
-	case agentloop.KindLog:
-		return "log"
-	default:
-		return "output"
-	}
 }
 
 // detailLines renders the focused row's component as lines: a real
@@ -242,7 +221,7 @@ func (m *Model) refreshViewport() {
 	switch {
 	case r.running:
 		body = strings.Join(r.live, "\n")
-	case r.result != nil:
+	case r.ec != nil:
 		body = m.styledBody(r)
 	}
 	if body == "" {
@@ -259,12 +238,12 @@ func (m *Model) refreshViewport() {
 // maxViewportLines. Unknown kinds render raw — the classifier suggests,
 // never mandates.
 func (m *Model) styledBody(r *stepRow) string {
-	combined := r.result.Stdout
-	if r.result.Stderr != "" {
+	combined := r.ec.Result.Stdout
+	if r.ec.Result.Stderr != "" {
 		if combined != "" && !strings.HasSuffix(combined, "\n") {
 			combined += "\n"
 		}
-		combined += r.result.Stderr
+		combined += r.ec.Result.Stderr
 	}
 	lines := strings.Split(strings.TrimSuffix(combined, "\n"), "\n")
 	switch rowKind(r) {
@@ -330,23 +309,31 @@ func (m Model) statusLine() string {
 			}
 		}
 	}
-	keys := "[tab] history · [↑/↓] rows · [enter] run · type / for cmds"
-	if m.waiting && m.focus == focusInput {
-		keys = "[tab] history · type / + enter for commands · [esc] abort"
+	return status.Bar(m.spinner.View(), phase, m.statusHint(), m.notice, m.waiting)
+}
+
+// statusHint picks the key hint for the current owner — the same
+// question handleKey's owner() answers for routing, asked again here
+// for display, so the two never fall out of sync on which state wins.
+func (m Model) statusHint() string {
+	switch m.owner() {
+	case ownerConfirm:
+		return "[y] run · [n] stop goal"
+	case ownerOutput:
+		return "[tab] input · [j/k] inside · [pgup/pgdn] scroll · [esc] history · [q] quit"
+	case ownerHistory:
+		return "[tab] output · [j/k] move · [space] expand · [enter] expand · [q] quit"
+	case ownerBusy:
+		if len(m.slash) > 0 {
+			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
+		}
+		return "[tab] history · type / + enter for commands · [esc] abort"
+	default: // ownerInput
+		if len(m.slash) > 0 {
+			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
+		}
+		return "[tab] history · [↑/↓] rows · [enter] run · type / for cmds"
 	}
-	if len(m.slash) > 0 {
-		keys = "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
-	}
-	if m.focus == focusHistory {
-		keys = "[tab] output · [j/k] move · [space] expand · [enter] expand · [q] quit"
-	}
-	if m.focus == focusOutput {
-		keys = "[tab] input · [j/k] inside · [pgup/pgdn] scroll · [esc] history · [q] quit"
-	}
-	if m.mode == modeConfirm {
-		keys = "[y] run · [n] stop goal"
-	}
-	return status.Bar(m.spinner.View(), phase, keys, m.notice, m.waiting)
 }
 
 func (m Model) inputBar() string {

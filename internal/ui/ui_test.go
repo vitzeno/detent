@@ -91,7 +91,11 @@ func TestUI_EndToEnd_GoalToDone(t *testing.T) {
 	require.Len(t, fm.blocks, 1)
 	require.True(t, fm.blocks[0].ended)
 	require.Len(t, fm.blocks[0].steps, 1)
-	require.NotNil(t, fm.blocks[0].steps[0].post, "post-execute judgment must land on the row")
+	row := fm.blocks[0].steps[0]
+	require.NotNil(t, row.ec, "post-execute judgment must land on the row")
+	require.NotNil(t, row.ec.Post, "post-execute judgment must land on the row")
+	// Same object as GoalResult.Commands sees — not a UI-only copy.
+	require.Same(t, row.ec, fm.blocks[0].res.Commands[0])
 }
 
 func TestUI_DeclineStopsGoal(t *testing.T) {
@@ -119,15 +123,15 @@ func TestUI_DeclineStopsGoal(t *testing.T) {
 
 func TestCompletionDisagreement(t *testing.T) {
 	low := agentloop.PostJudgment{FromJudge: true, GoalAchieved: 0.2}
-	b := &goalBlock{steps: []*stepRow{{post: &low}}}
+	b := &goalBlock{steps: []*stepRow{{ec: &agentloop.ExecutedCommand{Post: &low}}}}
 	require.Contains(t, completionDisagreement(b), "0.20")
 
 	high := agentloop.PostJudgment{FromJudge: true, GoalAchieved: 0.9}
-	b2 := &goalBlock{steps: []*stepRow{{post: &high}}}
+	b2 := &goalBlock{steps: []*stepRow{{ec: &agentloop.ExecutedCommand{Post: &high}}}}
 	require.Empty(t, completionDisagreement(b2))
 
 	heur := agentloop.PostJudgment{GoalAchieved: -1}
-	b3 := &goalBlock{steps: []*stepRow{{post: &heur}}}
+	b3 := &goalBlock{steps: []*stepRow{{ec: &agentloop.ExecutedCommand{Post: &heur}}}}
 	require.Empty(t, completionDisagreement(b3), "no opinion must not warn")
 }
 
@@ -315,8 +319,10 @@ func TestUI_AbortedProposeClosesBlock(t *testing.T) {
 func tableRow() *stepRow {
 	return &stepRow{
 		command: "ps aux",
-		result:  &shell.Result{Stdout: "USER PID COMMAND\nroot 1 init\nmo 4821 node server.js\n"},
-		post:    &agentloop.PostJudgment{FromJudge: true, Status: agentloop.StatusClean, RenderKind: agentloop.KindTable},
+		ec: &agentloop.ExecutedCommand{
+			Result: shell.Result{Stdout: "USER PID COMMAND\nroot 1 init\nmo 4821 node server.js\n"},
+			Post:   &agentloop.PostJudgment{FromJudge: true, Status: agentloop.StatusClean, RenderKind: agentloop.KindTable},
+		},
 	}
 }
 
@@ -364,8 +370,10 @@ func TestUI_EscFromOutputReturnsToHistory(t *testing.T) {
 func TestUI_StyledBodyKinds(t *testing.T) {
 	m := testUIModel()
 	mk := func(kind, out string) *stepRow {
-		return &stepRow{command: "cmd", result: &shell.Result{Stdout: out},
-			post: &agentloop.PostJudgment{RenderKind: kind}}
+		return &stepRow{command: "cmd", ec: &agentloop.ExecutedCommand{
+			Result: shell.Result{Stdout: out},
+			Post:   &agentloop.PostJudgment{RenderKind: kind},
+		}}
 	}
 	assert.Contains(t, m.styledBody(mk(agentloop.KindJSON, `{"b":2,"a":1}`)), "\n")
 	assert.Contains(t, m.styledBody(mk(agentloop.KindContent, "package main\n")), "1")
@@ -408,8 +416,10 @@ func TestUI_IslandsRender(t *testing.T) {
 
 func tableBlock() *goalBlock {
 	mkrow := func(cmd, out, kind string) *stepRow {
-		return &stepRow{command: cmd, result: &shell.Result{Stdout: out},
-			post: &agentloop.PostJudgment{FromJudge: true, Status: agentloop.StatusClean, RenderKind: kind}}
+		return &stepRow{command: cmd, ec: &agentloop.ExecutedCommand{
+			Result: shell.Result{Stdout: out},
+			Post:   &agentloop.PostJudgment{FromJudge: true, Status: agentloop.StatusClean, RenderKind: kind},
+		}}
 	}
 	steps := []*stepRow{mkrow("ps aux", "USER PID COMMAND\nroot 1 init\na 2 x\nb 3 y\nc 4 z\nd 5 w\ne 6 v\n", agentloop.KindTable)}
 	for i := 0; i < 30; i++ {
@@ -497,8 +507,10 @@ func TestUI_ExpandedRowsCannotPushOutSessionBar(t *testing.T) {
 	m := testUIModel()
 	steps := []*stepRow{}
 	for i := 0; i < 30; i++ {
-		steps = append(steps, &stepRow{command: "cmd", result: &shell.Result{Stdout: "out\n"},
-			post:     &agentloop.PostJudgment{RenderKind: agentloop.KindInline},
+		steps = append(steps, &stepRow{command: "cmd", ec: &agentloop.ExecutedCommand{
+			Result: shell.Result{Stdout: "out\n"},
+			Post:   &agentloop.PostJudgment{RenderKind: agentloop.KindInline},
+		},
 			expanded: true,
 		})
 	}
@@ -516,8 +528,10 @@ func TestUI_WideLinesCannotPushOutSessionBar(t *testing.T) {
 	wide := strings.Repeat("w", 500)
 	steps := []*stepRow{}
 	for i := 0; i < 30; i++ {
-		steps = append(steps, &stepRow{command: "cmd " + wide, result: &shell.Result{Stdout: wide + "\n"},
-			post: &agentloop.PostJudgment{RenderKind: agentloop.KindLog}})
+		steps = append(steps, &stepRow{command: "cmd " + wide, ec: &agentloop.ExecutedCommand{
+			Result: shell.Result{Stdout: wide + "\n"},
+			Post:   &agentloop.PostJudgment{RenderKind: agentloop.KindLog},
+		}})
 	}
 	m.blocks = []*goalBlock{{goal: "g", steps: steps}}
 	m.cursor = 5

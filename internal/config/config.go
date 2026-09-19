@@ -13,12 +13,14 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/vitzeno/detent/internal/classify"
+	"github.com/vitzeno/detent/internal/propose"
 )
 
-// Defaults: local LM Studio server, bonsai for now, pinned Jev.
+// Defaults: local LM Studio server, bonsai for now, pinned Jev. Aliased
+// from propose rather than redeclared, so the two can't silently drift.
 const (
-	DefaultBaseURL = "http://localhost:1234/v1"
-	DefaultModel   = "prism-ml/bonsai-27b"
+	DefaultBaseURL = propose.DefaultBaseURL
+	DefaultModel   = propose.DefaultModel
 )
 
 // Config selects what the proposer and judge talk to, plus loop behavior.

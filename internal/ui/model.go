@@ -39,11 +39,15 @@ type stepRow struct {
 	pre       agentloop.PreJudgment
 	live      []string
 	dropped   int
-	result    *shell.Result
-	post      *agentloop.PostJudgment
-	running   bool
-	expanded  bool
-	usage     *usage.Step
+	// ec is the canonical record once Execute returns it — nil while
+	// running. Result and Post read through it rather than duplicating
+	// it, so a post-judgment write (see judgeMsg below) lands on the
+	// same GoalResult.Commands entry agentloop and any other consumer
+	// sees, instead of a UI-only copy.
+	ec       *agentloop.ExecutedCommand
+	running  bool
+	expanded bool
+	usage    *usage.Step
 	// Component state for the detail zone.
 	tableCursor int    // selected table row
 	styled      string // cached transformed output (markdown/JSON/colors)
@@ -74,8 +78,8 @@ type streamMsg struct {
 }
 
 type execDoneMsg struct {
-	result shell.Result
-	err    error
+	ec  *agentloop.ExecutedCommand
+	err error
 }
 
 type judgeMsg struct {
@@ -168,23 +172,23 @@ const (
 // rowKind returns the judged kind, or "" while pending. Streaming rows
 // always show the live viewport regardless of kind.
 func rowKind(r *stepRow) string {
-	if r == nil || r.running || r.post == nil {
+	if r == nil || r.running || r.ec == nil || r.ec.Post == nil {
 		return ""
 	}
-	return r.post.RenderKind
+	return r.ec.Post.RenderKind
 }
 
 // tableText returns the text a table parses from, and whether this row
 // is table-kind. Key handling uses this instead of reaching into the
 // classification vocabulary itself.
 func (r *stepRow) tableText() (string, bool) {
-	if rowKind(r) != agentloop.KindTable || r.result == nil {
+	if rowKind(r) != agentloop.KindTable {
 		return "", false
 	}
-	if r.result.Stdout != "" {
-		return r.result.Stdout, true
+	if r.ec.Result.Stdout != "" {
+		return r.ec.Result.Stdout, true
 	}
-	return r.result.Stderr, true
+	return r.ec.Result.Stderr, true
 }
 
 // New builds the TUI over an agentloop session.
@@ -283,7 +287,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onExecDone(msg)
 
 	case judgeMsg:
-		msg.row.post = &msg.post
+		// Written onto the shared ExecutedCommand, not a UI-only copy —
+		// GoalResult.Commands carries the judgment too, the same as the
+		// headless path.
+		msg.row.ec.Post = &msg.post
 		msg.row.usage.SetJudgePost(msg.post.JudgeUsage, msg.post.Attention, msg.post.GoalAchieved)
 		if msg.post.Attention >= status.AttentionThreshold {
 			msg.row.expanded = true

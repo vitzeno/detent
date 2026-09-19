@@ -61,16 +61,14 @@ func (m Model) stepLine(r *stepRow) string {
 		s.Running = true
 		s.LiveLines = len(r.live)
 		s.Dropped = r.dropped
-	} else {
-		if r.result != nil {
-			s.HasResult = true
-			s.ExitCode = r.result.ExitCode
-			s.Summary = r.result.Summary()
-		}
-		if r.post != nil {
+	} else if r.ec != nil {
+		s.HasResult = true
+		s.ExitCode = r.ec.Result.ExitCode
+		s.Summary = r.ec.Result.Summary()
+		if r.ec.Post != nil {
 			s.Judged = true
-			s.Status = r.post.Status
-			s.Attention = r.post.Attention
+			s.Status = r.ec.Post.Status
+			s.Attention = r.ec.Post.Attention
 		}
 	}
 	icon, detail := status.Badge(s, m.spinner.View())
@@ -110,8 +108,8 @@ func (m Model) goalBanner(b *goalBlock) string {
 
 func previewLines(r *stepRow, width int) []string {
 	src := r.live
-	if r.result != nil {
-		src = strings.Split(strings.TrimSuffix(r.result.Stdout+r.result.Stderr, "\n"), "\n")
+	if r.ec != nil {
+		src = strings.Split(strings.TrimSuffix(r.ec.Result.Stdout+r.ec.Result.Stderr, "\n"), "\n")
 	}
 	var out []string
 	for i, l := range src {
