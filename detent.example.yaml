@@ -1,0 +1,37 @@
+# detent example configuration. Copy to .detent.yaml (repo-local) or
+# ~/.config/detent/config.yaml and uncomment what you need.
+# Precedence: flags > environment > this file > built-ins.
+
+# --- Proposer: any OpenAI-compatible /chat/completions endpoint ---
+
+# LM Studio (local default — works as-is with no key):
+base_url: http://localhost:1234/v1
+model: prism-ml/bonsai-27b
+# api_key: ""
+
+# OpenRouter instead (needs OPENROUTER_API_KEY env or api_key below):
+# base_url: https://openrouter.ai/api/v1
+# model: qwen/qwen3-32b
+# api_key: sk-or-...
+# headers:
+#   HTTP-Referer: https://github.com/your/repo
+#   X-Title: detent
+
+# Hosted OpenAI instead (needs OPENAI_API_KEY env or api_key below):
+# base_url: https://api.openai.com/v1
+# model: gpt-4o-mini
+
+# Per-goal step cap. 0 (the default) means unbounded: the human confirm
+# on every command is the bound.
+# steps: 0
+
+# --- Judge (Jev): classifier for confirm emphasis and row rendering ---
+# Omit jev_api_key (and TYPESAFE_API_KEY) to run without a judge; rows
+# stay heuristic and confirms stay neutral.
+
+# jev_api_key: apikey_...
+# jev_model: jev-1.13.0
+# jev_endpoint: https://api.typesafe.ai/v1/systemone
+
+# Scope-risk Noul floor for extra confirm emphasis. 0 selects the 0.5 default.
+# risk_threshold: 0.5
