@@ -16,6 +16,8 @@ import (
 	"github.com/vitzeno/detent/internal/config"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/ui"
+	"github.com/vitzeno/detent/internal/ui/status"
+	"github.com/vitzeno/detent/internal/usage"
 )
 
 func main() {
@@ -47,24 +49,25 @@ func run() error {
 			err, resolved.BaseURL, resolved.Model)
 	}
 
-	sess := &agentloop.Session{
-		Proposer: propose.New(
-			propose.WithBaseURL(resolved.BaseURL),
-			propose.WithModel(resolved.Model),
-			propose.WithAPIKey(resolved.APIKey),
-			propose.WithHeaders(resolved.Headers),
-		),
-		Confirm:       confirmHeadless,
-		StepBudget:    resolved.Steps,
-		RiskThreshold: resolved.RiskThreshold,
+	proposer := propose.New(
+		propose.WithBaseURL(resolved.BaseURL),
+		propose.WithModel(resolved.Model),
+		propose.WithAPIKey(resolved.APIKey),
+		propose.WithHeaders(resolved.Headers),
+	)
+	sessOpts := []agentloop.Option{
+		agentloop.WithStepBudget(resolved.Steps),
+		agentloop.WithRiskThreshold(resolved.RiskThreshold),
+		agentloop.WithStats(usage.New()),
 	}
 	// No judge without a key: TYPESAFE_API_KEY env or jev_api_key file.
 	if resolved.JevAPIKey != "" {
-		sess.Judge = classify.NewJevJudge(resolved.JevAPIKey,
+		sessOpts = append(sessOpts, agentloop.WithJudge(classify.NewJevJudge(resolved.JevAPIKey,
 			classify.WithModel(resolved.JevModel),
 			classify.WithEndpoint(resolved.JevEndpoint),
-		)
+		)))
 	}
+	sess := agentloop.New(proposer, confirmHeadless, sessOpts...)
 
 	if *goal != "" {
 		return printGoalResult(sess.RunGoal(context.Background(), *goal))
@@ -92,7 +95,31 @@ func printGoalResult(res agentloop.GoalResult, err error) error {
 	if res.Summary != "" {
 		fmt.Printf("summary: %s\n", res.Summary)
 	}
+	printUsage(res.Stats)
 	return err
+}
+
+// printUsage renders the goal's measured phases plus session rollups.
+func printUsage(g *usage.Goal) {
+	if g == nil || len(g.Steps) == 0 {
+		return
+	}
+	fmt.Println("\nusage:")
+	for i, s := range g.Steps {
+		fmt.Printf("  %d. %s · propose %s/%s · dwell %s · exec %s",
+			i+1, s.Command,
+			status.Dur(s.Propose), status.Tokens(s.ProposerPrompt+s.ProposerComplete),
+			status.Dur(s.Dwell), status.Dur(s.Exec))
+		if s.ExitCode >= 0 {
+			fmt.Printf("/%d", s.ExitCode)
+		}
+		if s.HasPost {
+			fmt.Printf(" · judge %s/%s", status.Dur(s.JudgePre+s.JudgePost),
+				status.Tokens(s.JudgePrompt+s.JudgeComplete))
+		}
+		fmt.Println()
+	}
+	fmt.Printf("  goal machine %s · session %s\n", status.Dur(g.MachineTime()), status.Dur(g.Duration()))
 }
 
 func confirmHeadless(req agentloop.ConfirmRequest) bool {
