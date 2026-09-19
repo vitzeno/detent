@@ -226,9 +226,9 @@ func (m Model) onExecDone(msg execDoneMsg) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 		return m, nil
 	}
-	row.result = &msg.result
+	row.ec = msg.ec
 	cmds := []tea.Cmd{
-		judgeCmd(m.ctx, m.sess, m.cur.goal, row.command, msg.result, row),
+		judgeCmd(m.ctx, m.sess, m.cur.goal, row.command, msg.ec.Result, row),
 		proposeCmd(m.ctx, m.sess, m.cur.goal),
 	}
 	m.waiting = true
@@ -247,8 +247,12 @@ func (m Model) backToInput() Model {
 // Reports proposer/judge divergence on the goal banner.
 func completionDisagreement(b *goalBlock) string {
 	for i := len(b.steps) - 1; i >= 0; i-- {
-		p := b.steps[i].post
-		if p != nil && p.FromJudge && p.GoalAchieved >= 0 {
+		r := b.steps[i]
+		if r.ec == nil || r.ec.Post == nil {
+			continue
+		}
+		p := r.ec.Post
+		if p.FromJudge && p.GoalAchieved >= 0 {
 			if p.GoalAchieved < 0.5 {
 				return fmt.Sprintf("jev second opinion: goal looks unmet (%.2f)", p.GoalAchieved)
 			}

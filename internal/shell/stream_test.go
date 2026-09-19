@@ -2,7 +2,9 @@ package shell
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,4 +66,16 @@ func TestStream_OutputBounded(t *testing.T) {
 func TestStream_EmptyCommandRejected(t *testing.T) {
 	_, err := Stream(context.Background(), "  ", nil)
 	assert.ErrorContains(t, err, "empty command")
+}
+
+func TestStream_ContextTimeoutWins(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	// tail blocks everywhere; sleep is a no-op shim in some sandboxes.
+	_, err := Stream(ctx, "tail -f /dev/null", nil)
+	require.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "killed") ||
+		strings.Contains(err.Error(), "signal") ||
+		strings.Contains(err.Error(), "deadline") ||
+		strings.Contains(err.Error(), "canceled"))
 }

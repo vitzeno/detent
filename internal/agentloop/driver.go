@@ -86,7 +86,7 @@ func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Ste
 			Content: propose.EncodeAssistantTurn(p)})
 		s.append(propose.Message{Role: propose.RoleTool,
 			Content: fmt.Sprintf("Command `%s` failed to execute: %v", p.Command, err)})
-		ec := ExecutedCommand{Command: p.Command, Pre: pre, Usage: ustep}
+		ec := &ExecutedCommand{Command: p.Command, Pre: pre, Usage: ustep}
 		res.Commands = append(res.Commands, ec)
 		if ctx.Err() == context.Canceled {
 			res.End = EndAborted
@@ -97,13 +97,13 @@ func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Ste
 		s.GoalsDone++
 		return nil, fmt.Errorf("agentloop: run %q: %w", p.Command, err)
 	}
-	ec := ExecutedCommand{Command: p.Command, Result: outcome, Pre: pre, Usage: ustep}
+	ec := &ExecutedCommand{Command: p.Command, Result: outcome, Pre: pre, Usage: ustep}
 	ustep.SetExec(elapsed, outcome.ExitCode, len(outcome.Stdout)+len(outcome.Stderr))
 	res.Commands = append(res.Commands, ec)
 	s.append(propose.Message{Role: propose.RoleAssistant,
 		Content: propose.EncodeAssistantTurn(p)})
 	s.append(propose.Message{Role: propose.RoleTool, Content: formatToolResult(p.Command, outcome)})
-	return &res.Commands[len(res.Commands)-1], nil
+	return ec, nil
 }
 
 // JudgeResult takes values not a slice pointer (appends may move it); judgments never enter the transcript.
@@ -186,7 +186,7 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 			Mutability: pre.Mutability,
 			Step:       step,
 			StepBudget: confirmBudget,
-			History:    append([]ExecutedCommand(nil), res.Commands...),
+			History:    append([]*ExecutedCommand(nil), res.Commands...),
 			GoalsDone:  s.GoalsDone,
 		})
 		ustep.SetDwell(time.Since(t0))

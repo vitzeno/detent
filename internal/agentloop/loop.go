@@ -28,7 +28,7 @@ type ConfirmRequest struct {
 	Mutability string
 	Step       int
 	StepBudget int
-	History    []ExecutedCommand
+	History    []*ExecutedCommand
 	GoalsDone  int
 }
 
@@ -59,9 +59,12 @@ const (
 )
 
 // GoalResult is what ran for one goal, in order, plus how it ended.
+// Commands holds pointers so a caller (the TUI) can keep a reference to
+// one entry — e.g. to attach Post once judgment lands later — that stays
+// valid across further appends to the slice.
 type GoalResult struct {
 	Goal     string
-	Commands []ExecutedCommand
+	Commands []*ExecutedCommand
 	Summary  string
 	End      EndReason
 	// Stats links the measured goal; nil when untracked.
