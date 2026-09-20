@@ -216,16 +216,24 @@ routing     →  agent, sandbox
   owned by `ui` so a change to any of those doesn't ripple into `ui`
   directly; `internal/resolver` is the one thing that imports both sides
   to translate between them. `model.go` holds `Model`, `stepRow`/
-  `goalBlock`, and the top-level `Update` dispatcher. `goal_flow.go`
+  `goalBlock`, and the top-level `Update` dispatcher — which routes the
+  message and then re-syncs the panes **once**, so no handler has to
+  remember to refresh anything. What history shows is derived per
+  render by `historyWindow`; the only scroll state kept is its offset.
+  `prompt.go` owns the input box and its slash dropdown together, so
+  nothing else reaches into the textarea or the match list.
+  `goal_flow.go`
   sequences propose → confirm → execute → judge as `tea.Cmd`s (`approve`/
   `decline` call `Driver.RecordStep` once rather than touching usage
   bookkeeping themselves — `ui` has no way to reach `usage.Step`'s
   mutators at all now); `tool_flow.go`/`exec_flow.go`/`save_flow.go`
   handle the slash-command, streaming, and file-save flows the same way;
-  `keys.go` routes keystrokes. `render_view.go`, `history_view.go`,
-  `confirm_view.go`, `usage_view.go`, `welcome_view.go`, and `view.go`
-  render — anything producing display strings from `Model` state lives
-  in a `_view.go` file. `welcome_view.go` fills the output pane before
+  `keys.go` routes keystrokes. Anything producing display strings from
+  `Model` state lives in a `_view.go` file: `view.go` composes the
+  screen, `layout_view.go` does the sizing maths, `chrome_view.go` the
+  bars and pane headers, `detail_view.go` the output pane, plus
+  `history_view.go`, `render_view.go`, `confirm_view.go`,
+  `usage_view.go` and `welcome_view.go`. `welcome_view.go` fills the output pane before
   any row exists (host/sandbox facts, session counters, and a stepped
   detent animation); it's a pane state, not a `RenderKind`, since
   those classify a finished command's output. Its `SessionInfo` comes

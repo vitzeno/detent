@@ -52,7 +52,7 @@ func TestUI_TypingReachesInput(t *testing.T) {
 		nm, _ := m.handleKey(typeKey(k))
 		m = nm.(Model)
 	}
-	require.Equal(t, "what qvjk", m.input.Value())
+	require.Equal(t, "what qvjk", m.prompt.Value())
 	require.Equal(t, modeInput, m.mode, "typing must not change mode or quit")
 }
 
@@ -65,7 +65,7 @@ func TestUI_ArrowsDoNotScrollHistoryWhileInputFocused(t *testing.T) {
 	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{{command: "a"}, {command: "b"}}}}
 	m.nav.cursor = 1
 	m.nav.follow = false
-	require.True(t, m.input.Focused())
+	require.True(t, m.prompt.Focused())
 
 	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyUp})
 	m = nm.(Model)
@@ -83,7 +83,7 @@ func TestUI_JKNoLongerNavigate(t *testing.T) {
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{{command: "a"}, {command: "b"}}}}
-	m.input.Blur()
+	m.prompt.Blur()
 	m.nav.focus = focusHistory
 	m.nav.cursor = 0
 	m.nav.follow = false
@@ -107,7 +107,7 @@ func TestUI_NavKeysWorkWhenInputBlurred(t *testing.T) {
 		{command: "a"},
 		{command: "b"},
 	}}}
-	m.input.Blur()
+	m.prompt.Blur()
 	m.nav.cursor = 0
 	m.nav.follow = false
 
@@ -129,7 +129,7 @@ func TestUI_TabCyclesThreePanes(t *testing.T) {
 	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
 	m = nm.(Model)
 	require.Equal(t, focusHistory, m.nav.focus)
-	require.False(t, m.input.Focused())
+	require.False(t, m.prompt.Focused())
 
 	// In history focus, "q" quits instead of typing.
 	nm, cmd := m.handleKey(typeKey("q"))
@@ -143,7 +143,7 @@ func TestUI_TabCyclesThreePanes(t *testing.T) {
 	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
 	m = nm.(Model)
 	require.Equal(t, focusInput, m.nav.focus)
-	require.True(t, m.input.Focused())
+	require.True(t, m.prompt.Focused())
 }
 
 func TestUI_SlashEntryWhileBusy(t *testing.T) {
@@ -152,23 +152,23 @@ func TestUI_SlashEntryWhileBusy(t *testing.T) {
 	// Plain text is ignored while busy — no goal can start mid-run.
 	nm, _ := m.handleKey(typeKey("x"))
 	m = nm.(Model)
-	require.Empty(t, m.input.Value())
+	require.Empty(t, m.prompt.Value())
 	require.Empty(t, m.blocks)
 
 	// "/" opens slash entry; further keys complete the dropdown.
 	nm, _ = m.handleKey(typeKey("/"))
 	m = nm.(Model)
-	require.Equal(t, "/", m.input.Value())
-	require.Len(t, m.slash.matches, 6)
+	require.Equal(t, "/", m.prompt.Value())
+	require.Len(t, m.prompt.matches, 6)
 
 	nm, _ = m.handleKey(typeKey("a"))
 	m = nm.(Model)
-	require.Equal(t, "/a", m.input.Value())
+	require.Equal(t, "/a", m.prompt.Value())
 
 	// Partial + enter completes instead of submitting.
 	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)
-	require.Equal(t, "/abort ", m.input.Value())
+	require.Equal(t, "/abort ", m.prompt.Value())
 	require.Empty(t, m.blocks)
 }
 

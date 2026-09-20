@@ -5,7 +5,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/vitzeno/detent/ui/slash"
 	"github.com/vitzeno/detent/ui/tabular"
 )
 
@@ -29,7 +28,7 @@ func (m Model) owner() keyOwner {
 	if m.nav.focus == focusOutput {
 		return ownerOutput
 	}
-	if m.nav.focus == focusHistory || !m.input.Focused() {
+	if m.nav.focus == focusHistory || !m.prompt.Focused() {
 		return ownerHistory
 	}
 	if m.waiting {
@@ -73,7 +72,7 @@ func (m Model) onTab() (tea.Model, tea.Cmd) {
 	if m.mode == modeConfirm {
 		return m, nil
 	}
-	if m.nav.focus == focusInput && m.mode == modeInput && m.input.Focused() && len(m.slash.matches) > 0 {
+	if m.nav.focus == focusInput && m.mode == modeInput && m.prompt.Focused() && m.prompt.Open() {
 		return m.acceptSlash()
 	}
 	return m.toggleFocus()
@@ -133,10 +132,9 @@ func (m Model) inputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "pgup", "pgdown":
 		return m.scrollViewport(msg.String())
 	}
-	var cmd tea.Cmd
-	m.input, cmd = m.input.Update(msg)
+	cmd := m.prompt.Key(msg)
 	m.notice = ""
-	m.updateSlash()
+	m.sizeViewport()
 	return m, cmd
 }
 
@@ -151,12 +149,11 @@ func (m Model) busyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.scrollViewport(msg.String())
 	}
 	// Only "/" may start slash entry; once typed, all keys go to input.
-	if strings.HasPrefix(m.input.Value(), "/") ||
-		(msg.String() == "/" && m.input.Value() == "") {
-		var cmd tea.Cmd
-		m.input, cmd = m.input.Update(msg)
+	if strings.HasPrefix(m.prompt.Value(), "/") ||
+		(msg.String() == "/" && m.prompt.Value() == "") {
+		cmd := m.prompt.Key(msg)
 		m.notice = ""
-		m.updateSlash()
+		m.sizeViewport()
 		return m, cmd
 	}
 	return m, nil
@@ -165,29 +162,25 @@ func (m Model) busyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // slashKey drives the open dropdown (arrows/enter/esc); tab is handled
 // in onTab. Reports handled=false when no dropdown is open.
 func (m Model) slashKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
-	if len(m.slash.matches) == 0 {
+	if !m.prompt.Open() {
 		return m, nil, false
 	}
 	switch msg.String() {
 	case "up":
-		if m.slash.cursor > 0 {
-			m.slash.cursor--
-		}
+		m.prompt.Move(-1)
 		return m, nil, true
 	case "down":
-		if m.slash.cursor < len(m.slash.matches)-1 {
-			m.slash.cursor++
-		}
+		m.prompt.Move(1)
 		return m, nil, true
 	case "enter":
-		if !slash.Exact(m.input.Value()) {
+		if !m.prompt.IsExactCommand() {
 			next, cmd := m.acceptSlash()
 			return next, cmd, true
 		}
 		next, cmd := m.startGoal()
 		return next, cmd, true
 	case "esc":
-		m.slash.matches = nil
+		m.prompt.Close()
 		m.sizeViewport()
 		return m, nil, true
 	}
@@ -334,12 +327,12 @@ func (m Model) toggleFocus() (tea.Model, tea.Cmd) {
 	switch m.nav.focus {
 	case focusInput:
 		m.nav.focus = focusHistory
-		m.input.Blur()
+		m.prompt.Blur()
 	case focusHistory:
 		m.nav.focus = focusOutput
 	default:
 		m.nav.focus = focusInput
-		m.input.Focus()
+		m.prompt.Focus()
 	}
 	return m, nil
 }

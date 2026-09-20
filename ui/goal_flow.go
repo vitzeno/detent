@@ -13,11 +13,11 @@ import (
 // startGoal opens a new goal block (or routes a "/"-prefixed line to
 // runSlash) and dispatches BeginGoal off the update loop.
 func (m Model) startGoal() (tea.Model, tea.Cmd) {
-	goal := strings.TrimSpace(m.input.Value())
+	goal := strings.TrimSpace(m.prompt.Value())
 	if goal == "" {
 		return m, nil
 	}
-	m.input.SetValue("")
+	m.prompt.Clear()
 	m.sizeViewport() // the box shrinks back now that it's empty
 	m.notice = ""
 	if strings.HasPrefix(goal, "/") {
@@ -29,7 +29,7 @@ func (m Model) startGoal() (tea.Model, tea.Cmd) {
 	m.blocks = append(m.blocks, b)
 	m.cur = b
 	m.nav.focus = focusHistory
-	m.input.Blur()
+	m.prompt.Blur()
 	m.waiting = true
 	m.trackNewest()
 	ctx, cancel := context.WithCancel(m.ctx)
@@ -158,7 +158,7 @@ func (m Model) decline() (tea.Model, tea.Cmd) {
 func (m Model) backToInput() Model {
 	m.mode = modeInput
 	m.nav.focus = focusInput
-	m.input.Focus()
+	m.prompt.Focus()
 	return m
 }
 

@@ -16,10 +16,10 @@ var bodyWeights = []int{3, 2} // [output, history]; output gets the larger share
 const minPaneWidth = 28
 
 func (m *Model) sizeViewport() {
-	m.syncInputSize()
+	m.prompt.Resize(m.layout.width)
 	// Bottom zone height is measured, not guessed — content varies with
 	// rationale and danger flags, and the input grows with what's typed.
-	bottom := m.slashRows() + m.input.Height() + 2
+	bottom := m.prompt.Rows() + 2
 	switch m.mode {
 	case modeConfirm:
 		bottom = len(strings.Split(m.confirmBox(), "\n"))

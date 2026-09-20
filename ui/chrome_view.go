@@ -132,12 +132,12 @@ func (m Model) statusHint() string {
 	case ownerHistory:
 		return "[tab] output · [↑/↓] move · [space] expand · [enter] expand · [q] quit"
 	case ownerBusy:
-		if len(m.slash.matches) > 0 {
+		if m.prompt.Open() {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
 		}
 		return "[tab] history · type / + enter for commands · [esc] abort"
 	default: // ownerInput
-		if len(m.slash.matches) > 0 {
+		if m.prompt.Open() {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
 		}
 		return "[tab] history · [enter] run · [alt+enter] newline · type / for cmds"

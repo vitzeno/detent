@@ -19,19 +19,19 @@ func TestUI_SlashCommands(t *testing.T) {
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 
-	m.input.SetValue("/quit")
+	m.prompt.SetValue("/quit")
 	nm, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)
 	require.NotNil(t, cmd, "/quit must return the quit command")
 	require.Empty(t, m.blocks, "/quit must not open a goal")
 
-	m.input.SetValue("/bogus")
+	m.prompt.SetValue("/bogus")
 	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)
 	require.Empty(t, m.blocks)
 	require.Contains(t, m.notice, "unknown command")
 
-	m.input.SetValue("/abort")
+	m.prompt.SetValue("/abort")
 	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)
 	require.Equal(t, "nothing running", m.notice)
@@ -41,8 +41,8 @@ func TestUI_AbortSlashWhileBusy(t *testing.T) {
 	m := busyUIModel()
 	aborted := false
 	m.abort = func() { aborted = true }
-	m.input.SetValue("/abort")
-	m.updateSlash()
+	m.prompt.SetValue("/abort")
+	m.prompt.rematch()
 
 	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)

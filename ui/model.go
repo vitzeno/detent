@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/vitzeno/detent/ui/editor"
-	"github.com/vitzeno/detent/ui/slash"
 	"github.com/vitzeno/detent/ui/status"
 	"github.com/vitzeno/detent/ui/tree"
 )
@@ -156,12 +155,6 @@ type saveState struct {
 	row     *stepRow
 }
 
-// slashState is the input bar's "/"-command autocomplete.
-type slashState struct {
-	matches []slash.Cmd
-	cursor  int
-}
-
 // perfState is UI-prep cost, measured around viewport refreshes.
 type perfState struct {
 	uiPrep  time.Duration
@@ -189,7 +182,7 @@ type Model struct {
 
 	info SessionInfo
 
-	input   textarea.Model
+	prompt  prompt
 	output  viewport.Model
 	spinner spinner.Model
 
@@ -204,7 +197,6 @@ type Model struct {
 	layout  layoutState
 	confirm confirmState
 	save    saveState
-	slash   slashState
 	perf    perfState
 
 	streamCh chan StreamEvent
@@ -248,7 +240,7 @@ func (r *stepRow) tableText() (string, bool) {
 
 // New builds the TUI over sess.
 func New(ctx context.Context, sess Driver, info SessionInfo) Model {
-	ti := newInput()
+	p := newPrompt()
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
@@ -258,7 +250,7 @@ func New(ctx context.Context, sess Driver, info SessionInfo) Model {
 		sess:     sess,
 		ctx:      ctx,
 		info:     info,
-		input:    ti,
+		prompt:   p,
 		output:   viewport.New(0, 0),
 		spinner:  sp,
 		streamCh: make(chan StreamEvent, streamBufSize),

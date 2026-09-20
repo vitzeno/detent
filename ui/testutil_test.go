@@ -185,7 +185,7 @@ func busyUIModel() Model {
 	m := testUIModel()
 	m.waiting = true
 	m.nav.focus = focusInput
-	m.input.Focus()
+	m.prompt.Focus()
 	return m
 }
 

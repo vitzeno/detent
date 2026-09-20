@@ -5,7 +5,6 @@ import (
 
 	"github.com/vitzeno/detent/ui/island"
 	"github.com/vitzeno/detent/ui/layout"
-	"github.com/vitzeno/detent/ui/slash"
 )
 
 func (m Model) View() string {
@@ -33,7 +32,7 @@ func (m Model) baseView() string {
 	case modeSaveConfirm:
 		b.WriteString(m.saveConfirmBox())
 	default:
-		b.WriteString(island.Render("", m.nav.focus == focusInput, strings.Split(m.inputBar(), "\n"), m.layout.width, m.slashRows()+m.input.Height()))
+		b.WriteString(island.Render("", m.nav.focus == focusInput, strings.Split(m.inputBar(), "\n"), m.layout.width, m.prompt.Rows()))
 	}
 	return b.String()
 }
@@ -76,29 +75,6 @@ func (m Model) historyWindow() (window []string, offset int) {
 	return lines[start:min(start+m.nav.histHeight, len(lines))], start
 }
 
-// slashRows caps the dropdown so it can't eat the history pane.
-func (m Model) slashRows() int {
-	return min(len(m.slash.matches), slash.MaxRows)
-}
-
 func (m Model) inputBar() string {
-	active := m.nav.focus == focusInput
-	// The dropdown is multi-line, so it goes first: prefixing it with
-	// the pane mark would indent only its first row and strand the
-	// mark away from the prompt it belongs to.
-	// Both the dropdown and the input are multi-line, so the pane mark
-	// can't just be prefixed onto the whole block: it would indent one
-	// row and leave the rest short. The dropdown goes first, then the
-	// mark takes its own gutter beside every input row.
-	var b strings.Builder
-	b.WriteString(slash.View(m.slash.matches, m.slash.cursor))
-	for i, line := range strings.Split(m.input.View(), "\n") {
-		if i > 0 {
-			b.WriteString("\n" + strings.Repeat(" ", inputMarkW))
-		} else {
-			b.WriteString(paneMark(active) + " ")
-		}
-		b.WriteString(line)
-	}
-	return b.String()
+	return m.prompt.View(paneMark(m.nav.focus == focusInput))
 }

@@ -7,27 +7,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/vitzeno/detent/ui/editor"
-	"github.com/vitzeno/detent/ui/slash"
 	"github.com/vitzeno/detent/ui/tree"
 )
 
-// updateSlash refreshes prefix matches after the input changes.
-func (m *Model) updateSlash() {
-	m.slash.matches = slash.Match(m.input.Value())
-	if m.slash.cursor >= len(m.slash.matches) {
-		m.slash.cursor = 0
-	}
-	m.sizeViewport()
-}
-
 // acceptSlash completes the highlighted entry into the input bar.
 func (m Model) acceptSlash() (tea.Model, tea.Cmd) {
-	if len(m.slash.matches) == 0 {
+	if !m.prompt.Accept() {
 		return m, nil
 	}
-	m.input.SetValue(m.slash.matches[m.slash.cursor].Name + " ")
-	m.slash.matches = nil
-	m.slash.cursor = 0
 	m.sizeViewport()
 	return m, nil
 }
