@@ -55,10 +55,15 @@ difference between a useful error and a raw dial failure on the first goal.
 
 ## Architecture
 
-Package dependency flow (each layer only knows about the one below it):
+Package dependency flow — `ui` and `agent` never import each other;
+`resolver` is the only package that imports both:
 
 ```
-cmd/detent  →  ui  →  agent  →  propose, shell, classify, usage
+cmd/detent  →  ui, resolver, agent, classify, config, propose (Ping only)
+resolver    →  ui (Driver + DTOs), agent, propose, shell, usage, fileio
+ui          →  its own subpackages only (editor, slash, status, tabular,
+                markdown, theme, island, tree, layout)
+agent       →  propose, shell, classify, usage
 ```
 
 - **`internal/propose`** — `OpenAIProposer`, the reference implementation of
@@ -83,28 +88,33 @@ cmd/detent  →  ui  →  agent  →  propose, shell, classify, usage
 
 - **`internal/agent`** — the propose → confirm → execute → judge loop,
   one goal at a time, over an append-only `Session.Transcript`
-  (`[]propose.Message` shared across every goal in the session).
-  `session.go` holds the `Session` struct, `Option`s, and result/record types;
-  `loop.go` holds the two entry points:
+  (`[]propose.Message` shared across every goal in the session). Has no
+  idea `ui` or `resolver` exist. `session.go` holds the `Session` struct,
+  `Option`s, and result/record types; `loop.go` holds the two entry points:
   - `RunGoal` — blocking, used by the headless `-goal` CLI path; fails
     closed if `Confirm` is nil.
-  - `BeginGoal`/`ProposeNext`/`Execute`/`JudgeResult`/`Record*` — the
-    non-blocking primitives the TUI drives directly via the `Driver`
-    interface (`internal/ui/model.go`), because Bubble Tea's async,
-    message-driven `Update` loop can't sit inside a blocking callback.
+  - `BeginGoal`/`ProposeNext`/`RecordStep`/`Execute`/`JudgeResult`/
+    `Record*` — the non-blocking primitives `resolver` drives on the
+    TUI's behalf, because Bubble Tea's async, message-driven `Update`
+    loop can't sit inside a blocking callback. `RecordStep` is the one
+    place `AddStep`/`SetPropose`/`SetJudgePre`/`SetDwell` happen,
+    shared by both `RunGoal` and the non-blocking path so the sequence
+    isn't hand-rolled twice.
 
-  `agent` also declares the `Proposer` and `Judge` interfaces (Go
-  convention: the interface lives at the consumer, not the producer —
-  `propose`/`classify` ship only data types and implementations); `probe`
-  declares its own identically-shaped `Judge` since it sits below `agent`
-  and can't import it back. `judge.go` holds both judgment paths: `judgePre`
-  (mutability + scope risk, before confirm) and `judgePost` (result status +
-  render kind + attention + goal-achieved, after execution), each with a
-  heuristic fallback when no Judge is wired, plus the `NewPreJudgment`/
-  `NewPostJudgment` constructors that centralize their `-1` ("unknown")
-  sentinel defaults. `risk.go`'s `FlagDanger` is a regex safety net that only
-  ever adds confirm emphasis (`Dangerous`/`RiskNote`) — it must never
-  suppress or soften a confirm.
+  `agent` declares `Proposer`, `Judge`, `Confirmer`, `Runner`, and
+  `StreamSink` — every one of them at the consumer, not the producer
+  (`propose`/`classify` ship only data types and implementations;
+  `shell.Stream` still takes a plain callback, the one deliberate
+  leaf-level exception `Runner`'s default implementation adapts).
+  `probe` declares its own identically-shaped `Judge` since it sits below
+  `agent` and can't import it back. `judge.go` holds both judgment paths:
+  `judgePre` (mutability + scope risk, before confirm) and `judgePost`
+  (result status + render kind + attention + goal-achieved, after
+  execution), each with a heuristic fallback when no Judge is wired, plus
+  the `NewPreJudgment`/`NewPostJudgment` constructors that centralize
+  their `-1` ("unknown") sentinel defaults. `risk.go`'s `FlagDanger` is a
+  regex safety net that only ever adds confirm emphasis
+  (`Dangerous`/`RiskNote`) — it must never suppress or soften a confirm.
 
 - **`internal/classify`** — `JevJudge`, the HTTP adapter for TypeSafe's Jev,
   plus the question/answer vocabulary types (`State`, `Questions`, `Answers`,
@@ -116,30 +126,114 @@ cmd/detent  →  ui  →  agent  →  propose, shell, classify, usage
   `ScoreQuestion.Levels` is an ordered `[]string` (index = level), matching
   Jev's real wire API.
 
-- **`internal/ui`** — the Bubble Tea TUI. `model.go` defines `Driver`, the
-  narrow surface the UI needs from `*agent.Session` (kept as an interface
-  so UI tests can fake it without a live model endpoint), plus `Model`,
-  `stepRow`/`goalBlock`, and the top-level `Update` dispatcher. `goal_flow.go`
-  sequences propose → confirm → execute → judge as `tea.Cmd`s;
-  `tool_flow.go`/`exec_flow.go`/`save_flow.go` handle the slash-command,
-  streaming, and file-save flows the same way; `keys.go` routes keystrokes.
-  `render_view.go`, `history_view.go`, `confirm_view.go`, `usage_view.go`,
-  and `view.go` render — anything producing display strings from `Model`
-  state lives in a `_view.go` file. Sub-packages `slash` (slash-command parsing/autocomplete),
-  `status` (usage/timing formatting), `tabular` (table rendering for
-  ps/df/ls-shaped output), `markdown` (glamour wrapper), `theme`, and
-  `island` are each self-contained rendering/parsing helpers with their own
-  tests.
+- **`internal/resolver`** — the translation layer between `ui`'s
+  vocabulary and the core harness's: `Resolver` wraps `*agent.Session` and
+  implements `ui.Driver`, translating every value each way in `convert.go`
+  (`stream.go` does the same for the one streaming callback). It's the
+  only package importing both `ui` and `agent` — neither of them may
+  import it back. `cmd/detent` wires `resolver.New(sess)` into `ui.New`;
+  the headless `-goal` path talks to `*agent.Session` directly and never
+  touches `resolver`/`ui` at all. `ReadFile`/`SaveFile` also wrap
+  `internal/fileio`'s `Read`/`Write` here, so `ui` never imports `fileio`
+  either. `GoalResult`/`StepHandle`'s `Ref any` field is how a `ui.Driver`
+  caller's handle round-trips back to the live `*agent.GoalResult`/
+  `*usage.Step` resolver needs on the next call — an opaque token `ui`
+  only ever threads through, never inspects.
+
+- **`internal/ui`** — the Bubble Tea TUI, decoupled from the core harness
+  entirely: it imports nothing under `internal/*` except its own
+  subpackages. `driver.go` declares `Driver` (the narrow surface the UI
+  needs) plus every DTO its methods use (`Proposal`, `PreJudgment`,
+  `PostJudgment`, `ExecutedCommand`, `GoalResult`, `Result`, `Usage`,
+  `GoalStats`/`StepStats`, `RenderKind`/`EndReason` and their constants) —
+  flat mirrors of `agent`'s/`usage`'s/`propose`'s/`shell`'s own types,
+  owned by `ui` so a change to any of those doesn't ripple into `ui`
+  directly; `internal/resolver` is the one thing that imports both sides
+  to translate between them. `model.go` holds `Model`, `stepRow`/
+  `goalBlock`, and the top-level `Update` dispatcher. `goal_flow.go`
+  sequences propose → confirm → execute → judge as `tea.Cmd`s (`approve`/
+  `decline` call `Driver.RecordStep` once rather than touching usage
+  bookkeeping themselves — `ui` has no way to reach `usage.Step`'s
+  mutators at all now); `tool_flow.go`/`exec_flow.go`/`save_flow.go`
+  handle the slash-command, streaming, and file-save flows the same way;
+  `keys.go` routes keystrokes. `render_view.go`, `history_view.go`,
+  `confirm_view.go`, `usage_view.go`, and `view.go` render — anything
+  producing display strings from `Model` state lives in a `_view.go`
+  file. Sub-packages `slash` (slash-command parsing/autocomplete),
+  `status` (usage/timing formatting — switches on the same Status*/
+  RenderKind string values `ui.PostJudgment` carries, duplicated as
+  literals rather than importing anything to get them), `tabular` (table
+  rendering for ps/df/ls-shaped output), `markdown` (glamour wrapper),
+  `theme`, `tree`, `layout`, and `island` are each self-contained
+  rendering/parsing helpers with their own tests; `editor` wraps a
+  `textarea` around content the caller already read (it doesn't read
+  files itself, only diffs in-memory content via `go-udiff` directly).
 
 - **`internal/usage`** — timing and token accounting (`Tracker` → `Goal` →
-  `Step`), independent of everything else; `agent` and `ui` both just
-  attach measurements to it.
+  `Step`), independent of everything else; `agent` attaches measurements
+  to it directly, `resolver` translates it into `ui`'s own `GoalStats`/
+  `StepStats`/`Snapshot` for the `/usage` overlay and status bar — `ui`
+  never sees a `usage.*` type.
 
 - **`internal/config`** — `Load` (file) and `Resolve` (layers flags > env >
   file > built-ins, field by field via `Config.apply`). Both `propose` and
   `config` independently declare the same LM Studio defaults
   (`http://localhost:1234/v1`, `prism-ml/bonsai-27b`) — that duplication is
   intentional so `propose` has no dependency on `config`.
+
+### Keeping `ui` and `agent` in sync
+
+`ui`'s DTOs (`internal/ui/driver.go`) are hand-mirrored from `agent`'s/
+`usage`'s/`propose`'s/`shell`'s own types, not aliases of them — that's
+the whole point of the split, but it means nothing forces a change on
+one side to reach the other. Two different failure modes, two different
+defenses:
+
+- **Interface-shape drift** (a `Driver` method added, removed, or its
+  signature changed) — the compiler catches this for you. `resolver.go`
+  has `var _ ui.Driver = (*Resolver)(nil)`, so `Resolver` fails to build
+  until every method exists with the right signature; `ui/testutil_test.go`'s
+  `fakeDriver` has to satisfy the same interface, so `ui`'s own tests
+  won't build either until its fake is updated too. No discipline
+  required here — just fix the compile errors in the order they appear.
+- **Field-level drift** (`agent` grows a field nothing forces you to
+  surface) — this one compiles fine either way, so it's on you. The
+  rule: whenever a change touches a type in `agent`/`usage`/`propose`/
+  `shell` that has a mirror in `ui/driver.go`, go decide on purpose in
+  `internal/resolver/convert.go` whether the new data should cross the
+  boundary — don't let it be discovered later as "why isn't X showing in
+  the UI." `internal/resolver/driver_test.go` drives a real
+  `*agent.Session` through a real `*Resolver` and asserts on the DTOs
+  that come out — run it right after any `agent` change, before touching
+  `ui` at all, as the fastest signal the translation still holds.
+
+### Adding a new feature
+
+Start from what the feature actually is, and touch only the layers it
+needs:
+
+- **Pure UI** (a keybinding, a different rendering of data a DTO already
+  carries, a new dialog) — `internal/ui` only.
+- **Pure core logic** (a new probe, a heuristic tweak, a proposer
+  change) — `internal/agent` only, with `agent`'s own tests. It doesn't
+  need to reach `ui` until something is meant to surface there.
+- **Anything crossing the boundary** (new judgment data, a new Driver
+  capability, a new terminal state) — follow the ripple top-down, one
+  layer at a time, each with its own test before moving to the next:
+  1. `agent` — add the field/method; prove it in `internal/agent`'s own tests.
+  2. `resolver/convert.go` (and `driver.go` if it's a new method) —
+     mirror the change; add/extend a case in `driver_test.go` proving it
+     survives the round trip through a real `*agent.Session`.
+  3. `ui/driver.go` — add the field to the matching DTO, or the new
+     method to `Driver` (which forces `fakeDriver` to implement it too —
+     the compiler won't let this step be skipped).
+  4. `ui` — wire the real code to use the new data/method; add a test
+     against `fakeDriver` in whichever `_test.go` file already covers
+     that flow.
+
+  Six small, mechanical edits beat one tangled one: a mistake in step 1
+  shows up as an `agent` test failure, not a mysterious blank field
+  three layers away in the TUI.
 
 ## Conventions
 
@@ -151,7 +245,7 @@ cmd/detent  →  ui  →  agent  →  propose, shell, classify, usage
 - `docs/` is gitignored — planning documents live there but are never
   committed to the repo.
 - Confirm is conditional on `PreJudgment.Dangerous`, not universal — see the
-  `ConfirmFunc` doc comment in `internal/agent/session.go`. A nil
-  `ConfirmFunc` still fails the whole session closed even for an all-safe
-  goal, since relying on "it happens not to be called" isn't a substitute
-  for wiring one at all.
+  `Confirmer` doc comment in `internal/agent/session.go`. A nil `Confirmer`
+  still fails the whole session closed even for an all-safe goal, since
+  relying on "it happens not to be called" isn't a substitute for wiring
+  one at all.
