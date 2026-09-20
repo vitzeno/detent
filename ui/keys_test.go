@@ -165,11 +165,12 @@ func TestUI_SlashEntryWhileBusy(t *testing.T) {
 	m = nm.(Model)
 	require.Equal(t, "/a", m.prompt.Value())
 
-	// Partial + enter completes instead of submitting.
+	// Enter runs the highlighted entry outright — one press, not two.
 	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = nm.(Model)
-	require.Equal(t, "/abort ", m.prompt.Value())
-	require.Empty(t, m.blocks)
+	require.Empty(t, m.prompt.Value(), "running a command clears the box")
+	require.Empty(t, m.blocks, "/abort opens no block")
+	require.Equal(t, "nothing running", m.notice, "the fixture has no command in flight")
 }
 
 func TestUI_OutputNavMovesTableCursor(t *testing.T) {

@@ -175,10 +175,10 @@ func (m Model) slashKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		m.prompt.Move(1)
 		return m, nil, true
 	case "enter":
-		if !m.prompt.IsExactCommand() {
-			next, cmd := m.acceptSlash()
-			return next, cmd, true
-		}
+		// Enter runs the highlighted entry; tab is what completes
+		// without running. Completing on enter meant every command
+		// took two presses, which is not how the dropdown reads.
+		m.prompt.Accept()
 		next, cmd := m.startGoal()
 		return next, cmd, true
 	case "esc":

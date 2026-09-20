@@ -104,6 +104,13 @@ func (m Model) statusHint() string {
 		}
 		return "[tab] input · [↑/↓] inside · " + esc + " · [q] quit"
 	case ownerHistory:
+		// While a goal is in flight the input is blurred and focus sits
+		// here, so this is the only hint a waiting human sees — esc is
+		// the one thing that stops it, and omitting it read as "you
+		// can't abort a thinking model".
+		if m.abort != nil {
+			return "[esc] abort · [tab] output · [↑/↓] move · [space] expand · [q] quit"
+		}
 		return "[tab] output · [↑/↓] move · [space] expand · [enter] expand · [q] quit"
 	case ownerBusy:
 		if m.prompt.Open() {

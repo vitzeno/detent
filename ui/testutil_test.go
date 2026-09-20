@@ -136,7 +136,10 @@ func (f *fakeDriver) Rollback(_ context.Context, res *GoalResult, step int) (boo
 	if f.rollbackErr != nil {
 		return f.rollbackOK, f.rollbackErr
 	}
-	res.Commands = res.Commands[:step]
+	// step itself is undone, so it goes too — same truncation as
+	// resolver.Rollback. This read [:step] and so left one command more
+	// than the real driver does.
+	res.Commands = res.Commands[:step-1]
 	return true, nil
 }
 

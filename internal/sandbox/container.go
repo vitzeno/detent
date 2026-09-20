@@ -47,6 +47,15 @@ const defaultRuntime = "io.containerd.runc.v2"
 // Container is a session-scoped containerd-backed agent.Runner. It
 // never imports host or agent: Run returns capture's own aliased
 // types, and Snapshot/Rollback (snapshot.go) use plain string IDs.
+//
+// There is no external network: the OCI default spec gives the
+// container a fresh network namespace with only loopback in it, and
+// nothing here attaches it to anything. DNS and any fetch therefore
+// fail inside the sandbox. Giving it real connectivity means wiring
+// go-cni against CNI plugin binaries installed on whatever host runs
+// containerd (the colima VM on macOS) — a piece of work in its own
+// right, not a flag. A WithNetwork option used to sit in options.go
+// setting a field nothing read, which made this look configurable.
 type Container struct {
 	socket     string
 	namespace  string
@@ -54,7 +63,6 @@ type Container struct {
 	mountPoint string
 	limit      int
 	runtime    string
-	network    bool
 
 	client    *containerd.Client
 	img       containerd.Image

@@ -173,3 +173,27 @@ func TestUI_WideLinesCannotPushOutSessionBar(t *testing.T) {
 	require.Contains(t, v, "detent v2", "session bar stays on screen")
 	require.Contains(t, v, "…", "cuts marked visibly")
 }
+
+// TestUI_ThinkingHintOffersAbort: starting a goal blurs the input and
+// moves focus to history, so the history hint is the only thing a
+// waiting human sees. esc has always aborted — the hint just never
+// said so, which read as "you can't abort a thinking model".
+func TestUI_ThinkingHintOffersAbort(t *testing.T) {
+	m := testUIModel()
+	require.NotContains(t, m.statusHint(), "abort", "nothing running yet")
+
+	m.prompt.SetValue("find big files")
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = nm.(Model)
+
+	require.True(t, m.waiting)
+	require.NotNil(t, m.abort, "a goal in flight must be cancellable")
+	require.Contains(t, m.statusHint(), "[esc] abort")
+
+	// And esc really does reach the cancel func.
+	aborted := false
+	m.abort = func() { aborted = true }
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	require.True(t, aborted)
+	require.Nil(t, nm.(Model).abort)
+}

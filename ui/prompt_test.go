@@ -151,15 +151,21 @@ func TestSlashDropdown_NavigateAndEsc(t *testing.T) {
 	m = nm.(Model)
 	require.Equal(t, 0, m.prompt.cursor)
 
-	// Down on the completed entry accepts it instead of submitting.
+	// Enter on a partial match runs the highlighted entry, rather than
+	// completing it and making the human press enter a second time.
 	m = typeRune(testUIModel(), '/')
 	m = typeRune(m, 'a')
 	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = nm.(Model)
-	require.Equal(t, "/abort ", m.prompt.Value())
-	require.Empty(t, m.blocks, "partial match must complete, not run")
+	require.Empty(t, m.prompt.Value(), "running a command clears the box")
+	require.Equal(t, "nothing running", m.notice, "/abort ran")
 
-	// Esc closes the dropdown and keeps the text.
+	// Esc closes the dropdown and keeps the text; tab is what completes.
+	m = typeRune(testUIModel(), '/')
+	m = typeRune(m, 'a')
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = nm.(Model)
+	require.Equal(t, "/abort ", m.prompt.Value())
 	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	m = nm.(Model)
 	require.Empty(t, m.prompt.matches)

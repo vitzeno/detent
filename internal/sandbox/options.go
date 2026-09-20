@@ -34,10 +34,6 @@ func WithRuntime(name string) Option {
 	return func(c *Container) { c.runtime = name }
 }
 
-func WithNetwork(enabled bool) Option {
-	return func(c *Container) { c.network = enabled }
-}
-
 // NewContainer builds a Container. Call Start before Run.
 func NewContainer(opts ...Option) *Container {
 	c := &Container{
