@@ -27,11 +27,9 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// DefaultImage is Ubuntu (GNU coreutils, not alpine's BusyBox) plus
-// git, curl and ca-certificates already installed, so a goal has them
-// even under NetworkNone where apt can't reach anything. Fully
-// qualified since containerd's client doesn't expand Docker Hub
-// shorthand.
+// DefaultImage is Ubuntu (GNU coreutils, not BusyBox) with git and
+// curl already in it, so goals have them under NetworkNone too.
+// Fully qualified: containerd's client doesn't expand Hub shorthand.
 const DefaultImage = "docker.io/library/buildpack-deps:24.04-scm"
 
 // Network postures. Host means the daemon's host: the colima VM on
@@ -56,13 +54,12 @@ const defaultSnapshotter = "overlayfs"
 // doesn't default it for us the way some client versions do.
 const defaultRuntime = "io.containerd.runc.v2"
 
-// Container is a session-scoped containerd-backed agent.Runner. It
-// never imports host or agent: Run returns capture's own aliased
-// types, and Snapshot/Rollback (snapshot.go) use plain string IDs.
+// Container is a session-scoped containerd-backed agent.Runner,
+// satisfied structurally: it imports neither host nor agent.
 //
 // An isolated bridge network would need CNI, which go-cni can't drive
-// from macOS: it shells out to plugins and needs a netns on the
-// daemon's kernel. Same problem as the cio FIFOs.
+// from macOS — it needs a netns on the daemon's kernel, same problem
+// as the cio FIFOs.
 type Container struct {
 	socket     string
 	namespace  string

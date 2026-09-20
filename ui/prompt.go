@@ -9,23 +9,8 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-const (
-	// maxInputRows caps how far the input box grows; past it the
-	// textarea scrolls its own content instead.
-	maxInputRows = 10
-	// inputPromptW is the width SetPromptFunc reserves for "❯ ".
-	inputPromptW = 2
-	// inputFrameW is the island's border and padding around the text.
-	inputFrameW = 4
-	// inputMarkW is the pane-mark gutter ("● ") to the left of the
-	// box, which every row has to clear, not just the first.
-	inputMarkW = 2
-)
-
-// prompt owns everything the human types before a goal starts: the
-// input box and the slash dropdown above it. Nothing outside reaches
-// into the textarea or the match list, so the rules about keeping
-// those two in step live here rather than in seven other files.
+// prompt is the input box and the slash dropdown above it, owned
+// together so nothing else can put the two out of step.
 type prompt struct {
 	input   textarea.Model
 	matches []slashCmd
@@ -202,3 +187,16 @@ func (p prompt) View(mark string) string {
 	}
 	return b.String()
 }
+
+const (
+	// maxInputRows caps how far the input box grows; past it the
+	// textarea scrolls its own content instead.
+	maxInputRows = 10
+	// inputPromptW is the width SetPromptFunc reserves for "❯ ".
+	inputPromptW = 2
+	// inputFrameW is the island's border and padding around the text.
+	inputFrameW = 4
+	// inputMarkW is the pane-mark gutter ("● ") to the left of the
+	// box, which every row has to clear, not just the first.
+	inputMarkW = 2
+)

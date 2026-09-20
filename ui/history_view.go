@@ -138,10 +138,9 @@ func (m Model) goalBanner(b *goalBlock) []string {
 	}
 }
 
-// judgeLines reports Jev's own read on the goal, whatever it says.
-// It used to speak up only to disagree, which meant silence covered
-// both "it agrees" and "nothing judged this" — the two readings a
-// second opinion exists to tell apart.
+// judgeLines reports Jev's read on the goal whatever it says. Speaking
+// up only to disagree made silence mean both "it agrees" and "nothing
+// judged this" — the two things a second opinion exists to separate.
 func (m Model) judgeLines(b *goalBlock, width int) []string {
 	if !b.judge.scored {
 		return nil

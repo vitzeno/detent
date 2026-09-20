@@ -94,10 +94,8 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(textarea.Blink, welcomeTick())
 }
 
-// Update routes the message, then re-syncs the panes once. Handlers
-// mutate state and never resize or re-render themselves: the old
-// "remember to call sizeViewport" rule was invisible at the call site
-// and easy to miss, so it lives here instead.
+// Update routes the message, then re-syncs the panes once, so no
+// handler has to remember to resize or re-render.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	next, cmd := m.route(msg)
 	updated, ok := next.(Model)

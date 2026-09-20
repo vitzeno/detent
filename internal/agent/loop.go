@@ -75,12 +75,10 @@ func (s *Session) ProposeNext(ctx context.Context, goal string) (propose.Proposa
 	return p, s.judgePre(ctx, goal, p.Command), used, nil
 }
 
-// reaskAfterEmptyDone handles a goal declared finished before anything
-// ran for it. The transcript spans the whole session, so the model can
-// answer a new goal from an older goal's output — which describes the
-// past, not now. The nudge is passed for this call only, never appended
-// to the transcript, and it asks once: a model that insists is taken at
-// its word rather than looped.
+// reaskAfterEmptyDone pushes back on a goal declared finished before
+// anything ran for it — almost always an older goal's output being
+// mistaken for this one's. The nudge is passed for this call only and
+// asked once, so a model that insists isn't looped.
 func (s *Session) reaskAfterEmptyDone(ctx context.Context, first usage.Usage) (propose.Proposal, usage.Usage, error) {
 	nudged := append(append([]propose.Message{}, s.Transcript...), propose.Message{
 		Role: propose.RoleUser,

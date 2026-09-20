@@ -65,8 +65,8 @@ Package dependency flow — `ui` and `agent` never import each other;
 ```
 cmd/detent  →  ui, resolver, agent, classify, config, routing, propose (Ping only)
 resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio
-ui          →  its own subpackages only (editor, slash, status, tabular,
-                markdown, theme, island, tree, layout)
+ui          →  its own subpackages only (editor, welcome, render, status,
+                tabular, markdown, theme, island, tree, layout)
 agent       →  propose, host, classify, usage
 host        →  capture
 sandbox     →  capture (never host or agent)
@@ -253,24 +253,28 @@ routing     →  agent, sandbox
   bookkeeping themselves — `ui` has no way to reach `usage.Step`'s
   mutators at all now); `tool_flow.go`/`exec_flow.go`/`save_flow.go`
   handle the slash-command, streaming, and file-save flows the same way;
-  `keys.go` routes keystrokes. Anything producing display strings from
-  `Model` state lives in a `_view.go` file: `view.go` composes the
-  screen, `layout_view.go` does the sizing maths, `chrome_view.go` the
-  bars and pane headers, `detail_view.go` the output pane, plus
-  `history_view.go`, `render_view.go`, `confirm_view.go`,
-  `usage_view.go` and `welcome_view.go`. `welcome_view.go` fills the output pane before
-  any row exists (host/sandbox facts, session counters, and a stepped
-  detent animation); it's a pane state, not a `RenderKind`, since
-  those classify a finished command's output. Its `SessionInfo` comes
-  from `cmd/detent`, so `ui` still imports no `config` or `sandbox`. Sub-packages `slash` (slash-command parsing/autocomplete),
-  `status` (usage/timing formatting — switches on the same Status*/
-  RenderKind string values `ui.PostJudgment` carries, duplicated as
-  literals rather than importing anything to get them), `tabular` (table
-  rendering for ps/df/ls-shaped output), `markdown` (glamour wrapper),
-  `theme`, `tree`, `layout`, and `island` are each self-contained
-  rendering/parsing helpers with their own tests; `editor` wraps a
-  `textarea` around content the caller already read (it doesn't read
-  files itself, only diffs in-memory content via `go-udiff` directly).
+  `keys.go` decides what a keystroke means and `nav.go` what it does.
+  Anything producing display strings from `Model` state lives in a
+  `_view.go` file: `view.go` composes the screen, `layout_view.go`
+  does the sizing maths, `chrome_view.go` the bars and pane headers,
+  `detail_view.go` the output pane, plus `history_view.go`,
+  `confirm_view.go` and `usage_view.go`.
+
+  What can leave the package is what takes values rather than a
+  `Model` — Go keeps a method in its receiver's package, so the ~80
+  `func (m Model)` ones can only move by first becoming their own
+  type, the way `prompt` did. Sub-packages: `welcome` (the boot pane,
+  handed a `welcome.Facts` so it reads nothing of the harness),
+  `render` (output transforms — diff/error colouring, JSON, line
+  numbers), `status` (usage/timing formatting — switches on the same
+  Status*/RenderKind string values `ui.PostJudgment` carries,
+  duplicated as literals rather than importing anything to get them),
+  `tabular` (ps/df/ls-shaped output), `markdown` (glamour wrapper),
+  `layout` (`Split` and `Truncate`), `theme`, `tree`, and `island`.
+  Each owns its own styles off `theme` and is rebuilt by
+  `ui.RefreshStyles`; `editor` wraps a `textarea` around content the
+  caller already read (it doesn't read files itself, only diffs
+  in-memory content via `go-udiff` directly).
 
 - **`internal/usage`** — timing and token accounting (`Tracker` → `Goal` →
   `Step`), independent of everything else; `agent` attaches measurements

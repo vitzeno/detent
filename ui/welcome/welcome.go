@@ -38,12 +38,9 @@ type Facts struct {
 	MachineTime time.Duration
 }
 
-// Lines renders the pane at width by height, with frame advancing the
-// animation.
-//
-// Sections are dropped from the bottom when the pane is too short,
-// rather than letting the caller cut them mid-row: the banner and
-// where commands run are what a human needs before typing anything.
+// Lines renders the pane at width by height, frame advancing the
+// animation. Sections drop from the bottom when it's too short to fit
+// them, since a cut mid-row reads worse than one section fewer.
 func Lines(f Facts, width, height, frame int) []string {
 	sections := [][]string{
 		banner(f, width, frame, height < compactBelow),

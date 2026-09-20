@@ -61,11 +61,10 @@ func (c *Container) Rollback(ctx context.Context, id string) error {
 	return nil
 }
 
-// leased puts the session's lease on ctx, so every snapshot made under
-// it is rooted from birth. containerd's GC keeps a snapshot only while
-// a container or lease references it, and both the checkpoints and the
-// gap between preparing an active snapshot and pointing the container
-// at it are otherwise unreferenced — a pass landing there took them.
+// leased roots every snapshot made under ctx in the session's lease.
+// containerd's GC collects anything no container or lease references,
+// which caught both the checkpoints and the gap between preparing an
+// active snapshot and pointing the container at it.
 func (c *Container) leased(ctx context.Context) context.Context {
 	if c.lease == nil {
 		return ctx

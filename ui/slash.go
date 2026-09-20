@@ -76,10 +76,9 @@ func lookupSlash(input string) (slashCmd, bool) {
 	return slashCmd{}, false
 }
 
-// slashWindow is the slice of matches to show, derived from the cursor
-// rather than stored: an offset kept alongside the cursor is one more
-// pair that can disagree. The cursor rides the bottom edge once the
-// list has scrolled, and the window stops at the last entry.
+// slashWindow is the visible slice, derived from the cursor rather
+// than stored beside it. The cursor rides the bottom edge once the
+// list has scrolled.
 func slashWindow(n, cursor int) (start, end int) {
 	if n <= maxSlashRows {
 		return 0, n

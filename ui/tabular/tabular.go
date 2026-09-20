@@ -105,9 +105,9 @@ func Styles() table.Styles {
 // headerRows is the header line plus its bottom border.
 const headerRows = 2
 
-// Build renders rows at most maxHeight lines tall. Two silent bubbles-v2
+// Build renders rows at most maxHeight tall. Two silent bubbles-v2
 // traps: the row viewport starts zero-wide (no width, no rows), and
-// SetHeight subtracts the current header's height, so styles go first.
+// SetHeight subtracts the current header, so styles go first.
 func Build(columns []table.Column, rows []table.Row, cursor, maxHeight, width int, focused bool) table.Model {
 	t := table.New(
 		table.WithColumns(columns),
