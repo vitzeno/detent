@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -27,8 +26,9 @@ func (m Model) startGoal() (tea.Model, tea.Cmd) {
 	b := &goalBlock{goal: goal}
 	m.blocks = append(m.blocks, b)
 	m.cur = b
-	m.nav.focus = focusHistory
-	m.prompt.Blur()
+	// The input keeps focus while the goal runs, so /abort stays
+	// typeable. Blurring it sent owner() down the history branch, and
+	// busyKey — written for exactly this — was never reached.
 	m.waiting = true
 	m.trackNewest()
 	ctx, cancel := context.WithCancel(m.ctx)
@@ -99,7 +99,7 @@ func (m Model) onPropose(msg proposeMsg) (tea.Model, tea.Cmd) {
 		m.cur.ended = true
 		m.cur.end = m.cur.res.End
 		m.cur.summary = msg.proposal.Summary
-		m.cur.judgeNote = completionDisagreement(m.cur)
+		m.cur.judge = goalVerdict(m.cur)
 		m.cur = nil
 		m = m.backToInput()
 		return m, nil
@@ -158,19 +158,18 @@ func (m Model) backToInput() Model {
 	return m
 }
 
-func completionDisagreement(b *goalBlock) string {
+// goalVerdict is the last judged step's read on the goal. Jev scores
+// goal-achieved after every command, so the most recent one is its
+// view of where the goal actually ended up.
+func goalVerdict(b *goalBlock) goalJudgement {
 	for i := len(b.steps) - 1; i >= 0; i-- {
 		r := b.steps[i]
 		if r.cmd.ec == nil || r.cmd.ec.Post == nil {
 			continue
 		}
-		p := r.cmd.ec.Post
-		if p.FromJudge && p.GoalAchieved >= 0 {
-			if p.GoalAchieved < 0.5 {
-				return fmt.Sprintf("jev second opinion: goal looks unmet (%.2f)", p.GoalAchieved)
-			}
-			return ""
+		if p := r.cmd.ec.Post; p.FromJudge && p.GoalAchieved >= 0 {
+			return goalJudgement{scored: true, score: p.GoalAchieved}
 		}
 	}
-	return ""
+	return goalJudgement{}
 }

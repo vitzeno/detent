@@ -239,7 +239,12 @@ routing     →  agent, sandbox
   nothing else reaches into the textarea or the match list.
   `slash.go` is the slash-command registry, and each entry carries its
   own handler so a command can't be listed without working or work
-  without being listed. `welcome_view.go` is derived state, not a mode:
+  without being listed; the dropdown scrolls once the registry
+  outgrows `maxSlashRows`, its window derived from the cursor rather
+  than stored beside it. The input keeps focus while a goal runs
+  (`owner()` returns `ownerBusy`), which is what makes `/abort`
+  typeable mid-run — blurring it sent every key down the history
+  branch and `busyKey` was unreachable. `welcome_view.go` is derived state, not a mode:
   it shows whenever no row is focused, which is why `/new` only has to
   drop the blocks to bring it back.
   `goal_flow.go`

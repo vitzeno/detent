@@ -10,14 +10,17 @@ import (
 // Model owns the blocks; these types own nothing but their own data.
 
 type goalBlock struct {
-	goal      string
-	res       *GoalResult // nil for a tool block
-	steps     []*stepRow
-	ended     bool
-	end       EndReason
-	summary   string
-	judgeNote string
-	fatalErr  error
+	goal    string
+	res     *GoalResult // nil for a tool block
+	steps   []*stepRow
+	ended   bool
+	end     EndReason
+	summary string
+	// judge is Jev's read on whether this goal was actually met. Kept
+	// as the score rather than a rendered line, so the banner styles
+	// it at render time and a theme change follows.
+	judge    goalJudgement
+	fatalErr error
 
 	// tool names a slash-command invocation. Empty for a real goal.
 	tool string
@@ -62,6 +65,14 @@ type toolState struct {
 	tree        *tree.Model // toolKind == "tree"
 	usageCursor int         // toolKind == "usage"
 	usageExpand int
+}
+
+// goalJudgement is the second opinion on a finished goal. scored is
+// false when no Judge was wired, or it declined to answer — which is
+// different from a low score and must not read like one.
+type goalJudgement struct {
+	scored bool
+	score  float64
 }
 
 // rowKind returns the judged kind, or "" while pending.

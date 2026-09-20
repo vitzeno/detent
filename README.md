@@ -101,6 +101,10 @@ containerd over TCP and pass `-sandbox-socket`.
 - Without a Jev key configured, only the regex backstop applies.
 - The session bar always says where commands run: `sandbox ●` or
   `host ⚠ unsandboxed`.
+- Every finished goal carries Jev's own verdict on it — `jev · goal met (0.98)`,
+  `only partly met`, or `looks unmet` — rather than only speaking up to disagree.
+  Nothing is shown when no judge is wired, which is a different thing from a low
+  score.
 
 ## Undoing a step
 
@@ -114,8 +118,10 @@ match so the model doesn't keep reasoning from undone work.
 | Key                    | Does                                                                               |
 | ---------------------- | ---------------------------------------------------------------------------------- |
 | `enter`                | run the goal in the input box                                                      |
-| `alt+enter` / `ctrl+j` | insert a newline instead of submitting                                             |
+| `shift+enter`          | insert a newline (needs a Kitty-protocol terminal; the status line says which)     |
+| `alt+enter` / `ctrl+j` | insert a newline anywhere                                                          |
 | `/`                    | open the command list (`/rollback`, `/tree`, `/usage`, `/new`, `/abort`, `/help`, `/quit`) |
+| `esc`                  | abort the running goal — so does `/abort`, which stays typeable mid-run            |
 | `tab`                  | cycle input → history → output                                                     |
 | `↑` / `↓`              | move through history, or scroll the focused pane                                   |
 | `space`                | expand the focused row's output                                                    |

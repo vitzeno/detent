@@ -178,7 +178,50 @@ func TestSlashDropdown_RendersAboveInput(t *testing.T) {
 	v := m.View().Content
 	assert.Contains(t, v, "/quit")
 	assert.Contains(t, v, "/abort")
-	assert.Contains(t, v, "/help")
+}
+
+// The registry outgrew the dropdown, so it scrolls. An entry that is
+// merely out of view must say so rather than look like one that isn't
+// there — and walking down to it must bring it on screen.
+func TestSlashDropdown_ScrollsToReachEveryCommand(t *testing.T) {
+	require.Greater(t, len(slashCommands), maxSlashRows,
+		"this test only means something while the registry is taller than the window")
+
+	m := typeRune(testUIModel(), '/')
+	last := slashCommands[len(slashCommands)-1]
+
+	v := plain(m.View().Content)
+	assert.NotContains(t, v, last.Desc, "the tail starts out of view")
+	assert.Contains(t, v, "more", "and the dropdown says what it is hiding")
+
+	for range len(slashCommands) {
+		nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+		m = nm.(Model)
+	}
+	assert.Equal(t, len(slashCommands)-1, m.prompt.cursor, "down stops at the last entry")
+
+	v = plain(m.View().Content)
+	assert.Contains(t, v, last.Desc, "scrolled to, the last entry is on screen")
+	assert.Contains(t, v, "⌃", "and what is now above is counted")
+
+	// Enter still runs whatever the cursor is on, scrolled or not.
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	assert.NotContains(t, nm.(Model).notice.text, "unknown command")
+}
+
+func TestSlashWindow_KeepsTheCursorInView(t *testing.T) {
+	const n = 10
+	for cursor := range n {
+		start, end := slashWindow(n, cursor)
+		assert.LessOrEqual(t, end-start, maxSlashRows, "never taller than the cap")
+		assert.GreaterOrEqual(t, cursor, start, "cursor %d fell off the top", cursor)
+		assert.Less(t, cursor, end, "cursor %d fell off the bottom", cursor)
+		assert.LessOrEqual(t, end, n)
+	}
+	// A list that fits is never windowed.
+	start, end := slashWindow(3, 2)
+	assert.Equal(t, 0, start)
+	assert.Equal(t, 3, end)
 }
 
 // TestSlashDropdown_RowsAlign guards the whole rendered view, not just

@@ -151,8 +151,16 @@ func (p prompt) NewlineKey() string {
 	return "alt+enter"
 }
 
-// DropdownRows is capped so the dropdown can't eat the history pane.
-func (p prompt) DropdownRows() int { return min(len(p.matches), maxSlashRows) }
+// DropdownRows is how tall the dropdown renders: the visible slice,
+// plus the row naming what's scrolled out of view.
+func (p prompt) DropdownRows() int {
+	start, end := slashWindow(len(p.matches), p.cursor)
+	rows := end - start
+	if rows < len(p.matches) {
+		rows++
+	}
+	return rows
+}
 
 // Rows is how many rows the whole prompt occupies, dropdown included.
 func (p prompt) Rows() int { return p.DropdownRows() + p.input.Height() }

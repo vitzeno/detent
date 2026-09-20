@@ -3,6 +3,8 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -13,30 +15,115 @@ import (
 // Tests for goal_flow.go: the goal lifecycle state machine (start,
 // propose, approve/decline, abort, done).
 
-func TestCompletionDisagreement(t *testing.T) {
-	low := PostJudgment{FromJudge: true, GoalAchieved: 0.2}
-	b := &goalBlock{steps: []*stepRow{{cmd: cmdState{ec: &ExecutedCommand{Post: &low}}}}}
-	require.Contains(t, completionDisagreement(b), "0.20")
+// Jev reports on every goal, not only the ones it disagrees with.
+// Silence used to cover both "it agrees" and "nothing judged this",
+// which are the two readings a second opinion exists to tell apart.
+func TestGoalVerdict_ReportsEveryJudgedGoal(t *testing.T) {
+	judged := func(score float64, fromJudge bool) *goalBlock {
+		p := PostJudgment{FromJudge: fromJudge, GoalAchieved: score}
+		return &goalBlock{steps: []*stepRow{{cmd: cmdState{ec: &ExecutedCommand{Post: &p}}}}}
+	}
+	for _, tc := range []struct {
+		name   string
+		score  float64
+		want   string
+		scored bool
+	}{
+		{"met", 0.92, "goal met", true},
+		{"partly met", 0.62, "only partly met", true},
+		{"unmet", 0.20, "looks unmet", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := judged(tc.score, true)
+			b.judge = goalVerdict(b)
+			require.True(t, b.judge.scored)
 
-	high := PostJudgment{FromJudge: true, GoalAchieved: 0.9}
-	b2 := &goalBlock{steps: []*stepRow{{cmd: cmdState{ec: &ExecutedCommand{Post: &high}}}}}
-	require.Empty(t, completionDisagreement(b2))
+			m := testUIModel()
+			got := plain(strings.Join(m.judgeLines(b, 60), " "))
+			assert.Contains(t, got, tc.want)
+			assert.Contains(t, got, fmt.Sprintf("%.2f", tc.score), "the score itself is shown")
+		})
+	}
 
-	heur := PostJudgment{GoalAchieved: -1}
-	b3 := &goalBlock{steps: []*stepRow{{cmd: cmdState{ec: &ExecutedCommand{Post: &heur}}}}}
-	require.Empty(t, completionDisagreement(b3), "no opinion must not warn")
+	// No judge wired, or it declined: say nothing rather than imply a
+	// low score.
+	heur := judged(-1, false)
+	heur.judge = goalVerdict(heur)
+	assert.False(t, heur.judge.scored)
+	assert.Empty(t, testUIModel().judgeLines(heur, 60))
 }
 
-func TestUI_GoalSubmitMovesFocusToHistory(t *testing.T) {
-	m := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "test-model"})
-	m.layout.width, m.layout.height = 120, 40
+// The verdict reaches the history pane on a finished goal.
+func TestGoalVerdict_ShowsInTheHistoryBanner(t *testing.T) {
+	m := testUIModel()
+	p := PostJudgment{FromJudge: true, GoalAchieved: 0.91}
+	b := &goalBlock{
+		goal: "g", res: &GoalResult{Goal: "g"}, ended: true, end: EndDone, summary: "did it",
+		steps: []*stepRow{{command: "ls", cmd: cmdState{ec: &ExecutedCommand{Command: "ls", Post: &p}}}},
+	}
+	b.judge = goalVerdict(b)
+	m.blocks = []*goalBlock{b}
 	m.sizeViewport()
+
+	v := plain(m.View().Content)
+	assert.Contains(t, v, "did it")
+	assert.Contains(t, v, "jev")
+	assert.Contains(t, v, "0.91")
+}
+
+// Submitting a goal leaves the input focused, which is what keeps
+// /abort typeable while the model is thinking. Blurring it sent
+// owner() down the history branch and busyKey — written for exactly
+// this — was never reached.
+func TestUI_GoalSubmitKeepsTheInputUsable(t *testing.T) {
+	m := testUIModel()
 	m.prompt.SetValue("real goal here")
 	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = nm.(Model)
+
 	require.Len(t, m.blocks, 1)
 	require.Equal(t, "real goal here", m.blocks[0].goal)
-	require.Equal(t, focusHistory, m.nav.focus)
+	require.True(t, m.waiting)
+	assert.Equal(t, focusInput, m.nav.focus)
+	assert.True(t, m.prompt.Focused())
+	assert.Equal(t, ownerBusy, m.owner(), "busyKey owns the keyboard while a goal runs")
+}
+
+// While busy the input takes slash commands and nothing else: /abort
+// has to work, starting a second goal must not.
+func TestUI_AbortIsTypeableWhileThinking(t *testing.T) {
+	m := testUIModel()
+	m.prompt.SetValue("real goal here")
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = nm.(Model)
+
+	aborted := false
+	m.abort = func() { aborted = true }
+
+	for _, r := range "/abort" {
+		m = typeRune(m, r)
+	}
+	require.Equal(t, "/abort", m.prompt.Value(), "slash entry reaches the box while busy")
+
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = nm.(Model)
+	assert.True(t, aborted, "/abort must reach the cancel func")
+	assert.Equal(t, "abort sent", m.notice.text)
+	assert.Len(t, m.blocks, 1, "and must not open a second goal")
+}
+
+// A plain goal typed mid-run is ignored rather than queued or started.
+func TestUI_PlainTypingIsIgnoredWhileThinking(t *testing.T) {
+	m := testUIModel()
+	m.prompt.SetValue("real goal here")
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = nm.(Model)
+
+	for _, r := range "another goal" {
+		m = typeRune(m, r)
+	}
+	assert.Empty(t, m.prompt.Value(), "only / opens the box while a goal is running")
+	assert.Len(t, m.blocks, 1)
 }
 
 // TestUI_StartGoalUpdatesHistoryWindowImmediately locks a bug where

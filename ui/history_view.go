@@ -124,21 +124,42 @@ func (m Model) goalBanner(b *goalBlock) []string {
 	case b.fatalErr != nil:
 		return wrapStyled(styleDanger, "✗ error: "+b.fatalErr.Error(), w)
 	case b.end == EndDone:
-		out := wrapStyled(styleSafe, "✔ "+b.summary, w)
-		if b.judgeNote != "" {
-			out = append(out, wrapStyled(styleCaution, "⚠ "+b.judgeNote, w)...)
-		}
-		return out
+		return append(wrapStyled(styleSafe, "✔ "+b.summary, w), m.judgeLines(b, w)...)
+	case b.end == EndBudget:
+		return append([]string{"  " + styleCaution.Render("⚠ step cap reached — goal not confirmed done")},
+			m.judgeLines(b, w)...)
 	case b.end == EndDeclined:
 		return []string{"  " + styleMuted.Render(fmt.Sprintf("✗ declined — %d command(s) ran", len(b.steps)))}
 	case b.end == EndAborted:
 		return []string{"  " + styleCaution.Render(fmt.Sprintf("⚠ aborted — %d command(s) ran", len(b.steps)))}
-	case b.end == EndBudget:
-		return []string{"  " + styleCaution.Render("⚠ step cap reached — goal not confirmed done")}
 	default:
 		return []string{"  " + styleMuted.Render("ended: "+string(b.end))}
 	}
 }
+
+// judgeLines reports Jev's own read on the goal, whatever it says.
+// It used to speak up only to disagree, which meant silence covered
+// both "it agrees" and "nothing judged this" — the two readings a
+// second opinion exists to tell apart.
+func (m Model) judgeLines(b *goalBlock, width int) []string {
+	if !b.judge.scored {
+		return nil
+	}
+	mark, style, word := "✔", styleSafe, "goal met"
+	switch {
+	case b.judge.score < unmetBelow:
+		mark, style, word = "⚠", styleCaution, "goal looks unmet"
+	case b.judge.score < partlyMetBelow:
+		mark, style, word = "~", styleCaution, "goal only partly met"
+	}
+	return wrapStyled(style, fmt.Sprintf("%s jev · %s (%.2f)", mark, word, b.judge.score), width)
+}
+
+// Where Jev's goal-achieved score stops meaning "done".
+const (
+	unmetBelow     = 0.5
+	partlyMetBelow = 0.8
+)
 
 func previewLines(r *stepRow, width int) []string {
 	src := r.cmd.live

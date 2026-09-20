@@ -36,10 +36,9 @@ var slashCommands = []slashCmd{
 	}},
 }
 
-// maxSlashRows caps the dropdown so it can't eat the history pane.
-// Room for the whole registry: a list that hides its last entry is
-// worse than one row less of history.
-const maxSlashRows = 8
+// maxSlashRows caps how many entries the dropdown shows at once. Past
+// it the list scrolls rather than growing into the history pane.
+const maxSlashRows = 6
 
 // matchSlash returns registry entries with the given input as a
 // prefix. Input must start with "/"; anything else matches nothing.
@@ -77,15 +76,27 @@ func lookupSlash(input string) (slashCmd, bool) {
 	return slashCmd{}, false
 }
 
-// slashDropdown renders the match list, honouring maxSlashRows.
+// slashWindow is the slice of matches to show, derived from the cursor
+// rather than stored: an offset kept alongside the cursor is one more
+// pair that can disagree. The cursor rides the bottom edge once the
+// list has scrolled, and the window stops at the last entry.
+func slashWindow(n, cursor int) (start, end int) {
+	if n <= maxSlashRows {
+		return 0, n
+	}
+	start = min(max(0, cursor-maxSlashRows+1), n-maxSlashRows)
+	return start, start + maxSlashRows
+}
+
+// slashDropdown renders the visible slice of the match list, with a
+// count of what's scrolled out of view so a hidden entry can't be
+// mistaken for one that doesn't exist.
 func slashDropdown(cmds []slashCmd, cursor int) string {
+	start, end := slashWindow(len(cmds), cursor)
 	var b strings.Builder
-	for i, c := range cmds {
-		if i >= maxSlashRows {
-			break
-		}
+	for i, c := range cmds[start:end] {
 		mark, style := "  ", styleGoal
-		if i == cursor {
+		if start+i == cursor {
 			mark, style = "▸ ", styleRowCursor
 		}
 		// Pad the plain name before styling: padding an already
@@ -94,5 +105,24 @@ func slashDropdown(cmds []slashCmd, cursor int) string {
 		label := style.Render(fmt.Sprintf("%-10s", c.Name))
 		fmt.Fprintf(&b, "  %s%s %s\n", style.Render(mark), label, styleMuted.Render(c.Desc))
 	}
+	if more := slashMoreLine(len(cmds), start, end); more != "" {
+		b.WriteString(more + "\n")
+	}
 	return b.String()
+}
+
+// slashMoreLine says what the window is hiding, in whichever
+// direction, or "" when the whole list is on screen.
+func slashMoreLine(n, start, end int) string {
+	var parts []string
+	if start > 0 {
+		parts = append(parts, fmt.Sprintf("⌃ %d more", start))
+	}
+	if end < n {
+		parts = append(parts, fmt.Sprintf("⌄ %d more", n-end))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "    " + styleFaint.Render(strings.Join(parts, " · "))
 }
