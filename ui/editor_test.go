@@ -71,7 +71,7 @@ func TestUI_EnterAndExitEditMode(t *testing.T) {
 	assert.True(t, m.save.editing)
 	assert.NotNil(t, cmd, "Focus() returns a blink cmd")
 
-	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = nm.(Model)
 	assert.False(t, m.save.editing, "esc leaves edit mode")
 }
@@ -85,7 +85,7 @@ func TestUI_EditingUpdatesBuffer(t *testing.T) {
 	m.save.editing = true
 	row.editor.Focus()
 
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("X")})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("X")})
 	m = nm.(Model)
 	assert.Contains(t, row.editor.Value(), "X")
 	assert.True(t, row.editor.Dirty())

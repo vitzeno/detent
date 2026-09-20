@@ -17,7 +17,6 @@ func (m Model) startSave() (tea.Model, tea.Cmd) {
 	}
 	m.save.row = r
 	m.mode = modeSaveConfirm
-	m.sizeViewport()
 	return m, nil
 }
 
@@ -25,7 +24,6 @@ func (m Model) confirmSave() (tea.Model, tea.Cmd) {
 	m.mode = modeInput
 	r := m.save.row
 	m.save.row = nil
-	m.sizeViewport()
 	if r == nil || r.editor == nil {
 		return m, nil
 	}
@@ -35,7 +33,6 @@ func (m Model) confirmSave() (tea.Model, tea.Cmd) {
 func (m Model) cancelSave() (tea.Model, tea.Cmd) {
 	m.mode = modeInput
 	m.save.row = nil
-	m.sizeViewport()
 	return m, nil
 }
 

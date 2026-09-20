@@ -32,7 +32,7 @@ func TestUI_GoalSubmitMovesFocusToHistory(t *testing.T) {
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	m.prompt.SetValue("real goal here")
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)
 	require.Len(t, m.blocks, 1)
 	require.Equal(t, "real goal here", m.blocks[0].goal)
@@ -55,7 +55,7 @@ func TestUI_StartGoalUpdatesHistoryWindowImmediately(t *testing.T) {
 func TestUI_StartGoalIsCancellable(t *testing.T) {
 	m := testUIModel()
 	m.prompt.SetValue("some goal")
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)
 	require.NotNil(t, m.abort, "pending propose must be abortable")
 }

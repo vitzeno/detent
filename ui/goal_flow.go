@@ -18,7 +18,6 @@ func (m Model) startGoal() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.prompt.Clear()
-	m.sizeViewport() // the box shrinks back now that it's empty
 	m.notice = ""
 	if strings.HasPrefix(goal, "/") {
 		return m.runSlash(goal)
@@ -115,7 +114,6 @@ func (m Model) onPropose(msg proposeMsg) (tea.Model, tea.Cmd) {
 		return m.approve()
 	}
 	m.mode = modeConfirm
-	m.sizeViewport()
 	return m, nil
 }
 
@@ -132,7 +130,6 @@ func (m Model) approve() (tea.Model, tea.Cmd) {
 	m.mode = modeInput
 	m.waiting = true
 	m.trackNewest()
-	m.sizeViewport()
 
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.abort = cancel
@@ -151,7 +148,6 @@ func (m Model) decline() (tea.Model, tea.Cmd) {
 	m.cur.end = m.cur.res.End
 	m.cur = nil
 	m = m.backToInput()
-	m.sizeViewport()
 	return m, nil
 }
 

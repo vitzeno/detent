@@ -134,7 +134,6 @@ func (m Model) inputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	cmd := m.prompt.Key(msg)
 	m.notice = ""
-	m.sizeViewport()
 	return m, cmd
 }
 
@@ -153,7 +152,6 @@ func (m Model) busyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		(msg.String() == "/" && m.prompt.Value() == "") {
 		cmd := m.prompt.Key(msg)
 		m.notice = ""
-		m.sizeViewport()
 		return m, cmd
 	}
 	return m, nil
@@ -181,7 +179,6 @@ func (m Model) slashKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		return next, cmd, true
 	case "esc":
 		m.prompt.Close()
-		m.sizeViewport()
 		return m, nil, true
 	}
 	return m, nil, false

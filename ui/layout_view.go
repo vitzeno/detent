@@ -10,11 +10,11 @@ var bodyWeights = []int{3, 2} // [output, history]; output gets the larger share
 
 // minPaneWidth is the outer-width floor below which a pane stops being
 // worth rendering as its own island.
-
-// minPaneWidth is the outer-width floor below which a pane stops being
-// worth rendering as its own island.
 const minPaneWidth = 28
 
+// sizeViewport refits every pane to the window and to what the panes
+// currently hold, then re-renders the output. Update calls it once per
+// message, so no handler has to remember to.
 func (m *Model) sizeViewport() {
 	m.prompt.Resize(m.layout.width)
 	// Bottom zone height is measured, not guessed — content varies with
@@ -41,19 +41,12 @@ func (m *Model) sizeViewport() {
 
 // islandOverhead is a titled zone island's non-content lines: header
 // plus top and bottom border.
-
-// islandOverhead is a titled zone island's non-content lines: header
-// plus top and bottom border.
 const islandOverhead = 3
-
-// paneInner matches island.Render's own inner := width-4.
 
 // paneInner matches island.Render's own inner := width-4.
 func paneInner(outer int) int {
 	return max(20, outer-4)
 }
-
-// slashRows caps the dropdown so it can't eat the history pane.
 
 func truncateWidth(s string, w int) string {
 	if w < 4 {

@@ -15,7 +15,6 @@ func (m Model) acceptSlash() (tea.Model, tea.Cmd) {
 	if !m.prompt.Accept() {
 		return m, nil
 	}
-	m.sizeViewport()
 	return m, nil
 }
 
@@ -95,6 +94,5 @@ func (m Model) openTool(kind string, row *stepRow) (tea.Model, tea.Cmd) {
 	m.blocks = append(m.blocks, &goalBlock{tool: kind, ended: true, steps: []*stepRow{row}})
 	m.nav.cursor = len(m.rows()) - 1
 	m.nav.focus = focusOutput
-	m.sizeViewport()
 	return m, nil
 }

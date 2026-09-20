@@ -303,16 +303,16 @@ func (m *Model) trackNewest() {
 }
 
 // Update routes the message, then re-syncs the panes once. Handlers
-// mutate state and never touch the viewport themselves: the old
-// "remember to call refreshViewport" rule was invisible at the call
-// site and easy to miss, so it lives here instead.
+// mutate state and never resize or re-render themselves: the old
+// "remember to call sizeViewport" rule was invisible at the call site
+// and easy to miss, so it lives here instead.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	next, cmd := m.route(msg)
 	updated, ok := next.(Model)
 	if !ok {
 		return next, cmd
 	}
-	updated.refreshViewport()
+	updated.sizeViewport()
 	return updated, cmd
 }
 
@@ -320,7 +320,6 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.layout.width, m.layout.height = msg.Width, msg.Height
-		m.sizeViewport() // refits the input too, via syncInputSize
 		return m, nil
 
 	case tea.KeyMsg:

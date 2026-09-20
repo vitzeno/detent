@@ -108,14 +108,14 @@ func TestUI_PaneMarkersFollowFocus(t *testing.T) {
 	require.Contains(t, v, "○ detent")
 	require.Contains(t, v, "● ❯", "input marker active on input focus")
 
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = nm.(Model)
 	v = m.View()
 	require.Contains(t, v, "● history")
 	require.Contains(t, v, "○ detent")
 	require.Contains(t, v, "○ ❯")
 
-	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = nm.(Model)
 	v = m.View()
 	require.Contains(t, v, "○ history")

@@ -61,23 +61,23 @@ func TestInput_EnterSubmitsAndAltEnterInsertsANewline(t *testing.T) {
 	m := testUIModel()
 	m.prompt.SetValue("first")
 
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 	m = nm.(Model)
 	require.Equal(t, "firstx", m.prompt.Value(), "plain runes type into the box")
 
-	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
 	m = nm.(Model)
 	assert.Contains(t, m.prompt.Value(), "\n", "alt+enter breaks the line instead of submitting")
 	assert.Empty(t, m.blocks, "and starts no goal")
 
-	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)
 	assert.Empty(t, m.prompt.Value(), "plain enter submits and clears")
 	assert.Len(t, m.blocks, 1)
 }
 
 func typeRune(m Model, r rune) Model {
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	return nm.(Model)
 }
 
@@ -91,14 +91,14 @@ func TestSlashDropdown_OpensFiltersAccepts(t *testing.T) {
 	require.Equal(t, "/quit", m.prompt.matches[0].Name)
 
 	// Tab completes into the input bar without running anything.
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = nm.(Model)
 	require.Equal(t, "/quit ", m.prompt.Value())
 	require.Empty(t, m.prompt.matches, "dropdown closes after accept")
 	require.Empty(t, m.blocks)
 
 	// Enter on the exact command runs it.
-	nm, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)
 	require.NotNil(t, cmd, "/quit must quit")
 	require.Empty(t, m.blocks)
@@ -109,24 +109,24 @@ func TestSlashDropdown_NavigateAndEsc(t *testing.T) {
 	m = typeRune(m, '/')
 	require.Len(t, m.prompt.matches, 6)
 
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = nm.(Model)
 	require.Equal(t, 1, m.prompt.cursor)
 
-	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyUp})
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	m = nm.(Model)
 	require.Equal(t, 0, m.prompt.cursor)
 
 	// Down on the completed entry accepts it instead of submitting.
 	m = typeRune(testUIModel(), '/')
 	m = typeRune(m, 'a')
-	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)
 	require.Equal(t, "/abort ", m.prompt.Value())
 	require.Empty(t, m.blocks, "partial match must complete, not run")
 
 	// Esc closes the dropdown and keeps the text.
-	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = nm.(Model)
 	require.Empty(t, m.prompt.matches)
 	require.Equal(t, "/abort ", m.prompt.Value())
