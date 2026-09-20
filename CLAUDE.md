@@ -258,7 +258,13 @@ routing     →  agent, sandbox
   `_view.go` file: `view.go` composes the screen, `layout_view.go`
   does the sizing maths, `chrome_view.go` the bars and pane headers,
   `detail_view.go` the output pane, plus `history_view.go`,
-  `confirm_view.go` and `usage_view.go`.
+  `confirm_view.go` and `usage_view.go`. History draws each goal as a
+  block against a coloured rail (`railed`/`railStyle`) rather than
+  separating them with a divider: a rail marks how far a block
+  reaches, not just where two meet, and its colour carries the
+  outcome. Every width a block renders at comes off `blockWidth`,
+  which subtracts the rail gutter —
+  `TestHistory_RowsFitThePane` is what stops one overflowing.
 
   What can leave the package is what takes values rather than a
   `Model` — Go keeps a method in its receiver's package, so the ~80

@@ -101,6 +101,10 @@ containerd over TCP and pass `-sandbox-socket`.
 - Without a Jev key configured, only the regex backstop applies.
 - The session bar always says where commands run: `sandbox ●` or
   `host ⚠ unsandboxed`.
+- Each goal is its own block in the history pane, drawn against a rail whose
+  colour is the outcome: green done, amber aborted or only partly met, red
+  error, accent while it is still running. The rail spans every row of the
+  block, so both the grouping and how it went read from anywhere inside it.
 - Colour carries status, not prose: a `✓`/`⚠`/`✗` marks how a step went, while
   anything the model wrote — a summary, a rationale — renders dimmed, so a
   generated sentence never reads as a success signal.

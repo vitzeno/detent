@@ -21,38 +21,81 @@ func (m Model) historyLines() (lines []string, cursorEntry int) {
 	rows := m.rows()
 	for bi, b := range m.blocks {
 		if bi > 0 {
-			lines = append(lines, m.divider())
+			lines = append(lines, "")
 		}
-		// A tool block has no goal text of its own — its one step already
-		// says what it is.
+		var block []string
+
+		// A tool block has no goal text of its own — its one step
+		// already says what it is.
 		if b.tool == "" {
-			for i, gl := range wrapPlain(b.goal, m.layout.histColW-14) {
-				if i == 0 {
-					lines = append(lines, styleMuted.Render("goal · ")+styleGoal.Render(gl))
-				} else {
-					lines = append(lines, contPrefix+styleGoal.Render(gl))
-				}
+			for _, gl := range wrapPlain(b.goal, m.blockWidth()) {
+				block = append(block, styleGoal.Render(gl))
 			}
 		}
 		for i, r := range b.steps {
 			if len(rows) > 0 && r == rows[m.cursorClamped()] {
-				cursorEntry = len(lines)
+				cursorEntry = len(lines) + len(block)
 			}
-			lines = append(lines, m.stepLines(r, i+1)...)
+			block = append(block, m.stepLines(r, i+1)...)
 			if r.cmd.expanded {
-				lines = append(lines, previewLines(r, m.layout.histColW-10)...)
+				block = append(block, previewLines(r, m.blockWidth()-6)...)
 			}
 		}
 		if b.ended && b.tool == "" {
-			lines = append(lines, m.goalBanner(b)...)
+			block = append(block, m.goalBanner(b)...)
 		} else if b == m.cur && m.waiting && !anyRunning(b) {
-			lines = append(lines, fmt.Sprintf("  %s %s", m.spinner.View(), styleFaint.Render("thinking…")))
+			block = append(block, fmt.Sprintf("  %s %s", m.spinner.View(), styleFaint.Render("thinking…")))
 		}
+		lines = append(lines, m.railed(b, block)...)
 	}
 	if len(lines) == 0 {
 		lines = append(lines, styleFaint.Render("  no goals yet — describe one below"))
 	}
 	return lines, cursorEntry
+}
+
+// railWidth is the gutter the rail and its space occupy.
+const railWidth = 2
+
+// blockWidth is what a block's own content gets, once the island's
+// padding and the rail gutter have taken theirs.
+func (m Model) blockWidth() int { return max(12, m.layout.histColW-4-railWidth) }
+
+// railed draws a block's rows against a coloured bar spanning all of
+// them. A divider only marks where blocks meet; a rail marks how far
+// one reaches, so the grouping reads from any row rather than only
+// from the edges — and its colour says how the goal went without
+// having to reach the banner at the bottom.
+func (m Model) railed(b *goalBlock, block []string) []string {
+	bar := m.railStyle(b).Render("┃") + " "
+	out := make([]string, len(block))
+	for i, l := range block {
+		out[i] = bar + l
+	}
+	return out
+}
+
+// railStyle colours the rail by outcome: accent while the goal is
+// still running, then whatever it came to.
+func (m Model) railStyle(b *goalBlock) lipgloss.Style {
+	switch {
+	case b == m.cur && !b.ended:
+		return styleRowCursor
+	case b.tool != "":
+		return styleFaint
+	case b.fatalErr != nil:
+		return styleDanger
+	case b.end == EndDone && b.judge.scored && b.judge.score < partlyMetBelow:
+		return styleCaution
+	case b.end == EndDone:
+		return styleSafe
+	case b.end == EndDeclined:
+		return styleMuted
+	case !b.ended:
+		return styleRowCursor
+	default:
+		return styleCaution
+	}
 }
 
 func (m *Model) cursorClamped() int {
@@ -79,7 +122,7 @@ func (m Model) stepLines(r *stepRow, step int) []string {
 	// A tool row never executed a shell command, so status.Badge (which
 	// reads r.cmd.ec) doesn't apply.
 	if r.toolKind != "" {
-		cmd := layout.Truncate(r.command, m.layout.histColW-14)
+		cmd := layout.Truncate(r.command, m.blockWidth()-4)
 		return []string{fmt.Sprintf("%s%s %s", mark, styleMuted.Render("○"), cmd)}
 	}
 	s := status.Row{}
@@ -106,7 +149,7 @@ func (m Model) stepLines(r *stepRow, step int) []string {
 
 	// Truncated not wrapped: a command is often one unbreakable token
 	// with no good place to break.
-	cmd := layout.Truncate(r.command, m.layout.histColW-34)
+	cmd := layout.Truncate(r.command, m.blockWidth()-24)
 	return []string{fmt.Sprintf("%s%s %s %s%s", mark, icon, cmd, styleMuted.Render("· "+detail), checkpoint)}
 }
 
@@ -120,7 +163,7 @@ func anyRunning(b *goalBlock) bool {
 }
 
 func (m Model) goalBanner(b *goalBlock) []string {
-	w := m.layout.histColW - 12
+	w := m.blockWidth() - 2
 	switch {
 	case b.fatalErr != nil:
 		return wrapStyled(styleDanger, "✗ error: "+b.fatalErr.Error(), w)
@@ -215,8 +258,4 @@ func wrapStyled(style lipgloss.Style, text string, width int) []string {
 		out[i] = p + style.Render(l)
 	}
 	return out
-}
-
-func (m Model) divider() string {
-	return "  " + styleFaint.Render(strings.Repeat("─", min(20, max(4, m.layout.histColW-8))))
 }
