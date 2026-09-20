@@ -51,6 +51,9 @@ func (c *Config) apply(o Config) {
 	if o.RiskThreshold != 0 {
 		c.RiskThreshold = o.RiskThreshold
 	}
+	if o.Theme != "" {
+		c.Theme = o.Theme
+	}
 }
 
 // Known limitation: a config file with `risk_threshold: 0` is
@@ -71,5 +74,6 @@ func envConfig() Config {
 			os.Getenv("OPENAI_API_KEY"),
 		),
 		JevAPIKey: os.Getenv("TYPESAFE_API_KEY"),
+		Theme:     os.Getenv("DETENT_THEME"),
 	}
 }

@@ -35,7 +35,15 @@ type Config struct {
 	JevModel      string  `yaml:"jev_model"`
 	JevEndpoint   string  `yaml:"jev_endpoint"`
 	RiskThreshold float64 `yaml:"risk_threshold"`
+
+	// Theme is a name from internal/ui/theme.Themes. Unvalidated here —
+	// main.go does the lookup, so config has no dependency on ui.
+	Theme string `yaml:"theme"`
 }
+
+// DefaultTheme mirrors theme.DefaultName, duplicated to avoid the same
+// dependency.
+const DefaultTheme = "dark"
 
 // Default returns the built-in configuration.
 func Default() Config {
@@ -43,6 +51,7 @@ func Default() Config {
 		BaseURL:  DefaultBaseURL,
 		Model:    DefaultModel,
 		JevModel: classify.DefaultModel,
+		Theme:    DefaultTheme,
 	}
 }
 

@@ -41,6 +41,7 @@ func TestResolve_EmptyIsDefault(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("TYPESAFE_API_KEY", "")
+	t.Setenv("DETENT_THEME", "")
 	assert.Equal(t, Default(), Resolve(Config{}, Config{}, -1))
 }
 
@@ -51,4 +52,21 @@ func TestResolve_JudgePrecedence(t *testing.T) {
 	assert.Equal(t, "sk-jev-env", got.JevAPIKey, "env beats file")
 	assert.Equal(t, "jev-file", got.JevModel)
 	assert.Equal(t, 0.8, got.RiskThreshold)
+}
+
+func TestResolve_ThemePrecedence(t *testing.T) {
+	t.Setenv("DETENT_THEME", "solarized")
+	file := Config{Theme: "light"}
+
+	got := Resolve(file, Config{}, -1)
+	assert.Equal(t, "solarized", got.Theme, "env beats file")
+
+	got = Resolve(file, Config{Theme: "dracula"}, -1)
+	assert.Equal(t, "dracula", got.Theme, "flag beats env beats file")
+}
+
+func TestResolve_ThemeDefaultsWhenUnset(t *testing.T) {
+	t.Setenv("DETENT_THEME", "")
+	got := Resolve(Config{}, Config{}, -1)
+	assert.Equal(t, DefaultTheme, got.Theme)
 }

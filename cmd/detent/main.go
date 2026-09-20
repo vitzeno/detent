@@ -19,6 +19,7 @@ import (
 	"github.com/vitzeno/detent/internal/resolver"
 	"github.com/vitzeno/detent/internal/ui"
 	"github.com/vitzeno/detent/internal/ui/status"
+	"github.com/vitzeno/detent/internal/ui/theme"
 	"github.com/vitzeno/detent/internal/usage"
 )
 
@@ -38,14 +39,23 @@ func run() error {
 	configPath := flag.String("config", "", "config file path (default: ./.detent.yaml, then ~/.config/detent/config.yaml)")
 	goal := flag.String("goal", "", "run one goal headlessly and exit (empty = launch the TUI)")
 	steps := flag.Int("steps", -1, "per-goal step cap, 0 = unbounded (default: config file, else unbounded)")
+	themeName := flag.String("theme", "", "color scheme: "+strings.Join(theme.Names(), ", ")+" (default: config file, else "+config.DefaultTheme+")")
 	flag.Parse()
 
 	fileCfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
 	}
-	flagCfg := config.Config{BaseURL: *baseURL, Model: *model, APIKey: *apiKey}
+	flagCfg := config.Config{BaseURL: *baseURL, Model: *model, APIKey: *apiKey, Theme: *themeName}
 	resolved := config.Resolve(fileCfg, flagCfg, *steps)
+
+	// Validated even for -goal, so a typo fails fast either way.
+	th, ok := theme.Themes[resolved.Theme]
+	if !ok {
+		return fmt.Errorf("unknown theme %q — choose one of: %s", resolved.Theme, strings.Join(theme.Names(), ", "))
+	}
+	theme.Apply(th)
+	ui.RefreshStyles()
 
 	if err := propose.Ping(context.Background(), resolved.BaseURL, resolved.APIKey); err != nil {
 		return fmt.Errorf("%v\n\nis the model endpoint up? Wanted %s with model %s — for LM Studio, load the model and Start Server; otherwise point -url/-model (or a config file) at your provider",
@@ -75,6 +85,7 @@ func run() error {
 	if *goal != "" {
 		return printGoalResult(sess.RunGoal(context.Background(), *goal))
 	}
+
 	judgeName := ""
 	if sess.Judge != nil {
 		judgeName = resolved.JevModel

@@ -18,13 +18,28 @@ import (
 const AttentionThreshold = 0.7
 
 var (
-	muted   = lipgloss.NewStyle().Foreground(theme.TextMuted)
-	faint   = lipgloss.NewStyle().Foreground(theme.TextFaint)
-	safe    = lipgloss.NewStyle().Foreground(theme.Safe)
-	caution = lipgloss.NewStyle().Foreground(theme.Caution).Bold(true)
-	danger  = lipgloss.NewStyle().Foreground(theme.Danger).Bold(true)
-	hint    = lipgloss.NewStyle().Foreground(theme.TextFaint).Italic(true)
+	muted   lipgloss.Style
+	faint   lipgloss.Style
+	safe    lipgloss.Style
+	caution lipgloss.Style
+	danger  lipgloss.Style
+	hint    lipgloss.Style
 )
+
+func init() {
+	RefreshStyles()
+}
+
+// RefreshStyles rebuilds status's styles from the current theme — call
+// after theme.Apply.
+func RefreshStyles() {
+	muted = lipgloss.NewStyle().Foreground(theme.TextMuted)
+	faint = lipgloss.NewStyle().Foreground(theme.TextFaint)
+	safe = lipgloss.NewStyle().Foreground(theme.Safe)
+	caution = lipgloss.NewStyle().Foreground(theme.Caution).Bold(true)
+	danger = lipgloss.NewStyle().Foreground(theme.Danger).Bold(true)
+	hint = lipgloss.NewStyle().Foreground(theme.TextFaint).Italic(true)
+}
 
 // Row is one history step's render inputs.
 type Row struct {

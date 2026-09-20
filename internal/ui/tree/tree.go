@@ -17,11 +17,24 @@ import (
 )
 
 var (
-	cursorStyle = lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
-	dirStyle    = lipgloss.NewStyle().Foreground(theme.TextPrimary).Bold(true)
-	fileStyle   = lipgloss.NewStyle().Foreground(theme.TextMuted)
-	glyphStyle  = lipgloss.NewStyle().Foreground(theme.TextFaint)
+	cursorStyle lipgloss.Style
+	dirStyle    lipgloss.Style
+	fileStyle   lipgloss.Style
+	glyphStyle  lipgloss.Style
 )
+
+func init() {
+	RefreshStyles()
+}
+
+// RefreshStyles rebuilds tree's styles from the current theme — call
+// after theme.Apply.
+func RefreshStyles() {
+	cursorStyle = lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
+	dirStyle = lipgloss.NewStyle().Foreground(theme.TextPrimary).Bold(true)
+	fileStyle = lipgloss.NewStyle().Foreground(theme.TextMuted)
+	glyphStyle = lipgloss.NewStyle().Foreground(theme.TextFaint)
+}
 
 // Kind distinguishes a file node from a directory node.
 type Kind int

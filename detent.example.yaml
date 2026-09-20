@@ -35,3 +35,7 @@ model: prism-ml/bonsai-27b
 
 # Scope-risk Noul floor for extra confirm emphasis. 0 selects the 0.5 default.
 # risk_threshold: 0.5
+
+# --- Theme: TUI color scheme ---
+# One of dark (default), light, solarized, dracula.
+# theme: dark

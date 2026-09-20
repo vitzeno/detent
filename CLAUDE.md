@@ -45,13 +45,17 @@ Precedence: flags > environment > config file > built-ins. Config file is
 `./.detent.yaml` (repo-local, gitignored) or `~/.config/detent/config.yaml`;
 see `detent.example.yaml` for every key. Relevant env vars: `DETENT_BASE_URL`,
 `DETENT_MODEL`, `DETENT_API_KEY` (falls back to `OPENROUTER_API_KEY` then
-`OPENAI_API_KEY`), `TYPESAFE_API_KEY` (enables the Jev judge). A `.env` in the
-repo root is also loaded at startup (`cmd/detent/main.go` `loadDotenv`), real
-env vars always win over it.
+`OPENAI_API_KEY`), `TYPESAFE_API_KEY` (enables the Jev judge), `DETENT_THEME`
+(one of `internal/ui/theme.Themes`' names: `dark`, `light`, `solarized`,
+`dracula`). A `.env` in the repo root is also loaded at startup
+(`cmd/detent/main.go` `loadDotenv`), real env vars always win over it.
 
 At startup `main.go` pings the proposer's `/models` endpoint and fails fast
 with a clear message if it's unreachable — don't remove this, it's the
 difference between a useful error and a raw dial failure on the first goal.
+It also applies the theme before building the TUI: `theme.Apply` sets the
+active colors, `ui.RefreshStyles` rebuilds every style already baked from
+the old ones.
 
 ## Architecture
 

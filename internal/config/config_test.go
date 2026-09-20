@@ -89,6 +89,13 @@ func TestLoad_JudgeFields(t *testing.T) {
 	assert.Equal(t, 0.7, cfg.RiskThreshold)
 }
 
+func TestLoad_Theme(t *testing.T) {
+	p := writeTemp(t, "theme: dracula\n")
+	cfg, err := Load(p)
+	require.NoError(t, err)
+	assert.Equal(t, "dracula", cfg.Theme)
+}
+
 func TestLoad_ExampleFileStaysValid(t *testing.T) {
 	cwd, _ := os.Getwd()
 	require.NoError(t, os.Chdir("../.."))
