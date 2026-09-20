@@ -22,7 +22,7 @@ func runCollect(ctx context.Context, command string) (Result, error, []StreamEve
 			events = append(events, e)
 		}
 	}()
-	res, err := Shell{}.Run(ctx, command, ch)
+	res, err := NewShell().Run(ctx, command, ch)
 	<-done
 	return res, err, events
 }
@@ -44,7 +44,7 @@ func TestShell_DeliversLinesAndResult(t *testing.T) {
 }
 
 func TestShell_NilChannelSkipsEvents(t *testing.T) {
-	res, err := Shell{}.Run(context.Background(), "echo hi", nil)
+	res, err := NewShell().Run(context.Background(), "echo hi", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "hi\n", res.Stdout)
 }
@@ -73,7 +73,7 @@ func TestShell_OutputBounded(t *testing.T) {
 }
 
 func TestShell_EmptyCommandRejected(t *testing.T) {
-	_, err := Shell{}.Run(context.Background(), "  ", nil)
+	_, err := NewShell().Run(context.Background(), "  ", nil)
 	assert.ErrorContains(t, err, "empty command")
 }
 
@@ -81,7 +81,7 @@ func TestShell_ContextTimeoutWins(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	// tail blocks everywhere; sleep is a no-op shim in some sandboxes.
-	_, err := Shell{}.Run(ctx, "tail -f /dev/null", nil)
+	_, err := NewShell().Run(ctx, "tail -f /dev/null", nil)
 	require.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "killed") ||
 		strings.Contains(err.Error(), "signal") ||

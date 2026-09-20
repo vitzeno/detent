@@ -72,7 +72,7 @@ func TestSelect(t *testing.T) {
 type hostRunner struct{}
 
 func (hostRunner) Run(ctx context.Context, command string) (host.Result, error) {
-	return host.Shell{}.Run(ctx, command, nil)
+	return host.NewShell().Run(ctx, command, nil)
 }
 
 type fakeRunner func(ctx context.Context, command string) (host.Result, error)

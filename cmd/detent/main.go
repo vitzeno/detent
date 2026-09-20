@@ -70,7 +70,7 @@ func run() error {
 		propose.WithHeaders(resolved.Headers),
 	)
 	sessOpts := []agent.Option{
-		agent.WithRun(host.Shell{}),
+		agent.WithRun(host.NewShell()),
 		agent.WithStepBudget(resolved.Steps),
 		agent.WithRiskThreshold(resolved.RiskThreshold),
 		agent.WithStats(usage.New()),

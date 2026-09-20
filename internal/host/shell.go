@@ -20,30 +20,6 @@ const DefaultTimeout = 30 * time.Second
 // MaxOutputBytes caps each captured stream.
 const MaxOutputBytes = 8 * 1024
 
-// Result is a command's captured outcome.
-type Result struct {
-	Stdout    string
-	Stderr    string
-	ExitCode  int
-	Truncated bool
-}
-
-// Summary renders a one-line result.
-func (r Result) Summary() string {
-	lines := 0
-	for _, s := range []string{r.Stdout, r.Stderr} {
-		if s == "" {
-			continue
-		}
-		lines += strings.Count(strings.TrimSuffix(s, "\n"), "\n") + 1
-	}
-	s := fmt.Sprintf("exit %d, %d lines", r.ExitCode, lines)
-	if r.Truncated {
-		s += " (truncated)"
-	}
-	return s
-}
-
 // StreamEvent is one line of live output from a running command.
 type StreamEvent struct {
 	Stderr bool
@@ -52,11 +28,13 @@ type StreamEvent struct {
 
 // Shell runs commands directly on the host, unsandboxed.
 // Satisfies agent.Runner structurally; callers wire it explicitly.
-type Shell struct{}
+type Shell struct {
+	limit int
+}
 
 // Run executes command via sh -c, sending each output line on events as
 // it arrives. events may be nil; Run closes it once output ends.
-func (Shell) Run(ctx context.Context, command string, events chan<- StreamEvent) (Result, error) {
+func (s *Shell) Run(ctx context.Context, command string, events chan<- StreamEvent) (Result, error) {
 	if strings.TrimSpace(command) == "" {
 		return Result{}, fmt.Errorf("host: empty command")
 	}
@@ -85,7 +63,7 @@ func (Shell) Run(ctx context.Context, command string, events chan<- StreamEvent)
 	var wg sync.WaitGroup
 	scan := func(pipe io.Reader, isStderr bool, buf *bytes.Buffer) {
 		defer wg.Done()
-		lw := &limitedWriter{buf: buf, limit: MaxOutputBytes}
+		lw := &limitedWriter{buf: buf, limit: s.limit}
 		sc := bufio.NewScanner(pipe)
 		sc.Buffer(make([]byte, 64*1024), 1024*1024)
 		for sc.Scan() {
@@ -109,7 +87,7 @@ func (Shell) Run(ctx context.Context, command string, events chan<- StreamEvent)
 	res := Result{
 		Stdout:    stdout.String(),
 		Stderr:    stderr.String(),
-		Truncated: stdout.Len() >= MaxOutputBytes || stderr.Len() >= MaxOutputBytes,
+		Truncated: stdout.Len() >= s.limit || stderr.Len() >= s.limit,
 	}
 
 	if ctx.Err() != nil {
