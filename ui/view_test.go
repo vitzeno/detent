@@ -197,3 +197,36 @@ func TestUI_ThinkingHintOffersAbort(t *testing.T) {
 	require.True(t, aborted)
 	require.Nil(t, nm.(Model).abort)
 }
+
+// Model-written prose is dimmed and unmarked. Green means "this
+// succeeded", and a whole generated sentence in it reads as though the
+// sentence is the status — while the step rows above and the jev line
+// below already say how it went.
+func TestUI_ModelProseIsDimmedNotSignalled(t *testing.T) {
+	m := themedModel()
+	var summary string
+	for _, l := range strings.Split(m.View().Content, "\n") {
+		if strings.Contains(stripANSI(l), "did the thing") {
+			summary = l
+		}
+	}
+	require.NotEmpty(t, summary, "the goal summary must render")
+
+	prose := ansiFor(t, summary, "did the thing")
+	assert.Contains(t, prose, "38;2;137;146;168", "the prose is muted, not a status colour")
+	assert.NotContains(t, stripANSI(summary), "✔", "no tick on the prose")
+}
+
+// ansiFor returns sub together with the escape immediately before it.
+func ansiFor(t *testing.T, line, sub string) string {
+	t.Helper()
+	i := strings.Index(line, sub)
+	require.GreaterOrEqual(t, i, 0, "%q not in %q", sub, stripANSI(line))
+	start := strings.LastIndex(line[:i], "\x1b[")
+	require.GreaterOrEqual(t, start, 0, "no styling before %q", sub)
+	end := i + len(sub)
+	if e := strings.Index(line[end:], "\x1b["); e >= 0 {
+		end += e + len("\x1b[m")
+	}
+	return line[start:min(end, len(line))]
+}

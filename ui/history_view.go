@@ -125,7 +125,10 @@ func (m Model) goalBanner(b *goalBlock) []string {
 	case b.fatalErr != nil:
 		return wrapStyled(styleDanger, "✗ error: "+b.fatalErr.Error(), w)
 	case b.end == EndDone:
-		return append(wrapStyled(styleSafe, "✔ "+b.summary, w), m.judgeLines(b, w)...)
+		// Just the model's prose, dimmed and unmarked: the step rows
+		// above already carry the status and the jev line below the
+		// verdict, so a tick here is a third signal saying neither.
+		return append(wrapStyled(styleMuted, b.summary, w), m.judgeLines(b, w)...)
 	case b.end == EndBudget:
 		return append([]string{"  " + styleCaution.Render("⚠ step cap reached — goal not confirmed done")},
 			m.judgeLines(b, w)...)

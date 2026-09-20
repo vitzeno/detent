@@ -58,8 +58,9 @@ func TestGoalBanner_SummaryWraps(t *testing.T) {
 	}
 	lines := m.goalBanner(b)
 	require.Greater(t, len(lines), 1)
-	assert.Contains(t, lines[0], "✔")
-	assert.True(t, strings.HasPrefix(lines[1], contPrefix))
+	assert.Contains(t, stripANSI(lines[0]), "a summary sentence")
+	assert.True(t, strings.HasPrefix(lines[1], contPrefix),
+		"continuation lines indent under the first")
 }
 
 func TestStepLines_CommandStaysTruncatedNotWrapped(t *testing.T) {

@@ -14,6 +14,12 @@ type Theme struct {
 	Safe, Caution, Danger                     color.Color
 	TextPrimary, TextMuted, TextFaint, Border color.Color
 
+	// Background is what the terminal is painted before anything is
+	// drawn on it. Without one the palette has to hope the terminal
+	// already matches — a light theme's near-black text is invisible
+	// on a dark terminal.
+	Background color.Color
+
 	// Markdown names the glamour style the prose pane renders with.
 	// glamour ships its own palettes and can't be handed ours, so the
 	// closest one is named here rather than guessed from the terminal.
@@ -32,6 +38,7 @@ var (
 	TextMuted   color.Color
 	TextFaint   color.Color
 	Border      color.Color
+	Background  color.Color
 
 	// Markdown is the active theme's glamour style name.
 	Markdown string
@@ -50,6 +57,7 @@ var dark = Theme{
 	TextMuted:   lipgloss.Color("#8992A8"),
 	TextFaint:   lipgloss.Color("#5C6478"),
 	Border:      lipgloss.Color("#333A4D"),
+	Background:  lipgloss.Color("#11131A"),
 	Markdown:    "dark",
 }
 
@@ -62,6 +70,7 @@ var light = Theme{
 	TextMuted:   lipgloss.Color("#6B7280"),
 	TextFaint:   lipgloss.Color("#9CA3AF"),
 	Border:      lipgloss.Color("#D6D9E0"),
+	Background:  lipgloss.Color("#FAFAFA"),
 	Markdown:    "light",
 }
 
@@ -74,6 +83,7 @@ var solarized = Theme{
 	TextMuted:   lipgloss.Color("#839496"),
 	TextFaint:   lipgloss.Color("#586E75"),
 	Border:      lipgloss.Color("#0B3A45"),
+	Background:  lipgloss.Color("#002B36"),
 	Markdown:    "dark",
 }
 
@@ -86,6 +96,7 @@ var dracula = Theme{
 	TextMuted:   lipgloss.Color("#A3A3C2"),
 	TextFaint:   lipgloss.Color("#6272A4"),
 	Border:      lipgloss.Color("#44475A"),
+	Background:  lipgloss.Color("#282A36"),
 	Markdown:    "dracula",
 }
 
@@ -117,5 +128,6 @@ func Apply(t Theme) {
 	Accent = t.Accent
 	Safe, Caution, Danger = t.Safe, t.Caution, t.Danger
 	TextPrimary, TextMuted, TextFaint, Border = t.TextPrimary, t.TextMuted, t.TextFaint, t.Border
+	Background = t.Background
 	Markdown = t.Markdown
 }

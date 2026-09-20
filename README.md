@@ -101,6 +101,9 @@ containerd over TCP and pass `-sandbox-socket`.
 - Without a Jev key configured, only the regex backstop applies.
 - The session bar always says where commands run: `sandbox ●` or
   `host ⚠ unsandboxed`.
+- Colour carries status, not prose: a `✓`/`⚠`/`✗` marks how a step went, while
+  anything the model wrote — a summary, a rationale — renders dimmed, so a
+  generated sentence never reads as a success signal.
 - Every finished goal carries Jev's own verdict on it — `jev · goal met (0.98)`,
   `only partly met`, or `looks unmet` — rather than only speaking up to disagree.
   Nothing is shown when no judge is wired, which is a different thing from a low

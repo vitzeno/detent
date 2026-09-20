@@ -7,15 +7,21 @@ import (
 
 	"github.com/vitzeno/detent/ui/island"
 	"github.com/vitzeno/detent/ui/layout"
+	"github.com/vitzeno/detent/ui/theme"
 )
 
 // View returns the screen plus the terminal state that goes with it.
-// Under v2 altscreen and keyboard enhancements are properties of what
-// we render, not program options set once at startup.
+// Under v2 altscreen, background and keyboard enhancements are
+// properties of what we render, not program options set at startup.
 func (m Model) View() tea.View {
 	v := tea.NewView(m.baseView())
 	v.AltScreen = true
 	v.KeyboardEnhancements = tea.KeyboardEnhancements{}
+	// The palette only works against a ground it was picked for: the
+	// light theme's near-black text is invisible on a dark terminal.
+	// Painting it ourselves means the theme decides both. Restored on
+	// exit by the terminal, and ignored by one that can't do it.
+	v.BackgroundColor = theme.Background
 	return v
 }
 

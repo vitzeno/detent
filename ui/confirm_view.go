@@ -28,11 +28,13 @@ func (m Model) confirmBox() string {
 	fmt.Fprintf(&b, "%s  %s  %s\n\n", styleMuted.Render("proposed"), mutabilityStyle(tier).Render(tier),
 		runModeTag(m.confirm.pre.RunMode, m.confirm.pre.Dangerous))
 	b.WriteString(styleGoal.Width(max(10, m.layout.width-12)).Render(m.confirm.pending.Command) + "\n")
+	// The model's own prose, dimmed: the command above is what a human
+	// is being asked to read, not the reasoning for it.
 	if m.confirm.pending.Rationale != "" {
-		fmt.Fprintf(&b, "%s %s\n", styleMuted.Render("why:"), m.confirm.pending.Rationale)
+		fmt.Fprintf(&b, "%s %s\n", styleMuted.Render("why:"), styleMuted.Render(m.confirm.pending.Rationale))
 	}
 	if m.confirm.pre.Dangerous {
-		fmt.Fprintf(&b, "\n%s %s\n", styleDanger.Render("⚠ look twice"), m.confirm.pre.RiskNote)
+		fmt.Fprintf(&b, "\n%s %s\n", styleDanger.Render("⚠ look twice"), styleMuted.Render(m.confirm.pre.RiskNote))
 	}
 	stepNo := 1
 	if m.cur != nil {
