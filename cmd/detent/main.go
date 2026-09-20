@@ -16,6 +16,7 @@ import (
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/config"
 	"github.com/vitzeno/detent/internal/propose"
+	"github.com/vitzeno/detent/internal/resolver"
 	"github.com/vitzeno/detent/internal/ui"
 	"github.com/vitzeno/detent/internal/ui/status"
 	"github.com/vitzeno/detent/internal/usage"
@@ -69,7 +70,7 @@ func run() error {
 			classify.WithEndpoint(resolved.JevEndpoint),
 		)))
 	}
-	sess := agent.New(proposer, confirmHeadless, sessOpts...)
+	sess := agent.New(proposer, headlessConfirmer{}, sessOpts...)
 
 	if *goal != "" {
 		return printGoalResult(sess.RunGoal(context.Background(), *goal))
@@ -78,7 +79,8 @@ func run() error {
 	if sess.Judge != nil {
 		judgeName = resolved.JevModel
 	}
-	p := tea.NewProgram(ui.New(context.Background(), sess, resolved.Model, judgeName), tea.WithAltScreen())
+	drv := resolver.New(sess)
+	p := tea.NewProgram(ui.New(context.Background(), drv, resolved.Model, judgeName), tea.WithAltScreen())
 	_, err = p.Run()
 	return err
 }
@@ -124,7 +126,12 @@ func printUsage(g *usage.Goal) {
 	fmt.Printf("  goal machine %s · session %s\n", status.Dur(g.MachineTime()), status.Dur(g.Duration()))
 }
 
-func confirmHeadless(req agent.ConfirmRequest) bool {
+// headlessConfirmer implements agent.Confirmer for the -goal CLI path:
+// read the decision from stdin, same shape as the TUI's own confirm
+// modal but rendered as plain text.
+type headlessConfirmer struct{}
+
+func (headlessConfirmer) Confirm(req agent.ConfirmRequest) bool {
 	fmt.Printf("\ngoal: %q\n", req.Goal)
 	if len(req.History) == 0 {
 		fmt.Println("done so far: (nothing yet)")
