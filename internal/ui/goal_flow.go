@@ -18,6 +18,7 @@ func (m Model) startGoal() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.input.SetValue("")
+	m.sizeViewport() // the box shrinks back now that it's empty
 	m.notice = ""
 	if strings.HasPrefix(goal, "/") {
 		return m.runSlash(goal)

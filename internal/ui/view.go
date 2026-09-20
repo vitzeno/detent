@@ -21,9 +21,10 @@ var bodyWeights = []int{3, 2} // [output, history]; output gets the larger share
 const minPaneWidth = 28
 
 func (m *Model) sizeViewport() {
+	m.syncInputSize()
 	// Bottom zone height is measured, not guessed — content varies with
-	// rationale and danger flags.
-	bottom := m.slashRows() + 1 + 2
+	// rationale and danger flags, and the input grows with what's typed.
+	bottom := m.slashRows() + m.input.Height() + 2
 	switch m.mode {
 	case modeConfirm:
 		bottom = len(strings.Split(m.confirmBox(), "\n"))
@@ -81,7 +82,7 @@ func (m Model) baseView() string {
 	case modeSaveConfirm:
 		b.WriteString(m.saveConfirmBox())
 	default:
-		b.WriteString(island.Render("", m.nav.focus == focusInput, strings.Split(m.inputBar(), "\n"), m.layout.width, m.slashRows()+1))
+		b.WriteString(island.Render("", m.nav.focus == focusInput, strings.Split(m.inputBar(), "\n"), m.layout.width, m.slashRows()+m.input.Height()))
 	}
 	return b.String()
 }
@@ -414,23 +415,30 @@ func (m Model) statusHint() string {
 		if len(m.slash.matches) > 0 {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
 		}
-		return "[tab] history · [enter] run · type / for cmds"
+		return "[tab] history · [enter] run · [alt+enter] newline · type / for cmds"
 	}
 }
 
 func (m Model) inputBar() string {
 	active := m.nav.focus == focusInput
-	m.input.PromptStyle = styleFaint
-	if active {
-		m.input.PromptStyle = styleRowCursor
+	// The dropdown is multi-line, so it goes first: prefixing it with
+	// the pane mark would indent only its first row and strand the
+	// mark away from the prompt it belongs to.
+	// Both the dropdown and the input are multi-line, so the pane mark
+	// can't just be prefixed onto the whole block: it would indent one
+	// row and leave the rest short. The dropdown goes first, then the
+	// mark takes its own gutter beside every input row.
+	var b strings.Builder
+	b.WriteString(slash.View(m.slash.matches, m.slash.cursor))
+	for i, line := range strings.Split(m.input.View(), "\n") {
+		if i > 0 {
+			b.WriteString("\n" + strings.Repeat(" ", inputMarkW))
+		} else {
+			b.WriteString(paneMark(active) + " ")
+		}
+		b.WriteString(line)
 	}
-	// The dropdown is multi-line, so it goes first: prefixing it with
-	// the pane mark would indent only its first row and strand the
-	// mark away from the prompt it belongs to.
-	// The dropdown is multi-line, so it goes first: prefixing it with
-	// the pane mark would indent only its first row and strand the
-	// mark away from the prompt it belongs to.
-	return fmt.Sprintf("%s%s %s", slash.View(m.slash.matches, m.slash.cursor), paneMark(active), m.input.View())
+	return b.String()
 }
 
 func truncateWidth(s string, w int) string {

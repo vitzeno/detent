@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -191,7 +191,7 @@ type Model struct {
 
 	info SessionInfo
 
-	input   textinput.Model
+	input   textarea.Model
 	output  viewport.Model
 	spinner spinner.Model
 
@@ -250,11 +250,7 @@ func (r *stepRow) tableText() (string, bool) {
 
 // New builds the TUI over sess.
 func New(ctx context.Context, sess Driver, info SessionInfo) Model {
-	ti := textinput.New()
-	ti.Placeholder = "describe a goal, e.g. what is listening on port 3000?"
-	ti.Focus()
-	ti.CharLimit = 500
-	ti.Prompt = "❯ "
+	ti := newInput()
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
@@ -273,7 +269,7 @@ func New(ctx context.Context, sess Driver, info SessionInfo) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, welcomeTick())
+	return tea.Batch(textarea.Blink, welcomeTick())
 }
 
 // welcomeTick re-arms itself only while the welcome pane is showing,
@@ -323,8 +319,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.layout.width, m.layout.height = msg.Width, msg.Height
-		m.input.Width = msg.Width - 6
-		m.sizeViewport()
+		m.sizeViewport() // refits the input too, via syncInputSize
 		return m, nil
 
 	case tea.KeyMsg:

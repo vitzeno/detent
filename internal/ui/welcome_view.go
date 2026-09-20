@@ -68,7 +68,7 @@ func (m Model) welcomeLines() []string {
 	}
 	out = append(out,
 		"",
-		"  "+styleMuted.Render("one command at a time, held at every step"),
+		"  "+styleMuted.Render("every sandboxed step is checkpointed, so any of them can be undone"),
 		"",
 	)
 
