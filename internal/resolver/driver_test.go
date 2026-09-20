@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/internal/agent"
+	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
-	"github.com/vitzeno/detent/internal/shell"
 	"github.com/vitzeno/detent/internal/ui"
 	"github.com/vitzeno/detent/internal/usage"
 )
@@ -35,14 +35,14 @@ func (s *scriptProposer) Propose(_ context.Context, _ []propose.Message) (propos
 	return p, usage.Usage{PromptTokens: 10, CompletionTokens: 5}, nil
 }
 
-type runFunc func(context.Context, string, agent.StreamSink) (shell.Result, error)
+type runFunc func(context.Context, string, chan<- host.StreamEvent) (host.Result, error)
 
-func (f runFunc) Run(ctx context.Context, command string, sink agent.StreamSink) (shell.Result, error) {
-	return f(ctx, command, sink)
+func (f runFunc) Run(ctx context.Context, command string, events chan<- host.StreamEvent) (host.Result, error) {
+	return f(ctx, command, events)
 }
 
-func okRun(result shell.Result) agent.Runner {
-	return runFunc(func(_ context.Context, _ string, _ agent.StreamSink) (shell.Result, error) {
+func okRun(result host.Result) agent.Runner {
+	return runFunc(func(_ context.Context, _ string, _ chan<- host.StreamEvent) (host.Result, error) {
 		return result, nil
 	})
 }
@@ -53,7 +53,7 @@ func TestResolver_GoalToDone_RoundTrip(t *testing.T) {
 			{Command: "ls -la", Rationale: "list files"},
 			{Done: true, Summary: "saw two files"},
 		}},
-		Run:   okRun(shell.Result{Stdout: "a\nb\n"}),
+		Run:   okRun(host.Result{Stdout: "a\nb\n"}),
 		Stats: usage.New(),
 	}
 	r := New(sess)
@@ -95,7 +95,7 @@ func TestResolver_DeclineNeverExecutes(t *testing.T) {
 		Proposer: &scriptProposer{script: []propose.Proposal{
 			{Command: "rm -rf /tmp/x", Rationale: "remove"},
 		}},
-		Run:   okRun(shell.Result{}),
+		Run:   okRun(host.Result{}),
 		Stats: usage.New(),
 	}
 	r := New(sess)

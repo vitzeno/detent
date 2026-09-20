@@ -2,14 +2,14 @@ package resolver
 
 import (
 	"github.com/vitzeno/detent/internal/agent"
+	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
-	"github.com/vitzeno/detent/internal/shell"
 	"github.com/vitzeno/detent/internal/ui"
 	"github.com/vitzeno/detent/internal/usage"
 )
 
 // Pure one-way mapping functions between agent's/propose's/usage's/
-// shell's domain types and ui's own DTOs. EndReason and RenderKind are
+// host's domain types and ui's own DTOs. EndReason and RenderKind are
 // identical string sets on both sides, so those are plain type
 // conversions, not lookup tables.
 
@@ -59,12 +59,12 @@ func fromUsage(u ui.Usage) usage.Usage {
 	return usage.Usage{PromptTokens: u.PromptTokens, CompletionTokens: u.CompletionTokens, Latency: u.Latency, Model: u.Model}
 }
 
-func toResult(r shell.Result) ui.Result {
+func toResult(r host.Result) ui.Result {
 	return ui.Result{Stdout: r.Stdout, Stderr: r.Stderr, ExitCode: r.ExitCode, Truncated: r.Truncated}
 }
 
-func fromResult(r ui.Result) shell.Result {
-	return shell.Result{Stdout: r.Stdout, Stderr: r.Stderr, ExitCode: r.ExitCode, Truncated: r.Truncated}
+func fromResult(r ui.Result) host.Result {
+	return host.Result{Stdout: r.Stdout, Stderr: r.Stderr, ExitCode: r.ExitCode, Truncated: r.Truncated}
 }
 
 func toExecutedCommand(ec *agent.ExecutedCommand) *ui.ExecutedCommand {

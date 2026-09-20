@@ -2,12 +2,11 @@
 package agent
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
+	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
-	"github.com/vitzeno/detent/internal/shell"
 	"github.com/vitzeno/detent/internal/usage"
 )
 
@@ -34,7 +33,7 @@ type ConfirmRequest struct {
 // ExecutedCommand is one approved command plus its outcome; nil Post means judgment pending.
 type ExecutedCommand struct {
 	Command string
-	Result  shell.Result
+	Result  host.Result
 	Pre     PreJudgment
 	Post    *PostJudgment
 	// Usage links the measured step; nil when untracked.
@@ -84,17 +83,6 @@ type Session struct {
 	GoalsDone  int
 }
 
-// shellRunner adapts shell.Stream's plain callback to StreamSink.
-type shellRunner struct{}
-
-func (shellRunner) Run(ctx context.Context, command string, sink StreamSink) (shell.Result, error) {
-	var onEvent func(shell.StreamEvent)
-	if sink != nil {
-		onEvent = sink.OnEvent
-	}
-	return shell.Stream(ctx, command, onEvent)
-}
-
 // Tracker exposes the usage tracker for front-ends rendering stats.
 func (s *Session) Tracker() *usage.Tracker {
 	if s == nil {
@@ -117,13 +105,6 @@ func (s *Session) riskThreshold() float64 {
 	return RiskThresholdDefault
 }
 
-func (s *Session) runner() Runner {
-	if s.Run != nil {
-		return s.Run
-	}
-	return shellRunner{}
-}
-
 func (s *Session) append(m propose.Message) {
 	s.Transcript = append(s.Transcript, m)
 }
@@ -135,7 +116,7 @@ func (s *Session) finish(res *GoalResult, reason EndReason, summary string) {
 	s.GoalsDone++
 }
 
-func formatToolResult(command string, r shell.Result) string {
+func formatToolResult(command string, r host.Result) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Command `%s` exited with code %d.", command, r.ExitCode)
 	bounded := func(name, s string) {

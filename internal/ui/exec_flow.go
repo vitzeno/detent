@@ -6,16 +6,16 @@ import (
 	"github.com/vitzeno/detent/internal/ui/editor"
 )
 
-func (m Model) onStream(msg streamMsg) (tea.Model, tea.Cmd) {
+func (m Model) onStream(msg StreamEvent) (tea.Model, tea.Cmd) {
 	for _, b := range m.blocks {
 		for _, r := range b.steps {
 			if r.cmd.running {
 				if len(r.cmd.live) < maxLiveLines {
 					prefix := ""
-					if msg.stderr {
+					if msg.Stderr {
 						prefix = "(stderr) "
 					}
-					r.cmd.live = append(r.cmd.live, prefix+msg.line)
+					r.cmd.live = append(r.cmd.live, prefix+msg.Line)
 				} else {
 					r.cmd.dropped++
 				}

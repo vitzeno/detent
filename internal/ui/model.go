@@ -98,11 +98,6 @@ type proposeMsg struct {
 	err      error
 }
 
-type streamMsg struct {
-	stderr bool
-	line   string
-}
-
 type execDoneMsg struct {
 	ec  *ExecutedCommand
 	err error
@@ -192,7 +187,7 @@ type Model struct {
 	slash   slashState
 	perf    perfState
 
-	streamCh chan streamMsg
+	streamCh chan StreamEvent
 
 	notice string // one-shot status flash
 
@@ -247,7 +242,7 @@ func New(ctx context.Context, sess Driver, proposerName, judgeName string) Model
 		input:        ti,
 		output:       viewport.New(0, 0),
 		spinner:      sp,
-		streamCh:     make(chan streamMsg, streamBufSize),
+		streamCh:     make(chan StreamEvent, streamBufSize),
 		nav:          navState{follow: true},
 	}
 }
@@ -322,7 +317,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case proposeMsg:
 		return m.onPropose(msg)
 
-	case streamMsg:
+	case StreamEvent:
 		return m.onStream(msg)
 
 	case execDoneMsg:

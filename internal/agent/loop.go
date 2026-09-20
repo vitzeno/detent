@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/probe"
 	"github.com/vitzeno/detent/internal/propose"
-	"github.com/vitzeno/detent/internal/shell"
 	"github.com/vitzeno/detent/internal/usage"
 )
 
@@ -17,7 +17,7 @@ type probeRunner struct {
 	runner Runner
 }
 
-func (r probeRunner) Run(ctx context.Context, command string) (shell.Result, error) {
+func (r probeRunner) Run(ctx context.Context, command string) (host.Result, error) {
 	return r.runner.Run(ctx, command, nil)
 }
 
@@ -30,8 +30,11 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 	if s.Proposer == nil {
 		return nil, fmt.Errorf("agent: no Proposer wired")
 	}
+	if s.Run == nil {
+		return nil, fmt.Errorf("agent: no Runner wired")
+	}
 	s.append(propose.Message{Role: propose.RoleUser, Content: goal})
-	prober := probe.New(probeRunner{runner: s.runner()})
+	prober := probe.New(probeRunner{runner: s.Run})
 	if out := prober.Run(ctx, probe.Select(ctx, s.Judge, goal)); out != "" {
 		s.append(propose.Message{Role: propose.RoleTool, Content: out})
 	}
@@ -105,10 +108,10 @@ func (s *Session) RecordAbort(res *GoalResult) {
 }
 
 // Execute runs an approved proposal, times it, and records the outcome.
-// Post stays nil until the caller attaches JudgeResult. sink may be nil.
-func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Step, p propose.Proposal, pre PreJudgment, sink StreamSink) (*ExecutedCommand, error) {
+// Post stays nil until the caller attaches JudgeResult. events may be nil.
+func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Step, p propose.Proposal, pre PreJudgment, events chan<- host.StreamEvent) (*ExecutedCommand, error) {
 	t0 := time.Now()
-	outcome, err := s.runner().Run(ctx, p.Command, sink)
+	outcome, err := s.Run.Run(ctx, p.Command, events)
 	elapsed := time.Since(t0)
 	if err != nil {
 		s.append(propose.Message{Role: propose.RoleAssistant,
@@ -135,7 +138,7 @@ func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Ste
 
 // JudgeResult judges; judgments never enter the transcript. Falls back
 // to a heuristic without a Judge. Updates step directly.
-func (s *Session) JudgeResult(ctx context.Context, goal, command string, result shell.Result, step *usage.Step) PostJudgment {
+func (s *Session) JudgeResult(ctx context.Context, goal, command string, result host.Result, step *usage.Step) PostJudgment {
 	var out string
 	if result.Stdout != "" {
 		out = result.Stdout

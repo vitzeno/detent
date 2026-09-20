@@ -11,7 +11,7 @@ import (
 )
 
 // MaxBytes bounds how much of a file the editor will load — matches
-// the spirit of shell.MaxOutputBytes: cap it, tell the caller it was
+// the spirit of host.MaxOutputBytes: cap it, tell the caller it was
 // capped, never silently truncate.
 const MaxBytes = 256 * 1024
 

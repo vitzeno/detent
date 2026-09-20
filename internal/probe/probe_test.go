@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/vitzeno/detent/internal/classify"
-	"github.com/vitzeno/detent/internal/shell"
+	"github.com/vitzeno/detent/internal/host"
 )
 
 type fakeJudge struct {
@@ -69,21 +69,21 @@ func TestSelect(t *testing.T) {
 	}
 }
 
-type shellRunner struct{}
+type hostRunner struct{}
 
-func (shellRunner) Run(ctx context.Context, command string) (shell.Result, error) {
-	return shell.Stream(ctx, command, nil)
+func (hostRunner) Run(ctx context.Context, command string) (host.Result, error) {
+	return host.Shell{}.Run(ctx, command, nil)
 }
 
-type fakeRunner func(ctx context.Context, command string) (shell.Result, error)
+type fakeRunner func(ctx context.Context, command string) (host.Result, error)
 
-func (f fakeRunner) Run(ctx context.Context, command string) (shell.Result, error) {
+func (f fakeRunner) Run(ctx context.Context, command string) (host.Result, error) {
 	return f(ctx, command)
 }
 
 func TestRun(t *testing.T) {
 	t.Run("empty probes returns empty", func(t *testing.T) {
-		assert.Empty(t, New(shellRunner{}).Run(context.Background(), nil))
+		assert.Empty(t, New(hostRunner{}).Run(context.Background(), nil))
 	})
 
 	t.Run("combines output from multiple probes in order", func(t *testing.T) {
@@ -91,7 +91,7 @@ func TestRun(t *testing.T) {
 			{Name: "a", Command: "echo one"},
 			{Name: "b", Command: "echo two"},
 		}
-		out := New(shellRunner{}).Run(context.Background(), probes)
+		out := New(hostRunner{}).Run(context.Background(), probes)
 		assert.Contains(t, out, "$ echo one")
 		assert.Contains(t, out, "one")
 		assert.Contains(t, out, "$ echo two")
@@ -101,15 +101,15 @@ func TestRun(t *testing.T) {
 	t.Run("failed command is noted, not fatal", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		out := New(shellRunner{}).Run(ctx, []Probe{{Name: "a", Command: "echo hi"}})
+		out := New(hostRunner{}).Run(ctx, []Probe{{Name: "a", Command: "echo hi"}})
 		assert.Contains(t, out, "failed")
 	})
 
-	t.Run("runs through the injected runner, not shell.Stream directly", func(t *testing.T) {
+	t.Run("runs through the injected runner, not host.Run directly", func(t *testing.T) {
 		var got string
-		fake := fakeRunner(func(_ context.Context, command string) (shell.Result, error) {
+		fake := fakeRunner(func(_ context.Context, command string) (host.Result, error) {
 			got = command
-			return shell.Result{Stdout: "stubbed\n"}, nil
+			return host.Result{Stdout: "stubbed\n"}, nil
 		})
 		out := New(fake).Run(context.Background(), []Probe{{Name: "a", Command: "should not really run"}})
 		assert.Equal(t, "should not really run", got)

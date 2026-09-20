@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/internal/classify"
+	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
-	"github.com/vitzeno/detent/internal/shell"
 	"github.com/vitzeno/detent/internal/usage"
 )
 
@@ -41,7 +41,7 @@ func TestRunGoal_UnboundedByDefault(t *testing.T) {
 	s := &Session{
 		Proposer: &stubProposer{script: script},
 		Confirm:  confirmFunc(func(ConfirmRequest) bool { return true }),
-		Run:      okRun(shell.Result{Stdout: "hi\n"}),
+		Run:      okRun(host.Result{Stdout: "hi\n"}),
 	}
 
 	res, err := s.RunGoal(context.Background(), "g")
@@ -59,7 +59,7 @@ func TestRunGoal_ExplicitCapStillEnds(t *testing.T) {
 	s := &Session{
 		Proposer:   &stubProposer{script: script},
 		Confirm:    confirmFunc(func(ConfirmRequest) bool { return true }),
-		Run:        okRun(shell.Result{}),
+		Run:        okRun(host.Result{}),
 		StepBudget: 2,
 	}
 	res, err := s.RunGoal(context.Background(), "g")
@@ -76,7 +76,7 @@ func TestRunGoal_HeuristicPostAttached(t *testing.T) {
 	s := &Session{
 		Proposer: stub,
 		Confirm:  confirmFunc(func(ConfirmRequest) bool { return true }),
-		Run:      okRun(shell.Result{Stdout: "a\nb\n"}),
+		Run:      okRun(host.Result{Stdout: "a\nb\n"}),
 	}
 	res, err := s.RunGoal(context.Background(), "g")
 	require.NoError(t, err)
@@ -125,7 +125,7 @@ func TestDriver_FullBatchFlowsThrough(t *testing.T) {
 			confirmedReq = &cp
 			return true
 		}),
-		Run: okRun(shell.Result{Stdout: "a\n"}),
+		Run: okRun(host.Result{Stdout: "a\n"}),
 		Judge: &batchJudge{
 			preMutability: MutReadOnly, preRisk: 0.1,
 			status: StatusClean, kind: KindInline, attention: 0.2, achieved: 0.9,

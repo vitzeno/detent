@@ -1,25 +1,34 @@
 package resolver
 
 import (
-	"github.com/vitzeno/detent/internal/agent"
-	"github.com/vitzeno/detent/internal/shell"
+	"context"
+
+	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/ui"
 )
 
-// sinkAdapter bridges ui.StreamSink to agent.StreamSink.
-type sinkAdapter struct {
-	sink ui.StreamSink
-}
-
-func (a sinkAdapter) OnEvent(e shell.StreamEvent) {
-	if a.sink != nil {
-		a.sink.OnEvent(e.Line, e.Stderr)
+// relayEvents translates host.StreamEvent onto events, dropping under
+// backpressure. Returns agent's input channel and a done signal.
+func relayEvents(ctx context.Context, events chan<- ui.StreamEvent) (chan host.StreamEvent, <-chan struct{}) {
+	done := make(chan struct{})
+	if events == nil {
+		close(done)
+		return nil, done
 	}
-}
-
-func toStreamSink(sink ui.StreamSink) agent.StreamSink {
-	if sink == nil {
-		return nil
-	}
-	return sinkAdapter{sink: sink}
+	agentCh := make(chan host.StreamEvent, 64)
+	go func() {
+		defer close(done)
+		for e := range agentCh {
+			select {
+			case events <- ui.StreamEvent{Line: e.Line, Stderr: e.Stderr}:
+			case <-ctx.Done():
+			default:
+				select {
+				case events <- ui.StreamEvent{Line: "…[live output dropped: UI lag]"}:
+				default:
+				}
+			}
+		}
+	}()
+	return agentCh, done
 }

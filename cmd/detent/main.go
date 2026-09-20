@@ -15,6 +15,7 @@ import (
 	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/config"
+	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/resolver"
 	"github.com/vitzeno/detent/internal/ui"
@@ -69,6 +70,7 @@ func run() error {
 		propose.WithHeaders(resolved.Headers),
 	)
 	sessOpts := []agent.Option{
+		agent.WithRun(host.Shell{}),
 		agent.WithStepBudget(resolved.Steps),
 		agent.WithRiskThreshold(resolved.RiskThreshold),
 		agent.WithStats(usage.New()),

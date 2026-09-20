@@ -64,10 +64,10 @@ Package dependency flow — `ui` and `agent` never import each other;
 
 ```
 cmd/detent  →  ui, resolver, agent, classify, config, propose (Ping only)
-resolver    →  ui (Driver + DTOs), agent, propose, shell, usage, fileio
+resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio
 ui          →  its own subpackages only (editor, slash, status, tabular,
                 markdown, theme, island, tree, layout)
-agent       →  propose, shell, classify, usage
+agent       →  propose, host, classify, usage
 ```
 
 - **`internal/propose`** — `OpenAIProposer`, the reference implementation of
@@ -84,24 +84,31 @@ agent       →  propose, shell, classify, usage
   OpenAI-compatible backend. `Proposal.Command` is empty iff `Done` is true;
   `parseProposal` enforces that invariant when decoding the model's JSON.
 
-- **`internal/shell`** — the only place `exec.Command` is called. `Run`
-  executes via `sh -c` with a bounded timeout and per-stream output cap
-  (`MaxOutputBytes`); a non-zero exit is a `Result`, not a Go `error`. `Stream`
-  (in `stream.go`) is the live-output variant the TUI uses, emitting
-  `StreamEvent`s as the command runs.
+- **`internal/host`** — the only place `exec.Command` is called, all in
+  one file (`shell.go`). `Shell.Run` executes via `sh -c` with a bounded
+  timeout and per-stream output cap (`MaxOutputBytes`); a non-zero exit
+  is a `Result`, not a Go `error`. It also takes a `chan<- StreamEvent`
+  for live output (nil is fine — Run just skips sending) and closes it
+  once output ends, instead of taking a callback. `Shell{}` is the
+  unsandboxed default `agent.Runner`.
 
 - **`internal/agent`** — the propose → confirm → execute → judge loop,
   one goal at a time, over an append-only `Session.Transcript`
   (`[]propose.Message` shared across every goal in the session). Has no
   idea `ui` or `resolver` exist. `interfaces.go` declares every interface
-  `agent` consumes: `Proposer`, `Judge`, `Confirmer`, `Runner`,
-  `StreamSink`. Declared at the consumer, not the producer — `propose`
-  and `classify` ship only data types and implementations. `shell.Stream`
-  itself still takes a plain callback; `Runner`'s default implementation
-  adapts that one leaf-level exception. `probe` declares its own
-  identically-shaped `Judge`, since it sits below `agent` and can't
-  import it back. `options.go` holds `Option`/`With*`/`New`, same split
-  as `propose`. `session.go` holds the `Session` struct and result/record
+  `agent` consumes: `Proposer`, `Judge`, `Confirmer`, `Runner` — the last
+  taking a `chan<- host.StreamEvent` directly (may be nil) rather than a
+  callback. Unlike `Judge` (nil just disables judging), `Proposer`/`Run`
+  have no auto-default: `BeginGoal` fails loud if either is nil, the same
+  way `Confirm` fails the whole session closed. `host.Shell` runs
+  commands directly on the host, unsandboxed, and is wired explicitly by
+  `cmd/detent/main.go` — a future sandboxed `Runner` is a wiring choice
+  there, not a hidden fallback inside `agent`. Declared at the consumer,
+  not the producer — `propose` and `classify` ship only data types and
+  implementations. `probe` declares its own identically-shaped `Judge`,
+  since it sits below `agent` and can't import it back. `options.go`
+  holds `Option`/`With*`/`New`, same split as `propose`. `session.go`
+  holds the `Session` struct and result/record
   types; `loop.go` holds the two entry points:
   - `RunGoal` — blocking, used by the headless `-goal` CLI path; fails
     closed if `Confirm` is nil.
@@ -137,7 +144,10 @@ agent       →  propose, shell, classify, usage
 - **`internal/resolver`** — the translation layer between `ui`'s
   vocabulary and the core harness's: `Resolver` wraps `*agent.Session` and
   implements `ui.Driver`, translating every value each way in `convert.go`
-  (`stream.go` does the same for the one streaming callback). It's the
+  (`stream.go`'s `relayEvents` does the same for `StreamEvent`, via one
+  goroutine per `Execute` call that ranges agent's channel and forwards
+  translated events onto `ui`'s, dropping under backpressure rather than
+  blocking the running command). It's the
   only package importing both `ui` and `agent` — neither of them may
   import it back. `cmd/detent` wires `resolver.New(sess)` into `ui.New`;
   the headless `-goal` path talks to `*agent.Session` directly and never
@@ -154,7 +164,7 @@ agent       →  propose, shell, classify, usage
   needs) plus every DTO its methods use (`Proposal`, `PreJudgment`,
   `PostJudgment`, `ExecutedCommand`, `GoalResult`, `Result`, `Usage`,
   `GoalStats`/`StepStats`, `RenderKind`/`EndReason` and their constants) —
-  flat mirrors of `agent`'s/`usage`'s/`propose`'s/`shell`'s own types,
+  flat mirrors of `agent`'s/`usage`'s/`propose`'s/`host`'s own types,
   owned by `ui` so a change to any of those doesn't ripple into `ui`
   directly; `internal/resolver` is the one thing that imports both sides
   to translate between them. `model.go` holds `Model`, `stepRow`/
@@ -192,7 +202,7 @@ agent       →  propose, shell, classify, usage
 ### Keeping `ui` and `agent` in sync
 
 `ui`'s DTOs (`internal/ui/driver.go`) are hand-mirrored from `agent`'s/
-`usage`'s/`propose`'s/`shell`'s own types, not aliases of them — that's
+`usage`'s/`propose`'s/`host`'s own types, not aliases of them — that's
 the whole point of the split, but it means nothing forces a change on
 one side to reach the other. Two different failure modes, two different
 defenses:
@@ -207,7 +217,7 @@ defenses:
 - **Field-level drift** (`agent` grows a field nothing forces you to
   surface) — this one compiles fine either way, so it's on you. The
   rule: whenever a change touches a type in `agent`/`usage`/`propose`/
-  `shell` that has a mirror in `ui/driver.go`, go decide on purpose in
+  `host` that has a mirror in `ui/driver.go`, go decide on purpose in
   `internal/resolver/convert.go` whether the new data should cross the
   boundary — don't let it be discovered later as "why isn't X showing in
   the UI." `internal/resolver/driver_test.go` drives a real

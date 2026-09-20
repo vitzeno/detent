@@ -22,33 +22,11 @@ func proposeCmd(ctx context.Context, sess Driver, goal string) tea.Cmd {
 	}
 }
 
-// chanSink adapts streamCh to StreamSink at the point where a running
-// command's output crosses into Bubble Tea's message loop.
-type chanSink struct {
-	ch  chan<- streamMsg
-	ctx context.Context
-}
-
-func (s chanSink) OnEvent(line string, stderr bool) {
-	select {
-	case s.ch <- streamMsg{stderr: stderr, line: line}:
-	case <-s.ctx.Done():
-	default:
-		// Buffer full: count the drop, never block the command.
-		select {
-		case s.ch <- streamMsg{line: "…[live output dropped: UI lag]"}:
-		default:
-		}
-	}
-}
-
-// Live lines go to streamCh (drops counted, never block); Msg carries
-// only the final result. One ctx for both Execute and the forwarding
-// select below, so /abort actually reaches the command, not just the
-// UI's listener.
-func execCmd(ctx context.Context, sess Driver, res *GoalResult, step StepHandle, p Proposal, pre PreJudgment, streamCh chan<- streamMsg) tea.Cmd {
+// Live lines go to streamCh; Msg carries only the final result. One ctx
+// for both Execute and the read side, so /abort reaches the command.
+func execCmd(ctx context.Context, sess Driver, res *GoalResult, step StepHandle, p Proposal, pre PreJudgment, streamCh chan<- StreamEvent) tea.Cmd {
 	return func() tea.Msg {
-		ec, err := sess.Execute(ctx, res, step, p, pre, chanSink{ch: streamCh, ctx: ctx})
+		ec, err := sess.Execute(ctx, res, step, p, pre, streamCh)
 		if err != nil {
 			return execDoneMsg{err: err}
 		}
@@ -78,7 +56,7 @@ func saveCmd(sess Driver, row *stepRow, path, content string) tea.Cmd {
 }
 
 // Receives one live line; re-dispatched per line while running.
-func streamWaitCmd(ch <-chan streamMsg, ctx context.Context) tea.Cmd {
+func streamWaitCmd(ch <-chan StreamEvent, ctx context.Context) tea.Cmd {
 	return func() tea.Msg {
 		select {
 		case m := <-ch:

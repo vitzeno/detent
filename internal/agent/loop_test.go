@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/internal/classify"
+	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
-	"github.com/vitzeno/detent/internal/shell"
 	"github.com/vitzeno/detent/internal/usage"
 )
 
@@ -43,14 +43,14 @@ type confirmFunc func(ConfirmRequest) bool
 
 func (f confirmFunc) Confirm(req ConfirmRequest) bool { return f(req) }
 
-type runFunc func(context.Context, string, StreamSink) (shell.Result, error)
+type runFunc func(context.Context, string, chan<- host.StreamEvent) (host.Result, error)
 
-func (f runFunc) Run(ctx context.Context, command string, sink StreamSink) (shell.Result, error) {
-	return f(ctx, command, sink)
+func (f runFunc) Run(ctx context.Context, command string, events chan<- host.StreamEvent) (host.Result, error) {
+	return f(ctx, command, events)
 }
 
-func okRun(result shell.Result) Runner {
-	return runFunc(func(_ context.Context, _ string, _ StreamSink) (shell.Result, error) {
+func okRun(result host.Result) Runner {
+	return runFunc(func(_ context.Context, _ string, _ chan<- host.StreamEvent) (host.Result, error) {
 		return result, nil
 	})
 }
@@ -81,7 +81,7 @@ func TestSession_RecordFileSave_BoundsLargeDiffs(t *testing.T) {
 // non-blocking driver path (resolver, not RunGoal): an abort during
 // propose still has to close the goal turn and finish Stats.Goal.
 func TestSession_RecordAbort_ClosesTranscriptAndStats(t *testing.T) {
-	s := &Session{Proposer: &stubProposer{}, Stats: usage.New()}
+	s := &Session{Proposer: &stubProposer{}, Run: okRun(host.Result{}), Stats: usage.New()}
 	res, err := s.BeginGoal(context.Background(), "some goal")
 	require.NoError(t, err)
 
@@ -119,7 +119,7 @@ func TestRunGoal_DonePath(t *testing.T) {
 			confirmed = append(confirmed, req.Command)
 			return true
 		}),
-		Run: okRun(shell.Result{Stdout: "a\nb\n"}),
+		Run: okRun(host.Result{Stdout: "a\nb\n"}),
 	}
 
 	res, err := s.RunGoal(context.Background(), "what files are here?")
@@ -150,7 +150,7 @@ func TestRunGoal_SecondGoalSeesFirst(t *testing.T) {
 	s := &Session{
 		Proposer: stub,
 		Confirm:  confirmFunc(func(ConfirmRequest) bool { return true }),
-		Run:      okRun(shell.Result{Stdout: "forty-two\n"}),
+		Run:      okRun(host.Result{Stdout: "forty-two\n"}),
 	}
 
 	_, err := s.RunGoal(context.Background(), "print something")
@@ -193,7 +193,7 @@ func TestRunGoal_DeclineStopsGoal(t *testing.T) {
 			confirmed = append(confirmed, req.Command)
 			return false // decline the one command that ever reaches confirm
 		}),
-		Run: okRun(shell.Result{}),
+		Run: okRun(host.Result{}),
 	}
 
 	res, err := s.RunGoal(context.Background(), "clean up")
@@ -216,7 +216,7 @@ func TestRunGoal_BudgetExhausts(t *testing.T) {
 	s := &Session{
 		Proposer:   stub,
 		Confirm:    confirmFunc(func(ConfirmRequest) bool { return true }),
-		Run:        okRun(shell.Result{}),
+		Run:        okRun(host.Result{}),
 		StepBudget: 2,
 	}
 
@@ -240,7 +240,7 @@ func TestRunGoal_OnlyDangerousCommandsNeedConfirm(t *testing.T) {
 			calls = append(calls, req.Command)
 			return true
 		}),
-		Run: okRun(shell.Result{}),
+		Run: okRun(host.Result{}),
 	}
 	res, err := s.RunGoal(context.Background(), "g")
 	require.NoError(t, err)
@@ -251,13 +251,13 @@ func TestRunGoal_OnlyDangerousCommandsNeedConfirm(t *testing.T) {
 func TestRunGoal_NoConfirmFuncStillOKForAnAllSafeGoal(t *testing.T) {
 	// Confirm==nil fails closed even though this goal never needed it.
 	stub := &stubProposer{script: []propose.Proposal{{Command: "echo harmless", Rationale: "safe"}}}
-	s := &Session{Proposer: stub, Confirm: nil, Run: okRun(shell.Result{})}
+	s := &Session{Proposer: stub, Confirm: nil, Run: okRun(host.Result{})}
 	_, err := s.RunGoal(context.Background(), "g")
 	assert.ErrorContains(t, err, "no Confirm")
 }
 
 func TestRunGoal_NoConfirmFailsClosed(t *testing.T) {
-	s := &Session{Proposer: &stubProposer{}, Confirm: nil, Run: okRun(shell.Result{})}
+	s := &Session{Proposer: &stubProposer{}, Confirm: nil, Run: okRun(host.Result{})}
 	_, err := s.RunGoal(context.Background(), "g")
 	assert.ErrorContains(t, err, "no Confirm")
 }
@@ -276,7 +276,7 @@ func TestRunGoal_DangerFlagReachesConfirm(t *testing.T) {
 			sawNote = req.RiskNote
 			return false // stop after capturing
 		}),
-		Run: okRun(shell.Result{}),
+		Run: okRun(host.Result{}),
 	}
 	_, err := s.RunGoal(context.Background(), "g")
 	require.NoError(t, err)
@@ -313,7 +313,7 @@ func TestRunGoal_JevBackstopEscalatesOnly(t *testing.T) {
 			flagged = req.Dangerous
 			return false
 		}),
-		Run:   okRun(shell.Result{}),
+		Run:   okRun(host.Result{}),
 		Judge: &fakeJudge{noul: 0.9},
 	}
 	_, err := s.RunGoal(context.Background(), "g")
@@ -337,7 +337,7 @@ func TestRunGoal_JevBackstopEscalatesOnly(t *testing.T) {
 					got = req.Dangerous
 					return false
 				}),
-				Run:   okRun(shell.Result{}),
+				Run:   okRun(host.Result{}),
 				Judge: tc.judge,
 			}
 			_, err := s.RunGoal(context.Background(), "g")

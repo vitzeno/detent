@@ -46,7 +46,7 @@ type Row struct {
 	Running   bool
 	HasResult bool
 	ExitCode  int
-	Summary   string // e.g. shell.Result.Summary()
+	Summary   string // e.g. host.Result.Summary()
 	LiveLines int
 	Dropped   int
 	Judged    bool

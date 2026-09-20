@@ -1,6 +1,6 @@
 // Package resolver translates between ui's own vocabulary (DTOs and the
 // Driver interface) and the core harness's domain (agent, usage,
-// propose, shell, fileio). It's the only package that imports both
+// propose, host, fileio). It's the only package that imports both
 // sides — neither ui nor agent knows the other, or this package, exists.
 package resolver
 

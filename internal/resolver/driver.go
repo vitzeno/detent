@@ -27,10 +27,12 @@ func (r *Resolver) RecordStep(res *ui.GoalResult, p ui.Proposal, pre ui.PreJudgm
 	return ui.StepHandle{Ref: step}
 }
 
-func (r *Resolver) Execute(ctx context.Context, res *ui.GoalResult, step ui.StepHandle, p ui.Proposal, pre ui.PreJudgment, sink ui.StreamSink) (*ui.ExecutedCommand, error) {
+func (r *Resolver) Execute(ctx context.Context, res *ui.GoalResult, step ui.StepHandle, p ui.Proposal, pre ui.PreJudgment, events chan<- ui.StreamEvent) (*ui.ExecutedCommand, error) {
 	agentRes := goalRef(res)
 	ustep, _ := step.Ref.(*usage.Step)
-	aec, err := r.sess.Execute(ctx, agentRes, ustep, fromProposal(p), fromPreJudgment(pre), toStreamSink(sink))
+	agentCh, done := relayEvents(ctx, events)
+	aec, err := r.sess.Execute(ctx, agentRes, ustep, fromProposal(p), fromPreJudgment(pre), agentCh)
+	<-done
 	syncGoalResult(res, agentRes)
 	if err != nil {
 		return nil, err

@@ -14,7 +14,7 @@ import (
 // state machine against it directly, never a real *agent.Session —
 // resolver imports this package for its DTOs, so ui's own tests
 // importing resolver back would be a cycle. Bonus: no agent/propose/
-// shell/usage/classify import needed here at all. resolver's own tests
+// host/usage/classify import needed here at all. resolver's own tests
 // cover the real translation from agent's domain into these DTOs.
 //
 // Configure a fakeDriver per test by setting its fields after
@@ -89,7 +89,7 @@ func (f *fakeDriver) RecordStep(_ *GoalResult, _ Proposal, _ PreJudgment, _ Usag
 	return StepHandle{}
 }
 
-func (f *fakeDriver) Execute(_ context.Context, res *GoalResult, _ StepHandle, p Proposal, pre PreJudgment, _ StreamSink) (*ExecutedCommand, error) {
+func (f *fakeDriver) Execute(_ context.Context, res *GoalResult, _ StepHandle, p Proposal, pre PreJudgment, _ chan<- StreamEvent) (*ExecutedCommand, error) {
 	if f.execErr != nil {
 		return nil, f.execErr
 	}

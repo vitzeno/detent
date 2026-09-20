@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/vitzeno/detent/internal/classify"
+	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
-	"github.com/vitzeno/detent/internal/shell"
 	"github.com/vitzeno/detent/internal/usage"
 )
 
@@ -15,15 +15,10 @@ type Confirmer interface {
 	Confirm(req ConfirmRequest) bool
 }
 
-// StreamSink receives live output as a command runs. Execute tolerates a
-// nil sink (RunGoal's blocking path has no live listener to notify).
-type StreamSink interface {
-	OnEvent(shell.StreamEvent)
-}
-
-// Runner executes a command, defaulting to shellRunner (shell.Stream).
+// Runner executes a command; host.Shell is the unsandboxed default.
+// events may be nil (RunGoal's blocking path has no live listener).
 type Runner interface {
-	Run(ctx context.Context, command string, sink StreamSink) (shell.Result, error)
+	Run(ctx context.Context, command string, events chan<- host.StreamEvent) (host.Result, error)
 }
 
 // Proposer proposes the next step, plus what the call consumed.

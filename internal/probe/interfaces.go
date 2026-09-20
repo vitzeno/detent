@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/vitzeno/detent/internal/classify"
-	"github.com/vitzeno/detent/internal/shell"
+	"github.com/vitzeno/detent/internal/host"
 )
 
 // Judge returns typed judgments. Identical in shape to agent.Judge;
@@ -16,5 +16,5 @@ type Judge interface {
 // Runner executes one command. No sink param like agent.Runner has,
 // since probes never stream.
 type Runner interface {
-	Run(ctx context.Context, command string) (shell.Result, error)
+	Run(ctx context.Context, command string) (host.Result, error)
 }

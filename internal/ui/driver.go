@@ -8,11 +8,12 @@ import (
 )
 
 // This file is ui's own vocabulary for talking to Driver. ui never
-// imports agent/usage/propose/shell directly; see CLAUDE.md.
+// imports agent/usage/propose/host directly; see CLAUDE.md.
 
-// StreamSink receives live output as a command runs.
-type StreamSink interface {
-	OnEvent(line string, stderr bool)
+// StreamEvent is one line of live output from a running command.
+type StreamEvent struct {
+	Line   string
+	Stderr bool
 }
 
 // Driver is the session surface ui needs. The one implementation is
@@ -22,7 +23,8 @@ type Driver interface {
 	ProposeNext(ctx context.Context, goal string) (Proposal, PreJudgment, Usage, error)
 	// dwell is 0 when no confirm was shown.
 	RecordStep(res *GoalResult, p Proposal, pre PreJudgment, proposeUsage Usage, dwell time.Duration) StepHandle
-	Execute(ctx context.Context, res *GoalResult, step StepHandle, p Proposal, pre PreJudgment, sink StreamSink) (*ExecutedCommand, error)
+	// events may be nil; Execute never blocks on it (drops under backpressure).
+	Execute(ctx context.Context, res *GoalResult, step StepHandle, p Proposal, pre PreJudgment, events chan<- StreamEvent) (*ExecutedCommand, error)
 	JudgeResult(ctx context.Context, goal, command string, result Result, step StepHandle) PostJudgment
 	RecordDecline(res *GoalResult, command string)
 	RecordDone(res *GoalResult, p Proposal)
@@ -82,7 +84,7 @@ type PostJudgment struct {
 	GoalAchieved float64 // -1 means unknown
 }
 
-// Result is a command's captured outcome, mirroring shell.Result.
+// Result is a command's captured outcome, mirroring host.Result.
 type Result struct {
 	Stdout    string
 	Stderr    string
