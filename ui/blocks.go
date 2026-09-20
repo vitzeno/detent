@@ -1,0 +1,85 @@
+package ui
+
+import (
+	"github.com/vitzeno/detent/ui/editor"
+	"github.com/vitzeno/detent/ui/tree"
+)
+
+// What the history pane is a list of: one goalBlock per goal (or
+// slash-command invocation), each holding the steps taken toward it.
+// Model owns the blocks; these types own nothing but their own data.
+
+type goalBlock struct {
+	goal      string
+	res       *GoalResult // nil for a tool block
+	steps     []*stepRow
+	ended     bool
+	end       EndReason
+	summary   string
+	judgeNote string
+	fatalErr  error
+
+	// tool names a slash-command invocation. Empty for a real goal.
+	tool string
+}
+
+type stepRow struct {
+	command string
+
+	// editPath is set at approve() time; editor fills in once the
+	// command finishes and the file is read from disk. Shared by both a
+	// command row and a tree-opened file row.
+	editPath string
+	editor   *editor.Model
+
+	// toolKind is non-empty for a tool row instead of an executed
+	// command. Exactly one of cmd/tool is meaningful.
+	toolKind string
+	cmd      cmdState
+	tool     toolState
+}
+
+// cmdState holds a stepRow's fields for an executed command; zero-valued
+// on a tool row (toolKind != "").
+type cmdState struct {
+	rationale string
+	pre       PreJudgment
+	live      []string
+	dropped   int
+	ec        *ExecutedCommand // nil while running; judgeMsg attaches Post
+	running   bool
+	expanded  bool
+	step      StepHandle // correlates with Driver.RecordStep/JudgeResult
+
+	tableCursor int    // selected table row
+	styled      string // cached transformed output
+	styledWidth int    // viewport width the cache was built for
+}
+
+// toolState holds a stepRow's fields for a slash-command row (/tree,
+// /usage, /help, or a tree-opened file); zero-valued on a command row.
+type toolState struct {
+	tree        *tree.Model // toolKind == "tree"
+	usageCursor int         // toolKind == "usage"
+	usageExpand int
+}
+
+// rowKind returns the judged kind, or "" while pending.
+func rowKind(r *stepRow) RenderKind {
+	if r == nil || r.cmd.running || r.cmd.ec == nil || r.cmd.ec.Post == nil {
+		return ""
+	}
+	return r.cmd.ec.Post.RenderKind
+}
+
+// tableText is the output to render as a table, when the judge said
+// this row is one.
+func (r *stepRow) tableText() (string, bool) {
+	if rowKind(r) != KindTable {
+		return "", false
+	}
+	if r.cmd.ec.Result.Stdout != "" {
+		return r.cmd.ec.Result.Stdout, true
+	}
+	return r.cmd.ec.Result.Stderr, true
+}

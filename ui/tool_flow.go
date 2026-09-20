@@ -2,7 +2,6 @@ package ui
 
 import (
 	"os"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -10,41 +9,33 @@ import (
 	"github.com/vitzeno/detent/ui/tree"
 )
 
-// acceptSlash completes the highlighted entry into the input bar.
-func (m Model) acceptSlash() (tea.Model, tea.Cmd) {
-	if !m.prompt.Accept() {
+// runSlash dispatches an input-bar command through the registry in
+// slash.go, which carries each command's handler alongside its name.
+func (m Model) runSlash(input string) (tea.Model, tea.Cmd) {
+	c, ok := lookupSlash(input)
+	if !ok {
+		m.notice = "unknown command " + input + " (try /help)"
 		return m, nil
 	}
+	return c.run(m, input)
+}
+
+// acceptSlash completes the highlighted entry into the input bar.
+func (m Model) acceptSlash() (tea.Model, tea.Cmd) {
+	m.prompt.Accept()
 	return m, nil
 }
 
-// runSlash handles input-bar commands: quit/abort, plus tool
-// invocations (/tree, /usage, /help) — see openTool.
-func (m Model) runSlash(cmd string) (tea.Model, tea.Cmd) {
-	switch strings.ToLower(strings.Fields(cmd)[0]) {
-	case "/q", "/quit":
-		return m, tea.Quit
-	case "/abort":
-		if m.abort != nil {
-			m.abort()
-			m.abort = nil
-			m.notice = "abort sent"
-		} else {
-			m.notice = "nothing running"
-		}
-		return m, nil
-	case "/tree":
-		return m.openTreeTool()
-	case "/usage":
-		return m.openTool("usage", &stepRow{command: "/usage", toolKind: "usage", tool: toolState{usageExpand: -1}})
-	case "/rollback":
-		return m.runRollback(cmd)
-	case "/help":
-		return m.openTool("help", &stepRow{command: "/help", toolKind: "help"})
-	default:
-		m.notice = "unknown command " + cmd + " (try /help)"
+// abortRunning cancels the command in flight, if there is one.
+func (m Model) abortRunning(string) (tea.Model, tea.Cmd) {
+	if m.abort == nil {
+		m.notice = "nothing running"
 		return m, nil
 	}
+	m.abort()
+	m.abort = nil
+	m.notice = "abort sent"
+	return m, nil
 }
 
 // openTreeTool walks cwd (read-only, never confirmed) and opens it as a

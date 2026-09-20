@@ -1,3 +1,7 @@
+// Package ui is a full-screen dynamic TUI: an output pane and a
+// history pane over an input bar, driven by one Model. It imports
+// nothing under internal/ — internal/resolver translates between this
+// package's DTOs (driver.go) and the harness's own types.
 package ui
 
 import (
@@ -10,172 +14,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/vitzeno/detent/ui/editor"
 	"github.com/vitzeno/detent/ui/status"
-	"github.com/vitzeno/detent/ui/tree"
 )
 
-const (
-	maxLiveLines     = 1000
-	maxViewportLines = 400
-	streamBufSize    = 2048
-)
-
-type mode int
-
-const (
-	modeInput mode = iota
-	modeConfirm
-	modeSaveConfirm // diff confirm for a direct editor save, see saveConfirmBox
-)
-
-// cmdState holds a stepRow's fields for an executed command; zero-valued
-// on a tool row (toolKind != "").
-type cmdState struct {
-	rationale string
-	pre       PreJudgment
-	live      []string
-	dropped   int
-	ec        *ExecutedCommand // nil while running; judgeMsg attaches Post
-	running   bool
-	expanded  bool
-	step      StepHandle // correlates with Driver.RecordStep/JudgeResult
-
-	tableCursor int    // selected table row
-	styled      string // cached transformed output
-	styledWidth int    // viewport width the cache was built for
-}
-
-// toolState holds a stepRow's fields for a slash-command row (/tree,
-// /usage, /help, or a tree-opened file); zero-valued on a command row.
-type toolState struct {
-	tree        *tree.Model // toolKind == "tree"
-	usageCursor int         // toolKind == "usage"
-	usageExpand int
-}
-
-type stepRow struct {
-	command string
-
-	// editPath is set at approve() time; editor fills in once the
-	// command finishes and the file is read from disk. Shared by both a
-	// command row and a tree-opened file row.
-	editPath string
-	editor   *editor.Model
-
-	// toolKind is non-empty for a tool row instead of an executed
-	// command. Exactly one of cmd/tool is meaningful.
-	toolKind string
-	cmd      cmdState
-	tool     toolState
-}
-
-type goalBlock struct {
-	goal      string
-	res       *GoalResult // nil for a tool block
-	steps     []*stepRow
-	ended     bool
-	end       EndReason
-	summary   string
-	judgeNote string
-	fatalErr  error
-
-	// tool names a slash-command invocation. Empty for a real goal.
-	tool string
-}
-
-type beginGoalMsg struct {
-	goal string
-	res  *GoalResult
-	err  error
-}
-
-type proposeMsg struct {
-	proposal Proposal
-	pre      PreJudgment
-	used     Usage
-	err      error
-}
-
-type execDoneMsg struct {
-	ec  *ExecutedCommand
-	err error
-}
-
-type judgeMsg struct {
-	row  *stepRow
-	post PostJudgment
-}
-
-type saveDoneMsg struct {
-	row     *stepRow
-	content string
-	err     error
-}
-
-type welcomeTickMsg struct{}
-
-type rollbackDoneMsg struct {
-	target *goalBlock
-	step   int
-	ok     bool
-	err    error
-}
-
-// navState is history/output navigation. histOffset is the only
-// scroll state kept: what's visible is derived per render by
-// historyWindow, so there is no cache to keep in step.
-type navState struct {
-	cursor int
-	follow bool
-	focus  focusPane
-
-	histHeight int
-	histOffset int
-}
-
-// layoutState is the body row's pane widths, recomputed by sizeViewport.
-type layoutState struct {
-	width, height int
-	outputColW    int
-	histColW      int
-}
-
-// confirmState is the propose→confirm handoff.
-type confirmState struct {
-	pending Proposal
-	pre     PreJudgment
-	use     Usage
-	shownAt time.Time // starts the dwell clock
-}
-
-// saveState is the direct-editor-write confirm flow.
-type saveState struct {
-	editing bool
-	row     *stepRow
-}
-
-// perfState is UI-prep cost, measured around viewport refreshes.
-type perfState struct {
-	uiPrep  time.Duration
-	uiPreps int
-}
-
-// SessionInfo is what the session bar reports about this run. Grouped
-// rather than passed as three bare strings, which read identically at
-// a call site and so swap silently.
-type SessionInfo struct {
-	Proposer string
-	Judge    string // "" when no judge is wired
-	RunMode  string // "host" or "sandbox"
-
-	// Sandbox facts for the welcome pane; empty in host mode.
-	Image   string
-	Mount   string
-	Runtime string // "" means containerd's own default
-}
-
-// Model is the TUI state.
+// Model is the TUI state. The screen is three zones — an output pane,
+// a history pane, and the input bar — over one flat list of goal
+// blocks; blocks.go holds those, messages.go what arrives about them.
 type Model struct {
 	sess Driver
 	ctx  context.Context
@@ -212,36 +56,22 @@ type Model struct {
 	totalCmds int
 }
 
-type focusPane int
+// SessionInfo is what the session bar reports about this run. Grouped
+// rather than passed as three bare strings, which read identically at
+// a call site and so swap silently.
+type SessionInfo struct {
+	Proposer string
+	Judge    string // "" when no judge is wired
+	RunMode  string // "host" or "sandbox"
 
-const (
-	focusInput focusPane = iota
-	focusHistory
-	focusOutput
-)
-
-// rowKind returns the judged kind, or "" while pending.
-func rowKind(r *stepRow) RenderKind {
-	if r == nil || r.cmd.running || r.cmd.ec == nil || r.cmd.ec.Post == nil {
-		return ""
-	}
-	return r.cmd.ec.Post.RenderKind
-}
-
-func (r *stepRow) tableText() (string, bool) {
-	if rowKind(r) != KindTable {
-		return "", false
-	}
-	if r.cmd.ec.Result.Stdout != "" {
-		return r.cmd.ec.Result.Stdout, true
-	}
-	return r.cmd.ec.Result.Stderr, true
+	// Sandbox facts for the welcome pane; empty in host mode.
+	Image   string
+	Mount   string
+	Runtime string // "" means containerd's own default
 }
 
 // New builds the TUI over sess.
 func New(ctx context.Context, sess Driver, info SessionInfo) Model {
-	p := newPrompt()
-
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(accent)
@@ -250,7 +80,7 @@ func New(ctx context.Context, sess Driver, info SessionInfo) Model {
 		sess:     sess,
 		ctx:      ctx,
 		info:     info,
-		prompt:   p,
+		prompt:   newPrompt(),
 		output:   viewport.New(),
 		spinner:  sp,
 		streamCh: make(chan StreamEvent, streamBufSize),
@@ -260,46 +90,6 @@ func New(ctx context.Context, sess Driver, info SessionInfo) Model {
 
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(textarea.Blink, welcomeTick())
-}
-
-// welcomeTick re-arms itself only while the welcome pane is showing,
-// so an idle animation never outlives the screen it belongs to.
-func welcomeTick() tea.Cmd {
-	return tea.Tick(welcomeTickRate, func(time.Time) tea.Msg { return welcomeTickMsg{} })
-}
-
-func (m *Model) rows() []*stepRow {
-	var out []*stepRow
-	for _, b := range m.blocks {
-		out = append(out, b.steps...)
-	}
-	return out
-}
-
-func (m *Model) focused() *stepRow {
-	rows := m.rows()
-	if len(rows) == 0 {
-		return nil
-	}
-	if m.nav.cursor < 0 {
-		m.nav.cursor = 0
-	}
-	if m.nav.cursor >= len(rows) {
-		m.nav.cursor = len(rows) - 1
-	}
-	return rows[m.nav.cursor]
-}
-
-func (m *Model) trackNewest() {
-	if !m.nav.follow {
-		return
-	}
-	// A reader parked in the output pane stays parked.
-	if m.nav.focus == focusOutput {
-		m.nav.follow = false
-		return
-	}
-	m.nav.cursor = len(m.rows()) - 1
 }
 
 // Update routes the message, then re-syncs the panes once. Handlers
@@ -316,6 +106,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return updated, cmd
 }
 
+// route hands each message to the flow that owns it: keys.go for
+// keystrokes, goal_flow.go for the propose→confirm→execute→judge
+// sequence, exec_flow/save_flow/rollback_flow for the rest.
 func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -324,6 +117,12 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
+
+	case tea.KeyboardEnhancementsMsg:
+		// The terminal answered our request; only now do we know
+		// whether shift+enter is a key of its own here.
+		m.prompt.SetRichKeys(msg.SupportsKeyDisambiguation())
+		return m, nil
 
 	case spinner.TickMsg:
 		if !m.waiting {
@@ -370,4 +169,112 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.output, cmd = m.output.Update(msg)
 	return m, cmd
+}
+
+// rows flattens every block's steps into the one list the cursor
+// indexes into.
+func (m *Model) rows() []*stepRow {
+	var out []*stepRow
+	for _, b := range m.blocks {
+		out = append(out, b.steps...)
+	}
+	return out
+}
+
+// focused is the row the cursor is on, clamping the cursor if rows
+// have come or gone since it was last set.
+func (m *Model) focused() *stepRow {
+	rows := m.rows()
+	if len(rows) == 0 {
+		return nil
+	}
+	if m.nav.cursor < 0 {
+		m.nav.cursor = 0
+	}
+	if m.nav.cursor >= len(rows) {
+		m.nav.cursor = len(rows) - 1
+	}
+	return rows[m.nav.cursor]
+}
+
+// trackNewest follows the latest row, unless the human has taken over.
+func (m *Model) trackNewest() {
+	if !m.nav.follow {
+		return
+	}
+	// A reader parked in the output pane stays parked.
+	if m.nav.focus == focusOutput {
+		m.nav.follow = false
+		return
+	}
+	m.nav.cursor = len(m.rows()) - 1
+}
+
+// welcomeTick re-arms itself only while the welcome pane is showing,
+// so an idle animation never outlives the screen it belongs to.
+func welcomeTick() tea.Cmd {
+	return tea.Tick(welcomeTickRate, func(time.Time) tea.Msg { return welcomeTickMsg{} })
+}
+
+const (
+	maxLiveLines     = 1000
+	maxViewportLines = 400
+	streamBufSize    = 2048
+)
+
+// mode is which of the three input states the bottom zone is in.
+type mode int
+
+const (
+	modeInput mode = iota
+	modeConfirm
+	modeSaveConfirm // diff confirm for a direct editor save, see saveConfirmBox
+)
+
+// focusPane is which zone the arrow keys act in.
+type focusPane int
+
+const (
+	focusInput focusPane = iota
+	focusHistory
+	focusOutput
+)
+
+// navState is history/output navigation. histOffset is the only
+// scroll state kept: what's visible is derived per render by
+// historyWindow, so there is no cache to keep in step.
+type navState struct {
+	cursor int
+	follow bool
+	focus  focusPane
+
+	histHeight int
+	histOffset int
+}
+
+// layoutState is the body row's pane widths, recomputed by sizeViewport.
+type layoutState struct {
+	width, height int
+	outputColW    int
+	histColW      int
+}
+
+// confirmState is the propose→confirm handoff.
+type confirmState struct {
+	pending Proposal
+	pre     PreJudgment
+	use     Usage
+	shownAt time.Time // starts the dwell clock
+}
+
+// saveState is the direct-editor-write confirm flow.
+type saveState struct {
+	editing bool
+	row     *stepRow
+}
+
+// perfState is UI-prep cost, measured around viewport refreshes.
+type perfState struct {
+	uiPrep  time.Duration
+	uiPreps int
 }

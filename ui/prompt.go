@@ -7,8 +7,6 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-
-	"github.com/vitzeno/detent/ui/slash"
 )
 
 const (
@@ -30,8 +28,13 @@ const (
 // those two in step live here rather than in seven other files.
 type prompt struct {
 	input   textarea.Model
-	matches []slash.Cmd
+	matches []slashCmd
 	cursor  int
+
+	// richKeys is true once the terminal has agreed to the Kitty
+	// keyboard protocol, which is what makes shift+enter arrive as
+	// something other than a plain enter.
+	richKeys bool
 }
 
 func newPrompt() prompt {
@@ -40,10 +43,12 @@ func newPrompt() prompt {
 	ta.CharLimit = 4000
 	ta.ShowLineNumbers = false
 	// Enter submits the goal, so a literal newline moves off it rather
-	// than doing both.
+	// than doing both. shift+enter is what other harnesses bind and
+	// only reaches us on a terminal that speaks the Kitty protocol;
+	// alt+enter and ctrl+j stay bound for everywhere else.
 	ta.KeyMap.InsertNewline = key.NewBinding(
-		key.WithKeys("alt+enter", "ctrl+j"),
-		key.WithHelp("alt+enter", "newline"),
+		key.WithKeys("shift+enter", "alt+enter", "ctrl+j"),
+		key.WithHelp("shift+enter", "newline"),
 	)
 	// Prompt on the first row only; wrapped rows align under it.
 	ta.SetPromptFunc(inputPromptW, func(p textarea.PromptInfo) string {
@@ -97,7 +102,7 @@ func (p *prompt) Clear() {
 }
 
 func (p *prompt) rematch() {
-	p.matches = slash.Match(p.input.Value())
+	p.matches = matchSlash(p.input.Value())
 	if p.cursor >= len(p.matches) {
 		p.cursor = 0
 	}
@@ -129,10 +134,25 @@ func (p *prompt) Close() {
 
 // IsExactCommand reports whether what's typed is already a whole
 // command, so enter should run it rather than complete it.
-func (p prompt) IsExactCommand() bool { return slash.Exact(p.input.Value()) }
+func (p prompt) IsExactCommand() bool { return exactSlash(p.input.Value()) }
+
+// SetRichKeys records what the terminal agreed to, so the hint can
+// name a key that actually works there.
+func (p *prompt) SetRichKeys(ok bool) { p.richKeys = ok }
+
+// NewlineKey names the binding to advertise for a literal newline.
+// All three stay bound either way — this only decides which one to
+// print, since on a terminal without the Kitty protocol shift+enter
+// is physically indistinguishable from enter and would be a lie.
+func (p prompt) NewlineKey() string {
+	if p.richKeys {
+		return "shift+enter"
+	}
+	return "alt+enter"
+}
 
 // DropdownRows is capped so the dropdown can't eat the history pane.
-func (p prompt) DropdownRows() int { return min(len(p.matches), slash.MaxRows) }
+func (p prompt) DropdownRows() int { return min(len(p.matches), maxSlashRows) }
 
 // Rows is how many rows the whole prompt occupies, dropdown included.
 func (p prompt) Rows() int { return p.DropdownRows() + p.input.Height() }
@@ -163,7 +183,7 @@ func inputRows(value string, width int) int {
 // being prefixed onto the block, which would indent only the first.
 func (p prompt) View(mark string) string {
 	var b strings.Builder
-	b.WriteString(slash.View(p.matches, p.cursor))
+	b.WriteString(slashDropdown(p.matches, p.cursor))
 	for i, line := range strings.Split(p.input.View(), "\n") {
 		if i > 0 {
 			b.WriteString("\n" + strings.Repeat(" ", inputMarkW))

@@ -1,4 +1,3 @@
-// Package ui is a full-screen dynamic TUI.
 package ui
 
 import (

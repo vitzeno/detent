@@ -7,19 +7,11 @@ import (
 
 	"github.com/vitzeno/detent/ui/editor"
 	"github.com/vitzeno/detent/ui/markdown"
-	"github.com/vitzeno/detent/ui/slash"
 	"github.com/vitzeno/detent/ui/tabular"
 )
 
-// showWelcome reports whether the output pane has nothing of its own
-// to show yet, which is the boot state: no row has ever been focused.
-func (m Model) showWelcome() bool {
-	return m.focused() == nil
-}
-
-// detailLines renders the focused row's component: editor takes
-// priority when present, then a table for tabular output, else the
-// scrolling viewport.
+// The output pane: what the focused row's component renders into
+// it, and the viewport refresh that keeps it in step.
 
 // detailLines renders the focused row's component: editor takes
 // priority when present, then a table for tabular output, else the
@@ -49,12 +41,9 @@ func (m Model) detailLines() []string {
 
 // helpLines lists every slash command via Match("/") (empty suffix
 // matches all), so there's no separate list to keep in sync.
-
-// helpLines lists every slash command via Match("/") (empty suffix
-// matches all), so there's no separate list to keep in sync.
 func helpLines() []string {
 	var lines []string
-	for _, c := range slash.Match("/") {
+	for _, c := range matchSlash("/") {
 		lines = append(lines, fmt.Sprintf("  %-10s %s", c.Name, c.Desc))
 	}
 	return lines
@@ -71,9 +60,6 @@ func (m Model) editorLines(e *editor.Model) []string {
 	}
 	return lines
 }
-
-// focusedTable falls back (ok=false) when the output won't parse — a
-// wrong component is worse than a plain viewport.
 
 // focusedTable falls back (ok=false) when the output won't parse — a
 // wrong component is worse than a plain viewport.
@@ -123,9 +109,6 @@ func (m *Model) refreshViewport() {
 
 // styledBody renders per judged kind, capped to maxViewportLines.
 // Unknown kinds render raw.
-
-// styledBody renders per judged kind, capped to maxViewportLines.
-// Unknown kinds render raw.
 func (m *Model) styledBody(r *stepRow) string {
 	combined := r.cmd.ec.Result.Stdout
 	if r.cmd.ec.Result.Stderr != "" {
@@ -163,9 +146,6 @@ func (m *Model) styledBody(r *stepRow) string {
 
 // markdownBody caches by width — a re-render per frame would churn on
 // every scroll tick.
-
-// markdownBody caches by width — a re-render per frame would churn on
-// every scroll tick.
 func (m *Model) markdownBody(r *stepRow, combined string) string {
 	if r.cmd.styled == "" || r.cmd.styledWidth != m.output.Width() {
 		rendered, err := markdown.Render(combined, m.output.Width())
@@ -178,8 +158,11 @@ func (m *Model) markdownBody(r *stepRow, combined string) string {
 	return r.cmd.styled
 }
 
-// setViewContent skips identical content: SetContent resets scroll
-// position, which must not happen just from resizing for the dropdown.
+// showWelcome reports whether the output pane has nothing of its own
+// to show yet, which is the boot state: no row has ever been focused.
+func (m Model) showWelcome() bool {
+	return m.focused() == nil
+}
 
 // setViewContent skips identical content: SetContent resets scroll
 // position, which must not happen just from resizing for the dropdown.

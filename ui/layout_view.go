@@ -6,11 +6,9 @@ import (
 	"github.com/vitzeno/detent/ui/layout"
 )
 
-var bodyWeights = []int{3, 2} // [output, history]; output gets the larger share
-
-// minPaneWidth is the outer-width floor below which a pane stops being
-// worth rendering as its own island.
-const minPaneWidth = 28
+// How the three zones divide the window. Every size the view renders
+// at comes from here, so the panes tile the terminal exactly and the
+// session bar can never be pushed off the top.
 
 // sizeViewport refits every pane to the window and to what the panes
 // currently hold, then re-renders the output. Update calls it once per
@@ -39,15 +37,24 @@ func (m *Model) sizeViewport() {
 	m.refreshViewport()
 }
 
-// islandOverhead is a titled zone island's non-content lines: header
-// plus top and bottom border.
-const islandOverhead = 3
+var bodyWeights = []int{3, 2} // [output, history]; output gets the larger share
+
+const (
+	// minPaneWidth is the outer-width floor below which a pane stops
+	// being worth rendering as its own island.
+	minPaneWidth = 28
+	// islandOverhead is a titled zone island's non-content lines:
+	// header plus top and bottom border.
+	islandOverhead = 3
+)
 
 // paneInner matches island.Render's own inner := width-4.
 func paneInner(outer int) int {
 	return max(20, outer-4)
 }
 
+// truncateWidth cuts s to w, marking the cut. Bytes, not display
+// columns: callers pass ASCII-ish paths and commands.
 func truncateWidth(s string, w int) string {
 	if w < 4 {
 		w = 4

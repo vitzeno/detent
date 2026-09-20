@@ -10,12 +10,6 @@ import (
 // This file is ui's own vocabulary for talking to Driver. ui never
 // imports agent/usage/propose/host directly; see CLAUDE.md.
 
-// StreamEvent is one line of live output from a running command.
-type StreamEvent struct {
-	Line   string
-	Stderr bool
-}
-
 // Driver is the session surface ui needs. The one implementation is
 // internal/resolver.Resolver, wrapping *agent.Session.
 type Driver interface {
@@ -43,6 +37,12 @@ type Driver interface {
 	Rollback(ctx context.Context, res *GoalResult, step int) (ok bool, err error)
 	Tracker() []GoalStats
 	UsageSnapshot() Snapshot
+}
+
+// StreamEvent is one line of live output from a running command.
+type StreamEvent struct {
+	Line   string
+	Stderr bool
 }
 
 // Proposal is one proposed step, or the model's own "done" signal.

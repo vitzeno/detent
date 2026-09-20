@@ -9,44 +9,9 @@ import (
 	"github.com/vitzeno/detent/ui/status"
 )
 
-// contPrefix indents a wrapped line's continuation so it reads as one
-// paragraph under its label, not flush against the pane edge.
-const contPrefix = "    "
-
-// wrapPlain word-wraps unstyled text — history wraps rather than
-// truncates, unlike the output pane, since a human may be looking for
-// exactly the part that would get cut.
-func wrapPlain(s string, width int) []string {
-	if width < 8 {
-		width = 8
-	}
-	wrapped := lipgloss.NewStyle().Width(width).Render(s)
-	lines := strings.Split(strings.TrimRight(wrapped, "\n"), "\n")
-	for i, l := range lines {
-		lines[i] = strings.TrimRight(l, " ") // undo Width()'s padding
-	}
-	return lines
-}
-
-// wrapStyled styles each physical line; the first gets prefix, every
-// continuation gets contPrefix, so a multi-line banner indents like a
-// wrapped goal or command.
-func wrapStyled(style lipgloss.Style, text string, width int) []string {
-	lines := wrapPlain(text, width)
-	out := make([]string, len(lines))
-	for i, l := range lines {
-		p := contPrefix
-		if i == 0 {
-			p = "  "
-		}
-		out[i] = p + style.Render(l)
-	}
-	return out
-}
-
-func (m Model) divider() string {
-	return "  " + styleFaint.Render(strings.Repeat("─", min(20, max(4, m.layout.histColW-8))))
-}
+// The history pane: one entry per goal block, each with its steps
+// under it. Everything here is pure — View calls it on a throwaway
+// copy of Model, so nothing may write back.
 
 // historyLines renders every history entry and reports which entry the
 // cursor is on, rather than writing that to shared state on the way
@@ -189,4 +154,43 @@ func previewLines(r *stepRow, width int) []string {
 		out = append(out, "    "+styleFaint.Render(truncateWidth(l, width)))
 	}
 	return out
+}
+
+// contPrefix indents a wrapped line's continuation so it reads as one
+// paragraph under its label, not flush against the pane edge.
+const contPrefix = "    "
+
+// wrapPlain word-wraps unstyled text — history wraps rather than
+// truncates, unlike the output pane, since a human may be looking for
+// exactly the part that would get cut.
+func wrapPlain(s string, width int) []string {
+	if width < 8 {
+		width = 8
+	}
+	wrapped := lipgloss.NewStyle().Width(width).Render(s)
+	lines := strings.Split(strings.TrimRight(wrapped, "\n"), "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimRight(l, " ") // undo Width()'s padding
+	}
+	return lines
+}
+
+// wrapStyled styles each physical line; the first gets prefix, every
+// continuation gets contPrefix, so a multi-line banner indents like a
+// wrapped goal or command.
+func wrapStyled(style lipgloss.Style, text string, width int) []string {
+	lines := wrapPlain(text, width)
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		p := contPrefix
+		if i == 0 {
+			p = "  "
+		}
+		out[i] = p + style.Render(l)
+	}
+	return out
+}
+
+func (m Model) divider() string {
+	return "  " + styleFaint.Render(strings.Repeat("─", min(20, max(4, m.layout.histColW-8))))
 }

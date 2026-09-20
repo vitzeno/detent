@@ -8,34 +8,9 @@ import (
 	"github.com/vitzeno/detent/ui/tabular"
 )
 
-// keyOwner names who owns a keystroke; handleKey computes exactly one.
-// Editing and modeSaveConfirm aren't keyOwner values — both take over
-// every key unconditionally and short-circuit before owner() runs.
-type keyOwner int
-
-const (
-	ownerConfirm keyOwner = iota
-	ownerInput            // idle typing, slash dropdown included
-	ownerBusy             // waiting: slash entry only
-	ownerOutput
-	ownerHistory
-)
-
-func (m Model) owner() keyOwner {
-	if m.mode == modeConfirm {
-		return ownerConfirm
-	}
-	if m.nav.focus == focusOutput {
-		return ownerOutput
-	}
-	if m.nav.focus == focusHistory || !m.prompt.Focused() {
-		return ownerHistory
-	}
-	if m.waiting {
-		return ownerBusy
-	}
-	return ownerInput
-}
+// Keystroke routing. handleKey computes exactly one owner for each
+// key and hands it over; the owner's handler is the only thing that
+// interprets it, so no two panes can claim the same key.
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
@@ -65,6 +40,35 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	default:
 		return m.historyKey(msg)
 	}
+}
+
+// keyOwner names who owns a keystroke; handleKey computes exactly one.
+// Editing and modeSaveConfirm aren't keyOwner values — both take over
+// every key unconditionally and short-circuit before owner() runs.
+type keyOwner int
+
+const (
+	ownerConfirm keyOwner = iota
+	ownerInput            // idle typing, slash dropdown included
+	ownerBusy             // waiting: slash entry only
+	ownerOutput
+	ownerHistory
+)
+
+func (m Model) owner() keyOwner {
+	if m.mode == modeConfirm {
+		return ownerConfirm
+	}
+	if m.nav.focus == focusOutput {
+		return ownerOutput
+	}
+	if m.nav.focus == focusHistory || !m.prompt.Focused() {
+		return ownerHistory
+	}
+	if m.waiting {
+		return ownerBusy
+	}
+	return ownerInput
 }
 
 // onTab completes an open dropdown, otherwise cycles panes.

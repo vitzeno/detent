@@ -57,7 +57,30 @@ func TestInput_EveryRowClearsTheMarkGutter(t *testing.T) {
 	assert.LessOrEqual(t, first, m.layout.width-inputFrameW, "and the block must fit inside the island")
 }
 
-func TestInput_EnterSubmitsAndAltEnterInsertsANewline(t *testing.T) {
+// Every modifier+enter breaks the line; only bare enter submits.
+// shift+enter is the one users reach for, but it only arrives as its
+// own key on a terminal speaking the Kitty protocol, so the fallbacks
+// stay bound rather than being replaced.
+func TestInput_EnterSubmitsAndModifiedEnterInsertsANewline(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		key  tea.KeyPressMsg
+	}{
+		{"shift+enter", tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}},
+		{"alt+enter", tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt}},
+		{"ctrl+j", tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := testUIModel()
+			m.prompt.SetValue("first")
+
+			nm, _ := m.Update(tc.key)
+			m = nm.(Model)
+			assert.Contains(t, m.prompt.Value(), "\n", "must break the line, not submit")
+			assert.Empty(t, m.blocks, "and start no goal")
+		})
+	}
+
 	m := testUIModel()
 	m.prompt.SetValue("first")
 
@@ -65,15 +88,26 @@ func TestInput_EnterSubmitsAndAltEnterInsertsANewline(t *testing.T) {
 	m = nm.(Model)
 	require.Equal(t, "firstx", m.prompt.Value(), "plain runes type into the box")
 
-	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
-	m = nm.(Model)
-	assert.Contains(t, m.prompt.Value(), "\n", "alt+enter breaks the line instead of submitting")
-	assert.Empty(t, m.blocks, "and starts no goal")
-
 	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = nm.(Model)
 	assert.Empty(t, m.prompt.Value(), "plain enter submits and clears")
 	assert.Len(t, m.blocks, 1)
+}
+
+// The hint must name a key that works on this terminal: without the
+// Kitty protocol shift+enter is indistinguishable from enter, so
+// advertising it would be a lie.
+func TestInput_NewlineHintFollowsWhatTheTerminalSupports(t *testing.T) {
+	m := testUIModel()
+	assert.Contains(t, m.statusHint(), "[alt+enter] newline", "nothing negotiated yet")
+
+	nm, _ := m.Update(tea.KeyboardEnhancementsMsg{Flags: 1})
+	m = nm.(Model)
+	assert.Contains(t, m.statusHint(), "[shift+enter] newline")
+
+	nm, _ = m.Update(tea.KeyboardEnhancementsMsg{})
+	m = nm.(Model)
+	assert.Contains(t, m.statusHint(), "[alt+enter] newline", "a terminal that declined falls back")
 }
 
 func typeRune(m Model, r rune) Model {
@@ -159,4 +193,42 @@ func TestSlashDropdown_RowsAlign(t *testing.T) {
 	require.Len(t, cols, 3, "every dropdown row must render")
 	assert.Equal(t, cols[0], cols[1], "cursor row must start in the same column as the rest")
 	assert.Equal(t, cols[1], cols[2])
+}
+
+func TestSlashRegistry_MatchAndExact(t *testing.T) {
+	assert.Len(t, matchSlash("/"), 6)
+	require.Len(t, matchSlash("/q"), 1)
+	assert.Equal(t, "/quit", matchSlash("/q")[0].Name)
+	assert.Empty(t, matchSlash("/x"))
+	assert.Empty(t, matchSlash("quit"), "no leading slash matches nothing")
+	assert.True(t, exactSlash("/quit"))
+	assert.True(t, exactSlash("/rollback 2"), "an argument still names the command")
+	assert.False(t, exactSlash("/q"))
+}
+
+// Every listed command must dispatch, and every dispatchable command
+// must be listed — the two used to live in different packages and had
+// already drifted (/q ran but never appeared anywhere).
+func TestSlashRegistry_EveryCommandRuns(t *testing.T) {
+	for _, c := range slashCommands {
+		t.Run(c.Name, func(t *testing.T) {
+			require.NotNil(t, c.run, "registered without a handler")
+			require.NotEmpty(t, c.Desc, "registered without a description")
+
+			m := testUIModel()
+			nm, _ := m.runSlash(c.Name)
+			assert.NotContains(t, nm.(Model).notice, "unknown command")
+		})
+	}
+}
+
+// TestSlashDropdown_PadsBeforeStyling guards against padding a name
+// after it's been ANSI-styled: fmt's width verbs count escape bytes
+// too, so %-10s applied post-Render silently drops the padding.
+func TestSlashDropdown_PadsBeforeStyling(t *testing.T) {
+	v := slashDropdown(matchSlash("/"), 0)
+	require.Contains(t, v, "\x1b[", "lipgloss must style for this test to mean anything")
+	plain := stripANSI(v)
+	assert.Contains(t, plain, "▸ /quit      quit detent")
+	assert.Contains(t, plain, "  /abort     abort the running command")
 }

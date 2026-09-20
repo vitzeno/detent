@@ -7,21 +7,8 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// runModeTag renders the sandbox/host indicator; emphasized when a
-// Dangerous command has no sandbox isolation.
-func runModeTag(mode string, dangerous bool) string {
-	switch mode {
-	case "sandbox":
-		return styleSafe.Render("sandboxed")
-	case "host":
-		if dangerous {
-			return styleDanger.Render("⚠ host, unsandboxed")
-		}
-		return styleMuted.Render("host")
-	default:
-		return ""
-	}
-}
+// The two modal boxes over the input bar: a proposed command
+// awaiting approval, and a diff awaiting a confirmed file write.
 
 func (m Model) confirmBox() string {
 	style := styleConfirmAccent
@@ -57,23 +44,6 @@ func (m Model) confirmBox() string {
 	return lipgloss.PlaceHorizontal(m.layout.width, lipgloss.Center, style.Width(w).Render(b.String()))
 }
 
-// maxSaveDiffLines caps the diff shown, or a huge one eats the screen.
-const maxSaveDiffLines = 20
-
-// diffHunksOnly drops the ---/+++ path header lines — the box title
-// already names the file — keeping the @@ hunks and +/- lines that
-// actually matter for review.
-func diffHunksOnly(diff string) []string {
-	var out []string
-	for _, l := range strings.Split(strings.TrimSuffix(diff, "\n"), "\n") {
-		if strings.HasPrefix(l, "--- ") || strings.HasPrefix(l, "+++ ") {
-			continue
-		}
-		out = append(out, l)
-	}
-	return out
-}
-
 // saveConfirmBox shows a diff, not a command — this write is the
 // harness's own action, not something the model proposed.
 func (m Model) saveConfirmBox() string {
@@ -100,4 +70,37 @@ func (m Model) saveConfirmBox() string {
 	fmt.Fprintf(&b, "\n%s save   %s keep editing", styleKey.Render("[y/enter]"), styleKey.Render("[n]"))
 
 	return lipgloss.PlaceHorizontal(m.layout.width, lipgloss.Center, styleConfirmAccent.Width(w).Render(b.String()))
+}
+
+// maxSaveDiffLines caps the diff shown, or a huge one eats the screen.
+const maxSaveDiffLines = 20
+
+// diffHunksOnly drops the ---/+++ path header lines — the box title
+// already names the file — keeping the @@ hunks and +/- lines that
+// actually matter for review.
+func diffHunksOnly(diff string) []string {
+	var out []string
+	for _, l := range strings.Split(strings.TrimSuffix(diff, "\n"), "\n") {
+		if strings.HasPrefix(l, "--- ") || strings.HasPrefix(l, "+++ ") {
+			continue
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
+// runModeTag renders the sandbox/host indicator; emphasized when a
+// Dangerous command has no sandbox isolation.
+func runModeTag(mode string, dangerous bool) string {
+	switch mode {
+	case "sandbox":
+		return styleSafe.Render("sandboxed")
+	case "host":
+		if dangerous {
+			return styleDanger.Render("⚠ host, unsandboxed")
+		}
+		return styleMuted.Render("host")
+	default:
+		return ""
+	}
 }

@@ -6,35 +6,9 @@ import (
 	"github.com/vitzeno/detent/ui/status"
 )
 
-func paneMark(active bool) string {
-	if active {
-		return styleBrand.Render("●")
-	}
-	return styleFaint.Render("○")
-}
-
-func paneLabel(name string, active bool) string {
-	if active {
-		return styleBrand.Render(name)
-	}
-	return styleFaint.Render(name)
-}
-
-// runModeBadge says where commands actually run. Host is called out
-// rather than left implicit: it's the unsandboxed case.
-
-func (m Model) historyHeader() string {
-	return fmt.Sprintf("%s %s", paneMark(m.nav.focus == focusHistory), paneLabel("history", m.nav.focus == focusHistory))
-}
-
-// runModeBadge says where commands actually run. Host is called out
-// rather than left implicit: it's the unsandboxed case.
-func runModeBadge(mode string) string {
-	if mode == "sandbox" {
-		return styleSafe.Render("sandbox ●")
-	}
-	return styleCaution.Render("host ⚠ unsandboxed")
-}
+// The frame around the panes, in the order it appears on screen: the
+// session bar across the top, each pane's own header, and the status
+// line above the input bar.
 
 func (m Model) sessionBar() string {
 	jev := styleFaint.Render("jev ○ off")
@@ -58,6 +32,8 @@ func (m Model) sessionBar() string {
 		goals, m.totalCmds, usage, runModeBadge(m.info.RunMode), jev)
 }
 
+// viewportHeader names what the output pane is currently showing: a
+// file being edited, a tool, or a command's output by judged kind.
 func (m Model) viewportHeader() string {
 	active := m.nav.focus == focusOutput
 	r := m.focused()
@@ -88,8 +64,9 @@ func (m Model) viewportHeader() string {
 		styleGoal.Render(truncateWidth(r.command, m.layout.outputColW-24)))
 }
 
-// showWelcome reports whether the output pane has nothing of its own
-// to show yet, which is the boot state: no row has ever been focused.
+func (m Model) historyHeader() string {
+	return fmt.Sprintf("%s %s", paneMark(m.nav.focus == focusHistory), paneLabel("history", m.nav.focus == focusHistory))
+}
 
 func (m Model) statusLine() string {
 	phase := "idle"
@@ -105,9 +82,6 @@ func (m Model) statusLine() string {
 	}
 	return status.Bar(m.spinner.View(), phase, m.statusHint(), m.notice, m.waiting)
 }
-
-// statusHint mirrors handleKey's owner() so the hint never falls out of
-// sync with what actually routes the keystroke.
 
 // statusHint mirrors handleKey's owner() so the hint never falls out of
 // sync with what actually routes the keystroke.
@@ -140,6 +114,29 @@ func (m Model) statusHint() string {
 		if m.prompt.Open() {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
 		}
-		return "[tab] history · [enter] run · [alt+enter] newline · type / for cmds"
+		return "[tab] history · [enter] run · [" + m.prompt.NewlineKey() + "] newline · type / for cmds"
 	}
+}
+
+// runModeBadge says where commands actually run. Host is called out
+// rather than left implicit: it's the unsandboxed case.
+func runModeBadge(mode string) string {
+	if mode == "sandbox" {
+		return styleSafe.Render("sandbox ●")
+	}
+	return styleCaution.Render("host ⚠ unsandboxed")
+}
+
+func paneMark(active bool) string {
+	if active {
+		return styleBrand.Render("●")
+	}
+	return styleFaint.Render("○")
+}
+
+func paneLabel(name string, active bool) string {
+	if active {
+		return styleBrand.Render(name)
+	}
+	return styleFaint.Render(name)
 }
