@@ -21,6 +21,7 @@ import (
 	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/resolver"
+	"github.com/vitzeno/detent/internal/routing"
 	"github.com/vitzeno/detent/internal/sandbox"
 	"github.com/vitzeno/detent/internal/ui"
 	"github.com/vitzeno/detent/internal/ui/status"
@@ -84,7 +85,7 @@ func run() error {
 	)
 
 	sessionID := agent.NewSessionID()
-	runners := runnerSelector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
+	runners := routing.Selector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
 	if resolved.SandboxMode == "auto" {
 		socket := resolved.SandboxSocket
 		if socket == "" {
@@ -111,7 +112,7 @@ func run() error {
 			return fmt.Errorf("sandbox: starting container: %w", err)
 		}
 		defer container.Close(context.Background())
-		runners.SandboxRunner = sandboxRunner{container}
+		runners.SandboxRunner = routing.WrapSandbox(container)
 	}
 
 	sessOpts := []agent.Option{
@@ -233,39 +234,6 @@ func (headlessConfirmer) Confirm(req agent.ConfirmRequest) bool {
 		fmt.Fprintf(os.Stderr, "detent: reading confirm response: %v (treating as decline)\n", err)
 	}
 	return strings.TrimSpace(strings.ToLower(line)) == "y"
-}
-
-// runnerSelector picks host vs. sandbox per command; PreJudgment is
-// accepted but unused for now. Lives here, not in internal/sandbox,
-// which stays a producer package that knows nothing about agent.
-type runnerSelector struct {
-	Host          agent.Runner
-	SandboxRunner agent.Runner
-	HostOnly      bool
-}
-
-func (s runnerSelector) Select(agent.PreJudgment) (agent.Runner, string) {
-	if s.HostOnly || s.SandboxRunner == nil {
-		return s.Host, agent.RunModeHost
-	}
-	return s.SandboxRunner, agent.RunModeSandbox
-}
-
-func (s runnerSelector) Probe() agent.Runner   { return s.Host }
-func (s runnerSelector) Sandbox() agent.Runner { return s.SandboxRunner }
-
-// sandboxRunner adapts *sandbox.Container's plain-string Snapshot/
-// Rollback to agent.Snapshotter's SnapshotID. sandbox never imports
-// agent, so this conversion happens here, at the composition root.
-type sandboxRunner struct{ *sandbox.Container }
-
-func (r sandboxRunner) Snapshot(ctx context.Context) (agent.SnapshotID, error) {
-	id, err := r.Container.Snapshot(ctx)
-	return agent.SnapshotID(id), err
-}
-
-func (r sandboxRunner) Rollback(ctx context.Context, id agent.SnapshotID) error {
-	return r.Container.Rollback(ctx, string(id))
 }
 
 // defaultSandboxSocket returns the OS-conventional containerd socket

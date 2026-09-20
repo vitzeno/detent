@@ -63,14 +63,14 @@ Package dependency flow — `ui` and `agent` never import each other;
 `resolver` is the only package that imports both:
 
 ```
-cmd/detent  →  ui, resolver, agent, classify, config, propose (Ping only),
-                sandbox (composition root only)
+cmd/detent  →  ui, resolver, agent, classify, config, routing, propose (Ping only)
 resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio
 ui          →  its own subpackages only (editor, slash, status, tabular,
                 markdown, theme, island, tree, layout)
 agent       →  propose, host, classify, usage
 host        →  capture
 sandbox     →  capture (never host or agent)
+routing     →  agent, sandbox
 ```
 
 - **`internal/propose`** — `OpenAIProposer`, the reference implementation of
@@ -117,11 +117,17 @@ sandbox     →  capture (never host or agent)
   reader on the same kernel, which doesn't hold once the daemon runs
   inside a VM (colima, on macOS). `Snapshot`/`Rollback` map onto
   containerd's `Prepare`/`Commit` snapshot vocabulary and use plain
-  `string` checkpoint IDs for the same host-package-independence
-  reason; the composition root (`cmd/detent`) adapts that string to
-  `agent.SnapshotID` when wiring `agent.Snapshotter`. Real containerd
-  daemon required for its own tests (`container_test.go`), skipped
-  gracefully when unreachable.
+  `string` checkpoint IDs for the same reason; `routing.WrapSandbox`
+  adapts that string to `agent.SnapshotID` when wiring
+  `agent.Snapshotter`. Real containerd daemon required for its own
+  tests (`container_test.go`), skipped gracefully when unreachable.
+
+- **`internal/routing`** — `Selector`, the `agent.RunnerSelector`
+  `cmd/detent` wires: host vs. sandbox per command, deliberately dumb
+  for v1 (a global toggle; `PreJudgment` is threaded through but
+  unused, ready for a Jev-informed rule later). `WrapSandbox` is the
+  other half — see above. Imports `agent` and `sandbox`; neither
+  imports it back, so it's the one place allowed to bridge them.
 
 - **`internal/agent`** — the propose → confirm → execute → judge loop,
   one goal at a time, over an append-only `Session.Transcript`

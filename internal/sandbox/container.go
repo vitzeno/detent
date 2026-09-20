@@ -19,7 +19,6 @@ import (
 
 	containerd "github.com/containerd/containerd"
 	"github.com/containerd/containerd/cio"
-	"github.com/containerd/containerd/containers"
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/oci"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
@@ -46,7 +45,7 @@ const defaultRuntime = "io.containerd.runc.v2"
 
 // Container is a session-scoped containerd-backed agent.Runner. It
 // never imports host or agent: Run returns capture's own aliased
-// types, and Snapshot/Rollback use plain string IDs.
+// types, and Snapshot/Rollback (snapshot.go) use plain string IDs.
 type Container struct {
 	socket     string
 	namespace  string
@@ -137,107 +136,6 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 	}
 	c.container = cont
 	return nil
-}
-
-// resolveImage returns the local image if present, pulling it
-// (unpacked) otherwise.
-func resolveImage(ctx context.Context, client *containerd.Client, ref string) (containerd.Image, error) {
-	img, err := client.GetImage(ctx, ref)
-	if err == nil {
-		return img, nil
-	}
-	if !errdefs.IsNotFound(err) {
-		return nil, fmt.Errorf("sandbox: get image %s: %w", ref, err)
-	}
-	img, err = client.Pull(ctx, ref, containerd.WithPullUnpack, containerd.WithPullSnapshotter(defaultSnapshotter))
-	if err != nil {
-		return nil, fmt.Errorf("sandbox: pull image %s: %w", ref, err)
-	}
-	return img, nil
-}
-
-// Close tears down the container, its current snapshot, and the
-// client connection. Safe to call even if Start failed partway.
-func (c *Container) Close(ctx context.Context) error {
-	var errs []error
-	if c.container != nil {
-		if err := c.container.Delete(ctx, containerd.WithSnapshotCleanup); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if c.client != nil {
-		if err := c.client.Close(); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if c.fifoDir != "" {
-		if err := os.RemoveAll(c.fifoDir); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if c.workspace != "" {
-		// Only this session's own subdirectory; see Run for why the
-		// shared sandboxOutputDir parent itself is never removed.
-		_ = os.RemoveAll(filepath.Join(c.workspace, sandboxOutputDir, c.sessionID))
-	}
-	return errors.Join(errs...)
-}
-
-// Snapshot commits the container's active snapshot as a read-only
-// checkpoint, then re-points it at a fresh active snapshot layered on
-// top so Run keeps working. Returns the checkpoint's key.
-func (c *Container) Snapshot(ctx context.Context) (string, error) {
-	if c.container == nil {
-		return "", fmt.Errorf("sandbox: Start not called")
-	}
-	info, err := c.container.Info(ctx)
-	if err != nil {
-		return "", fmt.Errorf("sandbox: container info: %w", err)
-	}
-	sn := c.client.SnapshotService(info.Snapshotter)
-	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
-	checkpoint := info.SnapshotKey + "-checkpoint-" + suffix
-	if err := sn.Commit(ctx, checkpoint, info.SnapshotKey); err != nil {
-		return "", fmt.Errorf("sandbox: commit snapshot: %w", err)
-	}
-	active := info.SnapshotKey + "-active-" + suffix
-	if _, err := sn.Prepare(ctx, active, checkpoint); err != nil {
-		return "", fmt.Errorf("sandbox: prepare snapshot: %w", err)
-	}
-	if err := c.container.Update(ctx, withSnapshotKey(active)); err != nil {
-		return "", fmt.Errorf("sandbox: repoint snapshot: %w", err)
-	}
-	return checkpoint, nil
-}
-
-// Rollback restores a checkpoint by preparing a fresh active snapshot
-// as its child and re-pointing the container at it.
-func (c *Container) Rollback(ctx context.Context, id string) error {
-	if c.container == nil {
-		return fmt.Errorf("sandbox: Start not called")
-	}
-	info, err := c.container.Info(ctx)
-	if err != nil {
-		return fmt.Errorf("sandbox: container info: %w", err)
-	}
-	sn := c.client.SnapshotService(info.Snapshotter)
-	active := id + "-active-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	if _, err := sn.Prepare(ctx, active, id); err != nil {
-		return fmt.Errorf("sandbox: prepare snapshot: %w", err)
-	}
-	if err := c.container.Update(ctx, withSnapshotKey(active)); err != nil {
-		return fmt.Errorf("sandbox: repoint snapshot: %w", err)
-	}
-	return nil
-}
-
-// withSnapshotKey re-points a container at an existing snapshot,
-// unlike containerd.WithNewSnapshot which creates one.
-func withSnapshotKey(key string) containerd.UpdateContainerOpts {
-	return func(_ context.Context, _ *containerd.Client, c *containers.Container) error {
-		c.SnapshotKey = key
-		return nil
-	}
 }
 
 // sandboxOutputDir, relative to the workspace, holds each session's
@@ -331,6 +229,50 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 		return res, fmt.Errorf("sandbox: %w", ctx.Err())
 	}
 	return res, nil
+}
+
+// Close tears down the container, its current snapshot, and the
+// client connection. Safe to call even if Start failed partway.
+func (c *Container) Close(ctx context.Context) error {
+	var errs []error
+	if c.container != nil {
+		if err := c.container.Delete(ctx, containerd.WithSnapshotCleanup); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if c.client != nil {
+		if err := c.client.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if c.fifoDir != "" {
+		if err := os.RemoveAll(c.fifoDir); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if c.workspace != "" {
+		// Only this session's own subdirectory; Run's comment explains
+		// why the shared sandboxOutputDir parent is never removed.
+		_ = os.RemoveAll(filepath.Join(c.workspace, sandboxOutputDir, c.sessionID))
+	}
+	return errors.Join(errs...)
+}
+
+// resolveImage returns the local image if present, pulling it
+// (unpacked) otherwise.
+func resolveImage(ctx context.Context, client *containerd.Client, ref string) (containerd.Image, error) {
+	img, err := client.GetImage(ctx, ref)
+	if err == nil {
+		return img, nil
+	}
+	if !errdefs.IsNotFound(err) {
+		return nil, fmt.Errorf("sandbox: get image %s: %w", ref, err)
+	}
+	img, err = client.Pull(ctx, ref, containerd.WithPullUnpack, containerd.WithPullSnapshotter(defaultSnapshotter))
+	if err != nil {
+		return nil, fmt.Errorf("sandbox: pull image %s: %w", ref, err)
+	}
+	return img, nil
 }
 
 // shellQuote single-quotes s for safe interpolation into a sh -c string.
