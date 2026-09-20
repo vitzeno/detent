@@ -51,6 +51,5 @@ func (m Model) onSaveDone(msg saveDoneMsg) (tea.Model, tea.Cmd) {
 		msg.row.editor.MarkSaved(msg.content)
 	}
 	m.notice = "saved"
-	m.refreshViewport()
 	return m, nil
 }

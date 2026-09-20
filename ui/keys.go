@@ -225,7 +225,6 @@ func (m Model) outputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			r.cmd.expanded = !r.cmd.expanded
-			m.refreshViewport()
 		}
 		return m, nil
 	case "q":
@@ -247,13 +246,11 @@ func (m Model) historyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if r := m.focused(); r != nil && !r.cmd.running {
 			r.cmd.expanded = !r.cmd.expanded
-			m.refreshViewport()
 		}
 		return m, nil
 	case "v", " ":
 		if r := m.focused(); r != nil {
 			r.cmd.expanded = !r.cmd.expanded
-			m.refreshViewport()
 		}
 		return m, nil
 	case "q":
@@ -308,7 +305,6 @@ func (m Model) navUp() (tea.Model, tea.Cmd) {
 		m.nav.cursor--
 		m.nav.follow = false
 	}
-	m.refreshViewport()
 	return m, nil
 }
 
@@ -320,7 +316,6 @@ func (m Model) navDown() (tea.Model, tea.Cmd) {
 			m.nav.follow = true
 		}
 	}
-	m.refreshViewport()
 	return m, nil
 }
 

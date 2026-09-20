@@ -94,7 +94,6 @@ func (m Model) openTreeSelection(r *stepRow) (tea.Model, tea.Cmd) {
 	}
 	if n.Kind == tree.KindDir {
 		r.tool.tree.Toggle()
-		m.refreshViewport()
 		return m, nil
 	}
 	content, truncated, maxBytes, err := m.sess.ReadFile(n.Path)
@@ -110,6 +109,5 @@ func (m Model) openTool(kind string, row *stepRow) (tea.Model, tea.Cmd) {
 	m.nav.cursor = len(m.rows()) - 1
 	m.nav.focus = focusOutput
 	m.sizeViewport()
-	m.refreshViewport()
 	return m, nil
 }

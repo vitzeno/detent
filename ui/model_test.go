@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,21 +29,18 @@ func TestUI_TrackNewestParksOutputReaders(t *testing.T) {
 	require.True(t, m.nav.follow)
 }
 
-// TestUI_SpinnerTickRefreshesHistoryWindow locks a bug where the
-// history pane's spinner line (baked into the nav.histWindow cache)
-// froze on the last real content change while the status bar's own
-// spinner, computed fresh each View(), kept animating.
-func TestUI_SpinnerTickRefreshesHistoryWindow(t *testing.T) {
+// TestUI_SpinnerTickAnimatesHistory locks a bug where the history
+// pane's spinner line froze on the last content change while the
+// status bar's own spinner kept animating. History is now derived per
+// render, so both move together.
+func TestUI_SpinnerTickAnimatesHistory(t *testing.T) {
 	m := testUIModel()
 	m.blocks = []*goalBlock{{goal: "g"}}
 	m.cur = m.blocks[0]
 	m.waiting = true
-	m.refreshViewport()
 
-	prepsBefore := m.perf.uiPreps
 	nm, _ := m.Update(m.spinner.Tick())
 	m = nm.(Model)
 
-	require.Greater(t, m.perf.uiPreps, prepsBefore, "a spinner tick while waiting must refresh the cached history window")
-	require.Contains(t, strings.Join(m.nav.histWindow, "\n"), m.spinner.View(), "history's spinner line must reflect the current frame, not a stale cached one")
+	require.Contains(t, m.View(), m.spinner.View(), "history's spinner must show the current frame, not a stale one")
 }

@@ -59,7 +59,6 @@ func (m Model) onRollbackDone(msg rollbackDoneMsg) (tea.Model, tea.Cmd) {
 	// plainly that the user's own files were not reverted.
 	m.notice = fmt.Sprintf("undid step %d onward (workspace files unchanged)", msg.step)
 	m.nav.cursor = len(m.rows()) - 1
-	m.refreshViewport()
 	if m.showWelcome() {
 		// Undoing every step hands the pane back to the welcome
 		// screen, whose ticker stopped when the first row appeared.

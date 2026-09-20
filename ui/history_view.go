@@ -48,9 +48,10 @@ func (m Model) divider() string {
 	return "  " + styleFaint.Render(strings.Repeat("─", min(20, max(4, m.layout.histColW-8))))
 }
 
-// Records the focused row's line for cursor windowing.
-func (m *Model) historyLines() []string {
-	var lines []string
+// historyLines renders every history entry and reports which entry the
+// cursor is on, rather than writing that to shared state on the way
+// past. Pure, so View can call it on its throwaway copy.
+func (m Model) historyLines() (lines []string, cursorEntry int) {
 	rows := m.rows()
 	for bi, b := range m.blocks {
 		if bi > 0 {
@@ -68,8 +69,8 @@ func (m *Model) historyLines() []string {
 			}
 		}
 		for i, r := range b.steps {
-			if r == rows[m.cursorClamped()] && len(rows) > 0 {
-				m.nav.cursorLine = len(lines)
+			if len(rows) > 0 && r == rows[m.cursorClamped()] {
+				cursorEntry = len(lines)
 			}
 			lines = append(lines, m.stepLines(r, i+1)...)
 			if r.cmd.expanded {
@@ -85,7 +86,7 @@ func (m *Model) historyLines() []string {
 	if len(lines) == 0 {
 		lines = append(lines, styleFaint.Render("  no goals yet — describe one below"))
 	}
-	return lines
+	return lines, cursorEntry
 }
 
 func (m *Model) cursorClamped() int {

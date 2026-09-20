@@ -14,11 +14,12 @@ import (
 // dispatch. render_view.go's own transforms (errorSeverity, diffClass,
 // prettyJSON) have their own render_view_test.go.
 
-// TestUpdateHistoryWindow_PersistsOffsetAcrossRenders locks a bug where
-// the windowing math lived in a value-receiver method reached only
-// from View()'s call chain — Bubble Tea renders View() on a throwaway
-// copy of Model, so writes to histOffset/cursorLine never stuck.
-func TestUpdateHistoryWindow_PersistsOffsetAcrossRenders(t *testing.T) {
+// TestHistoryWindow_PersistsOffsetAcrossRenders locks a bug where the
+// windowing math lived in a value-receiver method reached only from
+// View()'s call chain — Bubble Tea renders View() on a throwaway copy
+// of Model, so writes to the offset never stuck. It is now pure and
+// hands the offset back for Update to keep.
+func TestHistoryWindow_PersistsOffsetAcrossRenders(t *testing.T) {
 	m := testUIModel()
 	m.nav.histHeight = 5
 	steps := make([]*stepRow, 20)
@@ -29,16 +30,17 @@ func TestUpdateHistoryWindow_PersistsOffsetAcrossRenders(t *testing.T) {
 	m.nav.follow = false
 	m.nav.cursor = 19 // last row, well past the 5-line window
 
-	m.updateHistoryWindow()
-	require.Greater(t, m.nav.histOffset, 0, "cursor past the window must scroll it forward, not stay pinned at 0")
-	require.Len(t, m.nav.histWindow, m.nav.histHeight)
-	assert.Contains(t, m.nav.histWindow[len(m.nav.histWindow)-1], "cmd", "cursor row must be visible in the window")
+	window, offset := m.historyWindow()
+	require.Greater(t, offset, 0, "cursor past the window must scroll it forward, not stay pinned at 0")
+	require.Len(t, window, m.nav.histHeight)
+	assert.Contains(t, window[len(window)-1], "cmd", "cursor row must be visible in the window")
 
-	// Re-render with nothing else changed: the offset must still read
-	// back the same, which the old value-receiver version never could.
-	offsetBefore := m.nav.histOffset
-	m.updateHistoryWindow()
-	assert.Equal(t, offsetBefore, m.nav.histOffset, "offset must persist across renders, not recompute from a stale zero")
+	// Rendering must not move it: the function is pure, so the same
+	// state gives the same offset however many times View runs.
+	m.nav.histOffset = offset
+	_ = m.View()
+	_, again := m.historyWindow()
+	assert.Equal(t, offset, again, "offset must be stable across renders")
 }
 
 // TestUI_StatusHintMatchesEscBehavior: from the output pane, esc steps

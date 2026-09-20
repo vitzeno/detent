@@ -67,7 +67,8 @@ func (m Model) baseView() string {
 		return "loading…"
 	}
 	outputBlock := island.Render(m.viewportHeader(), m.nav.focus == focusOutput, m.detailLines(), m.layout.outputColW, m.output.Height+1)
-	historyBlock := island.Render(m.historyHeader(), m.nav.focus == focusHistory, m.nav.histWindow, m.layout.histColW, m.nav.histHeight+1)
+	histWindow, _ := m.historyWindow()
+	historyBlock := island.Render(m.historyHeader(), m.nav.focus == focusHistory, histWindow, m.layout.histColW, m.nav.histHeight+1)
 
 	var b strings.Builder
 	b.WriteString(m.sessionBar())
@@ -87,46 +88,37 @@ func (m Model) baseView() string {
 	return b.String()
 }
 
-// updateHistoryWindow recomputes which history lines are visible and
-// caches the result on nav.histWindow. Must run via refreshViewport (a
-// pointer receiver), not inside View()'s call chain — Bubble Tea always
-// renders View() on a throwaway copy of Model, so writes there never
-// persist. Entries flatten to lines first since expanded rows/banners
-// span several lines each.
-func (m *Model) updateHistoryWindow() {
-	histLines := m.historyLines() // also sets nav.cursorLine
+// historyWindow returns the visible slice of history and the scroll
+// offset it settled on. Pure, so View can call it directly on its
+// throwaway copy; Update stores the offset back. Entries flatten to
+// lines first, since expanded rows and banners span several each.
+func (m Model) historyWindow() (window []string, offset int) {
+	entries, cursorEntry := m.historyLines()
 	var lines []string
 	cursorLine := 0
-	for i, e := range histLines {
-		if i == m.nav.cursorLine {
+	for i, e := range entries {
+		if i == cursorEntry {
 			cursorLine = len(lines)
 		}
 		lines = append(lines, strings.Split(e, "\n")...)
 	}
-	m.nav.cursorLine = cursorLine
+
 	start := 0
 	if len(lines) > m.nav.histHeight {
 		if m.nav.follow {
 			start = len(lines) - m.nav.histHeight
 		} else {
 			start = m.nav.histOffset
-			if m.nav.cursorLine < start {
-				start = m.nav.cursorLine
+			if cursorLine < start {
+				start = cursorLine
 			}
-			if m.nav.cursorLine >= start+m.nav.histHeight {
-				start = m.nav.cursorLine - m.nav.histHeight + 1
+			if cursorLine >= start+m.nav.histHeight {
+				start = cursorLine - m.nav.histHeight + 1
 			}
-			if start < 0 {
-				start = 0
-			}
+			start = max(start, 0)
 		}
 	}
-	m.nav.histOffset = start
-	end := start + m.nav.histHeight
-	if end > len(lines) {
-		end = len(lines)
-	}
-	m.nav.histWindow = append([]string(nil), lines[start:end]...)
+	return lines[start:min(start+m.nav.histHeight, len(lines))], start
 }
 
 func paneMark(active bool) string {
@@ -285,7 +277,7 @@ func (m *Model) refreshViewport() {
 		m.perf.uiPrep += time.Since(t0)
 		m.perf.uiPreps++
 	}()
-	m.updateHistoryWindow()
+	_, m.nav.histOffset = m.historyWindow()
 	r := m.focused()
 	if r == nil {
 		m.setViewContent(styleFaint.Render("(no output yet)"))

@@ -6,7 +6,7 @@ Works with any OpenAI-compatible `/chat/completions` endpoint — LM Studio by d
 
 ## Screenshots
 
-![detent TUI](screenshots/tui-1.png)
+![detent TUI](screenshots/tui-0.png)
 
 ![detent TUI](screenshots/tui-2.png)
 
@@ -95,17 +95,17 @@ match so the model doesn't keep reasoning from undone work.
 
 ## Keys
 
-| Key | Does |
-| --- | --- |
-| `enter` | run the goal in the input box |
-| `alt+enter` / `ctrl+j` | insert a newline instead of submitting |
-| `/` | open the command list (`/rollback`, `/tree`, `/usage`, `/abort`, `/help`, `/quit`) |
-| `tab` | cycle input → history → output |
-| `↑` / `↓` | move through history, or scroll the focused pane |
-| `space` | expand the focused row's output |
-| `ctrl+s` | save the file open in the editor pane |
-| `q` | quit (when the input isn't focused) |
-| `ctrl+c` | quit from anywhere |
+| Key                    | Does                                                                               |
+| ---------------------- | ---------------------------------------------------------------------------------- |
+| `enter`                | run the goal in the input box                                                      |
+| `alt+enter` / `ctrl+j` | insert a newline instead of submitting                                             |
+| `/`                    | open the command list (`/rollback`, `/tree`, `/usage`, `/abort`, `/help`, `/quit`) |
+| `tab`                  | cycle input → history → output                                                     |
+| `↑` / `↓`              | move through history, or scroll the focused pane                                   |
+| `space`                | expand the focused row's output                                                    |
+| `ctrl+s`               | save the file open in the editor pane                                              |
+| `q`                    | quit (when the input isn't focused)                                                |
+| `ctrl+c`               | quit from anywhere                                                                 |
 
 **Want `shift+enter` for newlines?** Terminals send the same byte for `enter` and
 `shift+enter`, so no program can tell them apart by default. Bind it in your
@@ -115,10 +115,14 @@ terminal to send `\x1b\r` (escape + carriage return) and detent will read it as
 - **iTerm2** — Settings → Keys → Key Bindings → `+`, press shift+enter, action
   "Send Escape Sequence", value `\r`.
 - **VS Code** — add to `keybindings.json`:
-  ```json
-  { "key": "shift+enter", "command": "workbench.action.terminal.sendSequence",
-    "args": { "text": "\r" }, "when": "terminalFocus" }
-  ```
+    ```json
+    {
+    	"key": "shift+enter",
+    	"command": "workbench.action.terminal.sendSequence",
+    	"args": { "text": "\r" },
+    	"when": "terminalFocus"
+    }
+    ```
 
 ## Configuration
 

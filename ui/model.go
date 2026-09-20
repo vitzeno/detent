@@ -123,9 +123,9 @@ type rollbackDoneMsg struct {
 	err    error
 }
 
-// navState is history/output navigation. histWindow/histOffset/cursorLine
-// get computed and cached by updateHistoryWindow via refreshViewport.
-// View() itself runs on a throwaway copy of Model so it can't do this.
+// navState is history/output navigation. histOffset is the only
+// scroll state kept: what's visible is derived per render by
+// historyWindow, so there is no cache to keep in step.
 type navState struct {
 	cursor int
 	follow bool
@@ -133,8 +133,6 @@ type navState struct {
 
 	histHeight int
 	histOffset int
-	cursorLine int
-	histWindow []string
 }
 
 // layoutState is the body row's pane widths, recomputed by sizeViewport.
@@ -301,9 +299,6 @@ func (m *Model) focused() *stepRow {
 }
 
 func (m *Model) trackNewest() {
-	// Callers (startGoal in particular) rely on this to refresh the
-	// cached history window themselves.
-	defer m.refreshViewport()
 	if !m.nav.follow {
 		return
 	}
@@ -315,7 +310,21 @@ func (m *Model) trackNewest() {
 	m.nav.cursor = len(m.rows()) - 1
 }
 
+// Update routes the message, then re-syncs the panes once. Handlers
+// mutate state and never touch the viewport themselves: the old
+// "remember to call refreshViewport" rule was invisible at the call
+// site and easy to miss, so it lives here instead.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.route(msg)
+	updated, ok := next.(Model)
+	if !ok {
+		return next, cmd
+	}
+	updated.refreshViewport()
+	return updated, cmd
+}
+
+func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.layout.width, m.layout.height = msg.Width, msg.Height
@@ -331,10 +340,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
-		// History's spinner line is baked into the nav.histWindow cache;
-		// without this it freezes while the status bar's own spinner
-		// keeps animating.
-		m.refreshViewport()
 		return m, cmd
 
 	case beginGoalMsg:
@@ -355,7 +360,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.post.Attention >= status.AttentionThreshold {
 			msg.row.cmd.expanded = true
 		}
-		m.refreshViewport()
 		return m, nil
 
 	case saveDoneMsg:

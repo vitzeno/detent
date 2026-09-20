@@ -31,7 +31,7 @@ func TestHistoryLines_GoalWraps(t *testing.T) {
 	m.layout.histColW = 40 // narrow enough to force a wrap
 	m.blocks = []*goalBlock{{goal: "this goal is long enough that it must wrap across more than one physical line"}}
 
-	lines := m.historyLines()
+	lines, _ := m.historyLines()
 	require.Greater(t, len(lines), 1, "a long goal must produce more than one physical line")
 	assert.Contains(t, lines[0], "goal ·")
 	assert.True(t, strings.HasPrefix(lines[1], contPrefix), "continuation must be indented")
@@ -40,10 +40,12 @@ func TestHistoryLines_GoalWraps(t *testing.T) {
 func TestHistoryLines_DividerBetweenBlocksOnly(t *testing.T) {
 	m := testUIModel()
 	m.blocks = []*goalBlock{{goal: "first"}}
-	assert.NotContains(t, strings.Join(m.historyLines(), "\n"), "─", "no divider before the first block")
+	first, _ := m.historyLines()
+	assert.NotContains(t, strings.Join(first, "\n"), "─", "no divider before the first block")
 
 	m.blocks = append(m.blocks, &goalBlock{goal: "second"})
-	joined := strings.Join(m.historyLines(), "\n")
+	both, _ := m.historyLines()
+	joined := strings.Join(both, "\n")
 	assert.Contains(t, joined, "─", "a divider must separate two blocks")
 }
 

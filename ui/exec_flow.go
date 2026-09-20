@@ -19,7 +19,6 @@ func (m Model) onStream(msg StreamEvent) (tea.Model, tea.Cmd) {
 				} else {
 					r.cmd.dropped++
 				}
-				m.refreshViewport()
 				// Keep waiting on the channel while a command runs.
 				if m.abort != nil {
 					return m, streamWaitCmd(m.streamCh, m.ctx)
@@ -45,7 +44,6 @@ func (m Model) onExecDone(msg execDoneMsg) (tea.Model, tea.Cmd) {
 		m.cur.fatalErr = msg.err
 		m.cur = nil
 		m = m.backToInput()
-		m.refreshViewport()
 		return m, nil
 	}
 	row.cmd.ec = msg.ec
@@ -61,6 +59,5 @@ func (m Model) onExecDone(msg execDoneMsg) (tea.Model, tea.Cmd) {
 		proposeCmd(m.ctx, m.sess, m.cur.goal),
 	}
 	m.waiting = true
-	m.refreshViewport()
 	return m, tea.Batch(append(cmds, m.spinner.Tick)...)
 }

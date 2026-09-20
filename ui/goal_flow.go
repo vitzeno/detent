@@ -133,7 +133,6 @@ func (m Model) approve() (tea.Model, tea.Cmd) {
 	m.waiting = true
 	m.trackNewest()
 	m.sizeViewport()
-	m.refreshViewport()
 
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.abort = cancel
@@ -160,7 +159,6 @@ func (m Model) backToInput() Model {
 	m.mode = modeInput
 	m.nav.focus = focusInput
 	m.input.Focus()
-	m.refreshViewport()
 	return m
 }
 

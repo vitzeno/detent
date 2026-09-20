@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -41,16 +40,16 @@ func TestUI_GoalSubmitMovesFocusToHistory(t *testing.T) {
 }
 
 // TestUI_StartGoalUpdatesHistoryWindowImmediately locks a bug where
-// nav.histWindow (what View() actually reads) never refreshed on
-// submit, so the new goal line stayed invisible until something else
-// happened to trigger a refresh.
+// the history pane never refreshed on submit, so the new goal line
+// stayed invisible until something else happened to trigger one.
+// Driven through Update, the way Bubble Tea does it.
 func TestUI_StartGoalUpdatesHistoryWindowImmediately(t *testing.T) {
 	m := testUIModel()
 	m.input.SetValue("brand new goal text")
-	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)
-	require.Contains(t, strings.Join(m.nav.histWindow, "\n"), "brand new goal text",
-		"the goal must appear in the cached history window immediately, not on some later refresh")
+	require.Contains(t, m.View(), "brand new goal text",
+		"the goal must show the moment it's submitted, not on some later refresh")
 }
 
 func TestUI_StartGoalIsCancellable(t *testing.T) {
