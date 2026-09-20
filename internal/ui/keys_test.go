@@ -6,19 +6,16 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
-
-	"github.com/vitzeno/detent/internal/agent"
 )
 
 // Tests for keys.go: key routing, focus, and pane navigation.
 
 // TestUI_EnterAcceptsConfirmAndSaveConfirm locks enter as an alternate
-// accept alongside y/Y on both dialog modes, matching what their own
-// footer text now advertises ("[y/enter]").
+// accept alongside y/Y, matching the "[y/enter]" footer text.
 func TestUI_EnterAcceptsConfirmAndSaveConfirm(t *testing.T) {
 	t.Run("confirm", func(t *testing.T) {
 		m := testUIModel()
-		m.blocks = []*goalBlock{{goal: "g", res: &agent.GoalResult{Goal: "g"}}}
+		m.blocks = []*goalBlock{{goal: "g", res: &GoalResult{Goal: "g"}}}
 		m.cur = m.blocks[0]
 		m.mode = modeConfirm
 		m.confirm.pending.Command = "ls"
@@ -44,11 +41,10 @@ func TestUI_EnterAcceptsConfirmAndSaveConfirm(t *testing.T) {
 	})
 }
 
-// TestUI_TypingReachesInput is the regression test for space (and q/v/j/k)
-// being swallowed by navigation: with a focused input, every text key
-// must land in the goal field.
+// TestUI_TypingReachesInput locks space/q/v/j/k landing in the input
+// field instead of getting swallowed by navigation.
 func TestUI_TypingReachesInput(t *testing.T) {
-	m := New(context.Background(), testSession(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), "test-model", "")
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 
@@ -60,12 +56,10 @@ func TestUI_TypingReachesInput(t *testing.T) {
 	require.Equal(t, modeInput, m.mode, "typing must not change mode or quit")
 }
 
-// TestUI_ArrowsDoNotScrollHistoryWhileInputFocused is the reported bug,
-// locked: with the input focused, up/down must be the input's own
-// (bubbles/textinput no-ops them absent suggestions) rather than
-// silently moving the history cursor out from under whatever's typed.
+// TestUI_ArrowsDoNotScrollHistoryWhileInputFocused: up/down must stay
+// the input's own while focused, not move the history cursor.
 func TestUI_ArrowsDoNotScrollHistoryWhileInputFocused(t *testing.T) {
-	m := New(context.Background(), testSession(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), "test-model", "")
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{{command: "a"}, {command: "b"}}}}
@@ -82,11 +76,10 @@ func TestUI_ArrowsDoNotScrollHistoryWhileInputFocused(t *testing.T) {
 	require.Equal(t, 1, m.nav.cursor, "history cursor must not move while typing")
 }
 
-// TestUI_JKNoLongerNavigate is the counterpart to the arrow-keys-only
-// preference: j/k must do nothing special anywhere navigation used to
-// accept them — only up/down do.
+// TestUI_JKNoLongerNavigate: j/k do nothing special anywhere; only
+// up/down navigate.
 func TestUI_JKNoLongerNavigate(t *testing.T) {
-	m := New(context.Background(), testSession(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), "test-model", "")
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{{command: "a"}, {command: "b"}}}}
@@ -104,10 +97,10 @@ func TestUI_JKNoLongerNavigate(t *testing.T) {
 	require.Equal(t, 1, m.nav.cursor, "down still does")
 }
 
-// TestUI_NavKeysWorkWhenInputBlurred ensures navigation still works while
-// a command runs (input blurred): arrows move the cursor, space toggles.
+// TestUI_NavKeysWorkWhenInputBlurred: arrows move the cursor and space
+// toggles while a command runs (input blurred).
 func TestUI_NavKeysWorkWhenInputBlurred(t *testing.T) {
-	m := New(context.Background(), testSession(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), "test-model", "")
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{
@@ -128,7 +121,7 @@ func TestUI_NavKeysWorkWhenInputBlurred(t *testing.T) {
 }
 
 func TestUI_TabCyclesThreePanes(t *testing.T) {
-	m := New(context.Background(), testSession(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), "test-model", "")
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	require.Equal(t, focusInput, m.nav.focus)
@@ -209,8 +202,8 @@ func TestUI_EscFromOutputReturnsToHistory(t *testing.T) {
 	require.Equal(t, focusHistory, m.nav.focus)
 }
 
-// TestUI_TableScrollNeverMovesHistory is the reported bug, locked:
-// scrolling inside an output table must not disturb history position.
+// TestUI_TableScrollNeverMovesHistory: scrolling a table must not
+// disturb history position.
 func TestUI_TableScrollNeverMovesHistory(t *testing.T) {
 	m := testUIModel()
 	m.blocks = []*goalBlock{tableBlock()}

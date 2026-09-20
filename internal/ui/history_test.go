@@ -6,8 +6,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/vitzeno/detent/internal/agent"
 )
 
 func TestWrapPlain(t *testing.T) {
@@ -53,7 +51,7 @@ func TestGoalBanner_SummaryWraps(t *testing.T) {
 	m := testUIModel()
 	m.layout.histColW = 40
 	b := &goalBlock{
-		ended: true, end: agent.EndDone,
+		ended: true, end: EndDone,
 		summary: "a summary sentence long enough that it needs to wrap across two or more lines",
 	}
 	lines := m.goalBanner(b)

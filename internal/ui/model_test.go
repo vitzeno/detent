@@ -30,13 +30,10 @@ func TestUI_TrackNewestParksOutputReaders(t *testing.T) {
 	require.True(t, m.nav.follow)
 }
 
-// TestUI_SpinnerTickRefreshesHistoryWindow locks the fix for a bug where
-// the history pane's spinner (the "thinking…" line, baked into the
-// nav.histWindow cache) froze at whatever frame it had on the last real
-// content change, while the status bar's own spinner — computed fresh
-// on every View() rather than cached — kept animating right next to it.
-// A spinner tick otherwise changes nothing refreshViewport is normally
-// invoked for, so Update's spinner.TickMsg case must call it itself.
+// TestUI_SpinnerTickRefreshesHistoryWindow locks a bug where the
+// history pane's spinner line (baked into the nav.histWindow cache)
+// froze on the last real content change while the status bar's own
+// spinner, computed fresh each View(), kept animating.
 func TestUI_SpinnerTickRefreshesHistoryWindow(t *testing.T) {
 	m := testUIModel()
 	m.blocks = []*goalBlock{{goal: "g"}}

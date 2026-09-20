@@ -9,10 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/vitzeno/detent/internal/agent"
-	"github.com/vitzeno/detent/internal/shell"
 	"github.com/vitzeno/detent/internal/ui/editor"
-	"github.com/vitzeno/detent/internal/usage"
 )
 
 func TestUI_EditorOpensAfterEditedFileCommand(t *testing.T) {
@@ -20,13 +17,13 @@ func TestUI_EditorOpensAfterEditedFileCommand(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("print(1)\n"), 0o644))
 
 	m := testUIModel()
-	res := &agent.GoalResult{Goal: "g"}
+	res := &GoalResult{Goal: "g"}
 	m.blocks = []*goalBlock{{goal: "g", res: res}}
 	m.cur = m.blocks[0]
-	row := &stepRow{command: "cat > " + path, editPath: path, cmd: cmdState{running: true, usage: &usage.Step{}}}
+	row := &stepRow{command: "cat > " + path, editPath: path, cmd: cmdState{running: true}}
 	m.cur.steps = append(m.cur.steps, row)
 
-	nm, cmd := m.onExecDone(execDoneMsg{ec: &agent.ExecutedCommand{Command: row.command, Result: shell.Result{ExitCode: 0}}})
+	nm, cmd := m.onExecDone(execDoneMsg{ec: &ExecutedCommand{Command: row.command, Result: Result{ExitCode: 0}}})
 	m = nm.(Model)
 	require.NotNil(t, cmd, "must still chain into judge+propose like any other command")
 
@@ -38,14 +35,14 @@ func TestUI_EditorOpensAfterEditedFileCommand(t *testing.T) {
 
 func TestUI_EditorLoadErrorIsShownNotFatal(t *testing.T) {
 	m := testUIModel()
-	res := &agent.GoalResult{Goal: "g"}
+	m.sess = &fakeDriver{readOverride: true, readErr: os.ErrNotExist}
+	res := &GoalResult{Goal: "g"}
 	m.blocks = []*goalBlock{{goal: "g", res: res}}
 	m.cur = m.blocks[0]
-	missing := filepath.Join(t.TempDir(), "does-not-exist.txt")
-	row := &stepRow{command: "cmd", editPath: missing, cmd: cmdState{running: true, usage: &usage.Step{}}}
+	row := &stepRow{command: "cmd", editPath: "does-not-exist.txt", cmd: cmdState{running: true}}
 	m.cur.steps = append(m.cur.steps, row)
 
-	nm, _ := m.onExecDone(execDoneMsg{ec: &agent.ExecutedCommand{Command: row.command}})
+	nm, _ := m.onExecDone(execDoneMsg{ec: &ExecutedCommand{Command: row.command}})
 	m = nm.(Model)
 
 	require.NotNil(t, row.editor)
@@ -58,7 +55,7 @@ func rowWithEditor(t *testing.T, initial string) (*stepRow, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "f.txt")
 	require.NoError(t, os.WriteFile(path, []byte(initial), 0o644))
-	ed := editor.New(path)
+	ed := editor.New(path, initial, false, 0, nil)
 	return &stepRow{command: "cmd", editPath: path, editor: &ed}, path
 }
 
@@ -96,9 +93,9 @@ func TestUI_EditingUpdatesBuffer(t *testing.T) {
 
 func TestUI_SaveFlow(t *testing.T) {
 	row, path := rowWithEditor(t, "old\n")
-	sess := testSession()
+	drv := newFakeDriver()
 	m := testUIModel()
-	m.sess = sess
+	m.sess = drv
 	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{row}}}
 	m.nav.focus = focusOutput
 	m.nav.cursor = 0
@@ -128,15 +125,12 @@ func TestUI_SaveFlow(t *testing.T) {
 	nm, _ = m.onSaveDone(saveMsg)
 	m = nm.(Model)
 
-	got, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Equal(t, "new\n", string(got))
 	assert.False(t, row.editor.Dirty())
 
-	require.Len(t, sess.Transcript, 1, "a save is recorded in the transcript, not run as a command")
-	assert.Contains(t, sess.Transcript[0].Content, path)
-	assert.Contains(t, sess.Transcript[0].Content, "-old")
-	assert.Contains(t, sess.Transcript[0].Content, "+new")
+	assert.Equal(t, path, drv.savedPath, "SaveFile must be called with the row's own path")
+	assert.Equal(t, "new\n", drv.savedContent)
+	assert.Contains(t, drv.savedDiff, "-old")
+	assert.Contains(t, drv.savedDiff, "+new")
 }
 
 func TestUI_SaveNothingToSaveShowsNotice(t *testing.T) {

@@ -9,21 +9,17 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
-
-	"github.com/vitzeno/detent/internal/agent"
-	"github.com/vitzeno/detent/internal/propose"
 )
 
 // Full-pipeline tests: goal -> propose -> confirm (or not) -> execute ->
-// judge -> done/declined, driven through the real Bubble Tea program
-// rather than by calling internal methods directly.
+// judge -> done/declined, driven through a real Bubble Tea program
+// against a fakeDriver. This exercises ui's own state machine;
+// resolver's translation has its own coverage in internal/resolver.
 
 func TestUI_EndToEnd_GoalToDone(t *testing.T) {
-	// ls -la is never flagged Dangerous (fullJudge reports MutReadOnly,
-	// low scope_risk), so it runs straight through with no confirm step —
-	// this proves the rest of the pipeline (execute, judge, done) still
-	// works end to end without one.
-	m := New(context.Background(), testSession(), "test-model", "jev-test")
+	// newFakeDriver's default script never flags Dangerous, so this
+	// proves execute/judge/done work without a confirm step.
+	m := New(context.Background(), newFakeDriver(), "test-model", "jev-test")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 40))
 
 	tm.Type("what files are here?")
@@ -51,16 +47,12 @@ func TestUI_EndToEnd_GoalToDone(t *testing.T) {
 }
 
 func TestUI_DeclineStopsGoal(t *testing.T) {
-	// A command flagged Dangerous by FlagDanger's regex backstop, so
-	// confirm actually shows — declining a command that's never shown a
-	// confirm screen isn't something a human can do.
-	sess := &agent.Session{
-		Proposer: &scriptProposer{script: []propose.Proposal{
-			{Command: "rm -rf /tmp/x", Rationale: "remove"},
-		}},
-		Run: instantRun,
-	}
-	m := New(context.Background(), sess, "test-model", "")
+	// Flagged Dangerous so confirm actually shows — can't decline a
+	// screen that never appeared.
+	drv := newFakeDriver()
+	drv.proposals = []Proposal{{Command: "rm -rf /tmp/x", Rationale: "remove"}}
+	drv.pre.Dangerous = true
+	m := New(context.Background(), drv, "test-model", "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 40))
 
 	tm.Type("goal")

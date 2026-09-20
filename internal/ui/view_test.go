@@ -8,22 +8,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/vitzeno/detent/internal/agent"
-	"github.com/vitzeno/detent/internal/shell"
 )
 
 // Tests for view.go: rendering, sizing, and the detail-zone component
 // dispatch. render_view.go's own transforms (errorSeverity, diffClass,
 // prettyJSON) have their own render_view_test.go.
 
-// TestUpdateHistoryWindow_PersistsOffsetAcrossRenders locks the fix for
-// a bug where the windowing math used to live in a value-receiver
-// method reached only from View()'s own call chain — Bubble Tea always
-// renders View() on a throwaway copy of Model, so its writes to
-// histOffset/cursorLine never reached the real Model, leaving the
-// window stuck at offset zero and forcing the cursor to the window's
-// last line on every render instead of scrolling smoothly.
+// TestUpdateHistoryWindow_PersistsOffsetAcrossRenders locks a bug where
+// the windowing math lived in a value-receiver method reached only
+// from View()'s call chain — Bubble Tea renders View() on a throwaway
+// copy of Model, so writes to histOffset/cursorLine never stuck.
 func TestUpdateHistoryWindow_PersistsOffsetAcrossRenders(t *testing.T) {
 	m := testUIModel()
 	m.nav.histHeight = 5
@@ -40,19 +34,16 @@ func TestUpdateHistoryWindow_PersistsOffsetAcrossRenders(t *testing.T) {
 	require.Len(t, m.nav.histWindow, m.nav.histHeight)
 	assert.Contains(t, m.nav.histWindow[len(m.nav.histWindow)-1], "cmd", "cursor row must be visible in the window")
 
-	// Re-render with nothing else changed: the offset a real pointer
-	// receiver computed must still be there to read back — this is
-	// exactly what the old value-receiver version could never do.
+	// Re-render with nothing else changed: the offset must still read
+	// back the same, which the old value-receiver version never could.
 	offsetBefore := m.nav.histOffset
 	m.updateHistoryWindow()
 	assert.Equal(t, offsetBefore, m.nav.histOffset, "offset must persist across renders, not recompute from a stale zero")
 }
 
-// TestUI_StatusHintMatchesEscBehavior locks statusHint to onEscape's
-// actual behavior: from the output pane, esc steps back to history only
-// when nothing is running — with a command in flight it aborts instead
-// (onEscape, keys.go), and the hint must say so rather than always
-// advertising "history".
+// TestUI_StatusHintMatchesEscBehavior: from the output pane, esc steps
+// back to history only when nothing is running — with a command in
+// flight it aborts, and the hint must say so.
 func TestUI_StatusHintMatchesEscBehavior(t *testing.T) {
 	m := testUIModel()
 	m.nav.focus = focusOutput
@@ -78,15 +69,15 @@ func TestUI_TableRendersInDetailZone(t *testing.T) {
 
 func TestUI_StyledBodyKinds(t *testing.T) {
 	m := testUIModel()
-	mk := func(kind, out string) *stepRow {
-		return &stepRow{command: "cmd", cmd: cmdState{ec: &agent.ExecutedCommand{
-			Result: shell.Result{Stdout: out},
-			Post:   &agent.PostJudgment{RenderKind: kind},
+	mk := func(kind RenderKind, out string) *stepRow {
+		return &stepRow{command: "cmd", cmd: cmdState{ec: &ExecutedCommand{
+			Result: Result{Stdout: out},
+			Post:   &PostJudgment{RenderKind: kind},
 		}}}
 	}
-	assert.Contains(t, m.styledBody(mk(agent.KindJSON, `{"b":2,"a":1}`)), "\n")
-	assert.Contains(t, m.styledBody(mk(agent.KindContent, "package main\n")), "1")
-	got := m.styledBody(mk(agent.KindDiff, "+a\n-b\n ctx\n"))
+	assert.Contains(t, m.styledBody(mk(KindJSON, `{"b":2,"a":1}`)), "\n")
+	assert.Contains(t, m.styledBody(mk(KindContent, "package main\n")), "1")
+	got := m.styledBody(mk(KindDiff, "+a\n-b\n ctx\n"))
 	assert.Contains(t, got, "+a")
 	raw := m.styledBody(mk("unknown-kind", "plain\n"))
 	assert.Equal(t, "plain", raw)
@@ -128,14 +119,14 @@ func TestUI_ExpandedRowsCannotPushOutSessionBar(t *testing.T) {
 	steps := []*stepRow{}
 	for range 30 {
 		steps = append(steps, &stepRow{command: "cmd", cmd: cmdState{
-			ec: &agent.ExecutedCommand{
-				Result: shell.Result{Stdout: "out\n"},
-				Post:   &agent.PostJudgment{RenderKind: agent.KindInline},
+			ec: &ExecutedCommand{
+				Result: Result{Stdout: "out\n"},
+				Post:   &PostJudgment{RenderKind: KindInline},
 			},
 			expanded: true,
 		}})
 	}
-	m.blocks = []*goalBlock{{goal: "g", steps: steps, ended: true, end: agent.EndDone, summary: "s\nsecond line"}}
+	m.blocks = []*goalBlock{{goal: "g", steps: steps, ended: true, end: EndDone, summary: "s\nsecond line"}}
 	m.nav.cursor = len(steps) - 1
 	m.nav.follow = false
 	v := m.View()
@@ -149,9 +140,9 @@ func TestUI_WideLinesCannotPushOutSessionBar(t *testing.T) {
 	wide := strings.Repeat("w", 500)
 	steps := []*stepRow{}
 	for range 30 {
-		steps = append(steps, &stepRow{command: "cmd " + wide, cmd: cmdState{ec: &agent.ExecutedCommand{
-			Result: shell.Result{Stdout: wide + "\n"},
-			Post:   &agent.PostJudgment{RenderKind: agent.KindLog},
+		steps = append(steps, &stepRow{command: "cmd " + wide, cmd: cmdState{ec: &ExecutedCommand{
+			Result: Result{Stdout: wide + "\n"},
+			Post:   &PostJudgment{RenderKind: KindLog},
 		}}})
 	}
 	m.blocks = []*goalBlock{{goal: "g", steps: steps}}

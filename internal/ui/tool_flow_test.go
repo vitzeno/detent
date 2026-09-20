@@ -15,7 +15,7 @@ import (
 // /usage, /help) and the tool blocks they open.
 
 func TestUI_SlashCommands(t *testing.T) {
-	m := New(context.Background(), testSession(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), "test-model", "")
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 
