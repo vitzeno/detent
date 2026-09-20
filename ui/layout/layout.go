@@ -87,3 +87,15 @@ func Row(blocks ...string) string {
 func Column(blocks ...string) string {
 	return strings.Join(blocks, "\n")
 }
+
+// Truncate cuts s to w columns, marking where it cut. Bytes, not
+// display columns: callers pass ASCII-ish paths and commands.
+func Truncate(s string, w int) string {
+	if w < 4 {
+		w = 4
+	}
+	if len(s) <= w {
+		return s
+	}
+	return s[:w-1] + "…"
+}

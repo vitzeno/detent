@@ -6,6 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/status"
 )
 
@@ -78,7 +79,7 @@ func (m Model) stepLines(r *stepRow, step int) []string {
 	// A tool row never executed a shell command, so status.Badge (which
 	// reads r.cmd.ec) doesn't apply.
 	if r.toolKind != "" {
-		cmd := truncateWidth(r.command, m.layout.histColW-14)
+		cmd := layout.Truncate(r.command, m.layout.histColW-14)
 		return []string{fmt.Sprintf("%s%s %s", mark, styleMuted.Render("○"), cmd)}
 	}
 	s := status.Row{}
@@ -105,7 +106,7 @@ func (m Model) stepLines(r *stepRow, step int) []string {
 
 	// Truncated not wrapped: a command is often one unbreakable token
 	// with no good place to break.
-	cmd := truncateWidth(r.command, m.layout.histColW-34)
+	cmd := layout.Truncate(r.command, m.layout.histColW-34)
 	return []string{fmt.Sprintf("%s%s %s %s%s", mark, icon, cmd, styleMuted.Render("· "+detail), checkpoint)}
 }
 
@@ -172,7 +173,7 @@ func previewLines(r *stepRow, width int) []string {
 			out = append(out, styleFaint.Render(fmt.Sprintf("    … +%d more (viewport below)", len(src)-3)))
 			break
 		}
-		out = append(out, "    "+styleFaint.Render(truncateWidth(l, width)))
+		out = append(out, "    "+styleFaint.Render(layout.Truncate(l, width)))
 	}
 	return out
 }

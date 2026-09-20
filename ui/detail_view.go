@@ -7,7 +7,9 @@ import (
 
 	"github.com/vitzeno/detent/ui/editor"
 	"github.com/vitzeno/detent/ui/markdown"
+	"github.com/vitzeno/detent/ui/render"
 	"github.com/vitzeno/detent/ui/tabular"
+	"github.com/vitzeno/detent/ui/welcome"
 )
 
 // The output pane: what the focused row's component renders into
@@ -18,7 +20,7 @@ import (
 // scrolling viewport.
 func (m Model) detailLines() []string {
 	if m.showWelcome() {
-		return m.welcomeLines()
+		return m.welcomePane()
 	}
 	if r := m.focused(); r != nil {
 		if r.editor != nil {
@@ -121,21 +123,21 @@ func (m *Model) styledBody(r *stepRow) string {
 	switch rowKind(r) {
 	case KindError:
 		for i, l := range lines {
-			lines[i] = styleErrorLine(l)
+			lines[i] = render.ErrorLine(l)
 		}
 	case KindDiff:
 		for i, l := range lines {
-			lines[i] = styleDiffLine(l)
+			lines[i] = render.DiffLine(l)
 		}
 	case KindJSON:
-		if pretty, ok := prettyJSON(combined); ok {
+		if pretty, ok := render.JSON(combined); ok {
 			lines = strings.Split(pretty, "\n")
 		}
 	case KindContent:
 		if markdown.Wants(r.command, combined) {
 			lines = strings.Split(m.markdownBody(r, combined), "\n")
 		} else {
-			lines = numberLines(lines)
+			lines = render.NumberLines(lines)
 		}
 	}
 	if len(lines) > maxViewportLines {
@@ -156,6 +158,18 @@ func (m *Model) markdownBody(r *stepRow, combined string) string {
 		r.cmd.styledWidth = m.output.Width()
 	}
 	return r.cmd.styled
+}
+
+// welcomePane hands the boot pane the facts it reports, so nothing in
+// ui/welcome reaches into Model.
+func (m Model) welcomePane() []string {
+	snap := m.sess.UsageSnapshot()
+	return welcome.Lines(welcome.Facts{
+		Proposer: m.info.Proposer, Judge: m.info.Judge, RunMode: m.info.RunMode,
+		Image: m.info.Image, Mount: m.info.Mount,
+		Runtime: m.info.Runtime, Network: m.info.Network,
+		Goals: snap.Goals, Commands: snap.Commands, MachineTime: snap.MachineTime(),
+	}, paneInner(m.layout.outputColW), m.output.Height(), m.welcomeFrame)
 }
 
 // showWelcome reports whether the output pane has nothing of its own

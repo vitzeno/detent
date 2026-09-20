@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/status"
 )
 
@@ -47,7 +48,7 @@ func (m Model) usageLines(r *stepRow) []string {
 			end = "open"
 		}
 		lines = append(lines, fmt.Sprintf("%s%d. %s (%s) · %d steps · %s · %s tok",
-			mark, i+1, truncateWidth(g.Text, 40), end, len(g.Steps),
+			mark, i+1, layout.Truncate(g.Text, 40), end, len(g.Steps),
 			status.Dur(g.MachineTime()), status.Tokens(ptok+jtok)))
 		if i == r.tool.usageExpand {
 			lines = append(lines, usageSteps(g)...)
@@ -70,7 +71,7 @@ func usageSteps(g GoalStats) []string {
 	}
 	for i, s := range steps {
 		var b strings.Builder
-		fmt.Fprintf(&b, "    %d. %s", i+1, truncateWidth(s.Command, 30))
+		fmt.Fprintf(&b, "    %d. %s", i+1, layout.Truncate(s.Command, 30))
 		fmt.Fprintf(&b, " · p %s/%s", status.Dur(s.Propose), status.Tokens(s.ProposerPrompt+s.ProposerComplete))
 		if s.Dwell > 0 {
 			fmt.Fprintf(&b, " · dwell %s", status.Dur(s.Dwell))

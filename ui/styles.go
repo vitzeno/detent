@@ -5,9 +5,11 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/vitzeno/detent/ui/render"
 	"github.com/vitzeno/detent/ui/status"
 	"github.com/vitzeno/detent/ui/theme"
 	"github.com/vitzeno/detent/ui/tree"
+	"github.com/vitzeno/detent/ui/welcome"
 )
 
 var (
@@ -98,6 +100,8 @@ func RefreshStyles() {
 
 	tree.RefreshStyles()
 	status.RefreshStyles()
+	render.RefreshStyles()
+	welcome.RefreshStyles()
 }
 
 // Unknown scope renders neutral, never safe-looking.

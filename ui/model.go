@@ -15,6 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/vitzeno/detent/ui/status"
+	"github.com/vitzeno/detent/ui/welcome"
 )
 
 // Model is the TUI state. The screen is three zones — an output pane,
@@ -214,7 +215,7 @@ func (m *Model) trackNewest() {
 // welcomeTick re-arms itself only while the welcome pane is showing,
 // so an idle animation never outlives the screen it belongs to.
 func welcomeTick() tea.Cmd {
-	return tea.Tick(welcomeTickRate, func(time.Time) tea.Msg { return welcomeTickMsg{} })
+	return tea.Tick(welcome.TickRate, func(time.Time) tea.Msg { return welcomeTickMsg{} })
 }
 
 const (

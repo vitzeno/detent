@@ -52,15 +52,3 @@ const (
 func paneInner(outer int) int {
 	return max(20, outer-4)
 }
-
-// truncateWidth cuts s to w, marking the cut. Bytes, not display
-// columns: callers pass ASCII-ish paths and commands.
-func truncateWidth(s string, w int) string {
-	if w < 4 {
-		w = 4
-	}
-	if len(s) <= w {
-		return s
-	}
-	return s[:w-1] + "…"
-}

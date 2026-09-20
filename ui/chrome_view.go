@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 
+	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/status"
 )
 
@@ -50,18 +51,18 @@ func (m Model) viewportHeader() string {
 			dirty = styleCaution.Render(" ●")
 		}
 		return fmt.Sprintf("%s %s — %s%s", paneMark(active), paneLabel(label, active),
-			styleGoal.Render(truncateWidth(r.editor.Path, m.layout.outputColW-28)), dirty)
+			styleGoal.Render(layout.Truncate(r.editor.Path, m.layout.outputColW-28)), dirty)
 	}
 	if r.toolKind != "" {
 		return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(r.toolKind, active),
-			styleGoal.Render(truncateWidth(r.command, m.layout.outputColW-24)))
+			styleGoal.Render(layout.Truncate(r.command, m.layout.outputColW-24)))
 	}
 	label := "output"
 	if k := rowKind(r); k != "" {
 		label = status.KindLabel(string(k))
 	}
 	return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(label, active),
-		styleGoal.Render(truncateWidth(r.command, m.layout.outputColW-24)))
+		styleGoal.Render(layout.Truncate(r.command, m.layout.outputColW-24)))
 }
 
 func (m Model) historyHeader() string {

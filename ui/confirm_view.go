@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"github.com/vitzeno/detent/ui/layout"
+	"github.com/vitzeno/detent/ui/render"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -60,9 +62,9 @@ func (m Model) saveConfirmBox() string {
 
 	w := min(90, max(24, m.layout.width-8))
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s  %s\n\n", styleMuted.Render("save changes"), styleGoal.Render(truncateWidth(e.Path, w-20)))
+	fmt.Fprintf(&b, "%s  %s\n\n", styleMuted.Render("save changes"), styleGoal.Render(layout.Truncate(e.Path, w-20)))
 	for _, l := range lines {
-		b.WriteString(styleDiffLine(l) + "\n")
+		b.WriteString(render.DiffLine(l) + "\n")
 	}
 	if more > 0 {
 		fmt.Fprintf(&b, "%s\n", styleFaint.Render(fmt.Sprintf("… +%d more lines", more)))
