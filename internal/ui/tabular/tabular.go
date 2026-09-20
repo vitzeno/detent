@@ -90,11 +90,23 @@ func fit(grid [][]string, total int) []int {
 	return widths
 }
 
-// Styles is the one table look: teal header, plain cells, bold selected
-// row — no zebra striping, no borders-as-noise.
+// Styles is the one table look: teal header over a full-width rule,
+// faint vertical rules between columns, bold selected row. Cell
+// borders stop at right-only deliberately: bubbles/table borders each
+// cell independently rather than drawing the grid as one structure, so
+// combining a right border with a bottom border draws a stray corner
+// glyph at every cell join instead of a clean crossing — a bottom-only
+// border (as Header uses) joins seamlessly into one line, but adding a
+// right border to that same cell breaks it. Right-only avoids the
+// artifact while still reading as a grid alongside the header's rule.
 func Styles() table.Styles {
 	s := table.DefaultStyles()
-	s.Header = s.Header.Foreground(theme.Accent).Bold(true).BorderBottom(true)
+	s.Header = s.Header.Foreground(theme.Accent).Bold(true).
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(theme.Border)
+	s.Cell = s.Cell.
+		Border(lipgloss.NormalBorder(), false, true, false, false).
+		BorderForeground(theme.Border)
 	s.Selected = s.Selected.Foreground(theme.Accent).Bold(true)
 	return s
 }
