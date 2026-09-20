@@ -2,7 +2,9 @@
 package ui
 
 import (
-	"github.com/charmbracelet/lipgloss"
+	"image/color"
+
+	"charm.land/lipgloss/v2"
 
 	"github.com/vitzeno/detent/ui/status"
 	"github.com/vitzeno/detent/ui/theme"
@@ -10,16 +12,16 @@ import (
 )
 
 var (
-	accent lipgloss.TerminalColor
+	accent color.Color
 
-	safe    lipgloss.TerminalColor
-	caution lipgloss.TerminalColor
-	danger  lipgloss.TerminalColor
+	safe    color.Color
+	caution color.Color
+	danger  color.Color
 
-	textPrimary lipgloss.TerminalColor
-	textMuted   lipgloss.TerminalColor
-	textFaint   lipgloss.TerminalColor
-	border      lipgloss.TerminalColor
+	textPrimary color.Color
+	textMuted   color.Color
+	textFaint   color.Color
+	border      color.Color
 )
 
 var (

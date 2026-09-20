@@ -18,23 +18,21 @@ func welcomeModel(t *testing.T, info SessionInfo) Model {
 	return m
 }
 
-func plain(s string) string { return stripANSI(s) }
-
 func TestWelcome_ShowsUntilARowExists(t *testing.T) {
 	m := welcomeModel(t, SessionInfo{Proposer: "m", RunMode: "sandbox"})
 	require.True(t, m.showWelcome(), "boots with nothing focused")
-	assert.Contains(t, plain(m.View()), "this machine")
+	assert.Contains(t, plain(m.View().Content), "this machine")
 
 	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{{command: "ls"}}}}
 	require.False(t, m.showWelcome(), "a row takes the pane back")
-	assert.NotContains(t, plain(m.View()), "this machine")
+	assert.NotContains(t, plain(m.View().Content), "this machine")
 }
 
 func TestWelcome_ReportsHostAndSandbox(t *testing.T) {
 	v := plain(welcomeModel(t, SessionInfo{
 		Proposer: "m", RunMode: "sandbox",
 		Image: "docker.io/library/buildpack-deps:24.04-scm", Mount: "/workspace",
-	}).View())
+	}).View().Content)
 
 	assert.Contains(t, v, "darwin/", "host os/arch")
 	assert.Contains(t, v, "sandboxed")
@@ -44,7 +42,7 @@ func TestWelcome_ReportsHostAndSandbox(t *testing.T) {
 }
 
 func TestWelcome_HostModeSaysUnsandboxed(t *testing.T) {
-	v := plain(welcomeModel(t, SessionInfo{Proposer: "m", RunMode: "host"}).View())
+	v := plain(welcomeModel(t, SessionInfo{Proposer: "m", RunMode: "host"}).View().Content)
 	assert.Contains(t, v, "unsandboxed")
 	assert.NotContains(t, v, "image", "no image to report when nothing is sandboxed")
 }

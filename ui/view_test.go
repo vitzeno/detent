@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +38,7 @@ func TestHistoryWindow_PersistsOffsetAcrossRenders(t *testing.T) {
 	// Rendering must not move it: the function is pure, so the same
 	// state gives the same offset however many times View runs.
 	m.nav.histOffset = offset
-	_ = m.View()
+	_ = m.View().Content
 	_, again := m.historyWindow()
 	assert.Equal(t, offset, again, "offset must be stable across renders")
 }
@@ -63,7 +63,7 @@ func TestUI_TableRendersInDetailZone(t *testing.T) {
 	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{tableRow()}}}
 	m.nav.cursor = 0
 	m.refreshViewport()
-	v := m.View()
+	v := m.View().Content
 	assert.Contains(t, v, "USER")
 	assert.Contains(t, v, "4821")
 	assert.Contains(t, v, "table")
@@ -89,12 +89,12 @@ func TestUI_SessionBarShowsRunMode(t *testing.T) {
 	sandboxed := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "m", RunMode: "sandbox"})
 	sandboxed.layout.width, sandboxed.layout.height = 120, 40
 	sandboxed.sizeViewport()
-	require.Contains(t, sandboxed.View(), "sandbox")
+	require.Contains(t, sandboxed.View().Content, "sandbox")
 
 	onHost := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "m", RunMode: "host"})
 	onHost.layout.width, onHost.layout.height = 120, 40
 	onHost.sizeViewport()
-	v := onHost.View()
+	v := onHost.View().Content
 	require.Contains(t, v, "host")
 	require.Contains(t, v, "unsandboxed", "host mode must say so, not just omit the sandbox badge")
 }
@@ -103,21 +103,21 @@ func TestUI_PaneMarkersFollowFocus(t *testing.T) {
 	m := testUIModel()
 	// Nothing has run, so the output pane is titled "detent" (the
 	// welcome state); the markers are what this test is about.
-	v := m.View()
+	v := plain(m.View().Content)
 	require.Contains(t, v, "○ history")
 	require.Contains(t, v, "○ detent")
 	require.Contains(t, v, "● ❯", "input marker active on input focus")
 
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = nm.(Model)
-	v = m.View()
+	v = plain(m.View().Content)
 	require.Contains(t, v, "● history")
 	require.Contains(t, v, "○ detent")
 	require.Contains(t, v, "○ ❯")
 
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = nm.(Model)
-	v = m.View()
+	v = plain(m.View().Content)
 	require.Contains(t, v, "○ history")
 	require.Contains(t, v, "● detent")
 	require.Contains(t, v, "○ ❯")
@@ -125,7 +125,7 @@ func TestUI_PaneMarkersFollowFocus(t *testing.T) {
 
 func TestUI_IslandsRender(t *testing.T) {
 	m := testUIModel()
-	v := m.View()
+	v := m.View().Content
 	require.GreaterOrEqual(t, strings.Count(v, "╭"), 3, "history, output and input islands")
 	lines := strings.Count(v, "\n") + 1
 	require.Equal(t, m.layout.height, lines, "islands must tile the terminal exactly")
@@ -146,7 +146,7 @@ func TestUI_ExpandedRowsCannotPushOutSessionBar(t *testing.T) {
 	m.blocks = []*goalBlock{{goal: "g", steps: steps, ended: true, end: EndDone, summary: "s\nsecond line"}}
 	m.nav.cursor = len(steps) - 1
 	m.nav.follow = false
-	v := m.View()
+	v := m.View().Content
 	lines := strings.Count(v, "\n") + 1
 	require.Equal(t, m.layout.height, lines, "expanded rows and multiline banners must not grow the frame")
 	require.Contains(t, v, "detent v2", "session bar stays on screen")
@@ -165,9 +165,9 @@ func TestUI_WideLinesCannotPushOutSessionBar(t *testing.T) {
 	m.blocks = []*goalBlock{{goal: "g", steps: steps}}
 	m.nav.cursor = 5
 	m.nav.follow = false
-	_ = m.View()
+	_ = m.View().Content
 	m.nav.cursor = 25
-	v := m.View()
+	v := m.View().Content
 	lines := strings.Count(v, "\n") + 1
 	require.Equal(t, m.layout.height, lines, "wide content must not grow the frame")
 	require.Contains(t, v, "detent v2", "session bar stays on screen")

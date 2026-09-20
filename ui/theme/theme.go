@@ -2,30 +2,39 @@
 package theme
 
 import (
+	"image/color"
 	"sort"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // Theme is one named color scheme.
 type Theme struct {
-	Accent                                    lipgloss.TerminalColor
-	Safe, Caution, Danger                     lipgloss.TerminalColor
-	TextPrimary, TextMuted, TextFaint, Border lipgloss.TerminalColor
+	Accent                                    color.Color
+	Safe, Caution, Danger                     color.Color
+	TextPrimary, TextMuted, TextFaint, Border color.Color
+
+	// Markdown names the glamour style the prose pane renders with.
+	// glamour ships its own palettes and can't be handed ours, so the
+	// closest one is named here rather than guessed from the terminal.
+	Markdown string
 }
 
 // The active palette. Apply reassigns these directly.
 var (
-	Accent lipgloss.TerminalColor
+	Accent color.Color
 
-	Safe    lipgloss.TerminalColor
-	Caution lipgloss.TerminalColor
-	Danger  lipgloss.TerminalColor
+	Safe    color.Color
+	Caution color.Color
+	Danger  color.Color
 
-	TextPrimary lipgloss.TerminalColor
-	TextMuted   lipgloss.TerminalColor
-	TextFaint   lipgloss.TerminalColor
-	Border      lipgloss.TerminalColor
+	TextPrimary color.Color
+	TextMuted   color.Color
+	TextFaint   color.Color
+	Border      color.Color
+
+	// Markdown is the active theme's glamour style name.
+	Markdown string
 )
 
 // DefaultName is the theme applied at init and used when unset.
@@ -41,6 +50,7 @@ var dark = Theme{
 	TextMuted:   lipgloss.Color("#8992A8"),
 	TextFaint:   lipgloss.Color("#5C6478"),
 	Border:      lipgloss.Color("#333A4D"),
+	Markdown:    "dark",
 }
 
 var light = Theme{
@@ -52,6 +62,7 @@ var light = Theme{
 	TextMuted:   lipgloss.Color("#6B7280"),
 	TextFaint:   lipgloss.Color("#9CA3AF"),
 	Border:      lipgloss.Color("#D6D9E0"),
+	Markdown:    "light",
 }
 
 var solarized = Theme{
@@ -63,6 +74,7 @@ var solarized = Theme{
 	TextMuted:   lipgloss.Color("#839496"),
 	TextFaint:   lipgloss.Color("#586E75"),
 	Border:      lipgloss.Color("#0B3A45"),
+	Markdown:    "dark",
 }
 
 var dracula = Theme{
@@ -74,6 +86,7 @@ var dracula = Theme{
 	TextMuted:   lipgloss.Color("#A3A3C2"),
 	TextFaint:   lipgloss.Color("#6272A4"),
 	Border:      lipgloss.Color("#44475A"),
+	Markdown:    "dracula",
 }
 
 // Themes is every built-in scheme, keyed by name.
@@ -104,4 +117,5 @@ func Apply(t Theme) {
 	Accent = t.Accent
 	Safe, Caution, Danger = t.Safe, t.Caution, t.Danger
 	TextPrimary, TextMuted, TextFaint, Border = t.TextPrimary, t.TextMuted, t.TextFaint, t.Border
+	Markdown = t.Markdown
 }

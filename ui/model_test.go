@@ -42,5 +42,5 @@ func TestUI_SpinnerTickAnimatesHistory(t *testing.T) {
 	nm, _ := m.Update(m.spinner.Tick())
 	m = nm.(Model)
 
-	require.Contains(t, m.View(), m.spinner.View(), "history's spinner must show the current frame, not a stale one")
+	require.Contains(t, m.View().Content, m.spinner.View(), "history's spinner must show the current frame, not a stale one")
 }

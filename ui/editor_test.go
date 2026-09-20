@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -66,12 +66,12 @@ func TestUI_EnterAndExitEditMode(t *testing.T) {
 	m.nav.focus = focusOutput
 	m.nav.cursor = 0
 
-	nm, cmd := m.outputKey(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, cmd := m.outputKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = nm.(Model)
 	assert.True(t, m.save.editing)
 	assert.NotNil(t, cmd, "Focus() returns a blink cmd")
 
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	m = nm.(Model)
 	assert.False(t, m.save.editing, "esc leaves edit mode")
 }
@@ -85,7 +85,7 @@ func TestUI_EditingUpdatesBuffer(t *testing.T) {
 	m.save.editing = true
 	row.editor.Focus()
 
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("X")})
+	nm, _ := m.Update(tea.KeyPressMsg{Code: 'X', Text: "X"})
 	m = nm.(Model)
 	assert.Contains(t, row.editor.Value(), "X")
 	assert.True(t, row.editor.Dirty())
@@ -157,7 +157,7 @@ func TestUI_CancelSaveKeepsBufferAndDoesNotWrite(t *testing.T) {
 	m.save.row = row
 	m.mode = modeSaveConfirm
 
-	nm, cmd := m.saveConfirmKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	nm, cmd := m.saveConfirmKey(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	m = nm.(Model)
 	assert.Nil(t, cmd)
 	assert.Equal(t, modeInput, m.mode)

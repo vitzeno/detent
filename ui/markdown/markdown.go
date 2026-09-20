@@ -7,7 +7,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/charmbracelet/glamour"
+	"charm.land/glamour/v2"
+
+	"github.com/vitzeno/detent/ui/theme"
 )
 
 var mdPathRe = regexp.MustCompile(`(?i)\.md(own)?\b`)
@@ -27,9 +29,13 @@ func Wants(command, output string) bool {
 	return false
 }
 
-// Render renders prose at the given width.
+// Render renders prose at the given width, in the active theme's
+// glamour style rather than one sniffed from the terminal.
 func Render(body string, width int) (string, error) {
-	r, err := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(max(20, width)))
+	r, err := glamour.NewTermRenderer(
+		glamour.WithStandardStyle(theme.Markdown),
+		glamour.WithWordWrap(max(20, width)),
+	)
 	if err != nil {
 		return "", err
 	}

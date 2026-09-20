@@ -31,11 +31,11 @@ func (m *Model) sizeViewport() {
 		avail = 6
 	}
 	m.nav.histHeight = avail
-	m.output.Height = avail
+	m.output.SetHeight(avail)
 
 	widths := layout.Split(m.layout.width, bodyWeights, minPaneWidth)
 	m.layout.outputColW, m.layout.histColW = widths[0], widths[1]
-	m.output.Width = paneInner(m.layout.outputColW)
+	m.output.SetWidth(paneInner(m.layout.outputColW))
 	m.refreshViewport()
 }
 

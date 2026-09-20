@@ -6,8 +6,8 @@ package tabular
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/table"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/table"
+	"charm.land/lipgloss/v2"
 
 	"github.com/vitzeno/detent/ui/theme"
 )
@@ -102,14 +102,27 @@ func Styles() table.Styles {
 	return s
 }
 
-func Build(columns []table.Column, rows []table.Row, cursor, height int, focused bool) table.Model {
+// headerRows is what Styles' header costs: its own line plus the
+// bottom border under it. Heights below are totals including those.
+const headerRows = 2
+
+// Build renders rows as a table at most maxHeight lines tall.
+//
+// Two bubbles-v2 traps are handled here, both of which fail silently:
+// the rows scroll through a viewport that starts zero-wide, so an
+// unset width renders a header and nothing else; and SetHeight
+// subtracts the *current* header's height, so styles have to be
+// applied before it, or a bordered header costs a row nothing budgeted
+// for.
+func Build(columns []table.Column, rows []table.Row, cursor, maxHeight, width int, focused bool) table.Model {
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithRows(rows),
-		table.WithHeight(height),
+		table.WithWidth(width),
 		table.WithFocused(focused),
 	)
 	t.SetStyles(Styles())
+	t.SetHeight(min(len(rows)+headerRows, maxHeight))
 	t.SetCursor(cursor)
 	return t
 }

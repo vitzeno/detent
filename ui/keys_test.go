@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,7 +20,7 @@ func TestUI_EnterAcceptsConfirmAndSaveConfirm(t *testing.T) {
 		m.mode = modeConfirm
 		m.confirm.pending.Command = "ls"
 
-		nm, cmd := m.confirmKey(tea.KeyMsg{Type: tea.KeyEnter})
+		nm, cmd := m.confirmKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 		m = nm.(Model)
 		require.Equal(t, modeInput, m.mode, "enter must approve, same as y")
 		require.Len(t, m.cur.steps, 1)
@@ -34,7 +34,7 @@ func TestUI_EnterAcceptsConfirmAndSaveConfirm(t *testing.T) {
 		m.save.row = row
 		m.mode = modeSaveConfirm
 
-		nm, cmd := m.saveConfirmKey(tea.KeyMsg{Type: tea.KeyEnter})
+		nm, cmd := m.saveConfirmKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 		m = nm.(Model)
 		require.Equal(t, modeInput, m.mode, "enter must confirm the save, same as y")
 		require.NotNil(t, cmd)
@@ -67,11 +67,11 @@ func TestUI_ArrowsDoNotScrollHistoryWhileInputFocused(t *testing.T) {
 	m.nav.follow = false
 	require.True(t, m.prompt.Focused())
 
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = nm.(Model)
 	require.Equal(t, 1, m.nav.cursor, "history cursor must not move while typing")
 
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = nm.(Model)
 	require.Equal(t, 1, m.nav.cursor, "history cursor must not move while typing")
 }
@@ -88,11 +88,11 @@ func TestUI_JKNoLongerNavigate(t *testing.T) {
 	m.nav.cursor = 0
 	m.nav.follow = false
 
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	nm, _ := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	m = nm.(Model)
 	require.Equal(t, 0, m.nav.cursor, "j must not move the history cursor")
 
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = nm.(Model)
 	require.Equal(t, 1, m.nav.cursor, "down still does")
 }
@@ -111,11 +111,11 @@ func TestUI_NavKeysWorkWhenInputBlurred(t *testing.T) {
 	m.nav.cursor = 0
 	m.nav.follow = false
 
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = nm.(Model)
 	require.Equal(t, 1, m.nav.cursor)
 
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
 	m = nm.(Model)
 	require.True(t, m.blocks[0].steps[1].cmd.expanded)
 }
@@ -126,7 +126,7 @@ func TestUI_TabCyclesThreePanes(t *testing.T) {
 	m.sizeViewport()
 	require.Equal(t, focusInput, m.nav.focus)
 
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = nm.(Model)
 	require.Equal(t, focusHistory, m.nav.focus)
 	require.False(t, m.prompt.Focused())
@@ -136,11 +136,11 @@ func TestUI_TabCyclesThreePanes(t *testing.T) {
 	m = nm.(Model)
 	require.NotNil(t, cmd, "q in history focus must quit")
 
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = nm.(Model)
 	require.Equal(t, focusOutput, m.nav.focus)
 
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = nm.(Model)
 	require.Equal(t, focusInput, m.nav.focus)
 	require.True(t, m.prompt.Focused())
@@ -166,7 +166,7 @@ func TestUI_SlashEntryWhileBusy(t *testing.T) {
 	require.Equal(t, "/a", m.prompt.Value())
 
 	// Partial + enter completes instead of submitting.
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = nm.(Model)
 	require.Equal(t, "/abort ", m.prompt.Value())
 	require.Empty(t, m.blocks)
@@ -178,18 +178,18 @@ func TestUI_OutputNavMovesTableCursor(t *testing.T) {
 	m.nav.cursor = 0
 	m.nav.focus = focusOutput
 
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = nm.(Model)
 	require.Equal(t, 1, m.blocks[0].steps[0].cmd.tableCursor)
 
 	// Clamped at the last row.
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = nm.(Model)
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = nm.(Model)
 	require.Equal(t, 1, m.blocks[0].steps[0].cmd.tableCursor)
 
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = nm.(Model)
 	require.Equal(t, 0, m.blocks[0].steps[0].cmd.tableCursor)
 }
@@ -197,7 +197,7 @@ func TestUI_OutputNavMovesTableCursor(t *testing.T) {
 func TestUI_EscFromOutputReturnsToHistory(t *testing.T) {
 	m := testUIModel()
 	m.nav.focus = focusOutput
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	m = nm.(Model)
 	require.Equal(t, focusHistory, m.nav.focus)
 }
@@ -212,9 +212,9 @@ func TestUI_TableScrollNeverMovesHistory(t *testing.T) {
 	m.nav.focus = focusOutput
 	m.refreshViewport()
 	for range 10 {
-		nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 		m = nm.(Model)
-		_ = m.View()
+		_ = m.View().Content
 		require.Equal(t, 0, m.nav.cursor, "history cursor must not move")
 		require.Equal(t, 0, m.nav.histOffset, "history window must not scroll")
 	}

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/x/exp/teatest"
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/exp/teatest/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,13 +23,13 @@ func TestUI_EndToEnd_GoalToDone(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 40))
 
 	tm.Type("what files are here?")
-	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("saw two files"))
 	}, teatest.WithDuration(3*time.Second), teatest.WithCheckInterval(10*time.Millisecond))
 
-	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlC})
+	tm.Send(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
 
 	fm, ok := tm.FinalModel(t).(Model)
@@ -56,17 +56,17 @@ func TestUI_DeclineStopsGoal(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 40))
 
 	tm.Type("goal")
-	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyEnter})
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("[y/enter]"))
 	}, teatest.WithDuration(3*time.Second), teatest.WithCheckInterval(10*time.Millisecond))
 
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	tm.Send(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("declined"))
 	}, teatest.WithDuration(3*time.Second), teatest.WithCheckInterval(10*time.Millisecond))
 
-	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlC})
+	tm.Send(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
 
 	fm := tm.FinalModel(t).(Model)

@@ -4,18 +4,26 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// plain drops the ANSI styling lipgloss v2 emits even off-TTY, so the
+// assertions below are about structure rather than color.
+func plain(s string) string {
+	return ansi.Strip(s)
+}
+
 func TestRender_Structure(t *testing.T) {
 	out := Render("title", true, []string{"a", "b"}, 20, 4)
 	lines := strings.Split(out, "\n")
 	require.Len(t, lines, 4+2, "height content lines plus two border lines")
-	assert.Equal(t, "╭"+strings.Repeat("─", 18)+"╮", lines[0])
-	assert.Equal(t, "╰"+strings.Repeat("─", 18)+"╯", lines[len(lines)-1])
+	assert.Equal(t, "╭"+strings.Repeat("─", 18)+"╮", plain(lines[0]),
+		"the island renders exactly the width it was asked for")
+	assert.Equal(t, "╰"+strings.Repeat("─", 18)+"╯", plain(lines[len(lines)-1]))
 	assert.Contains(t, lines[1], "title")
 }
 

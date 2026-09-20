@@ -3,19 +3,27 @@ package ui
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/vitzeno/detent/ui/island"
 	"github.com/vitzeno/detent/ui/layout"
 )
 
-func (m Model) View() string {
-	return m.baseView()
+// View returns the screen plus the terminal state that goes with it.
+// Under v2 altscreen and keyboard enhancements are properties of what
+// we render, not program options set once at startup.
+func (m Model) View() tea.View {
+	v := tea.NewView(m.baseView())
+	v.AltScreen = true
+	v.KeyboardEnhancements = tea.KeyboardEnhancements{}
+	return v
 }
 
 func (m Model) baseView() string {
 	if m.layout.width <= 0 {
 		return "loading…"
 	}
-	outputBlock := island.Render(m.viewportHeader(), m.nav.focus == focusOutput, m.detailLines(), m.layout.outputColW, m.output.Height+1)
+	outputBlock := island.Render(m.viewportHeader(), m.nav.focus == focusOutput, m.detailLines(), m.layout.outputColW, m.output.Height()+1)
 	histWindow, _ := m.historyWindow()
 	historyBlock := island.Render(m.historyHeader(), m.nav.focus == focusHistory, histWindow, m.layout.histColW, m.nav.histHeight+1)
 
@@ -36,11 +44,6 @@ func (m Model) baseView() string {
 	}
 	return b.String()
 }
-
-// historyWindow returns the visible slice of history and the scroll
-// offset it settled on. Pure, so View can call it directly on its
-// throwaway copy; Update stores the offset back. Entries flatten to
-// lines first, since expanded rows and banners span several each.
 
 // historyWindow returns the visible slice of history and the scroll
 // offset it settled on. Pure, so View can call it directly on its

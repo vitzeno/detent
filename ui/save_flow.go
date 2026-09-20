@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // startSave opens the diff confirm for the focused row's editor. A

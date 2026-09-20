@@ -7,7 +7,7 @@ package layout
 import (
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // Split divides total among len(weights) shares proportional to each

@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/vitzeno/detent/ui/editor"
 	"github.com/vitzeno/detent/ui/status"
@@ -251,7 +251,7 @@ func New(ctx context.Context, sess Driver, info SessionInfo) Model {
 		ctx:      ctx,
 		info:     info,
 		prompt:   p,
-		output:   viewport.New(0, 0),
+		output:   viewport.New(),
 		spinner:  sp,
 		streamCh: make(chan StreamEvent, streamBufSize),
 		nav:      navState{follow: true},
@@ -322,7 +322,7 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout.width, m.layout.height = msg.Width, msg.Height
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
 	case spinner.TickMsg:

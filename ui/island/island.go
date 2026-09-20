@@ -9,7 +9,7 @@ package island
 import (
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/vitzeno/detent/ui/theme"
@@ -44,7 +44,9 @@ func Render(title string, active bool, lines []string, width, height int) string
 	if active {
 		style = style.BorderForeground(theme.Accent)
 	}
-	return style.Width(width - 2).Render(strings.Join(body, "\n"))
+	// lipgloss v2's Width is the total rendered width, border included —
+	// under v1 it was the content width and the border sat outside it.
+	return style.Width(width).Render(strings.Join(body, "\n"))
 }
 
 // fitLine cuts over-wide lines with an ANSI-aware … tail. lipgloss

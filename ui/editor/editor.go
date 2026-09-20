@@ -4,10 +4,10 @@
 package editor
 
 import (
+	"charm.land/bubbles/v2/textarea"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/aymanbagabas/go-udiff"
-	"github.com/charmbracelet/bubbles/textarea"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/vitzeno/detent/ui/theme"
 )
@@ -45,12 +45,14 @@ func applyTheme(ta *textarea.Model) {
 	currentLineNumber := lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
 	endOfBuffer := lipgloss.NewStyle().Foreground(theme.TextFaint)
 
-	for _, s := range []*textarea.Style{&ta.FocusedStyle, &ta.BlurredStyle} {
-		s.LineNumber = lineNumber
-		s.CursorLineNumber = currentLineNumber
-		s.EndOfBuffer = endOfBuffer
+	s := ta.Styles()
+	for _, st := range []*textarea.StyleState{&s.Focused, &s.Blurred} {
+		st.LineNumber = lineNumber
+		st.CursorLineNumber = currentLineNumber
+		st.EndOfBuffer = endOfBuffer
 	}
-	ta.Cursor.Style = lipgloss.NewStyle().Foreground(theme.Accent)
+	s.Cursor.Color = theme.Accent
+	ta.SetStyles(s)
 }
 
 // Err is non-nil when the initial read failed; View shows it in place

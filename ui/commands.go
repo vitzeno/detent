@@ -3,7 +3,7 @@ package ui
 import (
 	"context"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // beginGoalCmd runs BeginGoal off the update loop — probe collection

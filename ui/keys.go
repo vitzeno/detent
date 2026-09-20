@@ -3,7 +3,7 @@ package ui
 import (
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/vitzeno/detent/ui/tabular"
 )
@@ -37,7 +37,7 @@ func (m Model) owner() keyOwner {
 	return ownerInput
 }
 
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
 		return m, tea.Quit
 	}
@@ -78,7 +78,7 @@ func (m Model) onTab() (tea.Model, tea.Cmd) {
 	return m.toggleFocus()
 }
 
-func (m Model) confirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) confirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y", "enter":
 		return m.approve()
@@ -88,7 +88,7 @@ func (m Model) confirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) saveConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) saveConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y", "enter":
 		return m.confirmSave()
@@ -101,7 +101,7 @@ func (m Model) saveConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // editorKey owns every key while editing: esc leaves edit mode without
 // touching disk, ctrl+s opens the diff confirm, everything else goes to
 // the textarea.
-func (m Model) editorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) editorKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	r := m.focused()
 	if r == nil || r.editor == nil {
 		m.save.editing = false
@@ -122,7 +122,7 @@ func (m Model) editorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // inputKey gives a focused idle input every keystroke — typing must
 // never trigger navigation. Only pgup/pgdn and enter bypass the input.
-func (m Model) inputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if next, _, handled := m.slashKey(msg); handled {
 		return next, nil
 	}
@@ -139,7 +139,7 @@ func (m Model) inputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // busyKey narrows a focused waiting input to slash entry: plain goals
 // can't start mid-run, but /abort and /quit stay reachable.
-func (m Model) busyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) busyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if next, _, handled := m.slashKey(msg); handled {
 		return next, nil
 	}
@@ -159,7 +159,7 @@ func (m Model) busyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // slashKey drives the open dropdown (arrows/enter/esc); tab is handled
 // in onTab. Reports handled=false when no dropdown is open.
-func (m Model) slashKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+func (m Model) slashKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	if !m.prompt.Open() {
 		return m, nil, false
 	}
@@ -185,19 +185,19 @@ func (m Model) slashKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 }
 
 // outputKey acts inside the detail component instead of moving rows.
-func (m Model) outputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) outputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up":
 		return m.outputNav(-1)
 	case "down":
 		return m.outputNav(1)
 	case "pgup":
-		m.output.HalfViewUp()
+		m.output.HalfPageUp()
 		return m, nil
 	case "pgdown":
-		m.output.HalfViewDown()
+		m.output.HalfPageDown()
 		return m, nil
-	case "enter", "v", " ":
+	case "enter", "v", "space":
 		if r := m.focused(); r != nil {
 			if r.editor != nil {
 				m.save.editing = true
@@ -225,7 +225,7 @@ func (m Model) outputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) historyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) historyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up":
 		return m.navUp()
@@ -238,7 +238,7 @@ func (m Model) historyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			r.cmd.expanded = !r.cmd.expanded
 		}
 		return m, nil
-	case "v", " ":
+	case "v", "space":
 		if r := m.focused(); r != nil {
 			r.cmd.expanded = !r.cmd.expanded
 		}
@@ -256,7 +256,7 @@ func (m Model) historyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
 	if r := m.focused(); r != nil && !r.cmd.running {
 		if src, ok := r.tableText(); ok {
-			if _, rows, ok := tabular.Parse(src, m.output.Width); ok && len(rows) > 0 {
+			if _, rows, ok := tabular.Parse(src, m.output.Width()); ok && len(rows) > 0 {
 				r.cmd.tableCursor = min(max(r.cmd.tableCursor+d, 0), len(rows)-1)
 				return m, nil
 			}
@@ -283,9 +283,9 @@ func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
 		}
 	}
 	if d < 0 {
-		m.output.LineUp(1)
+		m.output.ScrollUp(1)
 	} else {
-		m.output.LineDown(1)
+		m.output.ScrollDown(1)
 	}
 	return m, nil
 }
@@ -311,9 +311,9 @@ func (m Model) navDown() (tea.Model, tea.Cmd) {
 
 func (m Model) scrollViewport(key string) (tea.Model, tea.Cmd) {
 	if key == "pgup" {
-		m.output.HalfViewUp()
+		m.output.HalfPageUp()
 	} else {
-		m.output.HalfViewDown()
+		m.output.HalfPageDown()
 	}
 	return m, nil
 }

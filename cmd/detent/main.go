@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/classify"
@@ -147,7 +147,9 @@ func run() error {
 		Image: resolved.SandboxImage, Mount: resolved.SandboxWorkspace, Runtime: resolved.SandboxRuntime,
 	}
 	drv := resolver.New(sess)
-	p := tea.NewProgram(ui.New(context.Background(), drv, info), tea.WithAltScreen())
+	// Altscreen is declared by ui.Model.View, not set here — under
+	// Bubble Tea v2 terminal state is a property of what's rendered.
+	p := tea.NewProgram(ui.New(context.Background(), drv, info))
 	_, err = p.Run()
 	return err
 }

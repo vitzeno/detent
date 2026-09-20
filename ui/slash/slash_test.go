@@ -4,8 +4,6 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,14 +31,12 @@ func TestView(t *testing.T) {
 
 // TestView_AlignsUnderColor guards against padding a name after it's
 // already been ANSI-styled: fmt's width verbs count escape bytes too,
-// so %-10s applied post-Render silently drops the padding — invisible
-// with color disabled (as most test runs are), only visible once a
-// real color profile is forced, as here.
+// so %-10s applied post-Render silently drops the padding. lipgloss v2
+// styles off-TTY as well, so the escapes are here without forcing a
+// color profile — which is why this went unnoticed under v1.
 func TestView_AlignsUnderColor(t *testing.T) {
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	defer lipgloss.SetColorProfile(termenv.Ascii)
-
 	v := View(Match("/"), 0)
+	require.Contains(t, v, "\x1b[", "lipgloss must emit styling for this test to mean anything")
 	ansi := regexp.MustCompile("\x1b\\[[0-9;]*m")
 	lines := ansi.ReplaceAllString(v, "")
 	assert.Contains(t, lines, "▸ /quit      quit detent")

@@ -34,7 +34,7 @@ func (m Model) detailLines() []string {
 		}
 		switch r.toolKind {
 		case "tree":
-			return r.tool.tree.View(paneInner(m.layout.outputColW), m.output.Height)
+			return r.tool.tree.View(paneInner(m.layout.outputColW), m.output.Height())
 		case "usage":
 			return m.usageLines(r)
 		case "help":
@@ -64,7 +64,7 @@ func (m Model) editorLines(e *editor.Model) []string {
 	if e.Err() != nil {
 		return []string{styleDanger.Render(e.View())} // "could not open <path>: <err>"
 	}
-	e.Resize(paneInner(m.layout.outputColW), m.output.Height)
+	e.Resize(paneInner(m.layout.outputColW), m.output.Height())
 	lines := strings.Split(e.View(), "\n")
 	if e.Truncated() {
 		lines = append(lines, styleCaution.Render(fmt.Sprintf("… file truncated at %d bytes", e.MaxBytes())))
@@ -83,12 +83,12 @@ func (m Model) focusedTable() (string, bool) {
 	if !ok {
 		return "", false
 	}
-	cols, rows, ok := tabular.Parse(src, m.output.Width)
+	cols, rows, ok := tabular.Parse(src, m.output.Width())
 	if !ok || len(rows) == 0 {
 		return "", false
 	}
 	cursor := min(r.cmd.tableCursor, len(rows)-1)
-	t := tabular.Build(cols, rows, cursor, min(len(rows)+1, m.output.Height), m.nav.focus == focusOutput)
+	t := tabular.Build(cols, rows, cursor, m.output.Height(), m.output.Width(), m.nav.focus == focusOutput)
 	return t.View(), true
 }
 
@@ -167,13 +167,13 @@ func (m *Model) styledBody(r *stepRow) string {
 // markdownBody caches by width — a re-render per frame would churn on
 // every scroll tick.
 func (m *Model) markdownBody(r *stepRow, combined string) string {
-	if r.cmd.styled == "" || r.cmd.styledWidth != m.output.Width {
-		rendered, err := markdown.Render(combined, m.output.Width)
+	if r.cmd.styled == "" || r.cmd.styledWidth != m.output.Width() {
+		rendered, err := markdown.Render(combined, m.output.Width())
 		if err != nil {
 			rendered = combined
 		}
 		r.cmd.styled = strings.TrimSuffix(rendered, "\n")
-		r.cmd.styledWidth = m.output.Width
+		r.cmd.styledWidth = m.output.Width()
 	}
 	return r.cmd.styled
 }

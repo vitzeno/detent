@@ -1,9 +1,10 @@
 package tabular
 
 import (
+	"strings"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/table"
+	"charm.land/bubbles/v2/table"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,6 +38,25 @@ func TestParseTable_RaggedLastColumnJoins(t *testing.T) {
 	_, rows, ok := Parse("a b\nc d e\n", 80)
 	require.True(t, ok)
 	assert.Equal(t, table.Row{"c", "d e"}, rows[0])
+}
+
+// TestBuild_RendersEveryRow pins the whole point of the component:
+// bubbles scrolls rows through a viewport of its own, so a table built
+// without a width or tall enough for its rows renders a header and
+// nothing else — no error, just missing data.
+func TestBuild_RendersEveryRow(t *testing.T) {
+	cols, rows, ok := Parse(psSample, 80)
+	require.True(t, ok)
+
+	v := Build(cols, rows, 0, 40, 80, true).View()
+	assert.Contains(t, v, "USER")
+	assert.Contains(t, v, "4821")
+	assert.Contains(t, v, "init")
+
+	// Asked for less room than the rows need, it shows what fits.
+	short := Build(cols, rows, 0, headerRows+1, 80, true).View()
+	assert.Contains(t, short, "USER")
+	assert.Equal(t, headerRows+1, strings.Count(short, "\n")+1, "must honour the height cap")
 }
 
 func TestParseTable_FitsWidth(t *testing.T) {

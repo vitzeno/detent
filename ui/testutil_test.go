@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // Shared fixtures for every *_test.go file in this package.
@@ -167,18 +167,24 @@ func displayCol(line, sub string) int {
 	return lipgloss.Width(line[:i])
 }
 
-// stripANSI drops styling so a rendered line can be measured or matched.
+// stripANSI drops styling so a rendered line can be measured or
+// matched. lipgloss v2 styles off-TTY too, so anything asserting on
+// text that spans two differently-styled runs needs this — under v1
+// the escapes simply weren't there to get in the way.
 func stripANSI(s string) string {
 	return ansiPattern.ReplaceAllString(s, "")
 }
 
+// plain is stripANSI, named for how it reads at a call site.
+func plain(s string) string { return stripANSI(s) }
+
 var ansiPattern = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
-func typeKey(s string) tea.KeyMsg {
+func typeKey(s string) tea.KeyPressMsg {
 	if s == "space" {
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")}
+		return tea.KeyPressMsg{Code: ' ', Text: " "}
 	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	return tea.KeyPressMsg{Code: rune(s[0]), Text: s}
 }
 
 func busyUIModel() Model {

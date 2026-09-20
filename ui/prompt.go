@@ -3,10 +3,10 @@ package ui
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textarea"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textarea"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/vitzeno/detent/ui/slash"
 )
@@ -46,8 +46,8 @@ func newPrompt() prompt {
 		key.WithHelp("alt+enter", "newline"),
 	)
 	// Prompt on the first row only; wrapped rows align under it.
-	ta.SetPromptFunc(inputPromptW, func(row int) string {
-		if row == 0 {
+	ta.SetPromptFunc(inputPromptW, func(p textarea.PromptInfo) string {
+		if p.LineNumber == 0 {
 			return "❯ "
 		}
 		return "  "
@@ -63,14 +63,16 @@ func newPrompt() prompt {
 // but not a one-shot prompt.
 func applyInputTheme(ta *textarea.Model) {
 	plain := lipgloss.NewStyle()
-	for _, s := range []*textarea.Style{&ta.FocusedStyle, &ta.BlurredStyle} {
-		s.CursorLine = plain
-		s.EndOfBuffer = plain
-		s.Placeholder = styleFaint
+	s := ta.Styles()
+	for _, st := range []*textarea.StyleState{&s.Focused, &s.Blurred} {
+		st.CursorLine = plain
+		st.EndOfBuffer = plain
+		st.Placeholder = styleFaint
 	}
-	ta.FocusedStyle.Prompt = styleRowCursor
-	ta.BlurredStyle.Prompt = styleFaint
-	ta.Cursor.Style = lipgloss.NewStyle().Foreground(accent)
+	s.Focused.Prompt = styleRowCursor
+	s.Blurred.Prompt = styleFaint
+	s.Cursor.Color = accent
+	ta.SetStyles(s)
 }
 
 func (p prompt) Value() string      { return p.input.Value() }
@@ -81,7 +83,7 @@ func (p *prompt) SetValue(s string) { p.input.SetValue(s) }
 
 // Key routes a keystroke into the box and re-matches the dropdown, so
 // the two can't drift apart.
-func (p *prompt) Key(msg tea.KeyMsg) tea.Cmd {
+func (p *prompt) Key(msg tea.KeyPressMsg) tea.Cmd {
 	var cmd tea.Cmd
 	p.input, cmd = p.input.Update(msg)
 	p.rematch()
