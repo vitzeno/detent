@@ -10,12 +10,6 @@ Works with any OpenAI-compatible `/chat/completions` endpoint — LM Studio by d
 
 ![detent TUI](screenshots/tui-2.png)
 
-## How safety works
-
-- Commands run straight through, no confirm per step.
-- A second model (TypeSafe Jev) plus a regex backstop flags **Dangerous** commands — those are shown verbatim and require explicit human approval.
-- Without a Jev key configured, only the regex backstop applies.
-
 ## Quick start
 
 ```sh
@@ -25,14 +19,131 @@ make run-headless GOAL="list go files larger than 1MB"   # one goal, no UI
 make test          # go test ./...
 ```
 
+By default detent runs every command **sandboxed** in a container, which needs a
+containerd daemon (see below). To skip that and run straight on your machine:
+
+```sh
+./bin/detent -sandbox host
+```
+
+## Sandboxing
+
+Commands run in a containerd-backed container, one per session, so filesystem
+state builds up across steps and can be rolled back. Your working directory is
+bind-mounted at `/workspace`, so edits are visible on both sides.
+
+### macOS — colima with the containerd runtime
+
+```sh
+brew install colima
+colima start --runtime containerd
+```
+
+detent looks for `~/.colima/default/containerd.sock` automatically. Check what
+your VM actually exposes with:
+
+```sh
+colima status     # prints the "containerd socket:" line
+```
+
+A colima VM started with the **docker** runtime also exposes a working
+containerd socket (dockerd runs on containerd underneath), so an existing
+`colima start` will usually work as-is. If you use a named profile, the socket
+moves to `~/.colima/<profile>/containerd.sock` and you'll need to point at it:
+
+```sh
+colima start --profile detent --runtime containerd
+./bin/detent -sandbox-socket ~/.colima/detent/containerd.sock
+```
+
+### Linux
+
+containerd runs natively; detent uses `/run/containerd/containerd.sock`. You may
+need to be in a group that can read that socket, or run with sudo.
+
+### Windows
+
+No safe default. Run detent inside WSL2 (then it's the Linux case), or expose
+containerd over TCP and pass `-sandbox-socket`.
+
+### Known limits
+
+- **No network inside the container.** Network namespace isolation is on and CNI
+  isn't wired up yet, so the container can't reach anything — including package
+  registries. Whatever your goals need has to already be in the image.
+- **The default image is `buildpack-deps:24.04-scm`** — Ubuntu plus git, curl and
+  ca-certificates. Point `sandbox_image` at something else if you need more.
+- **A rollback does not revert `/workspace`.** That's a bind mount to your real
+  directory, deliberately outside the snapshot, so your own files survive. Only
+  container state outside the mount is restored.
+
+## How safety works
+
+- Commands run straight through, no confirm per step.
+- A second model (TypeSafe Jev) plus a regex backstop flags **Dangerous**
+  commands — those are shown verbatim and require explicit human approval.
+- Without a Jev key configured, only the regex backstop applies.
+- The session bar always says where commands run: `sandbox ●` or
+  `host ⚠ unsandboxed`.
+
+## Undoing a step
+
+Every sandboxed step is checkpointed, and each one shows a dim `#N` marker in the
+history pane. `/rollback N` undoes step N **and everything after it**, restoring
+the container to how it was before that step ran, and trimming the transcript to
+match so the model doesn't keep reasoning from undone work.
+
+## Keys
+
+| Key | Does |
+| --- | --- |
+| `enter` | run the goal in the input box |
+| `alt+enter` / `ctrl+j` | insert a newline instead of submitting |
+| `/` | open the command list (`/rollback`, `/tree`, `/usage`, `/abort`, `/help`, `/quit`) |
+| `tab` | cycle input → history → output |
+| `↑` / `↓` | move through history, or scroll the focused pane |
+| `space` | expand the focused row's output |
+| `ctrl+s` | save the file open in the editor pane |
+| `q` | quit (when the input isn't focused) |
+| `ctrl+c` | quit from anywhere |
+
+**Want `shift+enter` for newlines?** Terminals send the same byte for `enter` and
+`shift+enter`, so no program can tell them apart by default. Bind it in your
+terminal to send `\x1b\r` (escape + carriage return) and detent will read it as
+`alt+enter`:
+
+- **iTerm2** — Settings → Keys → Key Bindings → `+`, press shift+enter, action
+  "Send Escape Sequence", value `\r`.
+- **VS Code** — add to `keybindings.json`:
+  ```json
+  { "key": "shift+enter", "command": "workbench.action.terminal.sendSequence",
+    "args": { "text": "\r" }, "when": "terminalFocus" }
+  ```
+
 ## Configuration
 
-Config file at `./.detent.yaml` or `~/.config/detent/config.yaml` (see `detent.example.yaml` for every key). Key env vars: `DETENT_BASE_URL`, `DETENT_MODEL`, `DETENT_API_KEY`, and `TYPESAFE_API_KEY` to enable the Jev judge. A repo-local `.env` is also loaded.
+Config file at `./.detent.yaml` or `~/.config/detent/config.yaml` (see
+`detent.example.yaml` for every key). Precedence is flags > environment > file >
+built-ins.
+
+Key env vars: `DETENT_BASE_URL`, `DETENT_MODEL`, `DETENT_API_KEY`,
+`TYPESAFE_API_KEY` (enables the Jev judge), `DETENT_SANDBOX_MODE`,
+`DETENT_SANDBOX_SOCKET`. A repo-local `.env` is also loaded.
 
 ## Architecture
 
 ```
-cmd/detent  →  ui  →  agentloop  →  propose, shell, classify, usage
+cmd/detent  →  ui  ⇄  resolver  ⇄  agent  →  propose, classify, usage
+                                      ↑
+                                   routing  →  host     (unsandboxed)
+                                            →  sandbox  (containerd)
 ```
 
-One persistent transcript per session, not disconnected per-goal requests. The model's proposal is strict JSON (command or done), executed via a single `sh -c` boundary with timeouts and output caps, then judged for status before the next proposal.
+`ui` and `agent` never import each other; `resolver` translates between them, so
+the TUI's vocabulary and the harness's domain stay independent. `ui` depends on
+nothing under `internal/`, which is why it lives outside it.
+
+One persistent transcript per session, not disconnected per-goal requests. The
+model's proposal is strict JSON (command or done), executed via a single `sh -c`
+boundary with timeouts and output caps, then judged for status before the next
+proposal.
