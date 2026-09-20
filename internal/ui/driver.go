@@ -7,9 +7,36 @@ import (
 	"time"
 )
 
-// This file is ui's own vocabulary for talking to Driver — flat data
-// mirroring what internal/resolver translates from agent/usage/propose/
-// shell. ui never imports those packages directly; see CLAUDE.md.
+// This file is ui's own vocabulary for talking to Driver. ui never
+// imports agent/usage/propose/shell directly; see CLAUDE.md.
+
+// StreamSink receives live output as a command runs.
+type StreamSink interface {
+	OnEvent(line string, stderr bool)
+}
+
+// Driver is the session surface ui needs. The one implementation is
+// internal/resolver.Resolver, wrapping *agent.Session.
+type Driver interface {
+	BeginGoal(ctx context.Context, goal string) (*GoalResult, error)
+	ProposeNext(ctx context.Context, goal string) (Proposal, PreJudgment, Usage, error)
+	// dwell is 0 when no confirm was shown.
+	RecordStep(res *GoalResult, p Proposal, pre PreJudgment, proposeUsage Usage, dwell time.Duration) StepHandle
+	Execute(ctx context.Context, res *GoalResult, step StepHandle, p Proposal, pre PreJudgment, sink StreamSink) (*ExecutedCommand, error)
+	JudgeResult(ctx context.Context, goal, command string, result Result, step StepHandle) PostJudgment
+	RecordDecline(res *GoalResult, command string)
+	RecordDone(res *GoalResult, p Proposal)
+	RecordProposerError(res *GoalResult, err error)
+	// maxBytes is the cap truncated was measured against.
+	ReadFile(path string) (content string, truncated bool, maxBytes int, err error)
+	// SaveFile persists content and records the change as one operation;
+	// diff is what's shown for approval before this is ever called.
+	SaveFile(path, diff, content string) error
+	// res is nil when the abort landed before BeginGoal produced one.
+	RecordAbort(res *GoalResult)
+	Tracker() []GoalStats
+	UsageSnapshot() Snapshot
+}
 
 // Proposal is one proposed step, or the model's own "done" signal.
 type Proposal struct {
@@ -164,31 +191,3 @@ type Snapshot struct {
 }
 
 func (s Snapshot) MachineTime() time.Duration { return s.Propose + s.Judge + s.Exec }
-
-// StreamSink receives live output as a command runs.
-type StreamSink interface {
-	OnEvent(line string, stderr bool)
-}
-
-// Driver is the session surface ui needs. The one implementation is
-// internal/resolver.Resolver, wrapping *agent.Session.
-type Driver interface {
-	BeginGoal(ctx context.Context, goal string) (*GoalResult, error)
-	ProposeNext(ctx context.Context, goal string) (Proposal, PreJudgment, Usage, error)
-	// dwell is 0 when no confirm was shown.
-	RecordStep(res *GoalResult, p Proposal, pre PreJudgment, proposeUsage Usage, dwell time.Duration) StepHandle
-	Execute(ctx context.Context, res *GoalResult, step StepHandle, p Proposal, pre PreJudgment, sink StreamSink) (*ExecutedCommand, error)
-	JudgeResult(ctx context.Context, goal, command string, result Result, step StepHandle) PostJudgment
-	RecordDecline(res *GoalResult, command string)
-	RecordDone(res *GoalResult, p Proposal)
-	RecordProposerError(res *GoalResult, err error)
-	// maxBytes is the cap truncated was measured against.
-	ReadFile(path string) (content string, truncated bool, maxBytes int, err error)
-	// SaveFile persists content and records the change as one operation;
-	// diff is what's shown for approval before this is ever called.
-	SaveFile(path, diff, content string) error
-	// res is nil when the abort landed before BeginGoal produced one.
-	RecordAbort(res *GoalResult)
-	Tracker() []GoalStats
-	UsageSnapshot() Snapshot
-}

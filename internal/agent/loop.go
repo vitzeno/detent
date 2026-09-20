@@ -12,9 +12,18 @@ import (
 	"github.com/vitzeno/detent/internal/usage"
 )
 
-// BeginGoal opens a goal; only RunGoal (not this) fails closed without
-// Confirm. It also primes the transcript with fixed, read-only probes
-// (internal/probe) — never model-proposed, so they run without confirm.
+// streamSinkFunc bridges probe.Run's own plain-callback signature to
+// StreamSink (probes never stream, so this always wraps nil).
+type streamSinkFunc func(shell.StreamEvent)
+
+func (f streamSinkFunc) OnEvent(e shell.StreamEvent) {
+	if f != nil {
+		f(e)
+	}
+}
+
+// BeginGoal opens a goal and primes the transcript with fixed, unconfirmed
+// probes; only RunGoal fails closed without Confirm.
 func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, error) {
 	if strings.TrimSpace(goal) == "" {
 		return nil, fmt.Errorf("agent: empty goal")
@@ -90,9 +99,8 @@ func (s *Session) RecordProposerError(res *GoalResult, err error) {
 	s.finish(res, EndProposerError, "")
 }
 
-// RecordAbort notes the human aborted (Esc or /abort). res is nil when
-// the abort landed before BeginGoal produced one — only the transcript
-// needs closing then.
+// RecordAbort notes the human aborted. res is nil if BeginGoal hadn't
+// produced one yet.
 func (s *Session) RecordAbort(res *GoalResult) {
 	s.append(propose.Message{Role: propose.RoleUser, Content: "[goal ended by human: aborted]"})
 	if res == nil {
@@ -130,9 +138,8 @@ func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Ste
 	return ec, nil
 }
 
-// JudgeResult judges; judgments never enter the transcript. Without a
-// Judge or on error it returns the heuristic fallback. step is updated
-// directly (nil-safe) — the caller never touches usage.Step itself.
+// JudgeResult judges; judgments never enter the transcript. Falls back
+// to a heuristic without a Judge. Updates step directly.
 func (s *Session) JudgeResult(ctx context.Context, goal, command string, result shell.Result, step *usage.Step) PostJudgment {
 	var out string
 	if result.Stdout != "" {
@@ -156,9 +163,8 @@ func (s *Session) JudgeResult(ctx context.Context, goal, command string, result 
 	return post
 }
 
-// RecordStep opens usage bookkeeping for a proposed command — one place
-// for the sequence both RunGoal and internal/resolver need. dwell > 0
-// only when a confirm was actually shown.
+// RecordStep opens usage bookkeeping, shared by RunGoal and resolver.
+// dwell > 0 only when a confirm was shown.
 func (s *Session) RecordStep(res *GoalResult, p propose.Proposal, pre PreJudgment, proposeUsage usage.Usage, dwell time.Duration) *usage.Step {
 	ustep := res.Stats.AddStep(p.Command)
 	ustep.SetPropose(proposeUsage)

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/shell"
 	"github.com/vitzeno/detent/internal/usage"
@@ -32,13 +31,6 @@ type ConfirmRequest struct {
 	GoalsDone  int
 }
 
-// Confirmer approves the exact command text. Only shown for a command
-// PreJudgment flags Dangerous. A nil Confirmer fails the whole session
-// closed — the commands that need it need something wired.
-type Confirmer interface {
-	Confirm(req ConfirmRequest) bool
-}
-
 // ExecutedCommand is one approved command plus its outcome; nil Post means judgment pending.
 type ExecutedCommand struct {
 	Command string
@@ -62,8 +54,7 @@ const (
 )
 
 // GoalResult is what ran for one goal, in order, plus how it ended.
-// Commands holds pointers so a caller can keep a reference to one entry
-// (e.g. to attach Post later) that stays valid across further appends.
+// Commands holds pointers so a caller can keep a live reference to one.
 type GoalResult struct {
 	Goal     string
 	Commands []*ExecutedCommand
@@ -71,52 +62,6 @@ type GoalResult struct {
 	End      EndReason
 	// Stats links the measured goal; nil when untracked.
 	Stats *usage.Goal
-}
-
-// StreamSink receives live output as a command runs. Execute tolerates a
-// nil sink (RunGoal's blocking path has no live listener to notify).
-type StreamSink interface {
-	OnEvent(shell.StreamEvent)
-}
-
-// Runner executes a command, defaulting to shellRunner (shell.Stream).
-type Runner interface {
-	Run(ctx context.Context, command string, sink StreamSink) (shell.Result, error)
-}
-
-// shellRunner adapts shell.Stream's plain callback to StreamSink.
-type shellRunner struct{}
-
-func (shellRunner) Run(ctx context.Context, command string, sink StreamSink) (shell.Result, error) {
-	var onEvent func(shell.StreamEvent)
-	if sink != nil {
-		onEvent = sink.OnEvent
-	}
-	return shell.Stream(ctx, command, onEvent)
-}
-
-// streamSinkFunc bridges probe.Run's own plain-callback signature to
-// StreamSink (probes never stream, so this always wraps nil).
-type streamSinkFunc func(shell.StreamEvent)
-
-func (f streamSinkFunc) OnEvent(e shell.StreamEvent) {
-	if f != nil {
-		f(e)
-	}
-}
-
-// Proposer proposes the next step for the currently open goal, plus
-// what the call consumed. Declared here, not in propose, since agent is
-// its only consumer.
-type Proposer interface {
-	Propose(ctx context.Context, messages []propose.Message) (propose.Proposal, usage.Usage, error)
-}
-
-// Judge returns typed judgments; Ask batches one iteration into a
-// single call. probe.Judge is a separate, identically shaped
-// declaration — probe sits below agent and can't import it back up.
-type Judge interface {
-	Ask(ctx context.Context, state classify.State, questions classify.Questions) (classify.Answers, classify.Usage, error)
 }
 
 // Session is one running instance with an append-only transcript across goals.
@@ -139,37 +84,15 @@ type Session struct {
 	GoalsDone  int
 }
 
-// Option configures a Session. Only set what differs: no Judge, no
-// cap, and no tracking unless asked.
-type Option func(*Session)
+// shellRunner adapts shell.Stream's plain callback to StreamSink.
+type shellRunner struct{}
 
-func WithRun(run Runner) Option {
-	return func(s *Session) { s.Run = run }
-}
-
-func WithJudge(judge Judge) Option {
-	return func(s *Session) { s.Judge = judge }
-}
-
-func WithRiskThreshold(t float64) Option {
-	return func(s *Session) { s.RiskThreshold = t }
-}
-
-func WithStepBudget(n int) Option {
-	return func(s *Session) { s.StepBudget = n }
-}
-
-func WithStats(t *usage.Tracker) Option {
-	return func(s *Session) { s.Stats = t }
-}
-
-// New builds a session around a proposer and confirmer.
-func New(proposer Proposer, confirm Confirmer, opts ...Option) *Session {
-	s := &Session{Proposer: proposer, Confirm: confirm}
-	for _, opt := range opts {
-		opt(s)
+func (shellRunner) Run(ctx context.Context, command string, sink StreamSink) (shell.Result, error) {
+	var onEvent func(shell.StreamEvent)
+	if sink != nil {
+		onEvent = sink.OnEvent
 	}
-	return s
+	return shell.Stream(ctx, command, onEvent)
 }
 
 // Tracker exposes the usage tracker for front-ends rendering stats.
@@ -205,9 +128,7 @@ func (s *Session) append(m propose.Message) {
 	s.Transcript = append(s.Transcript, m)
 }
 
-// finish closes res as reason and syncs GoalsDone — every terminal path
-// (Record*, RecordAbort, Execute's failure path) goes through here so
-// both update exactly once.
+// finish closes res and syncs GoalsDone; every terminal path uses it.
 func (s *Session) finish(res *GoalResult, reason EndReason, summary string) {
 	res.End = reason
 	res.Stats.Finish(string(reason), summary, reason == EndDeclined)

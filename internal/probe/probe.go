@@ -1,8 +1,5 @@
-// Package probe supplies environment context up front instead of
-// making the proposer discover it one confirmed command at a time.
-// Probes are a small, fixed, read-only menu run once per goal, gated by
-// Jev on relevance. Never model-proposed, so they run without confirm —
-// the fixed Command field is the whole safety boundary.
+// Package probe runs a small, fixed, read-only menu once per goal,
+// gated by Jev on relevance. Never model-proposed, so it runs unconfirmed.
 package probe
 
 import (
@@ -13,6 +10,12 @@ import (
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/shell"
 )
+
+// Judge returns typed judgments. Identical in shape to agent.Judge;
+// probe can't import agent without a cycle.
+type Judge interface {
+	Ask(ctx context.Context, state classify.State, questions classify.Questions) (classify.Answers, classify.Usage, error)
+}
 
 // Probe is one fixed, read-only context snapshot.
 type Probe struct {
@@ -54,13 +57,6 @@ var Menu = []Probe{
 // broadly-useful probe.
 var fallbackMenu = []Probe{Menu[0]}
 
-// Judge returns typed judgments; Ask batches one iteration into a
-// single call. Identical in shape to agent.Judge, but probe sits below
-// agent and can't import it back without a cycle.
-type Judge interface {
-	Ask(ctx context.Context, state classify.State, questions classify.Questions) (classify.Answers, classify.Usage, error)
-}
-
 // Select asks Jev which probes look relevant to goal, one Noul question
 // each. A nil Judge or an errored call falls back to fallbackMenu.
 func Select(ctx context.Context, judge Judge, goal string) []Probe {
@@ -82,9 +78,8 @@ func Select(ctx context.Context, judge Judge, goal string) []Probe {
 	return out
 }
 
-// Run executes probes via run (shell.Stream in production, or whatever
-// the caller injects) and returns one combined blob, or "" when probes
-// is empty.
+// Run executes probes via run and returns one combined blob, or "" when
+// probes is empty.
 func Run(ctx context.Context, run func(ctx context.Context, command string, onEvent func(shell.StreamEvent)) (shell.Result, error), probes []Probe) string {
 	if len(probes) == 0 {
 		return ""

@@ -93,8 +93,16 @@ agent       →  propose, shell, classify, usage
 - **`internal/agent`** — the propose → confirm → execute → judge loop,
   one goal at a time, over an append-only `Session.Transcript`
   (`[]propose.Message` shared across every goal in the session). Has no
-  idea `ui` or `resolver` exist. `session.go` holds the `Session` struct,
-  `Option`s, and result/record types; `loop.go` holds the two entry points:
+  idea `ui` or `resolver` exist. `interfaces.go` declares every interface
+  `agent` consumes: `Proposer`, `Judge`, `Confirmer`, `Runner`,
+  `StreamSink`. Declared at the consumer, not the producer — `propose`
+  and `classify` ship only data types and implementations. `shell.Stream`
+  itself still takes a plain callback; `Runner`'s default implementation
+  adapts that one leaf-level exception. `probe` declares its own
+  identically-shaped `Judge`, since it sits below `agent` and can't
+  import it back. `options.go` holds `Option`/`With*`/`New`, same split
+  as `propose`. `session.go` holds the `Session` struct and result/record
+  types; `loop.go` holds the two entry points:
   - `RunGoal` — blocking, used by the headless `-goal` CLI path; fails
     closed if `Confirm` is nil.
   - `BeginGoal`/`ProposeNext`/`RecordStep`/`Execute`/`JudgeResult`/
@@ -105,13 +113,7 @@ agent       →  propose, shell, classify, usage
     shared by both `RunGoal` and the non-blocking path so the sequence
     isn't hand-rolled twice.
 
-  `agent` declares `Proposer`, `Judge`, `Confirmer`, `Runner`, and
-  `StreamSink` — every one of them at the consumer, not the producer
-  (`propose`/`classify` ship only data types and implementations;
-  `shell.Stream` still takes a plain callback, the one deliberate
-  leaf-level exception `Runner`'s default implementation adapts).
-  `probe` declares its own identically-shaped `Judge` since it sits below
-  `agent` and can't import it back. `judge.go` holds both judgment paths:
+  `judge.go` holds both judgment paths:
   `judgePre` (mutability + scope risk, before confirm) and `judgePost`
   (result status + render kind + attention + goal-achieved, after
   execution), each with a heuristic fallback when no Judge is wired, plus
@@ -120,10 +122,12 @@ agent       →  propose, shell, classify, usage
   regex safety net that only ever adds confirm emphasis
   (`Dangerous`/`RiskNote`) — it must never suppress or soften a confirm.
 
-- **`internal/classify`** — `JevJudge`, the HTTP adapter for TypeSafe's Jev,
-  plus the question/answer vocabulary types (`State`, `Questions`, `Answers`,
-  `Usage`) every `Judge` implementation speaks. A different classifier is a
-  new type implementing `agent.Judge`'s `Ask` method — nothing here
+- **`internal/classify`** — `jev.go` holds `JevJudge`, the HTTP adapter
+  for TypeSafe's Jev; `options.go` holds its `Option`/`With*`/
+  `NewJevJudge`, same split as `propose`/`agent`. `judge.go` holds the
+  question/answer vocabulary types (`State`, `Questions`, `Answers`,
+  `Usage`) every `Judge` implementation speaks. A different classifier is
+  a new type implementing `agent.Judge`'s `Ask` method — nothing here
   needs to change, since classify doesn't own that interface.
   `ChoiceQuestion.Criteria` is `map[string]any` (structured `{what, not_for}`
   objects work better than flattened strings — validated in early spikes) and

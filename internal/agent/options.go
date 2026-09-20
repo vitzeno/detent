@@ -1,0 +1,36 @@
+package agent
+
+import "github.com/vitzeno/detent/internal/usage"
+
+// Option configures a Session. Only set what differs: no Judge, no
+// cap, and no tracking unless asked.
+type Option func(*Session)
+
+func WithRun(run Runner) Option {
+	return func(s *Session) { s.Run = run }
+}
+
+func WithJudge(judge Judge) Option {
+	return func(s *Session) { s.Judge = judge }
+}
+
+func WithRiskThreshold(t float64) Option {
+	return func(s *Session) { s.RiskThreshold = t }
+}
+
+func WithStepBudget(n int) Option {
+	return func(s *Session) { s.StepBudget = n }
+}
+
+func WithStats(t *usage.Tracker) Option {
+	return func(s *Session) { s.Stats = t }
+}
+
+// New builds a session around a proposer and confirmer.
+func New(proposer Proposer, confirm Confirmer, opts ...Option) *Session {
+	s := &Session{Proposer: proposer, Confirm: confirm}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
