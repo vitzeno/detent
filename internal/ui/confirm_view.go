@@ -9,33 +9,38 @@ import (
 
 func (m Model) confirmBox() string {
 	style := styleConfirmAccent
-	if m.pendingPre.Dangerous {
+	if m.confirm.pre.Dangerous {
 		style = styleConfirmDanger
 	}
-	var b strings.Builder
-	tier := m.pendingPre.Mutability
+	tier := m.confirm.pre.Mutability
 	if tier == "" {
 		tier = "unknown scope"
 	}
-	fmt.Fprintf(&b, "proposed — %s\n\n", mutabilityStyle(tier).Render(tier))
-	b.WriteString(lipgloss.NewStyle().Width(max(10, m.width-12)).Render(m.pending.Command) + "\n")
-	if m.pending.Rationale != "" {
-		fmt.Fprintf(&b, "\n%s %s\n", styleMuted.Render("why:"), m.pending.Rationale)
+
+	// Header (label + scope badge), then the command itself as the one
+	// thing on this screen that most deserves the eye — everything else
+	// here is context for it, not a peer to it — with its rationale
+	// tucked directly beneath rather than floated as its own paragraph.
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s  %s\n\n", styleMuted.Render("proposed"), mutabilityStyle(tier).Render(tier))
+	b.WriteString(styleGoal.Width(max(10, m.layout.width-12)).Render(m.confirm.pending.Command) + "\n")
+	if m.confirm.pending.Rationale != "" {
+		fmt.Fprintf(&b, "%s %s\n", styleMuted.Render("why:"), m.confirm.pending.Rationale)
 	}
-	if m.pendingPre.Dangerous {
-		fmt.Fprintf(&b, "\n%s %s\n", styleDanger.Render("!! look twice !!"), m.pendingPre.RiskNote)
+	if m.confirm.pre.Dangerous {
+		fmt.Fprintf(&b, "\n%s %s\n", styleDanger.Render("⚠ look twice"), m.confirm.pre.RiskNote)
 	}
 	stepNo := 1
 	if m.cur != nil {
 		stepNo = len(m.cur.steps) + 1
 	}
 	fmt.Fprintf(&b, "\n%s\n", styleMuted.Render(fmt.Sprintf("command %d this session · step %d this goal", m.totalCmds+1, stepNo)))
-	fmt.Fprintf(&b, "\n%s run   %s stop goal", styleKey.Render("[y]"), styleKey.Render("[n]"))
+	fmt.Fprintf(&b, "%s run   %s stop goal", styleKey.Render("[y/enter]"), styleKey.Render("[n]"))
 	// Bottom-centered popup: fixed comfortable width, centered — not a
 	// full-bleed strip. History and output stay visible above, which is
 	// the context the decision needs.
-	w := min(72, max(24, m.width-8))
-	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, style.Width(w).Render(b.String()))
+	w := min(72, max(24, m.layout.width-8))
+	return lipgloss.PlaceHorizontal(m.layout.width, lipgloss.Center, style.Width(w).Render(b.String()))
 }
 
 // maxSaveDiffLines caps the diff shown in the save confirm — a huge
@@ -60,13 +65,13 @@ func diffHunksOnly(diff string) []string {
 
 // saveConfirmBox shows what a direct file write would change — a diff,
 // not a command — because this write is the harness's own action, not
-// something the model proposed; see internal/editfile and
+// something the model proposed; see internal/fileio and
 // Driver.RecordFileSave.
 func (m Model) saveConfirmBox() string {
-	if m.saveRow == nil || m.saveRow.editor == nil {
+	if m.save.row == nil || m.save.row.editor == nil {
 		return ""
 	}
-	e := m.saveRow.editor
+	e := m.save.row.editor
 	lines := diffHunksOnly(e.Diff())
 	more := 0
 	if len(lines) > maxSaveDiffLines {
@@ -74,16 +79,16 @@ func (m Model) saveConfirmBox() string {
 		lines = lines[:maxSaveDiffLines]
 	}
 
-	w := min(90, max(24, m.width-8))
+	w := min(90, max(24, m.layout.width-8))
 	var b strings.Builder
-	fmt.Fprintf(&b, "save changes — %s\n\n", styleGoal.Render(truncateWidth(e.Path, w-18)))
+	fmt.Fprintf(&b, "%s  %s\n\n", styleMuted.Render("save changes"), styleGoal.Render(truncateWidth(e.Path, w-20)))
 	for _, l := range lines {
 		b.WriteString(styleDiffLine(l) + "\n")
 	}
 	if more > 0 {
 		fmt.Fprintf(&b, "%s\n", styleFaint.Render(fmt.Sprintf("… +%d more lines", more)))
 	}
-	fmt.Fprintf(&b, "\n%s save   %s keep editing", styleKey.Render("[y]"), styleKey.Render("[n]"))
+	fmt.Fprintf(&b, "\n%s save   %s keep editing", styleKey.Render("[y/enter]"), styleKey.Render("[n]"))
 
-	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, styleConfirmAccent.Width(w).Render(b.String()))
+	return lipgloss.PlaceHorizontal(m.layout.width, lipgloss.Center, styleConfirmAccent.Width(w).Render(b.String()))
 }
