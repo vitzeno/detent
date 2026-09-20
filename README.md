@@ -105,9 +105,10 @@ containerd over TCP and pass `-sandbox-socket`.
   anything the model wrote — a summary, a rationale — renders dimmed, so a
   generated sentence never reads as a success signal.
 - Every finished goal carries Jev's own verdict on it — `jev · goal met (0.98)`,
-  `only partly met`, or `looks unmet` — rather than only speaking up to disagree.
-  Nothing is shown when no judge is wired, which is a different thing from a low
-  score.
+  `~ only partly met`, or `⚠ looks unmet` — rather than only speaking up to
+  disagree. Only the two worth acting on are marked; agreement is the expected
+  case. Nothing is shown when no judge is wired, which is a different thing from
+  a low score.
 
 ## Undoing a step
 

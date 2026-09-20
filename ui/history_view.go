@@ -148,14 +148,16 @@ func (m Model) judgeLines(b *goalBlock, width int) []string {
 	if !b.judge.scored {
 		return nil
 	}
-	mark, style, word := "✔", styleSafe, "goal met"
+	// Only a verdict worth acting on gets a mark. Agreement is the
+	// expected case, and flagging it crowds out the two that aren't.
+	mark, style, word := "", styleSafe, "goal met"
 	switch {
 	case b.judge.score < unmetBelow:
-		mark, style, word = "⚠", styleCaution, "goal looks unmet"
+		mark, style, word = "⚠ ", styleCaution, "goal looks unmet"
 	case b.judge.score < partlyMetBelow:
-		mark, style, word = "~", styleCaution, "goal only partly met"
+		mark, style, word = "~ ", styleCaution, "goal only partly met"
 	}
-	return wrapStyled(style, fmt.Sprintf("%s jev · %s (%.2f)", mark, word, b.judge.score), width)
+	return wrapStyled(style, fmt.Sprintf("%sjev · %s (%.2f)", mark, word, b.judge.score), width)
 }
 
 // Where Jev's goal-achieved score stops meaning "done".

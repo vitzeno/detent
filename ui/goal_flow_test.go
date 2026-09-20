@@ -23,15 +23,17 @@ func TestGoalVerdict_ReportsEveryJudgedGoal(t *testing.T) {
 		p := PostJudgment{FromJudge: fromJudge, GoalAchieved: score}
 		return &goalBlock{steps: []*stepRow{{cmd: cmdState{ec: &ExecutedCommand{Post: &p}}}}}
 	}
+	// Only the verdicts worth acting on carry a mark: agreement is the
+	// expected case, and flagging it crowds out the two that aren't.
 	for _, tc := range []struct {
-		name   string
-		score  float64
-		want   string
-		scored bool
+		name  string
+		score float64
+		want  string
+		mark  string
 	}{
-		{"met", 0.92, "goal met", true},
-		{"partly met", 0.62, "only partly met", true},
-		{"unmet", 0.20, "looks unmet", true},
+		{"met", 0.92, "goal met", ""},
+		{"partly met", 0.62, "only partly met", "~"},
+		{"unmet", 0.20, "looks unmet", "⚠"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			b := judged(tc.score, true)
@@ -42,6 +44,14 @@ func TestGoalVerdict_ReportsEveryJudgedGoal(t *testing.T) {
 			got := plain(strings.Join(m.judgeLines(b, 60), " "))
 			assert.Contains(t, got, tc.want)
 			assert.Contains(t, got, fmt.Sprintf("%.2f", tc.score), "the score itself is shown")
+
+			for _, glyph := range []string{"⚠", "~", "✔", "✓"} {
+				if glyph == tc.mark {
+					assert.Contains(t, got, glyph, "this verdict wants flagging")
+					continue
+				}
+				assert.NotContains(t, got, glyph, "%q must not be marked with %q", got, glyph)
+			}
 		})
 	}
 
