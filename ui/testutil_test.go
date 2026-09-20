@@ -43,6 +43,7 @@ type fakeDriver struct {
 
 	tracker []GoalStats
 	snap    Snapshot
+	resets  int
 
 	// readOverride, when true, makes ReadFile return the fields below
 	// verbatim instead of reading path from disk. Default reads real
@@ -147,6 +148,12 @@ func (f *fakeDriver) RecordAbort(res *GoalResult) {
 	if res != nil {
 		res.End = EndAborted
 	}
+}
+
+func (f *fakeDriver) Reset() {
+	f.resets++
+	f.tracker = nil
+	f.snap = Snapshot{}
 }
 
 func (f *fakeDriver) Tracker() []GoalStats    { return f.tracker }

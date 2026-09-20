@@ -237,6 +237,11 @@ routing     →  agent, sandbox
   render by `historyWindow`; the only scroll state kept is its offset.
   `prompt.go` owns the input box and its slash dropdown together, so
   nothing else reaches into the textarea or the match list.
+  `slash.go` is the slash-command registry, and each entry carries its
+  own handler so a command can't be listed without working or work
+  without being listed. `welcome_view.go` is derived state, not a mode:
+  it shows whenever no row is focused, which is why `/new` only has to
+  drop the blocks to bring it back.
   `goal_flow.go`
   sequences propose → confirm → execute → judge as `tea.Cmd`s (`approve`/
   `decline` call `Driver.RecordStep` once rather than touching usage

@@ -31,6 +31,17 @@ type Tracker struct {
 // New returns an empty tracker.
 func New() *Tracker { return &Tracker{} }
 
+// Reset drops every recorded goal; nil-safe. Keeps the same Tracker so
+// whoever already holds the pointer keeps reading the live one.
+func (t *Tracker) Reset() {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.goals = nil
+}
+
 // StartGoal opens a goal; nil-safe.
 func (t *Tracker) StartGoal(text string) *Goal {
 	if t == nil {

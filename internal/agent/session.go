@@ -186,3 +186,14 @@ func joinNote(a, b string) string {
 	}
 	return a + "; " + b
 }
+
+// Reset clears the session back to how it started: no transcript, no
+// goals, no usage. The Runners keep running, so a sandbox container
+// and anything already done to its filesystem survive — this forgets
+// the conversation, it does not rebuild the environment.
+func (s *Session) Reset() {
+	s.Transcript = nil
+	s.GoalsDone = 0
+	s.goalMark = 0
+	s.Stats.Reset()
+}

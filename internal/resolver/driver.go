@@ -116,6 +116,10 @@ func (r *Resolver) Tracker() []ui.GoalStats {
 	return out
 }
 
+// Reset forgets the conversation: transcript, goals and usage. The
+// sandbox container is left alone.
+func (r *Resolver) Reset() { r.sess.Reset() }
+
 func (r *Resolver) UsageSnapshot() ui.Snapshot {
 	return toSnapshot(r.sess.Tracker().Snapshot())
 }

@@ -138,3 +138,50 @@ func TestUI_HelpTool_ListsSlashCommands(t *testing.T) {
 	assert.Contains(t, v, "/tree")
 	assert.Contains(t, v, "/usage")
 }
+
+// /new empties the screen and the session behind it. The welcome pane
+// is derived from there being no focused row, so clearing the blocks
+// is what brings it back — there is no separate "show welcome" state
+// that could disagree.
+func TestUI_NewClearsTheSessionAndShowsWelcome(t *testing.T) {
+	m := testUIModel()
+	drv := m.sess.(*fakeDriver)
+
+	m.prompt.SetValue("find the big files")
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = nm.(Model)
+	m.blocks[0].steps = []*stepRow{{command: "ls", cmd: cmdState{ec: &ExecutedCommand{Command: "ls"}}}}
+	m.totalCmds = 1
+	m.waiting = false
+	m.nav.focus = focusOutput
+	require.False(t, m.showWelcome(), "a row exists, so the welcome pane is gone")
+
+	nm, cmd := m.runSlash("/new")
+	m = nm.(Model)
+
+	assert.Equal(t, 1, drv.resets, "the harness forgets the transcript too, not just the screen")
+	assert.Empty(t, m.blocks)
+	assert.Nil(t, m.cur)
+	assert.Zero(t, m.totalCmds)
+	assert.True(t, m.showWelcome(), "the welcome pane comes back")
+	assert.True(t, m.prompt.Focused(), "and you can type straight away")
+	assert.Equal(t, "new session", m.notice.text)
+	assert.False(t, m.notice.bad)
+	require.NotNil(t, cmd, "the welcome animation has to be re-armed; its ticker stopped at the first row")
+
+	assert.Contains(t, plain(m.View().Content), "d e t e n t")
+}
+
+// Wiping the session mid-run would leave an in-flight command writing
+// into a goal that no longer exists.
+func TestUI_NewRefusesWhileBusy(t *testing.T) {
+	m := busyUIModel()
+	drv := m.sess.(*fakeDriver)
+
+	nm, _ := m.runSlash("/new")
+	m = nm.(Model)
+
+	assert.Zero(t, drv.resets)
+	assert.Contains(t, m.notice.text, "busy")
+	assert.True(t, m.notice.bad)
+}

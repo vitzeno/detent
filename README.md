@@ -86,6 +86,9 @@ containerd over TCP and pass `-sandbox-socket`.
 - **The default image is `buildpack-deps:24.04-scm`**: Ubuntu plus git, curl and
   ca-certificates, so goals have them even with `sandbox_network: none`. Point
   `sandbox_image` at something else if you need more.
+- **`/new` forgets the conversation, not the container.** It clears the transcript,
+  the history pane and the usage counters, so the next goal starts fresh. A
+  sandbox container and anything already written inside it carry on.
 - **A rollback does not revert `/workspace`.** That's a bind mount to your real
   directory, deliberately outside the snapshot, so your own files survive. Only
   container state outside the mount is restored.
@@ -112,7 +115,7 @@ match so the model doesn't keep reasoning from undone work.
 | ---------------------- | ---------------------------------------------------------------------------------- |
 | `enter`                | run the goal in the input box                                                      |
 | `alt+enter` / `ctrl+j` | insert a newline instead of submitting                                             |
-| `/`                    | open the command list (`/rollback`, `/tree`, `/usage`, `/abort`, `/help`, `/quit`) |
+| `/`                    | open the command list (`/rollback`, `/tree`, `/usage`, `/new`, `/abort`, `/help`, `/quit`) |
 | `tab`                  | cycle input → history → output                                                     |
 | `↑` / `↓`              | move through history, or scroll the focused pane                                   |
 | `space`                | expand the focused row's output                                                    |

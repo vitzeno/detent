@@ -30,13 +30,16 @@ var slashCommands = []slashCmd{
 		return m.openTool("usage", &stepRow{command: "/usage", toolKind: "usage", tool: toolState{usageExpand: -1}})
 	}},
 	{"/rollback", "undo a step and everything after it, e.g. /rollback 2", Model.runRollback},
+	{"/new", "clear the session and start over", Model.startOver},
 	{"/help", "show slash commands", func(m Model, _ string) (tea.Model, tea.Cmd) {
 		return m.openTool("help", &stepRow{command: "/help", toolKind: "help"})
 	}},
 }
 
 // maxSlashRows caps the dropdown so it can't eat the history pane.
-const maxSlashRows = 6
+// Room for the whole registry: a list that hides its last entry is
+// worse than one row less of history.
+const maxSlashRows = 8
 
 // matchSlash returns registry entries with the given input as a
 // prefix. Input must start with "/"; anything else matches nothing.

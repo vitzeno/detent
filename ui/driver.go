@@ -35,6 +35,10 @@ type Driver interface {
 	// when no sandbox is wired; an invalid or non-sandboxed step is a
 	// real error to surface.
 	Rollback(ctx context.Context, res *GoalResult, step int) (ok bool, err error)
+	// Reset forgets the session's transcript, goals and usage, so a
+	// new goal starts with no history behind it.
+	Reset()
+
 	Tracker() []GoalStats
 	UsageSnapshot() Snapshot
 }

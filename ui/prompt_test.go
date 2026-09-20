@@ -118,7 +118,7 @@ func typeRune(m Model, r rune) Model {
 func TestSlashDropdown_OpensFiltersAccepts(t *testing.T) {
 	m := testUIModel()
 	m = typeRune(m, '/')
-	require.Len(t, m.prompt.matches, 6, "bare / lists every command")
+	require.Len(t, m.prompt.matches, len(slashCommands), "bare / lists every command")
 
 	m = typeRune(m, 'q')
 	require.Len(t, m.prompt.matches, 1)
@@ -141,7 +141,7 @@ func TestSlashDropdown_OpensFiltersAccepts(t *testing.T) {
 func TestSlashDropdown_NavigateAndEsc(t *testing.T) {
 	m := testUIModel()
 	m = typeRune(m, '/')
-	require.Len(t, m.prompt.matches, 6)
+	require.Len(t, m.prompt.matches, len(slashCommands))
 
 	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = nm.(Model)
@@ -188,21 +188,28 @@ func TestSlashDropdown_RowsAlign(t *testing.T) {
 	m := testUIModel()
 	m = typeRune(m, '/')
 
+	// Matched on name *and* description: a bare name also appears in
+	// the welcome pane's list of slash commands.
 	var cols []int
 	for _, line := range strings.Split(m.View().Content, "\n") {
-		for _, name := range []string{"/quit", "/abort", "/tree"} {
-			if c := displayCol(stripANSI(line), name); c >= 0 {
-				cols = append(cols, c)
+		plain := stripANSI(line)
+		for _, c := range matchSlash("/") {
+			if !strings.Contains(plain, c.Desc) {
+				continue
+			}
+			if col := displayCol(plain, c.Name); col >= 0 {
+				cols = append(cols, col)
 			}
 		}
 	}
-	require.Len(t, cols, 3, "every dropdown row must render")
-	assert.Equal(t, cols[0], cols[1], "cursor row must start in the same column as the rest")
-	assert.Equal(t, cols[1], cols[2])
+	require.Len(t, cols, min(len(slashCommands), maxSlashRows), "every dropdown row must render")
+	for i, col := range cols[1:] {
+		assert.Equal(t, cols[0], col, "row %d must start in the same column as the cursor row", i+1)
+	}
 }
 
 func TestSlashRegistry_MatchAndExact(t *testing.T) {
-	assert.Len(t, matchSlash("/"), 6)
+	assert.Len(t, matchSlash("/"), len(slashCommands), "bare / matches the whole registry")
 	require.Len(t, matchSlash("/q"), 1)
 	assert.Equal(t, "/quit", matchSlash("/q")[0].Name)
 	assert.Empty(t, matchSlash("/x"))

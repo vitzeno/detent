@@ -93,3 +93,24 @@ func (m Model) openTool(kind string, row *stepRow) (tea.Model, tea.Cmd) {
 	m.nav.focus = focusOutput
 	return m, nil
 }
+
+// startOver empties the screen and the session behind it. The welcome
+// pane needs nothing of its own: it shows whenever no row is focused,
+// so dropping the blocks brings it back — along with its ticker, which
+// stopped when the first row appeared.
+func (m Model) startOver(string) (tea.Model, tea.Cmd) {
+	if m.waiting {
+		m.noteErr("/new: busy, try again once the current step finishes")
+		return m, nil
+	}
+	m.sess.Reset()
+	m.blocks = nil
+	m.cur = nil
+	m.totalCmds = 0
+	m.nav = navState{follow: true, histHeight: m.nav.histHeight}
+	m.mode = modeInput
+	m.prompt.Clear()
+	m.prompt.Focus()
+	m.noteOK("new session")
+	return m, welcomeTick()
+}
