@@ -200,13 +200,8 @@ func TestContainer_RollbackTargetsTheRightCheckpoint(t *testing.T) {
 	assert.Equal(t, "one\ntwo\n", res.Stdout, "rolling back to checkpoint 2 keeps steps one and two")
 }
 
-// TestContainer_CheckpointsSurviveGarbageCollection pins the bug that
-// made rollback work once and then stop. containerd keeps a snapshot
-// only while something roots it — a container's current SnapshotKey,
-// or a lease. Checkpoints used to be rooted by nothing, surviving
-// incidentally as ancestors of whatever the container pointed at, so
-// rolling back to an earlier one orphaned every checkpoint after it
-// and the next GC pass swept them.
+// Rolling back orphans every later checkpoint. Unless they're leased,
+// the next GC pass sweeps them and rollback works exactly once.
 func TestContainer_CheckpointsSurviveGarbageCollection(t *testing.T) {
 	c := newTestContainer(t)
 	ctx := context.Background()
@@ -247,4 +242,41 @@ func forceGC(t *testing.T, c *Container) {
 	l, err := c.client.LeasesService().Create(ctx, leases.WithRandomID())
 	require.NoError(t, err)
 	require.NoError(t, c.client.LeasesService().Delete(ctx, l, leases.SynchronousDelete))
+}
+
+// TestContainer_NetworkPosture: NetworkNone is a namespace with only
+// loopback in it — no DNS, nothing fetchable. NetworkHost drops that
+// namespace so the container inherits the containerd daemon's own,
+// which is what makes a goal able to clone or install anything.
+func TestContainer_NetworkPosture(t *testing.T) {
+	for _, tc := range []struct {
+		mode      string
+		wantExtra bool // interfaces beyond loopback
+		wantDNS   bool
+	}{
+		{NetworkNone, false, false},
+		{NetworkHost, true, true},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			if !daemonAvailable() {
+				t.Skip("containerd not reachable at", testSocket)
+			}
+			c := NewContainer(WithSocket(testSocket), WithNamespace("detent-test"), WithNetwork(tc.mode))
+			id := strings.ReplaceAll(strings.ToLower(t.Name()), "/", "-")
+			require.NoError(t, c.Start(context.Background(), id))
+			t.Cleanup(func() { _ = c.Close(context.Background()) })
+
+			ifaces, err := c.Run(context.Background(),
+				"cat /proc/net/dev | tail -n +3 | awk '{print $1}' | tr -d ' :' | tr '\\n' ' '", nil)
+			require.NoError(t, err)
+			assert.Contains(t, ifaces.Stdout, "lo")
+			assert.Equal(t, tc.wantExtra, strings.TrimSpace(ifaces.Stdout) != "lo",
+				"interfaces were %q", strings.TrimSpace(ifaces.Stdout))
+
+			dns, err := c.Run(context.Background(),
+				"getent hosts github.com >/dev/null 2>&1 && echo yes || echo no", nil)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantDNS, strings.TrimSpace(dns.Stdout) == "yes", "DNS resolution")
+		})
+	}
 }

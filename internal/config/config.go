@@ -49,9 +49,12 @@ type Config struct {
 	SandboxMode string `yaml:"sandbox_mode"`
 	// SandboxSocket overrides the OS-conventional containerd socket
 	// path; empty lets main.go's defaultSandboxSocket() pick it.
-	SandboxSocket    string `yaml:"sandbox_socket"`
-	SandboxImage     string `yaml:"sandbox_image"`
-	SandboxRuntime   string `yaml:"sandbox_runtime"`
+	SandboxSocket  string `yaml:"sandbox_socket"`
+	SandboxImage   string `yaml:"sandbox_image"`
+	SandboxRuntime string `yaml:"sandbox_runtime"`
+	// SandboxNetwork is "host" or "none" (sandbox.Network*). Host means
+	// the containerd daemon's host, which on macOS is the colima VM.
+	SandboxNetwork   string `yaml:"sandbox_network"`
 	SandboxWorkspace string `yaml:"sandbox_workspace"`
 }
 
@@ -69,6 +72,7 @@ func Default() Config {
 
 		SandboxMode:      "auto",
 		SandboxImage:     sandbox.DefaultImage,
+		SandboxNetwork:   sandbox.NetworkHost,
 		SandboxWorkspace: DefaultSandboxWorkspace,
 	}
 }

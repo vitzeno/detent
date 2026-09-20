@@ -114,6 +114,20 @@ func (m Model) welcomeSandboxLines(width int) []string {
 		welcomeRow("commands run", styleSafe.Render("● sandboxed, in containerd")),
 		welcomeRow("image", styleGoal.Render(truncateWidth(m.info.Image, width-welcomeLabelW-4))),
 		welcomeRow("runtime", styleGoal.Render(rt)),
+		welcomeRow("network", m.networkLine()),
 		welcomeRow("workspace", styleGoal.Render(m.info.Mount+styleFaint.Render("  (bind mount, not rolled back)"))),
 	}
+}
+
+// networkLine spells out what the container can reach. "host" is the
+// containerd daemon's host, which is a different claim per platform —
+// a VM on macOS, this machine on Linux — so it says which.
+func (m Model) networkLine() string {
+	if m.info.Network != "host" {
+		return styleGoal.Render("isolated" + styleFaint.Render("  (loopback only, no DNS)"))
+	}
+	if runtime.GOOS == "darwin" {
+		return styleGoal.Render("the colima VM's" + styleFaint.Render("  (your Mac is behind the VM)"))
+	}
+	return styleCaution.Render("⚠ this machine's" + styleFaint.Render("  (localhost and LAN reachable)"))
 }

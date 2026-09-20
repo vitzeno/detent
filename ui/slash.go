@@ -7,11 +7,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// Input-bar commands, end to end: the registry, prefix matching, and
-// the dropdown. Each entry carries its own handler, so a command can't
-// be listed without working or work without being listed — they used
-// to be a list here and a switch in tool_flow.go, and had already
-// drifted.
+// Input-bar commands: registry, prefix matching, dropdown. Each entry
+// carries its handler, so listed and dispatchable can't drift apart.
 
 // slashCmd is one available command. run receives the whole input
 // line, so a command can take an argument (/rollback 2).

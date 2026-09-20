@@ -123,9 +123,17 @@ routing     →  agent, sandbox
   that's a bind mount to the user's real directory, deliberately not
   part of the snapshot, so only container state outside it is
   restored (`TestContainer_RollbackLeavesTheWorkspaceAlone` pins
-  this). The container also has no network, so `DefaultImage` has to
-  carry whatever tooling goals need (hence buildpack-deps, not bare
-  ubuntu — apt can't reach anything). Real containerd daemon required
+  this). Checkpoints are held by a per-session containerd **lease**
+  (`snapshot.go`'s `pin`): the GC keeps a snapshot only while a
+  container or lease references it, so without one a rollback orphans
+  every later checkpoint and the next GC pass sweeps them — rollback
+  then works exactly once
+  (`TestContainer_CheckpointsSurviveGarbageCollection`). Networking is
+  a posture, `sandbox.NetworkHost` (the default) or `NetworkNone`:
+  host drops the network namespace so the container inherits the
+  containerd daemon's, which on macOS is the colima VM's and on Linux
+  is the machine's. `DefaultImage` still carries git/curl so goals
+  work under `NetworkNone` too. Real containerd daemon required
   for its own tests (`container_test.go`), skipped when unreachable.
 
 - **`internal/routing`** — `Selector`, the `agent.RunnerSelector`

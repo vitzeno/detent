@@ -62,6 +62,13 @@ model: prism-ml/bonsai-27b
 # that's installed and registered on the host.
 # sandbox_runtime: ""
 
+# What the container can reach. "host" (default) shares the network of
+# whatever machine runs containerd — on macOS that is the colima VM, so
+# your Mac stays behind the VM boundary; on Linux it is this machine,
+# localhost services and LAN included. "none" leaves the container with
+# loopback only: no DNS, nothing fetchable.
+# sandbox_network: host
+
 # In-container mount point for the harness's working directory. The
 # host side is always the directory detent was started in.
 # sandbox_workspace: /workspace

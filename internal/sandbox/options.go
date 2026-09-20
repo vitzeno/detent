@@ -34,12 +34,18 @@ func WithRuntime(name string) Option {
 	return func(c *Container) { c.runtime = name }
 }
 
+// WithNetwork picks the posture: NetworkHost or NetworkNone.
+func WithNetwork(mode string) Option {
+	return func(c *Container) { c.network = mode }
+}
+
 // NewContainer builds a Container. Call Start before Run.
 func NewContainer(opts ...Option) *Container {
 	c := &Container{
 		namespace:  DefaultNamespace,
 		image:      DefaultImage,
 		mountPoint: "/workspace",
+		network:    DefaultNetwork,
 		limit:      capture.MaxOutputBytes,
 	}
 	for _, opt := range opts {

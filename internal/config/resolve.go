@@ -66,6 +66,9 @@ func (c *Config) apply(o Config) {
 	if o.SandboxRuntime != "" {
 		c.SandboxRuntime = o.SandboxRuntime
 	}
+	if o.SandboxNetwork != "" {
+		c.SandboxNetwork = o.SandboxNetwork
+	}
 	if o.SandboxWorkspace != "" {
 		c.SandboxWorkspace = o.SandboxWorkspace
 	}
@@ -94,5 +97,6 @@ func envConfig() Config {
 		SandboxMode:    os.Getenv("DETENT_SANDBOX_MODE"),
 		SandboxSocket:  os.Getenv("DETENT_SANDBOX_SOCKET"),
 		SandboxRuntime: os.Getenv("DETENT_SANDBOX_RUNTIME"),
+		SandboxNetwork: os.Getenv("DETENT_SANDBOX_NETWORK"),
 	}
 }

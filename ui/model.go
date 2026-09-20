@@ -68,6 +68,7 @@ type SessionInfo struct {
 	Image   string
 	Mount   string
 	Runtime string // "" means containerd's own default
+	Network string // sandbox.Network* — "host" shares the daemon's network
 }
 
 // New builds the TUI over sess.
@@ -279,10 +280,8 @@ type perfState struct {
 	uiPreps int
 }
 
-// noticeState is the one-shot status flash: what just happened and
-// whether it worked, in one value so the two can't disagree. Set it
-// through noteOK/noteErr, which make the outcome explicit where it's
-// known rather than leaving the status line to guess from the wording.
+// noticeState is the one-shot status flash: text and outcome in one
+// value so they can't disagree. Set it via noteOK/noteErr.
 type noticeState struct {
 	text string
 	bad  bool

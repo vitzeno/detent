@@ -9,13 +9,9 @@ import (
 	"github.com/vitzeno/detent/ui/tree"
 )
 
-// runSlash dispatches an input-bar command through the registry in
-// slash.go, which carries each command's handler alongside its name.
-//
-// Every command reports an outcome: a handler that says nothing has
-// succeeded, and gets a green flash named after it here rather than
-// each handler having to remember one. Handlers only speak up to
-// explain a failure, or to say something more useful than the name.
+// runSlash dispatches through slash.go's registry. A handler that sets
+// no notice has succeeded and gets a green flash here, so none of them
+// has to remember one.
 func (m Model) runSlash(input string) (tea.Model, tea.Cmd) {
 	c, ok := lookupSlash(input)
 	if !ok {

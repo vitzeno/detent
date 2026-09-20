@@ -71,6 +71,10 @@ func run() error {
 	if resolved.SandboxMode != "auto" && resolved.SandboxMode != "host" {
 		return fmt.Errorf("unknown -sandbox %q — choose one of: auto, host", resolved.SandboxMode)
 	}
+	if resolved.SandboxNetwork != sandbox.NetworkHost && resolved.SandboxNetwork != sandbox.NetworkNone {
+		return fmt.Errorf("unknown sandbox_network %q — choose one of: %s, %s",
+			resolved.SandboxNetwork, sandbox.NetworkHost, sandbox.NetworkNone)
+	}
 
 	if err := propose.Ping(context.Background(), resolved.BaseURL, resolved.APIKey); err != nil {
 		return fmt.Errorf("%v\n\nis the model endpoint up? Wanted %s with model %s — for LM Studio, load the model and Start Server; otherwise point -url/-model (or a config file) at your provider",
@@ -107,6 +111,7 @@ func run() error {
 			sandbox.WithImage(resolved.SandboxImage),
 			sandbox.WithMountPoint(resolved.SandboxWorkspace),
 			sandbox.WithRuntime(resolved.SandboxRuntime),
+			sandbox.WithNetwork(resolved.SandboxNetwork),
 		)
 		if err := container.Start(context.Background(), sessionID); err != nil {
 			return fmt.Errorf("sandbox: starting container: %w", err)
@@ -144,7 +149,8 @@ func run() error {
 	_, runMode := runners.Select(agent.PreJudgment{})
 	info := ui.SessionInfo{
 		Proposer: resolved.Model, Judge: judgeName, RunMode: runMode,
-		Image: resolved.SandboxImage, Mount: resolved.SandboxWorkspace, Runtime: resolved.SandboxRuntime,
+		Image: resolved.SandboxImage, Mount: resolved.SandboxWorkspace,
+		Runtime: resolved.SandboxRuntime, Network: resolved.SandboxNetwork,
 	}
 	drv := resolver.New(sess)
 	// Altscreen is declared by ui.Model.View, not set here — under

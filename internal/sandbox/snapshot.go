@@ -18,6 +18,7 @@ func (c *Container) Snapshot(ctx context.Context) (string, error) {
 	if c.container == nil {
 		return "", fmt.Errorf("sandbox: Start not called")
 	}
+	ctx = c.leased(ctx)
 	info, err := c.container.Info(ctx)
 	if err != nil {
 		return "", fmt.Errorf("sandbox: container info: %w", err)
@@ -27,9 +28,6 @@ func (c *Container) Snapshot(ctx context.Context) (string, error) {
 	checkpoint := info.SnapshotKey + "-checkpoint-" + suffix
 	if err := sn.Commit(ctx, checkpoint, info.SnapshotKey); err != nil {
 		return "", fmt.Errorf("sandbox: commit snapshot: %w", err)
-	}
-	if err := c.pin(ctx, info.Snapshotter, checkpoint); err != nil {
-		return "", err
 	}
 	active := info.SnapshotKey + "-active-" + suffix
 	if _, err := sn.Prepare(ctx, active, checkpoint); err != nil {
@@ -47,6 +45,7 @@ func (c *Container) Rollback(ctx context.Context, id string) error {
 	if c.container == nil {
 		return fmt.Errorf("sandbox: Start not called")
 	}
+	ctx = c.leased(ctx)
 	info, err := c.container.Info(ctx)
 	if err != nil {
 		return fmt.Errorf("sandbox: container info: %w", err)
@@ -62,30 +61,16 @@ func (c *Container) Rollback(ctx context.Context, id string) error {
 	return nil
 }
 
-// pin holds a checkpoint against containerd's garbage collector for the
-// session's lifetime.
-//
-// The GC keeps a snapshot only while something roots it: a container's
-// current SnapshotKey, or a lease. Checkpoints were rooted by nothing —
-// they survived incidentally, as ancestors of whatever the container
-// pointed at. Rolling back to an earlier one orphans every checkpoint
-// after it, and the next GC pass deletes them, so the second rollback
-// in a session failed with "parent snapshot does not exist". Leasing
-// each checkpoint as it's taken is what makes them outlive the branch
-// they were on, which is the whole point of being able to roll back
-// more than once.
-func (c *Container) pin(ctx context.Context, snapshotter, key string) error {
+// leased puts the session's lease on ctx, so every snapshot made under
+// it is rooted from birth. containerd's GC keeps a snapshot only while
+// a container or lease references it, and both the checkpoints and the
+// gap between preparing an active snapshot and pointing the container
+// at it are otherwise unreferenced — a pass landing there took them.
+func (c *Container) leased(ctx context.Context) context.Context {
 	if c.lease == nil {
-		return fmt.Errorf("sandbox: no lease (Start not called)")
+		return ctx
 	}
-	err := c.client.LeasesService().AddResource(ctx, *c.lease, leases.Resource{
-		ID:   key,
-		Type: "snapshots/" + snapshotter,
-	})
-	if err != nil {
-		return fmt.Errorf("sandbox: pin checkpoint: %w", err)
-	}
-	return nil
+	return leases.WithLease(ctx, c.lease.ID)
 }
 
 // withSnapshotKey re-points a container at an existing snapshot,

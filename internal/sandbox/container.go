@@ -28,10 +28,21 @@ import (
 )
 
 // DefaultImage is Ubuntu (GNU coreutils, not alpine's BusyBox) plus
-// git, curl and ca-certificates, which bare ubuntu lacks and the
-// container can't install itself without network. Fully qualified
-// since containerd's client doesn't expand Docker Hub shorthand.
+// git, curl and ca-certificates already installed, so a goal has them
+// even under NetworkNone where apt can't reach anything. Fully
+// qualified since containerd's client doesn't expand Docker Hub
+// shorthand.
 const DefaultImage = "docker.io/library/buildpack-deps:24.04-scm"
+
+// Network postures. Host means the daemon's host: the colima VM on
+// macOS, this machine on Linux.
+const (
+	NetworkNone = "none" // loopback only, no DNS
+	NetworkHost = "host" // no network namespace, inherit the shim's
+)
+
+// DefaultNetwork is what NewContainer uses when nothing says otherwise.
+const DefaultNetwork = NetworkNone
 
 // DefaultNamespace keeps this tool's containers separate from other
 // containerd users (Docker, Kubernetes) on the same daemon.
@@ -49,14 +60,9 @@ const defaultRuntime = "io.containerd.runc.v2"
 // never imports host or agent: Run returns capture's own aliased
 // types, and Snapshot/Rollback (snapshot.go) use plain string IDs.
 //
-// There is no external network: the OCI default spec gives the
-// container a fresh network namespace with only loopback in it, and
-// nothing here attaches it to anything. DNS and any fetch therefore
-// fail inside the sandbox. Giving it real connectivity means wiring
-// go-cni against CNI plugin binaries installed on whatever host runs
-// containerd (the colima VM on macOS) — a piece of work in its own
-// right, not a flag. A WithNetwork option used to sit in options.go
-// setting a field nothing read, which made this look configurable.
+// An isolated bridge network would need CNI, which go-cni can't drive
+// from macOS: it shells out to plugins and needs a netns on the
+// daemon's kernel. Same problem as the cio FIFOs.
 type Container struct {
 	socket     string
 	namespace  string
@@ -64,6 +70,7 @@ type Container struct {
 	mountPoint string
 	limit      int
 	runtime    string
+	network    string
 
 	client    *containerd.Client
 	lease     *leases.Lease // roots this session's checkpoints, see snapshot.go
@@ -137,6 +144,15 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 			Destination: c.mountPoint,
 			Options:     []string{"rbind", "rw"},
 		}}),
+	}
+	if c.network == NetworkHost {
+		// resolv.conf and hosts come too, or DNS resolves nothing
+		// despite the interfaces being right there.
+		specOpts = append(specOpts,
+			oci.WithHostNamespace(specs.NetworkNamespace),
+			oci.WithHostResolvconf,
+			oci.WithHostHostsFile,
+		)
 	}
 	containerOpts := []containerd.NewContainerOpts{
 		containerd.WithSnapshotter(defaultSnapshotter),

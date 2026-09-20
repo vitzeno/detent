@@ -68,11 +68,24 @@ containerd over TCP and pass `-sandbox-socket`.
 
 ### Known limits
 
-- **No network inside the container.** Network namespace isolation is on and CNI
-  isn't wired up yet, so the container can't reach anything — including package
-  registries. Whatever your goals need has to already be in the image.
-- **The default image is `buildpack-deps:24.04-scm`** — Ubuntu plus git, curl and
-  ca-certificates. Point `sandbox_image` at something else if you need more.
+- **The container shares the containerd daemon's network.** That's
+  `sandbox_network: host`, the default, so goals can clone, curl and install.
+  What "host" means depends on where the daemon runs:
+
+  | Platform | Container gets | Your machine |
+  | --- | --- | --- |
+  | macOS | the colima VM's network | behind the VM boundary |
+  | Linux | this machine's network | localhost and LAN reachable |
+
+  Set `sandbox_network: none` for loopback only: isolated, but no DNS and
+  nothing fetchable. The welcome pane says which one is live.
+
+  An isolated bridge network with real connectivity would need CNI. `go-cni`
+  shells out to plugin binaries and needs a netns on the daemon's kernel, which
+  doesn't hold with the daemon in a VM, so it isn't wired up.
+- **The default image is `buildpack-deps:24.04-scm`**: Ubuntu plus git, curl and
+  ca-certificates, so goals have them even with `sandbox_network: none`. Point
+  `sandbox_image` at something else if you need more.
 - **A rollback does not revert `/workspace`.** That's a bind mount to your real
   directory, deliberately outside the snapshot, so your own files survive. Only
   container state outside the mount is restored.
