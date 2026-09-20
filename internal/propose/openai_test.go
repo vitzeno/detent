@@ -44,13 +44,39 @@ func TestDefaultSystemPrompt_StatesEnvironmentOnce(t *testing.T) {
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 
-	prompt := defaultSystemPrompt()
+	prompt := defaultSystemPrompt(LocalEnvironment())
 	assert.Contains(t, prompt, runtime.GOOS+"/"+runtime.GOARCH,
 		"OS/arch must be stated so the proposer doesn't have to discover it via uname")
 	assert.Contains(t, prompt, cwd,
 		"cwd must be stated so the proposer doesn't have to discover it via pwd")
-	assert.Contains(t, prompt, "does not persist to the next command",
+	assert.Contains(t, prompt, "does not carry to the next command",
 		"must warn that a bare cd has no effect across sh -c invocations")
+}
+
+// The preamble is the only thing telling the proposer which OS's flags
+// to write and what survives. Describing detent's own machine while
+// commands run in a container is how you get BSD flags in an Ubuntu
+// container, so the sandbox's facts have to win.
+func TestSystemPrompt_DescribesWhereCommandsActuallyRun(t *testing.T) {
+	p := New(WithEnvironment(Environment{
+		OS: "linux", Arch: "arm64", Dir: "/workspace",
+		Sandboxed: true, Network: true, Undoable: true,
+	}))
+	got := p.systemPrompt()
+
+	assert.Contains(t, got, "linux/arm64")
+	assert.Contains(t, got, "/workspace")
+	assert.Contains(t, got, "in a container")
+	assert.Contains(t, got, "network is reachable")
+	assert.Contains(t, got, "undo a step")
+	assert.NotContains(t, got, runtime.GOOS+"/"+runtime.GOARCH,
+		"detent's own OS must not leak in when commands run elsewhere")
+
+	// And the opposite posture reads the opposite way.
+	offline := New(WithEnvironment(Environment{OS: "linux", Arch: "amd64", Dir: "/workspace", Sandboxed: true}))
+	assert.Contains(t, offline.systemPrompt(), "no network")
+	assert.NotContains(t, offline.systemPrompt(), "undo a step",
+		"don't promise an undo that isn't wired")
 }
 
 func TestOpenAIProposer_SystemPromptOverrideSkipsEnvironmentPreamble(t *testing.T) {

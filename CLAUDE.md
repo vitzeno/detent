@@ -86,6 +86,13 @@ routing     →  agent, sandbox
   `tool_call_id`, and this keeps the adapter portable across any
   OpenAI-compatible backend. `Proposal.Command` is empty iff `Done` is true;
   `parseProposal` enforces that invariant when decoding the model's JSON.
+  `prompt.go`'s `Environment` is what the system prompt says about
+  where commands actually run — OS/arch, working directory, sandboxed,
+  network, undoable. `cmd/detent` fills it from the wiring it just
+  did; the zero value falls back to `LocalEnvironment()`, this
+  process's own machine. That fallback is only right unsandboxed:
+  describing detent's own macOS while commands run in an Ubuntu
+  container is how BSD flags end up in a Linux container.
 
 - **`internal/capture`** — the bounded-output-capture primitives shared
   by every command backend: `Result`, `StreamEvent`, `MaxOutputBytes`,

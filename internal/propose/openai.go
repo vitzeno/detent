@@ -30,6 +30,9 @@ type OpenAIProposer struct {
 	Headers      map[string]string
 	HTTPClient   *http.Client
 	SystemPrompt string
+	// Env describes where commands actually run; the zero value falls
+	// back to this process's own machine.
+	Env Environment
 }
 
 func (p *OpenAIProposer) baseURL() string {
@@ -50,7 +53,11 @@ func (p *OpenAIProposer) systemPrompt() string {
 	if p.SystemPrompt != "" {
 		return p.SystemPrompt
 	}
-	return defaultSystemPrompt()
+	env := p.Env
+	if env.OS == "" {
+		env = LocalEnvironment()
+	}
+	return defaultSystemPrompt(env)
 }
 
 func (p *OpenAIProposer) httpClient() *http.Client {

@@ -81,15 +81,12 @@ func run() error {
 			err, resolved.BaseURL, resolved.Model)
 	}
 
-	proposer := propose.New(
-		propose.WithBaseURL(resolved.BaseURL),
-		propose.WithModel(resolved.Model),
-		propose.WithAPIKey(resolved.APIKey),
-		propose.WithHeaders(resolved.Headers),
-	)
-
 	sessionID := agent.NewSessionID()
 	runners := routing.Selector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
+	// The proposer is told where commands actually run, so it writes
+	// for that OS and knows what survives. Filled in below if a sandbox
+	// is wired; until then it describes this machine.
+	env := propose.LocalEnvironment()
 	if resolved.SandboxMode == "auto" {
 		socket := resolved.SandboxSocket
 		if socket == "" {
@@ -118,7 +115,24 @@ func run() error {
 		}
 		defer container.Close(context.Background())
 		runners.SandboxRunner = routing.WrapSandbox(container)
+
+		// The container is Linux whatever this machine is, starts in
+		// the mount point rather than here, and checkpoints each step.
+		env = propose.Environment{
+			OS: "linux", Arch: runtime.GOARCH, Dir: resolved.SandboxWorkspace,
+			Sandboxed: true,
+			Network:   resolved.SandboxNetwork == sandbox.NetworkHost,
+			Undoable:  true,
+		}
 	}
+
+	proposer := propose.New(
+		propose.WithBaseURL(resolved.BaseURL),
+		propose.WithModel(resolved.Model),
+		propose.WithAPIKey(resolved.APIKey),
+		propose.WithHeaders(resolved.Headers),
+		propose.WithEnvironment(env),
+	)
 
 	sessOpts := []agent.Option{
 		agent.WithID(sessionID),

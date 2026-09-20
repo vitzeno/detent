@@ -31,6 +31,13 @@ func WithSystemPrompt(prompt string) Option {
 	return func(p *OpenAIProposer) { p.SystemPrompt = prompt }
 }
 
+// WithEnvironment tells the proposer where its commands will run, so
+// the prompt describes the sandbox rather than the machine detent
+// happens to be running on.
+func WithEnvironment(env Environment) Option {
+	return func(p *OpenAIProposer) { p.Env = env }
+}
+
 // New builds a proposer from options; New() alone yields the defaults.
 func New(opts ...Option) *OpenAIProposer {
 	p := &OpenAIProposer{}
