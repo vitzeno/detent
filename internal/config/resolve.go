@@ -6,15 +6,11 @@ import (
 )
 
 // Resolve layers sources low to high: built-ins, file, environment,
-// flags. Each layer only overwrites fields it actually sets. flags is
-// a Config like any other layer — the caller builds it from whatever
-// command-line flags were actually passed, leaving the rest zero.
+// flags. Each layer only overwrites fields it actually sets.
 //
-// steps is separate because Config.Steps can't carry its own "not set"
-// signal the way apply()'s other fields do: 0 is itself a meaningful,
-// deliberate value (explicitly unbounded, see flag.Int's default in
-// main.go), so flags.Steps alone could never distinguish "the flag
-// wasn't passed" from "-steps 0 was passed". steps uses -1 for that.
+// steps is separate: 0 is a real value for Config.Steps (explicitly
+// unbounded), so flags.Steps can't tell "not passed" from "-steps 0".
+// steps uses -1 for that instead.
 func Resolve(file, flags Config, steps int) Config {
 	out := Default()
 	out.apply(file)
@@ -57,17 +53,11 @@ func (c *Config) apply(o Config) {
 	}
 }
 
-// Known limitation: RiskThreshold and Steps both treat their Go zero
-// value as "this layer didn't set it" (see the checks above), so
-// neither can be explicitly reset to exactly 0 from the file or env
-// layers — a config file with `risk_threshold: 0` is indistinguishable
-// from one that omits the key entirely, and falls through to
-// agent's own RiskThresholdDefault instead. Steps is unaffected in
-// practice only because its own effective default (unbounded) already
-// equals 0; RiskThreshold has no such coincidence. -steps has an
-// explicit -1 sentinel (see Resolve) precisely to avoid this for the
-// one layer where it was reachable; giving RiskThreshold a real flag
-// would need the same treatment.
+// Known limitation: a config file with `risk_threshold: 0` is
+// indistinguishable from one that omits the key, and falls through to
+// agent's RiskThresholdDefault. Steps dodges this only because its own
+// default (unbounded) already is 0. Giving RiskThreshold a flag would
+// need the same -1 sentinel treatment as steps above.
 
 // envConfig reads the environment as one layer. Key aliases fall back in
 // order; the first set variable wins.

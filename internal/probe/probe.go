@@ -1,10 +1,8 @@
-// Package probe supplies environment context the proposer otherwise has
-// to discover the hard way — one command, one confirm, one step at a
-// time. Probes are a small, fixed, read-only menu the harness itself
-// runs once per goal, gated by Jev on whether a given probe looks
-// relevant. They are never model-proposed, so they run without confirm;
-// the fixed Command field is the safety boundary — nothing here is ever
-// built from goal text or model output.
+// Package probe supplies environment context up front instead of
+// making the proposer discover it one confirmed command at a time.
+// Probes are a small, fixed, read-only menu run once per goal, gated by
+// Jev on relevance. Never model-proposed, so they run without confirm —
+// the fixed Command field is the whole safety boundary.
 package probe
 
 import (
@@ -53,23 +51,18 @@ var Menu = []Probe{
 }
 
 // fallbackMenu runs with no Judge configured: just the cheapest,
-// broadly-useful probe — matching the nil-Judge heuristic pattern used
-// throughout agent rather than guessing at every probe.
+// broadly-useful probe.
 var fallbackMenu = []Probe{Menu[0]}
 
 // Judge returns typed judgments; Ask batches one iteration into a
-// single call. Declared here rather than imported from classify (Go
-// convention: the interface lives at the consumer) — identical in
-// shape to agent.Judge, but probe sits below agent in the
-// dependency graph and can't import it back without a cycle.
+// single call. Identical in shape to agent.Judge, but probe sits below
+// agent and can't import it back without a cycle.
 type Judge interface {
 	Ask(ctx context.Context, state classify.State, questions classify.Questions) (classify.Answers, classify.Usage, error)
 }
 
-// Select asks Jev, one Noul question per probe, which look relevant to
-// goal. This never gates execution — Ask never runs a proposed command,
-// only decides which of the fixed probes above are worth running. A nil
-// Judge, or an errored call, falls back to fallbackMenu.
+// Select asks Jev which probes look relevant to goal, one Noul question
+// each. A nil Judge or an errored call falls back to fallbackMenu.
 func Select(ctx context.Context, judge Judge, goal string) []Probe {
 	questions := make(classify.Questions, len(Menu))
 	for _, p := range Menu {
@@ -89,11 +82,9 @@ func Select(ctx context.Context, judge Judge, goal string) []Probe {
 	return out
 }
 
-// Run executes probes via run — shell.Stream in production, or
-// whatever the caller already injects in place of it (agent.Session
-// passes its own s.runFunc(), the same seam Execute uses, so tests that
-// stub Run never actually shell out just because a fallback probe fired)
-// — and returns one combined blob, or "" when probes is empty.
+// Run executes probes via run (shell.Stream in production, or whatever
+// the caller injects) and returns one combined blob, or "" when probes
+// is empty.
 func Run(ctx context.Context, run func(ctx context.Context, command string, onEvent func(shell.StreamEvent)) (shell.Result, error), probes []Probe) string {
 	if len(probes) == 0 {
 		return ""

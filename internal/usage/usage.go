@@ -77,10 +77,9 @@ func (g *Goal) AddStep(command string) *Step {
 	return s
 }
 
-// Finish closes the goal; nil-safe. declined is the only per-goal
-// classification Snapshot needs — the caller (agent, which owns the
-// EndReason vocabulary) decides it, rather than Snapshot re-deriving
-// meaning from the raw end string this package doesn't own.
+// Finish closes the goal; nil-safe. declined comes from the caller
+// (agent owns the EndReason vocabulary) rather than Snapshot trying to
+// guess it from the raw end string.
 func (g *Goal) Finish(end, summary string, declined bool) {
 	if g == nil {
 		return

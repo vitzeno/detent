@@ -1,9 +1,7 @@
 // Package classify provides question/answer vocabulary types plus
-// JevJudge, an adapter to TypeSafe's Jev. The Judge behavior itself
-// (Ask) has no interface here — each consumer (agent, probe)
-// declares the narrow interface it needs at its own call site, per Go
-// convention; JevJudge satisfies any of them structurally, with nothing
-// to import back from this package.
+// JevJudge, an adapter to TypeSafe's Jev. No Judge interface lives
+// here — each consumer (agent, probe) declares its own at the call
+// site, and JevJudge satisfies them structurally.
 package classify
 
 import (
@@ -14,10 +12,8 @@ import (
 // State is the context handed to a Judge alongside Questions.
 type State any
 
-// judge is the shape AskOrFallback itself needs to dispatch a call —
-// used only inside this package. Callers don't need to name it: they
-// just pass anything with an Ask method (a *JevJudge, or their own
-// package's Judge interface value).
+// judge is the shape AskOrFallback needs, used only inside this
+// package. Callers just pass anything with an Ask method.
 type judge interface {
 	Ask(ctx context.Context, state State, questions Questions) (Answers, Usage, error)
 }
@@ -67,11 +63,10 @@ type Usage struct {
 	Model                     string
 }
 
-// AskOrFallback calls judge.Ask, reporting ok=false when judge is nil or
-// the call errors — every caller's fallback path collapses to one
-// branch instead of hand-rolling the same nil-check/error-check dance.
-// LatencyMS is wall time measured here, overriding whatever the adapter
-// itself reports, so every caller's timing is directly comparable.
+// AskOrFallback calls judge.Ask, reporting ok=false when judge is nil
+// or the call errors, so every caller's fallback collapses to one
+// branch. LatencyMS is wall time measured here, not whatever the
+// adapter reports, so timings are directly comparable across callers.
 func AskOrFallback(ctx context.Context, j judge, state State, questions Questions) (Answers, Usage, bool) {
 	if j == nil {
 		return nil, Usage{}, false

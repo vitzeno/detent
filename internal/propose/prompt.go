@@ -6,13 +6,9 @@ import (
 	"runtime"
 )
 
-// environmentPreamble states what the proposer would otherwise have to
-// spend a full step (and a confirm) discovering: OS/arch and cwd are
-// constant for the life of this process — every proposed command runs
-// via a fresh `sh -c` inheriting this same cwd, and a bare `cd` never
-// persists to the next command (rule 1 below already tells the model
-// to use `cd <dir> && <cmd>` for that exact reason) — so these are
-// worth stating once, not re-probed on every goal.
+// environmentPreamble states OS/arch and cwd up front — both are
+// constant for the process lifetime, so there's no reason to make the
+// model spend a step discovering them.
 func environmentPreamble() string {
 	cwd, err := os.Getwd()
 	if err != nil {
