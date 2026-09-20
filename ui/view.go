@@ -5,13 +5,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vitzeno/detent/internal/ui/editor"
-	"github.com/vitzeno/detent/internal/ui/island"
-	"github.com/vitzeno/detent/internal/ui/layout"
-	"github.com/vitzeno/detent/internal/ui/markdown"
-	"github.com/vitzeno/detent/internal/ui/slash"
-	"github.com/vitzeno/detent/internal/ui/status"
-	"github.com/vitzeno/detent/internal/ui/tabular"
+	"github.com/vitzeno/detent/ui/editor"
+	"github.com/vitzeno/detent/ui/island"
+	"github.com/vitzeno/detent/ui/layout"
+	"github.com/vitzeno/detent/ui/markdown"
+	"github.com/vitzeno/detent/ui/slash"
+	"github.com/vitzeno/detent/ui/status"
+	"github.com/vitzeno/detent/ui/tabular"
 )
 
 var bodyWeights = []int{3, 2} // [output, history]; output gets the larger share

@@ -6,7 +6,7 @@ package resolver
 
 import (
 	"github.com/vitzeno/detent/internal/agent"
-	"github.com/vitzeno/detent/internal/ui"
+	"github.com/vitzeno/detent/ui"
 )
 
 // Resolver implements ui.Driver over a *agent.Session. Holds no state

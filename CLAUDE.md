@@ -46,7 +46,7 @@ Precedence: flags > environment > config file > built-ins. Config file is
 see `detent.example.yaml` for every key. Relevant env vars: `DETENT_BASE_URL`,
 `DETENT_MODEL`, `DETENT_API_KEY` (falls back to `OPENROUTER_API_KEY` then
 `OPENAI_API_KEY`), `TYPESAFE_API_KEY` (enables the Jev judge), `DETENT_THEME`
-(one of `internal/ui/theme.Themes`' names: `dark`, `light`, `solarized`,
+(one of `ui/theme.Themes`' names: `dark`, `light`, `solarized`,
 `dracula`). A `.env` in the repo root is also loaded at startup
 (`cmd/detent/main.go` `loadDotenv`), real env vars always win over it.
 
@@ -203,9 +203,12 @@ routing     →  agent, sandbox
   `*usage.Step` resolver needs on the next call — an opaque token `ui`
   only ever threads through, never inspects.
 
-- **`internal/ui`** — the Bubble Tea TUI, decoupled from the core harness
-  entirely: it imports nothing under `internal/*` except its own
-  subpackages. `driver.go` declares `Driver` (the narrow surface the UI
+- **`ui`** — the Bubble Tea TUI, decoupled from the core harness
+  entirely: it imports nothing under `internal/*`, only its own
+  subpackages. That independence is why it sits outside `internal/`
+  and is importable on its own: everything it needs arrives through
+  `Driver` and `SessionInfo`, so it never reaches into the harness.
+  `driver.go` declares `Driver` (the narrow surface the UI
   needs) plus every DTO its methods use (`Proposal`, `PreJudgment`,
   `PostJudgment`, `ExecutedCommand`, `GoalResult`, `Result`, `Usage`,
   `GoalStats`/`StepStats`, `RenderKind`/`EndReason` and their constants) —
@@ -250,7 +253,7 @@ routing     →  agent, sandbox
 
 ### Keeping `ui` and `agent` in sync
 
-`ui`'s DTOs (`internal/ui/driver.go`) are hand-mirrored from `agent`'s/
+`ui`'s DTOs (`ui/driver.go`) are hand-mirrored from `agent`'s/
 `usage`'s/`propose`'s/`host`'s own types, not aliases of them — that's
 the whole point of the split, but it means nothing forces a change on
 one side to reach the other. Two different failure modes, two different
@@ -280,7 +283,7 @@ Start from what the feature actually is, and touch only the layers it
 needs:
 
 - **Pure UI** (a keybinding, a different rendering of data a DTO already
-  carries, a new dialog) — `internal/ui` only.
+  carries, a new dialog) — `ui` only.
 - **Pure core logic** (a new probe, a heuristic tweak, a proposer
   change) — `internal/agent` only, with `agent`'s own tests. It doesn't
   need to reach `ui` until something is meant to surface there.

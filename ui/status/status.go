@@ -11,7 +11,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vitzeno/detent/internal/ui/theme"
+	"github.com/vitzeno/detent/ui/theme"
 )
 
 // AttentionThreshold auto-expands a row at or above this Noul.

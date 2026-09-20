@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/vitzeno/detent/internal/ui/editor"
+	"github.com/vitzeno/detent/ui/editor"
 )
 
 func TestUI_EditorOpensAfterEditedFileCommand(t *testing.T) {

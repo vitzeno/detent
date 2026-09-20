@@ -3,7 +3,7 @@ package ui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/vitzeno/detent/internal/ui/editor"
+	"github.com/vitzeno/detent/ui/editor"
 )
 
 func (m Model) onStream(msg StreamEvent) (tea.Model, tea.Cmd) {

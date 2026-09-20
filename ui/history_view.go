@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vitzeno/detent/internal/ui/status"
+	"github.com/vitzeno/detent/ui/status"
 )
 
 // contPrefix indents a wrapped line's continuation so it reads as one

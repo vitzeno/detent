@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vitzeno/detent/internal/ui/theme"
+	"github.com/vitzeno/detent/ui/theme"
 )
 
 // Model is one open file's edit state. saved tracks what's actually on

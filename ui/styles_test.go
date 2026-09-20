@@ -7,7 +7,7 @@ import (
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/vitzeno/detent/internal/ui/theme"
+	"github.com/vitzeno/detent/ui/theme"
 )
 
 // Locks the risk in theme switching: package styles are baked at init

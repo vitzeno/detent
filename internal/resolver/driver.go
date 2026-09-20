@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/vitzeno/detent/internal/fileio"
-	"github.com/vitzeno/detent/internal/ui"
 	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/ui"
 )
 
 func (r *Resolver) BeginGoal(ctx context.Context, goal string) (*ui.GoalResult, error) {

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/vitzeno/detent/internal/host"
-	"github.com/vitzeno/detent/internal/ui"
+	"github.com/vitzeno/detent/ui"
 )
 
 // relayEvents translates host.StreamEvent onto events, dropping under

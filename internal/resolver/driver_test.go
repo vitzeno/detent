@@ -13,8 +13,8 @@ import (
 	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
-	"github.com/vitzeno/detent/internal/ui"
 	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/ui"
 )
 
 // These tests drive a real *agent.Session through Resolver — coverage

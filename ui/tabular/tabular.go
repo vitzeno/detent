@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vitzeno/detent/internal/ui/theme"
+	"github.com/vitzeno/detent/ui/theme"
 )
 
 // Parse splits whitespace-aligned output into columns and rows. First

@@ -10,7 +10,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vitzeno/detent/internal/ui/theme"
+	"github.com/vitzeno/detent/ui/theme"
 )
 
 // MaxRows caps the dropdown so it can't eat the history.

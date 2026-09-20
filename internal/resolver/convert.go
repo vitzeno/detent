@@ -4,8 +4,8 @@ import (
 	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
-	"github.com/vitzeno/detent/internal/ui"
 	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/ui"
 )
 
 // Pure one-way mapping functions between agent's/propose's/usage's/

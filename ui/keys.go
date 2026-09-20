@@ -5,8 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/vitzeno/detent/internal/ui/slash"
-	"github.com/vitzeno/detent/internal/ui/tabular"
+	"github.com/vitzeno/detent/ui/slash"
+	"github.com/vitzeno/detent/ui/tabular"
 )
 
 // keyOwner names who owns a keystroke; handleKey computes exactly one.

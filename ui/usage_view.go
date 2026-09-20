@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vitzeno/detent/internal/ui/status"
+	"github.com/vitzeno/detent/ui/status"
 )
 
 // usageLines renders the /usage row: session totals, per-goal rows, and

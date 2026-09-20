@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vitzeno/detent/internal/ui/status"
+	"github.com/vitzeno/detent/ui/status"
 )
 
 const (

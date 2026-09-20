@@ -10,10 +10,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vitzeno/detent/internal/ui/editor"
-	"github.com/vitzeno/detent/internal/ui/slash"
-	"github.com/vitzeno/detent/internal/ui/status"
-	"github.com/vitzeno/detent/internal/ui/tree"
+	"github.com/vitzeno/detent/ui/editor"
+	"github.com/vitzeno/detent/ui/slash"
+	"github.com/vitzeno/detent/ui/status"
+	"github.com/vitzeno/detent/ui/tree"
 )
 
 const (

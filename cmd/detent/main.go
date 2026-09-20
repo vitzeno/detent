@@ -23,10 +23,10 @@ import (
 	"github.com/vitzeno/detent/internal/resolver"
 	"github.com/vitzeno/detent/internal/routing"
 	"github.com/vitzeno/detent/internal/sandbox"
-	"github.com/vitzeno/detent/internal/ui"
-	"github.com/vitzeno/detent/internal/ui/status"
-	"github.com/vitzeno/detent/internal/ui/theme"
 	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/ui"
+	"github.com/vitzeno/detent/ui/status"
+	"github.com/vitzeno/detent/ui/theme"
 )
 
 func main() {

@@ -4,9 +4,9 @@ package ui
 import (
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vitzeno/detent/internal/ui/status"
-	"github.com/vitzeno/detent/internal/ui/theme"
-	"github.com/vitzeno/detent/internal/ui/tree"
+	"github.com/vitzeno/detent/ui/status"
+	"github.com/vitzeno/detent/ui/theme"
+	"github.com/vitzeno/detent/ui/tree"
 )
 
 var (
