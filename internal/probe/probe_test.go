@@ -32,7 +32,7 @@ func (f fakeJudge) Ask(_ context.Context, _ classify.State, qs classify.Question
 func TestSelect(t *testing.T) {
 	tests := []struct {
 		name  string
-		judge classify.Judge
+		judge Judge
 		want  []string // probe names, in Menu order
 	}{
 		{

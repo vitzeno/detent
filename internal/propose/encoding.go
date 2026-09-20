@@ -14,7 +14,10 @@ type proposalWire struct {
 	File      string `json:"file"`
 }
 
-// EncodeAssistantTurn renders a Proposal in the JSON shape the model emits.
+// EncodeAssistantTurn renders a Proposal in the JSON shape the model
+// emits. json.Marshal's error is deliberately discarded: proposalWire
+// is a fixed struct of strings and a bool, which encoding/json can
+// always marshal — there's no input here that can make it fail.
 func EncodeAssistantTurn(p Proposal) string {
 	raw, _ := json.Marshal(proposalWire{
 		Command:   p.Command,

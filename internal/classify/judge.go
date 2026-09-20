@@ -1,4 +1,9 @@
-// Package classify provides the Judge interface and question/answer types.
+// Package classify provides question/answer vocabulary types plus
+// JevJudge, an adapter to TypeSafe's Jev. The Judge behavior itself
+// (Ask) has no interface here — each consumer (agent, probe)
+// declares the narrow interface it needs at its own call site, per Go
+// convention; JevJudge satisfies any of them structurally, with nothing
+// to import back from this package.
 package classify
 
 import (
@@ -9,8 +14,11 @@ import (
 // State is the context handed to a Judge alongside Questions.
 type State any
 
-// Judge returns typed judgments; Ask batches one iteration into a single call.
-type Judge interface {
+// judge is the shape AskOrFallback itself needs to dispatch a call —
+// used only inside this package. Callers don't need to name it: they
+// just pass anything with an Ask method (a *JevJudge, or their own
+// package's Judge interface value).
+type judge interface {
 	Ask(ctx context.Context, state State, questions Questions) (Answers, Usage, error)
 }
 
@@ -64,12 +72,12 @@ type Usage struct {
 // branch instead of hand-rolling the same nil-check/error-check dance.
 // LatencyMS is wall time measured here, overriding whatever the adapter
 // itself reports, so every caller's timing is directly comparable.
-func AskOrFallback(ctx context.Context, judge Judge, state State, questions Questions) (Answers, Usage, bool) {
-	if judge == nil {
+func AskOrFallback(ctx context.Context, j judge, state State, questions Questions) (Answers, Usage, bool) {
+	if j == nil {
 		return nil, Usage{}, false
 	}
 	t0 := time.Now()
-	answers, u, err := judge.Ask(ctx, state, questions)
+	answers, u, err := j.Ask(ctx, state, questions)
 	if err != nil {
 		return nil, Usage{}, false
 	}
