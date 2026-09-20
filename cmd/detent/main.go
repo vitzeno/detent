@@ -142,7 +142,10 @@ func run() error {
 	// The effective mode, not the configured one: "auto" still reports
 	// host when no sandbox ended up wired.
 	_, runMode := runners.Select(agent.PreJudgment{})
-	info := ui.SessionInfo{Proposer: resolved.Model, Judge: judgeName, RunMode: runMode}
+	info := ui.SessionInfo{
+		Proposer: resolved.Model, Judge: judgeName, RunMode: runMode,
+		Image: resolved.SandboxImage, Mount: resolved.SandboxWorkspace, Runtime: resolved.SandboxRuntime,
+	}
 	drv := resolver.New(sess)
 	p := tea.NewProgram(ui.New(context.Background(), drv, info), tea.WithAltScreen())
 	_, err = p.Run()

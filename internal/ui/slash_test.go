@@ -1,12 +1,10 @@
 package ui
 
 import (
-	"regexp"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -83,15 +81,11 @@ func TestSlashDropdown_RowsAlign(t *testing.T) {
 	m := testUIModel()
 	m = typeRune(m, '/')
 
-	ansi := regexp.MustCompile("\x1b\\[[0-9;]*m")
 	var cols []int
 	for _, line := range strings.Split(m.View(), "\n") {
-		plain := ansi.ReplaceAllString(line, "")
 		for _, name := range []string{"/quit", "/abort", "/tree"} {
-			if i := strings.Index(plain, name); i >= 0 {
-				// Display width, not byte offset: the cursor row
-				// carries a multi-byte ▸ the others don't.
-				cols = append(cols, lipgloss.Width(plain[:i]))
+			if c := displayCol(stripANSI(line), name); c >= 0 {
+				cols = append(cols, c)
 			}
 		}
 	}

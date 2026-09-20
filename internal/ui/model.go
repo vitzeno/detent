@@ -114,6 +114,8 @@ type saveDoneMsg struct {
 	err     error
 }
 
+type welcomeTickMsg struct{}
+
 type rollbackDoneMsg struct {
 	target *goalBlock
 	step   int
@@ -175,6 +177,11 @@ type SessionInfo struct {
 	Proposer string
 	Judge    string // "" when no judge is wired
 	RunMode  string // "host" or "sandbox"
+
+	// Sandbox facts for the welcome pane; empty in host mode.
+	Image   string
+	Mount   string
+	Runtime string // "" means containerd's own default
 }
 
 // Model is the TUI state.
@@ -203,6 +210,10 @@ type Model struct {
 	perf    perfState
 
 	streamCh chan StreamEvent
+
+	// welcomeFrame advances the boot pane's detent animation; it only
+	// ticks while that pane is the thing on screen.
+	welcomeFrame int
 
 	notice string // one-shot status flash
 
@@ -262,7 +273,13 @@ func New(ctx context.Context, sess Driver, info SessionInfo) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, welcomeTick())
+}
+
+// welcomeTick re-arms itself only while the welcome pane is showing,
+// so an idle animation never outlives the screen it belongs to.
+func welcomeTick() tea.Cmd {
+	return tea.Tick(welcomeTickRate, func(time.Time) tea.Msg { return welcomeTickMsg{} })
 }
 
 func (m *Model) rows() []*stepRow {
@@ -351,6 +368,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case rollbackDoneMsg:
 		return m.onRollbackDone(msg)
+
+	case welcomeTickMsg:
+		if !m.showWelcome() {
+			return m, nil
+		}
+		m.welcomeFrame++
+		return m, welcomeTick()
 	}
 
 	var cmd tea.Cmd

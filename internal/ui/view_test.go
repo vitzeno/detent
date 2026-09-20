@@ -99,24 +99,25 @@ func TestUI_SessionBarShowsRunMode(t *testing.T) {
 
 func TestUI_PaneMarkersFollowFocus(t *testing.T) {
 	m := testUIModel()
-
+	// Nothing has run, so the output pane is titled "detent" (the
+	// welcome state); the markers are what this test is about.
 	v := m.View()
 	require.Contains(t, v, "○ history")
-	require.Contains(t, v, "○ output")
+	require.Contains(t, v, "○ detent")
 	require.Contains(t, v, "● ❯", "input marker active on input focus")
 
 	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
 	m = nm.(Model)
 	v = m.View()
 	require.Contains(t, v, "● history")
-	require.Contains(t, v, "○ output")
+	require.Contains(t, v, "○ detent")
 	require.Contains(t, v, "○ ❯")
 
 	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
 	m = nm.(Model)
 	v = m.View()
 	require.Contains(t, v, "○ history")
-	require.Contains(t, v, "● output")
+	require.Contains(t, v, "● detent")
 	require.Contains(t, v, "○ ❯")
 }
 

@@ -181,7 +181,7 @@ func (m Model) viewportHeader() string {
 	active := m.nav.focus == focusOutput
 	r := m.focused()
 	if r == nil {
-		return fmt.Sprintf("%s %s", paneMark(active), paneLabel("output", active))
+		return fmt.Sprintf("%s %s", paneMark(active), paneLabel("detent", active))
 	}
 	if r.editor != nil && r.editor.Err() == nil {
 		label := "file"
@@ -207,10 +207,19 @@ func (m Model) viewportHeader() string {
 		styleGoal.Render(truncateWidth(r.command, m.layout.outputColW-24)))
 }
 
+// showWelcome reports whether the output pane has nothing of its own
+// to show yet, which is the boot state: no row has ever been focused.
+func (m Model) showWelcome() bool {
+	return m.focused() == nil
+}
+
 // detailLines renders the focused row's component: editor takes
 // priority when present, then a table for tabular output, else the
 // scrolling viewport.
 func (m Model) detailLines() []string {
+	if m.showWelcome() {
+		return m.welcomeLines()
+	}
 	if r := m.focused(); r != nil {
 		if r.editor != nil {
 			return m.editorLines(r.editor)

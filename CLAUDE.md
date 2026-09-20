@@ -220,9 +220,13 @@ routing     →  agent, sandbox
   mutators at all now); `tool_flow.go`/`exec_flow.go`/`save_flow.go`
   handle the slash-command, streaming, and file-save flows the same way;
   `keys.go` routes keystrokes. `render_view.go`, `history_view.go`,
-  `confirm_view.go`, `usage_view.go`, and `view.go` render — anything
-  producing display strings from `Model` state lives in a `_view.go`
-  file. Sub-packages `slash` (slash-command parsing/autocomplete),
+  `confirm_view.go`, `usage_view.go`, `welcome_view.go`, and `view.go`
+  render — anything producing display strings from `Model` state lives
+  in a `_view.go` file. `welcome_view.go` fills the output pane before
+  any row exists (host/sandbox facts, session counters, and a stepped
+  detent animation); it's a pane state, not a `RenderKind`, since
+  those classify a finished command's output. Its `SessionInfo` comes
+  from `cmd/detent`, so `ui` still imports no `config` or `sandbox`. Sub-packages `slash` (slash-command parsing/autocomplete),
   `status` (usage/timing formatting — switches on the same Status*/
   RenderKind string values `ui.PostJudgment` carries, duplicated as
   literals rather than importing anything to get them), `tabular` (table

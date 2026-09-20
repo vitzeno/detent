@@ -79,6 +79,18 @@ func TestUI_OnRollbackDone_TruncatesSteps(t *testing.T) {
 	assert.Contains(t, m.notice, "undid step 2")
 }
 
+func TestUI_OnRollbackDone_UndoingEverythingRestartsWelcome(t *testing.T) {
+	m := testUIModel()
+	target := &goalBlock{res: &GoalResult{}, steps: []*stepRow{{command: "one"}}}
+	m.blocks = []*goalBlock{target}
+
+	nm, cmd := m.Update(rollbackDoneMsg{target: target, step: 1, ok: true})
+	m = nm.(Model)
+	require.Empty(t, target.steps)
+	require.True(t, m.showWelcome(), "the welcome pane comes back")
+	assert.NotNil(t, cmd, "and its animation restarts rather than sitting frozen")
+}
+
 func TestUI_OnRollbackDone_ErrorLeavesStepsIntact(t *testing.T) {
 	m := testUIModel()
 	target := &goalBlock{res: &GoalResult{}, steps: []*stepRow{{command: "one"}}}

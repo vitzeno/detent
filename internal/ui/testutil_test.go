@@ -3,9 +3,12 @@ package ui
 import (
 	"context"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Shared fixtures for every *_test.go file in this package.
@@ -152,6 +155,24 @@ func testUIModel() Model {
 	m.sizeViewport()
 	return m
 }
+
+// displayCol is where sub starts on screen, in columns, not bytes.
+// Box-drawing and marker glyphs are multi-byte, so strings.Index
+// alone compares two different units and quietly lies.
+func displayCol(line, sub string) int {
+	i := strings.Index(line, sub)
+	if i < 0 {
+		return -1
+	}
+	return lipgloss.Width(line[:i])
+}
+
+// stripANSI drops styling so a rendered line can be measured or matched.
+func stripANSI(s string) string {
+	return ansiPattern.ReplaceAllString(s, "")
+}
+
+var ansiPattern = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
 func typeKey(s string) tea.KeyMsg {
 	if s == "space" {
