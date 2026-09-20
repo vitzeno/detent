@@ -6,13 +6,21 @@ import (
 )
 
 // Resolve layers sources low to high: built-ins, file, environment,
-// flags. Each layer only overwrites fields it actually sets.
-func Resolve(file Config, url, model, key string, steps int) Config {
+// flags. Each layer only overwrites fields it actually sets. flags is
+// a Config like any other layer — the caller builds it from whatever
+// command-line flags were actually passed, leaving the rest zero.
+//
+// steps is separate because Config.Steps can't carry its own "not set"
+// signal the way apply()'s other fields do: 0 is itself a meaningful,
+// deliberate value (explicitly unbounded, see flag.Int's default in
+// main.go), so flags.Steps alone could never distinguish "the flag
+// wasn't passed" from "-steps 0 was passed". steps uses -1 for that.
+func Resolve(file, flags Config, steps int) Config {
 	out := Default()
 	out.apply(file)
 	out.apply(envConfig())
-	out.apply(Config{BaseURL: url, Model: model, APIKey: key})
-	if steps >= 0 { // flags default to -1 = unset; 0 explicitly selects unbounded
+	out.apply(flags)
+	if steps >= 0 {
 		out.Steps = steps
 	}
 	return out
@@ -48,6 +56,18 @@ func (c *Config) apply(o Config) {
 		c.RiskThreshold = o.RiskThreshold
 	}
 }
+
+// Known limitation: RiskThreshold and Steps both treat their Go zero
+// value as "this layer didn't set it" (see the checks above), so
+// neither can be explicitly reset to exactly 0 from the file or env
+// layers — a config file with `risk_threshold: 0` is indistinguishable
+// from one that omits the key entirely, and falls through to
+// agent's own RiskThresholdDefault instead. Steps is unaffected in
+// practice only because its own effective default (unbounded) already
+// equals 0; RiskThreshold has no such coincidence. -steps has an
+// explicit -1 sentinel (see Resolve) precisely to avoid this for the
+// one layer where it was reachable; giving RiskThreshold a real flag
+// would need the same treatment.
 
 // envConfig reads the environment as one layer. Key aliases fall back in
 // order; the first set variable wins.

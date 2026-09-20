@@ -1,4 +1,4 @@
-package editfile
+package fileio
 
 import (
 	"os"
