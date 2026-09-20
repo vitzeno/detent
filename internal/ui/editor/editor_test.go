@@ -1,8 +1,7 @@
 package editor
 
 import (
-	"os"
-	"path/filepath"
+	"fmt"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -10,31 +9,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func writeTemp(t *testing.T, content string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "f.txt")
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
-	return path
-}
-
-func TestNew_LoadsContent(t *testing.T) {
-	path := writeTemp(t, "hello\n")
-	m := New(path)
+func TestNew_WrapsContent(t *testing.T) {
+	m := New("f.txt", "hello\n", false, 0, nil)
 	require.NoError(t, m.Err())
 	assert.Equal(t, "hello\n", m.Value())
 	assert.False(t, m.Dirty())
 	assert.False(t, m.Truncated())
 }
 
-func TestNew_MissingFileKeepsErrorInsteadOfPanicking(t *testing.T) {
-	m := New(filepath.Join(t.TempDir(), "nope.txt"))
+func TestNew_LoadErrorKeptInsteadOfPanicking(t *testing.T) {
+	m := New("nope.txt", "", false, 0, fmt.Errorf("open nope.txt: no such file or directory"))
 	assert.Error(t, m.Err())
 	assert.Contains(t, m.View(), "could not open")
 }
 
 func TestDirtyAndDiff(t *testing.T) {
-	path := writeTemp(t, "old\n")
-	m := New(path)
+	m := New("f.txt", "old\n", false, 0, nil)
 	assert.False(t, m.Dirty())
 	assert.Empty(t, m.Diff())
 
@@ -45,8 +35,7 @@ func TestDirtyAndDiff(t *testing.T) {
 }
 
 func TestMarkSaved_ClearsDirty(t *testing.T) {
-	path := writeTemp(t, "old\n")
-	m := New(path)
+	m := New("f.txt", "old\n", false, 0, nil)
 	m.Focus()
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("X")})
 	require.True(t, nm.Dirty())
@@ -57,8 +46,7 @@ func TestMarkSaved_ClearsDirty(t *testing.T) {
 }
 
 func TestResize_SkipsRedundantCalls(t *testing.T) {
-	path := writeTemp(t, "hi\n")
-	m := New(path)
+	m := New("f.txt", "hi\n", false, 0, nil)
 	m.Resize(40, 10)
 	m.Resize(40, 10) // same size again: must not disturb scroll state
 	assert.Equal(t, 40, m.lastW)
@@ -66,8 +54,7 @@ func TestResize_SkipsRedundantCalls(t *testing.T) {
 }
 
 func TestFocusBlur(t *testing.T) {
-	path := writeTemp(t, "hi\n")
-	m := New(path)
+	m := New("f.txt", "hi\n", false, 0, nil)
 	cmd := m.Focus()
 	assert.NotNil(t, cmd, "Focus returns a blink cmd")
 	m.Blur()

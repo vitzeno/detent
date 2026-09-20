@@ -1,9 +1,7 @@
-// Package layout provides small, reusable arrangement primitives —
-// Split for dividing a budget of cells among weighted regions, Row and
-// Column for joining pre-rendered same-size blocks — so rearranging the
-// screen (stacked vs. side by side, how much each zone gets) is a data
-// change to weights and grouping, not a rewrite of sizing math and
-// string-joining spread across the view code.
+// Package layout provides small arrangement primitives: Split divides a
+// budget of cells among weighted regions, Row and Column join
+// pre-rendered blocks. Rearranging the screen becomes a data change to
+// weights, not a sizing-math rewrite.
 package layout
 
 import (
@@ -13,14 +11,11 @@ import (
 )
 
 // Split divides total among len(weights) shares proportional to each
-// weight, each guaranteed at least min. A share that would fall below
-// min is floored to min and removed from the weighted pool; whatever
-// budget that took is then re-split among what's left, so the shares
-// still sum to exactly total as long as total >= min*len(weights) (the
-// same precondition sizeViewport already enforces by flooring its own
-// available space before calling Split). Below that floor there's no
-// more budget to redistribute — every share still gets at least min,
-// and the sum can then exceed total.
+// weight, each guaranteed at least min. A share below min gets floored
+// to min and removed from the weighted pool; what that took gets
+// re-split among what's left, so shares still sum to exactly total as
+// long as total >= min*len(weights). Below that, every share still
+// gets min and the sum can exceed total.
 func Split(total int, weights []int, min int) []int {
 	if len(weights) == 0 {
 		return nil
@@ -33,7 +28,7 @@ func split(total int, weights []int, min int, out []int, floored []bool) []int {
 	sumW, activeN := 0, 0
 	weight := func(w int) int {
 		if w <= 0 {
-			return 1 // degenerate weight: treat as 1 rather than dividing by zero
+			return 1 // avoid dividing by zero
 		}
 		return w
 	}
@@ -81,19 +76,14 @@ func split(total int, weights []int, min int, out []int, floored []bool) []int {
 	return out
 }
 
-// Row joins pre-rendered, equal-height blocks left to right. Each
-// block is expected to already be exactly the height the caller
-// intended (island.Render guarantees this) — Row only arranges, it
+// Row joins pre-rendered, equal-height blocks left to right. Blocks
+// must already be the height the caller intended — Row only arranges,
 // never pads or truncates.
 func Row(blocks ...string) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, blocks...)
 }
 
-// Column joins pre-rendered blocks top to bottom — the vertical
-// counterpart to Row, named the same way so a layout expressed as rows
-// of columns (or columns of rows) reads as one consistent vocabulary
-// instead of some joins being lipgloss calls and others being raw "\n"
-// concatenation.
+// Column is Row's vertical counterpart.
 func Column(blocks ...string) string {
 	return strings.Join(blocks, "\n")
 }

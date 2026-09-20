@@ -1,10 +1,8 @@
 // Package status renders run status: history-row badges and the bottom
-// status bar. Its inputs (Row, Bar's plain arguments) are primitives,
-// never agent's own structs (ExecutedCommand, PostJudgment) — a
-// caller maps those onto Row/Bar itself — but Badge and KindLabel do
-// switch directly on agent's exported Status*/Kind* string
-// constants, so this package tracks that classification vocabulary
-// even though it stays decoupled from agent's types.
+// status bar. Inputs are plain primitives, never a core-package struct.
+// Badge/KindLabel/statusWord switch on the same Status*/Kind* values
+// ui.PostJudgment carries, duplicated here as literals rather than
+// imported, to stay decoupled from the core harness.
 package status
 
 import (
@@ -13,7 +11,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/ui/theme"
 )
 
@@ -42,9 +39,9 @@ type Row struct {
 	Attention float64
 }
 
-// Badge splits a row's status into icon and detail text: provisional
-// exit-code styling first, judged styling once the post batch lands.
-// The caller composes `icon command detail`; detail arrives unstyled.
+// Badge splits status into icon and detail text: exit-code styling
+// first, judged styling once the post batch lands. Detail is unstyled;
+// the caller composes `icon command detail`.
 func Badge(s Row, spinner string) (icon, detail string) {
 	if s.Running {
 		detail = fmt.Sprintf("%d live lines", s.LiveLines)
@@ -67,34 +64,33 @@ func Badge(s Row, spinner string) (icon, detail string) {
 		return caution.Render("⚠"), detail + fmt.Sprintf(" · attention %.2f", s.Attention)
 	}
 	switch s.Status {
-	case agent.StatusClean:
+	case "clean_success":
 		return safe.Render("✓"), detail
-	case agent.StatusWarnings:
+	case "success_with_warnings":
 		return caution.Render("⚠"), detail
-	case agent.StatusFailed:
+	case "failed":
 		return danger.Render("✗"), detail
 	default:
 		return muted.Render("○"), detail
 	}
 }
 
-// KindLabel names a render kind for the viewport header — the
-// display-label half of RenderKind, alongside Badge's Status half.
+// KindLabel names a render kind for the viewport header.
 func KindLabel(k string) string {
 	switch k {
-	case agent.KindTable:
+	case "table":
 		return "table"
-	case agent.KindError:
+	case "error_text":
 		return "errors"
-	case agent.KindDiff:
+	case "diff":
 		return "diff"
-	case agent.KindJSON:
+	case "structured_json":
 		return "json"
-	case agent.KindContent:
+	case "file_content":
 		return "file"
-	case agent.KindFiles:
+	case "file_listing":
 		return "files"
-	case agent.KindLog:
+	case "scrollable_log":
 		return "log"
 	default:
 		return "output"
@@ -103,13 +99,13 @@ func KindLabel(k string) string {
 
 func statusWord(s string) string {
 	switch s {
-	case agent.StatusClean:
+	case "clean_success":
 		return "clean"
-	case agent.StatusWarnings:
+	case "success_with_warnings":
 		return "warnings"
-	case agent.StatusFailed:
+	case "failed":
 		return "failed"
-	case agent.StatusEmpty:
+	case "empty":
 		return "no output"
 	default:
 		return "done"

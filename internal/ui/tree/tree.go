@@ -1,9 +1,6 @@
-// Package tree builds and renders a navigable file/directory tree — a
-// harness-run, read-only filesystem walk, the same bounded-and-safe
-// spirit as internal/probe's dir_listing, just shaped for interactive
-// browsing instead of one-shot context. It never writes; opening a
-// selected file for editing is the caller's job (internal/ui wires
-// Selected() into internal/ui/editor).
+// Package tree builds and renders a navigable, read-only file/directory
+// tree. It never writes; opening a selected file for editing is the
+// caller's job.
 package tree
 
 import (
@@ -19,10 +16,6 @@ import (
 	"github.com/vitzeno/detent/internal/ui/theme"
 )
 
-// Styling lives here, not with the caller: tree already knows which
-// row is the cursor and which are directories vs files, so it's the
-// natural place to color them — the same way tabular bakes in its own
-// table.Styles rather than leaving it to whoever calls Build.
 var (
 	cursorStyle = lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
 	dirStyle    = lipgloss.NewStyle().Foreground(theme.TextPrimary).Bold(true)
@@ -38,9 +31,8 @@ const (
 	KindDir
 )
 
-// MaxDepth and MaxEntries bound one Build call — a huge or deep tree
-// (node_modules, a build output directory) must degrade gracefully,
-// not hang the UI or blow past a sane render size.
+// MaxDepth and MaxEntries bound one Build call so a huge tree
+// (node_modules, a build dir) degrades instead of hanging the UI.
 const (
 	MaxDepth   = 6
 	MaxEntries = 500
@@ -55,11 +47,9 @@ type Node struct {
 	Expanded bool
 }
 
-// Build walks root into a Node tree, skipping dotfiles and dotdirs
-// (the common convention for a simple browser — .git's contents are
-// rarely what someone opens a tree to find) and capped at MaxDepth/
-// MaxEntries. Truncated (via the returned bool) means the walk hit a
-// bound and stopped early, not that anything failed.
+// Build walks root into a Node tree, skipping dotfiles/dotdirs, capped
+// at MaxDepth/MaxEntries. The returned bool means the walk hit a bound
+// and stopped early, not that it failed.
 func Build(root string) (*Node, bool, error) {
 	abs, err := filepath.Abs(root)
 	if err != nil {
@@ -162,10 +152,8 @@ func (m *Model) Down() {
 	}
 }
 
-// Toggle expands or collapses the cursor row if it's a directory;
-// does nothing for a file (opening one is the caller's job, via
-// Selected — a plain toggle here would be a surprising side effect on
-// what's really an "open" action for a file).
+// Toggle expands/collapses the cursor row if it's a directory; does
+// nothing for a file (opening one is the caller's job via Selected).
 func (m *Model) Toggle() {
 	n := m.Selected()
 	if n == nil || n.Kind != KindDir {
@@ -183,9 +171,7 @@ func (m Model) Selected() *Node {
 	return m.rows[m.cursor]
 }
 
-// View renders height rows (cursor kept in view), each truncated to
-// width — the same "one line in, one line out" contract island.Render
-// expects from every component it wraps.
+// View renders height rows (cursor kept in view), each truncated to width.
 func (m Model) View(width, height int) []string {
 	if len(m.rows) == 0 {
 		return []string{"(empty)"}
@@ -220,9 +206,7 @@ func (m Model) line(i, width int) string {
 	}
 	s := mark + strings.Repeat("  ", depth) + glyphStyle.Render(icon) + name
 	if lipgloss.Width(s) > width {
-		// ANSI-aware: s carries real escape codes now that rows are
-		// styled, so a byte/rune cut would corrupt them mid-sequence.
-		s = ansi.Truncate(s, width, "…")
+		s = ansi.Truncate(s, width, "…") // rune-cut would corrupt the styling codes
 	}
 	return s
 }

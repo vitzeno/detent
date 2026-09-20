@@ -1,8 +1,6 @@
 // Package tabular renders whitespace-aligned command output (ps, df)
-// as a real table component. Jev's table kind decides WHEN; everything
-// here is deterministic code. Parse reports ok=false when the shape
-// isn't tabular and the caller falls back to the plain log viewport —
-// a wrong component is worse than a plain one.
+// as a real table component. Parse reports ok=false when the shape
+// isn't tabular so the caller can fall back to a plain viewport.
 package tabular
 
 import (
@@ -14,11 +12,10 @@ import (
 	"github.com/vitzeno/detent/internal/ui/theme"
 )
 
-// Parse splits whitespace-aligned output into columns and rows. The
-// first line is the header; trailing fields join into the last column,
-// which is where commands like ps put free text (COMMAND). Reports
-// ok=false unless at least two lines share a header of two or more
-// fields.
+// Parse splits whitespace-aligned output into columns and rows. First
+// line is the header; trailing fields join into the last column (where
+// ps-like output puts free text). ok=false unless at least two lines
+// share a header of two or more fields.
 func Parse(output string, width int) (columns []table.Column, rows []table.Row, ok bool) {
 	var grid [][]string
 	for _, line := range strings.Split(strings.TrimSuffix(output, "\n"), "\n") {
@@ -54,9 +51,8 @@ func Parse(output string, width int) (columns []table.Column, rows []table.Row, 
 	return columns, rows, true
 }
 
-// fit shares width across columns proportional to their widest cell, so
-// one long column can't starve the rest. Never scrolls horizontally:
-// cells truncate with … instead.
+// fit shares width across columns proportional to their widest cell.
+// Never scrolls horizontally — cells truncate with … instead.
 func fit(grid [][]string, total int) []int {
 	n := len(grid[0])
 	maxw := make([]int, n)
@@ -90,15 +86,10 @@ func fit(grid [][]string, total int) []int {
 	return widths
 }
 
-// Styles is the one table look: teal header over a full-width rule,
-// faint vertical rules between columns, bold selected row. Cell
-// borders stop at right-only deliberately: bubbles/table borders each
-// cell independently rather than drawing the grid as one structure, so
-// combining a right border with a bottom border draws a stray corner
-// glyph at every cell join instead of a clean crossing — a bottom-only
-// border (as Header uses) joins seamlessly into one line, but adding a
-// right border to that same cell breaks it. Right-only avoids the
-// artifact while still reading as a grid alongside the header's rule.
+// Styles is the one table look. Cell borders stay right-only on
+// purpose: bubbles/table borders each cell independently, so combining
+// a right border with a bottom border draws a stray corner glyph at
+// every join instead of a clean crossing.
 func Styles() table.Styles {
 	s := table.DefaultStyles()
 	s.Header = s.Header.Foreground(theme.Accent).Bold(true).
@@ -111,7 +102,6 @@ func Styles() table.Styles {
 	return s
 }
 
-// Build assembles the component: columns, rows, cursor, and height.
 func Build(columns []table.Column, rows []table.Row, cursor, height int, focused bool) table.Model {
 	t := table.New(
 		table.WithColumns(columns),
