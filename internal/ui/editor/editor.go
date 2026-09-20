@@ -1,7 +1,7 @@
 // Package editor is a self-contained, reusable text-editor component:
 // load a file, let the user edit the in-memory buffer, report a dirty
 // diff against disk. It never writes anything itself — Save is always
-// the caller's own explicit, confirmed action (see internal/editfile
+// the caller's own explicit, confirmed action (see internal/fileio
 // and the ui package's save-confirm flow) — this package only ever
 // reads. Any caller that wants an editable view of a file uses the
 // same Model, whether it got there from a command's own proposed file
@@ -11,8 +11,10 @@ package editor
 import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vitzeno/detent/internal/editfile"
+	"github.com/vitzeno/detent/internal/fileio"
+	"github.com/vitzeno/detent/internal/ui/theme"
 )
 
 // Model is one open file's edit state: the textarea buffer plus what's
@@ -22,7 +24,7 @@ type Model struct {
 	Path      string
 	area      textarea.Model
 	saved     string // last content confirmed written to disk
-	truncated bool   // Read reported the file was capped at editfile.MaxBytes
+	truncated bool   // Read reported the file was capped at fileio.MaxBytes
 	loadErr   error
 
 	// Cache so SetWidth/SetHeight (which can disturb the textarea's own
@@ -35,20 +37,38 @@ type Model struct {
 // usable component that reports the error in place of content, the
 // same way a failed command still gets a row rather than vanishing.
 func New(path string) Model {
-	content, truncated, err := editfile.Read(path)
+	content, truncated, err := fileio.Read(path)
 	ta := textarea.New()
 	ta.SetValue(content)
 	ta.ShowLineNumbers = true
 	ta.Prompt = ""
 	ta.Placeholder = ""
+	applyTheme(&ta)
 	return Model{Path: path, area: ta, saved: content, truncated: truncated, loadErr: err}
+}
+
+// applyTheme brings the textarea in line with the rest of the app's
+// palette — bubbles' own defaults have no idea this app has a theme at
+// all, so left alone the editor is the one component that looks
+// visually disconnected from everything around it.
+func applyTheme(ta *textarea.Model) {
+	lineNumber := lipgloss.NewStyle().Foreground(theme.TextFaint)
+	currentLineNumber := lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
+	endOfBuffer := lipgloss.NewStyle().Foreground(theme.TextFaint)
+
+	for _, s := range []*textarea.Style{&ta.FocusedStyle, &ta.BlurredStyle} {
+		s.LineNumber = lineNumber
+		s.CursorLineNumber = currentLineNumber
+		s.EndOfBuffer = endOfBuffer
+	}
+	ta.Cursor.Style = lipgloss.NewStyle().Foreground(theme.Accent)
 }
 
 // Err is non-nil when the initial Read failed; View reports it as
 // content instead of crashing or showing an empty buffer.
 func (m Model) Err() error { return m.loadErr }
 
-// Truncated reports whether the file was larger than editfile.MaxBytes
+// Truncated reports whether the file was larger than fileio.MaxBytes
 // and got capped.
 func (m Model) Truncated() bool { return m.truncated }
 
@@ -68,7 +88,7 @@ func (m Model) Dirty() bool {
 // Diff renders a unified diff of what a save right now would change,
 // or "" when there's nothing to save.
 func (m Model) Diff() string {
-	return editfile.Diff(m.Path, m.saved, m.area.Value())
+	return fileio.Diff(m.Path, m.saved, m.area.Value())
 }
 
 // MarkSaved updates what "saved" means after the caller's own

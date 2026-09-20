@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -113,7 +114,10 @@ func TestModel_ViewTruncatesLongNames(t *testing.T) {
 
 	lines := m.View(20, 5)
 	for _, l := range lines {
-		assert.LessOrEqual(t, len([]rune(l)), 20)
+		// Visual width, not byte/rune count: rows are styled now, so a
+		// line carries real ANSI escape codes alongside its 20 visible
+		// columns.
+		assert.LessOrEqual(t, lipgloss.Width(l), 20)
 	}
 }
 

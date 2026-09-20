@@ -14,6 +14,20 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/vitzeno/detent/internal/ui/theme"
+)
+
+// Styling lives here, not with the caller: tree already knows which
+// row is the cursor and which are directories vs files, so it's the
+// natural place to color them — the same way tabular bakes in its own
+// table.Styles rather than leaving it to whoever calls Build.
+var (
+	cursorStyle = lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
+	dirStyle    = lipgloss.NewStyle().Foreground(theme.TextPrimary).Bold(true)
+	fileStyle   = lipgloss.NewStyle().Foreground(theme.TextMuted)
+	glyphStyle  = lipgloss.NewStyle().Foreground(theme.TextFaint)
 )
 
 // Kind distinguishes a file node from a directory node.
@@ -193,34 +207,22 @@ func (m Model) line(i, width int) string {
 	n, depth := m.rows[i], m.depths[i]
 	mark := "  "
 	if i == m.cursor {
-		mark = "▸ "
+		mark = cursorStyle.Render("▸ ")
 	}
 	icon := "  "
+	name := fileStyle.Render(n.Name)
 	if n.Kind == KindDir {
 		icon = "▾ "
 		if !n.Expanded {
 			icon = "▸ "
 		}
+		name = dirStyle.Render(n.Name)
 	}
-	s := mark + strings.Repeat("  ", depth) + icon + n.Name
+	s := mark + strings.Repeat("  ", depth) + glyphStyle.Render(icon) + name
 	if lipgloss.Width(s) > width {
-		s = ansiTruncate(s, width)
+		// ANSI-aware: s carries real escape codes now that rows are
+		// styled, so a byte/rune cut would corrupt them mid-sequence.
+		s = ansi.Truncate(s, width, "…")
 	}
 	return s
-}
-
-// ansiTruncate cuts s to width columns; tree lines are plain (styling,
-// if any, is the caller's job), so a byte-safe rune cut is enough.
-func ansiTruncate(s string, width int) string {
-	if width < 1 {
-		width = 1
-	}
-	r := []rune(s)
-	if len(r) <= width {
-		return s
-	}
-	if width <= 1 {
-		return "…"
-	}
-	return string(r[:width-1]) + "…"
 }
