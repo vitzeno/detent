@@ -18,7 +18,7 @@ func (m Model) startGoal() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.prompt.Clear()
-	m.notice = ""
+	m.clearNotice()
 	if strings.HasPrefix(goal, "/") {
 		return m.runSlash(goal)
 	}

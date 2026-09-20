@@ -11,13 +11,23 @@ import (
 
 // runSlash dispatches an input-bar command through the registry in
 // slash.go, which carries each command's handler alongside its name.
+//
+// Every command reports an outcome: a handler that says nothing has
+// succeeded, and gets a green flash named after it here rather than
+// each handler having to remember one. Handlers only speak up to
+// explain a failure, or to say something more useful than the name.
 func (m Model) runSlash(input string) (tea.Model, tea.Cmd) {
 	c, ok := lookupSlash(input)
 	if !ok {
-		m.notice = "unknown command " + input + " (try /help)"
+		m.noteErr("unknown command " + input + " (try /help)")
 		return m, nil
 	}
-	return c.run(m, input)
+	next, cmd := c.run(m, input)
+	if nm, isModel := next.(Model); isModel && nm.notice.text == "" {
+		nm.noteOK(c.Name)
+		return nm, cmd
+	}
+	return next, cmd
 }
 
 // acceptSlash completes the highlighted entry into the input bar.
@@ -29,12 +39,12 @@ func (m Model) acceptSlash() (tea.Model, tea.Cmd) {
 // abortRunning cancels the command in flight, if there is one.
 func (m Model) abortRunning(string) (tea.Model, tea.Cmd) {
 	if m.abort == nil {
-		m.notice = "nothing running"
+		m.noteErr("nothing running")
 		return m, nil
 	}
 	m.abort()
 	m.abort = nil
-	m.notice = "abort sent"
+	m.noteOK("abort sent")
 	return m, nil
 }
 
@@ -43,12 +53,12 @@ func (m Model) abortRunning(string) (tea.Model, tea.Cmd) {
 func (m Model) openTreeTool() (tea.Model, tea.Cmd) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		m.notice = "tree: " + err.Error()
+		m.noteErr("tree: " + err.Error())
 		return m, nil
 	}
 	root, truncated, err := tree.Build(cwd)
 	if err != nil {
-		m.notice = "tree: " + err.Error()
+		m.noteErr("tree: " + err.Error())
 		return m, nil
 	}
 	tm := tree.New(root)

@@ -80,7 +80,8 @@ func (m Model) statusLine() string {
 			}
 		}
 	}
-	return status.Bar(m.spinner.View(), phase, m.statusHint(), m.notice, m.waiting)
+	return status.Bar(m.spinner.View(), phase, m.statusHint(),
+		status.Notice{Text: m.notice.text, Bad: m.notice.bad}, m.waiting)
 }
 
 // statusHint mirrors handleKey's owner() so the hint never falls out of

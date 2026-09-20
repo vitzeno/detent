@@ -33,12 +33,20 @@ func TestBadge(t *testing.T) {
 }
 
 func TestBar(t *testing.T) {
-	out := Bar("…", "running…", "[q] quit", "", true)
+	out := Bar("…", "running…", "[q] quit", Notice{}, true)
 	assert.Contains(t, out, "running…")
 	assert.Contains(t, out, "[q] quit")
+	assert.NotContains(t, out, "✓", "no notice, no mark")
 
-	out = Bar("", "idle", "[tab] history", "abort sent", false)
+	out = Bar("", "idle", "[tab] history", Notice{Text: "abort sent"}, false)
 	assert.Contains(t, out, "abort sent")
+
+	// Success and failure must be told apart without reading the words.
+	ok := Bar("", "idle", "[k]", Notice{Text: "done"}, false)
+	bad := Bar("", "idle", "[k]", Notice{Text: "done", Bad: true}, false)
+	assert.Contains(t, ok, "✓ done")
+	assert.Contains(t, bad, "✗ done")
+	assert.NotEqual(t, ok, bad, "the two must render differently, not just read differently")
 }
 
 func TestDurTokens(t *testing.T) {

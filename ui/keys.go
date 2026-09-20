@@ -137,7 +137,7 @@ func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.scrollViewport(msg.String())
 	}
 	cmd := m.prompt.Key(msg)
-	m.notice = ""
+	m.clearNotice()
 	return m, cmd
 }
 
@@ -155,7 +155,7 @@ func (m Model) busyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if strings.HasPrefix(m.prompt.Value(), "/") ||
 		(msg.String() == "/" && m.prompt.Value() == "") {
 		cmd := m.prompt.Key(msg)
-		m.notice = ""
+		m.clearNotice()
 		return m, cmd
 	}
 	return m, nil

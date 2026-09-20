@@ -12,18 +12,18 @@ import (
 // dispatches the restore off the update loop.
 func (m Model) runRollback(cmd string) (tea.Model, tea.Cmd) {
 	if m.waiting {
-		m.notice = "rollback: busy, try again once the current step finishes"
+		m.noteErr("rollback: busy, try again once the current step finishes")
 		return m, nil
 	}
 	fields := strings.Fields(cmd)
 	step, err := strconv.Atoi(fields[len(fields)-1])
 	if len(fields) != 2 || err != nil || step < 1 {
-		m.notice = "usage: /rollback <step> (a positive number, see the dim #N markers in history)"
+		m.noteErr("usage: /rollback <step> (a positive number, see the dim #N markers in history)")
 		return m, nil
 	}
 	target := m.lastGoalBlock()
 	if target == nil {
-		m.notice = "rollback: no goal to roll back"
+		m.noteErr("rollback: no goal to roll back")
 		return m, nil
 	}
 	m.waiting = true
@@ -44,11 +44,11 @@ func (m Model) lastGoalBlock() *goalBlock {
 func (m Model) onRollbackDone(msg rollbackDoneMsg) (tea.Model, tea.Cmd) {
 	m.waiting = false
 	if msg.err != nil {
-		m.notice = "rollback: " + msg.err.Error()
+		m.noteErr("rollback: " + msg.err.Error())
 		return m, nil
 	}
 	if !msg.ok {
-		m.notice = "rollback: no sandbox wired for this session"
+		m.noteErr("rollback: no sandbox wired for this session")
 		return m, nil
 	}
 	// Mirrors the same truncation onto this parallel UI-side list.
@@ -57,7 +57,7 @@ func (m Model) onRollbackDone(msg rollbackDoneMsg) (tea.Model, tea.Cmd) {
 	}
 	// The workspace is a bind mount, not part of the snapshot, so say
 	// plainly that the user's own files were not reverted.
-	m.notice = fmt.Sprintf("undid step %d onward (workspace files unchanged)", msg.step)
+	m.noteOK(fmt.Sprintf("undid step %d onward (workspace files unchanged)", msg.step))
 	m.nav.cursor = len(m.rows()) - 1
 	if m.showWelcome() {
 		// Undoing every step hands the pane back to the welcome

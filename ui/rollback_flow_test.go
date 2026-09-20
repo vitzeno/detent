@@ -16,7 +16,7 @@ func TestUI_Rollback_NoArgsShowsUsage(t *testing.T) {
 	nm, cmd := m.runRollback("/rollback")
 	m = nm.(Model)
 	assert.Nil(t, cmd)
-	assert.Contains(t, m.notice, "usage:")
+	assert.Contains(t, m.notice.text, "usage:")
 	assert.False(t, m.waiting)
 }
 
@@ -25,7 +25,7 @@ func TestUI_Rollback_NonNumericArgShowsUsage(t *testing.T) {
 	nm, cmd := m.runRollback("/rollback two")
 	m = nm.(Model)
 	assert.Nil(t, cmd)
-	assert.Contains(t, m.notice, "usage:")
+	assert.Contains(t, m.notice.text, "usage:")
 }
 
 func TestUI_Rollback_BusyShowsNotice(t *testing.T) {
@@ -33,7 +33,7 @@ func TestUI_Rollback_BusyShowsNotice(t *testing.T) {
 	nm, cmd := m.runRollback("/rollback 1")
 	m = nm.(Model)
 	assert.Nil(t, cmd)
-	assert.Contains(t, m.notice, "busy")
+	assert.Contains(t, m.notice.text, "busy")
 }
 
 func TestUI_Rollback_NoGoalShowsNotice(t *testing.T) {
@@ -41,7 +41,7 @@ func TestUI_Rollback_NoGoalShowsNotice(t *testing.T) {
 	nm, cmd := m.runRollback("/rollback 1")
 	m = nm.(Model)
 	assert.Nil(t, cmd)
-	assert.Contains(t, m.notice, "no goal")
+	assert.Contains(t, m.notice.text, "no goal")
 }
 
 func TestUI_Rollback_DispatchesAndSetsWaiting(t *testing.T) {
@@ -76,7 +76,7 @@ func TestUI_OnRollbackDone_TruncatesSteps(t *testing.T) {
 	assert.False(t, m.waiting)
 	require.Len(t, target.steps, 1, "step 2 and everything after it is undone")
 	assert.Equal(t, "one", target.steps[0].command)
-	assert.Contains(t, m.notice, "undid step 2")
+	assert.Contains(t, m.notice.text, "undid step 2")
 }
 
 func TestUI_OnRollbackDone_UndoingEverythingRestartsWelcome(t *testing.T) {
@@ -98,7 +98,7 @@ func TestUI_OnRollbackDone_ErrorLeavesStepsIntact(t *testing.T) {
 	nm, _ := m.Update(rollbackDoneMsg{target: target, step: 5, err: errors.New("step 5 out of range (1-1)")})
 	m = nm.(Model)
 	assert.Len(t, target.steps, 1, "an error must not truncate anything")
-	assert.Contains(t, m.notice, "step 5 out of range")
+	assert.Contains(t, m.notice.text, "step 5 out of range")
 }
 
 func TestUI_OnRollbackDone_NotOKShowsNoSandboxNotice(t *testing.T) {
@@ -108,5 +108,5 @@ func TestUI_OnRollbackDone_NotOKShowsNoSandboxNotice(t *testing.T) {
 	nm, _ := m.Update(rollbackDoneMsg{target: target, step: 1, ok: false})
 	m = nm.(Model)
 	assert.Len(t, target.steps, 1)
-	assert.Contains(t, m.notice, "no sandbox")
+	assert.Contains(t, m.notice.text, "no sandbox")
 }

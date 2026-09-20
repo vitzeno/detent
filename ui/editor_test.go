@@ -144,7 +144,7 @@ func TestUI_SaveNothingToSaveShowsNotice(t *testing.T) {
 	m = nm.(Model)
 	assert.Nil(t, cmd)
 	assert.NotEqual(t, modeSaveConfirm, m.mode)
-	assert.Equal(t, "nothing to save", m.notice)
+	assert.Equal(t, "nothing to save", m.notice.text)
 }
 
 func TestUI_CancelSaveKeepsBufferAndDoesNotWrite(t *testing.T) {

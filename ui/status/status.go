@@ -127,16 +127,31 @@ func statusWord(s string) string {
 	}
 }
 
+// Notice is the one-shot flash at the end of the bar: what just
+// happened and whether it worked. Bad and a trailing bool argument
+// would read identically at a call site, so it travels as a value.
+type Notice struct {
+	Text string
+	Bad  bool
+}
+
 // Bar renders the bottom status line: spinner plus phase when busy,
-// contextual keys, and a one-shot notice.
-func Bar(spinner, phase, keys, notice string, waiting bool) string {
-	if notice != "" {
-		keys += " · " + notice
+// contextual keys, and a one-shot notice. The notice is styled on its
+// own rather than folded into keys, so success and failure are told
+// apart by colour and a ✓/✗ mark, not by reading the wording.
+func Bar(spinner, phase, keys string, n Notice, waiting bool) string {
+	line := hint.Render(keys)
+	if n.Text != "" {
+		mark, style := "✓", safe
+		if n.Bad {
+			mark, style = "✗", danger
+		}
+		line += hint.Render(" · ") + style.Render(mark+" "+n.Text)
 	}
 	if waiting {
-		return fmt.Sprintf("  %s %s   %s", spinner, muted.Render(phase), hint.Render(keys))
+		return fmt.Sprintf("  %s %s   %s", spinner, muted.Render(phase), line)
 	}
-	return fmt.Sprintf("  %s   %s", muted.Render(phase), hint.Render(keys))
+	return fmt.Sprintf("  %s   %s", muted.Render(phase), line)
 }
 
 // Dur compacts a duration for status lines: 412ms, 3.2s, 2m10s.

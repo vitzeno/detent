@@ -158,7 +158,7 @@ func TestSlashDropdown_NavigateAndEsc(t *testing.T) {
 	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = nm.(Model)
 	require.Empty(t, m.prompt.Value(), "running a command clears the box")
-	require.Equal(t, "nothing running", m.notice, "/abort ran")
+	require.Equal(t, "nothing running", m.notice.text, "/abort ran")
 
 	// Esc closes the dropdown and keeps the text; tab is what completes.
 	m = typeRune(testUIModel(), '/')
@@ -223,7 +223,44 @@ func TestSlashRegistry_EveryCommandRuns(t *testing.T) {
 
 			m := testUIModel()
 			nm, _ := m.runSlash(c.Name)
-			assert.NotContains(t, nm.(Model).notice, "unknown command")
+			got := nm.(Model).notice
+			assert.NotContains(t, got.text, "unknown command")
+			// Every command says how it went, so the status line can
+			// colour it — a silent one would render no flash at all.
+			assert.NotEmpty(t, got.text, "ran without reporting an outcome")
+		})
+	}
+}
+
+// TestSlashOutcome_FlashesGreenOrRed: the status line marks what just
+// happened, so a failed command can't be mistaken for a quiet success.
+func TestSlashOutcome_FlashesGreenOrRed(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		input   string
+		wantBad bool
+		want    string
+	}{
+		{"unknown command", "/nope", true, "unknown command"},
+		{"abort with nothing running", "/abort", true, "nothing running"},
+		{"rollback with no goal", "/rollback 1", true, "no goal"},
+		{"rollback misuse", "/rollback", true, "usage:"},
+		{"help opens", "/help", false, "/help"},
+		{"usage opens", "/usage", false, "/usage"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := testUIModel()
+			nm, _ := m.runSlash(tc.input)
+			got := nm.(Model).notice
+			assert.Contains(t, got.text, tc.want)
+			assert.Equal(t, tc.wantBad, got.bad, "wrong outcome for %q", got.text)
+
+			// And it reaches the screen with the matching mark.
+			mark := "✓"
+			if tc.wantBad {
+				mark = "✗"
+			}
+			assert.Contains(t, plain(nm.(Model).View().Content), mark+" "+got.text)
 		})
 	}
 }

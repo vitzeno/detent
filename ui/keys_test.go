@@ -170,7 +170,7 @@ func TestUI_SlashEntryWhileBusy(t *testing.T) {
 	m = nm.(Model)
 	require.Empty(t, m.prompt.Value(), "running a command clears the box")
 	require.Empty(t, m.blocks, "/abort opens no block")
-	require.Equal(t, "nothing running", m.notice, "the fixture has no command in flight")
+	require.Equal(t, "nothing running", m.notice.text, "the fixture has no command in flight")
 }
 
 func TestUI_OutputNavMovesTableCursor(t *testing.T) {

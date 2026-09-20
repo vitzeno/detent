@@ -49,7 +49,7 @@ type Model struct {
 	// ticks while that pane is the thing on screen.
 	welcomeFrame int
 
-	notice string // one-shot status flash
+	notice noticeState // one-shot status flash
 
 	viewContent string // last rendered viewport content, avoids scroll resets
 
@@ -278,3 +278,16 @@ type perfState struct {
 	uiPrep  time.Duration
 	uiPreps int
 }
+
+// noticeState is the one-shot status flash: what just happened and
+// whether it worked, in one value so the two can't disagree. Set it
+// through noteOK/noteErr, which make the outcome explicit where it's
+// known rather than leaving the status line to guess from the wording.
+type noticeState struct {
+	text string
+	bad  bool
+}
+
+func (m *Model) noteOK(text string)  { m.notice = noticeState{text: text} }
+func (m *Model) noteErr(text string) { m.notice = noticeState{text: text, bad: true} }
+func (m *Model) clearNotice()        { m.notice = noticeState{} }

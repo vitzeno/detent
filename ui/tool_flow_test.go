@@ -29,12 +29,12 @@ func TestUI_SlashCommands(t *testing.T) {
 	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = nm.(Model)
 	require.Empty(t, m.blocks)
-	require.Contains(t, m.notice, "unknown command")
+	require.Contains(t, m.notice.text, "unknown command")
 
 	m.prompt.SetValue("/abort")
 	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = nm.(Model)
-	require.Equal(t, "nothing running", m.notice)
+	require.Equal(t, "nothing running", m.notice.text)
 }
 
 func TestUI_AbortSlashWhileBusy(t *testing.T) {
@@ -47,7 +47,7 @@ func TestUI_AbortSlashWhileBusy(t *testing.T) {
 	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = nm.(Model)
 	require.True(t, aborted)
-	require.Equal(t, "abort sent", m.notice)
+	require.Equal(t, "abort sent", m.notice.text)
 }
 
 func TestUI_TreeTool_OpensAndFocusesOutput(t *testing.T) {

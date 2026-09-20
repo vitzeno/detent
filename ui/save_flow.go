@@ -12,7 +12,7 @@ import (
 func (m Model) startSave() (tea.Model, tea.Cmd) {
 	r := m.focused()
 	if r == nil || r.editor == nil || !r.editor.Dirty() {
-		m.notice = "nothing to save"
+		m.noteErr("nothing to save")
 		return m, nil
 	}
 	m.save.row = r
@@ -41,12 +41,12 @@ func (m Model) cancelSave() (tea.Model, tea.Cmd) {
 // edit exactly as it was, free to retry.
 func (m Model) onSaveDone(msg saveDoneMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.notice = fmt.Sprintf("save failed: %v", msg.err)
+		m.noteErr(fmt.Sprintf("save failed: %v", msg.err))
 		return m, nil
 	}
 	if msg.row != nil && msg.row.editor != nil {
 		msg.row.editor.MarkSaved(msg.content)
 	}
-	m.notice = "saved"
+	m.noteOK("saved")
 	return m, nil
 }
