@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,10 +37,22 @@ func (s *stubProposer) Propose(_ context.Context, messages []propose.Message) (p
 	return p, usage.Usage{}, nil
 }
 
-func okRun(result shell.Result) RunFunc {
-	return func(_ context.Context, _ string, _ func(shell.StreamEvent)) (shell.Result, error) {
+// confirmFunc/runFunc adapt plain functions to Confirmer/Runner for
+// tests, same shape as http.HandlerFunc.
+type confirmFunc func(ConfirmRequest) bool
+
+func (f confirmFunc) Confirm(req ConfirmRequest) bool { return f(req) }
+
+type runFunc func(context.Context, string, StreamSink) (shell.Result, error)
+
+func (f runFunc) Run(ctx context.Context, command string, sink StreamSink) (shell.Result, error) {
+	return f(ctx, command, sink)
+}
+
+func okRun(result shell.Result) Runner {
+	return runFunc(func(_ context.Context, _ string, _ StreamSink) (shell.Result, error) {
 		return result, nil
-	}
+	})
 }
 
 func TestSession_RecordFileSave(t *testing.T) {
@@ -64,6 +77,36 @@ func TestSession_RecordFileSave_BoundsLargeDiffs(t *testing.T) {
 	assert.LessOrEqual(t, len(s.Transcript[0].Content), MaxTranscriptOutputBytes+200)
 }
 
+// TestSession_RecordAbort_ClosesTranscriptAndStats covers the
+// non-blocking driver path (resolver, not RunGoal): an abort during
+// propose still has to close the goal turn and finish Stats.Goal.
+func TestSession_RecordAbort_ClosesTranscriptAndStats(t *testing.T) {
+	s := &Session{Proposer: &stubProposer{}, Stats: usage.New()}
+	res, err := s.BeginGoal(context.Background(), "some goal")
+	require.NoError(t, err)
+
+	s.RecordAbort(res)
+
+	// 3 not 2: BeginGoal's own probe turn lands between the goal and
+	// the abort note.
+	require.Len(t, s.Transcript, 3, "aborted propose must close the goal turn it opened")
+	assert.Equal(t, "some goal", s.Transcript[0].Content)
+	assert.Equal(t, propose.RoleTool, s.Transcript[1].Role, "probe turn")
+	assert.Equal(t, "[goal ended by human: aborted]", s.Transcript[2].Content)
+	assert.False(t, res.Stats.Ended.IsZero(), "RecordAbort must finish the Stats.Goal BeginGoal started")
+	assert.Equal(t, string(EndAborted), res.Stats.End)
+}
+
+// TestSession_RecordAbort_NilResOnlyClosesTranscript covers an abort
+// before BeginGoal returns: no Stats.Goal to finish, but the
+// transcript still needs closing.
+func TestSession_RecordAbort_NilResOnlyClosesTranscript(t *testing.T) {
+	s := &Session{}
+	s.RecordAbort(nil)
+	require.Len(t, s.Transcript, 1)
+	assert.Equal(t, "[goal ended by human: aborted]", s.Transcript[0].Content)
+}
+
 func TestRunGoal_DonePath(t *testing.T) {
 	stub := &stubProposer{script: []propose.Proposal{
 		{Command: "ls", Rationale: "list"},
@@ -72,10 +115,10 @@ func TestRunGoal_DonePath(t *testing.T) {
 	var confirmed []string
 	s := &Session{
 		Proposer: stub,
-		Confirm: func(req ConfirmRequest) bool {
+		Confirm: confirmFunc(func(req ConfirmRequest) bool {
 			confirmed = append(confirmed, req.Command)
 			return true
-		},
+		}),
 		Run: okRun(shell.Result{Stdout: "a\nb\n"}),
 	}
 
@@ -86,9 +129,8 @@ func TestRunGoal_DonePath(t *testing.T) {
 	require.Len(t, res.Commands, 1)
 	assert.Empty(t, confirmed, "ls isn't flagged Dangerous, so it runs without a confirm")
 
-	// 5, not 4: BeginGoal's own probe turn (no Judge configured, so the
-	// fallback dir_listing probe runs) lands between the goal and the
-	// first proposed command.
+	// 5 not 4: BeginGoal's own probe turn lands between the goal and
+	// the first proposed command.
 	require.Len(t, s.Transcript, 5)
 	assert.Equal(t, propose.RoleUser, s.Transcript[0].Role)
 	assert.Equal(t, "what files are here?", s.Transcript[0].Content)
@@ -107,7 +149,7 @@ func TestRunGoal_SecondGoalSeesFirst(t *testing.T) {
 	}}
 	s := &Session{
 		Proposer: stub,
-		Confirm:  func(ConfirmRequest) bool { return true },
+		Confirm:  confirmFunc(func(ConfirmRequest) bool { return true }),
 		Run:      okRun(shell.Result{Stdout: "forty-two\n"}),
 	}
 
@@ -126,10 +168,8 @@ func TestRunGoal_SecondGoalSeesFirst(t *testing.T) {
 	}
 	joined := strings.Join(roles, "\n")
 	assert.Contains(t, joined, "forty-two", "second goal must see first goal's output")
-	// The trailing entry can now be a probe turn (BeginGoal's own, not
-	// model-proposed) rather than literally the user message — what
-	// matters is that the most recent *user* turn is this goal's own
-	// text, not a stale one left over from an earlier, already-done goal.
+	// The trailing entry can be a probe turn now, not the user message —
+	// what matters is the most recent *user* turn is this goal's own text.
 	lastUserIdx := -1
 	for i, m := range secondGoalFirstCall {
 		if m.Role == propose.RoleUser {
@@ -149,18 +189,17 @@ func TestRunGoal_DeclineStopsGoal(t *testing.T) {
 	var confirmed []string
 	s := &Session{
 		Proposer: stub,
-		Confirm: func(req ConfirmRequest) bool {
+		Confirm: confirmFunc(func(req ConfirmRequest) bool {
 			confirmed = append(confirmed, req.Command)
 			return false // decline the one command that ever reaches confirm
-		},
+		}),
 		Run: okRun(shell.Result{}),
 	}
 
 	res, err := s.RunGoal(context.Background(), "clean up")
 	require.NoError(t, err)
 	assert.Equal(t, EndDeclined, res.End)
-	// ls still ran — it's not Dangerous, so it never needed confirm at
-	// all; only the flagged rm -rf reached (and was declined by) Confirm.
+	// ls ran without confirm; only the flagged rm -rf reached Confirm.
 	require.Len(t, res.Commands, 1)
 	assert.Equal(t, []string{"rm -rf /tmp/x"}, confirmed)
 
@@ -176,7 +215,7 @@ func TestRunGoal_BudgetExhausts(t *testing.T) {
 	}}
 	s := &Session{
 		Proposer:   stub,
-		Confirm:    func(ConfirmRequest) bool { return true },
+		Confirm:    confirmFunc(func(ConfirmRequest) bool { return true }),
 		Run:        okRun(shell.Result{}),
 		StepBudget: 2,
 	}
@@ -197,10 +236,10 @@ func TestRunGoal_OnlyDangerousCommandsNeedConfirm(t *testing.T) {
 	var calls []string
 	s := &Session{
 		Proposer: stub,
-		Confirm: func(req ConfirmRequest) bool {
+		Confirm: confirmFunc(func(req ConfirmRequest) bool {
 			calls = append(calls, req.Command)
 			return true
-		},
+		}),
 		Run: okRun(shell.Result{}),
 	}
 	res, err := s.RunGoal(context.Background(), "g")
@@ -210,9 +249,7 @@ func TestRunGoal_OnlyDangerousCommandsNeedConfirm(t *testing.T) {
 }
 
 func TestRunGoal_NoConfirmFuncStillOKForAnAllSafeGoal(t *testing.T) {
-	// Confirm==nil still fails the whole session closed even though this
-	// particular goal never needed it — relying on "it happens not to be
-	// called" isn't a substitute for wiring one at all.
+	// Confirm==nil fails closed even though this goal never needed it.
 	stub := &stubProposer{script: []propose.Proposal{{Command: "echo harmless", Rationale: "safe"}}}
 	s := &Session{Proposer: stub, Confirm: nil, Run: okRun(shell.Result{})}
 	_, err := s.RunGoal(context.Background(), "g")
@@ -234,11 +271,11 @@ func TestRunGoal_DangerFlagReachesConfirm(t *testing.T) {
 	var sawNote string
 	s := &Session{
 		Proposer: stub,
-		Confirm: func(req ConfirmRequest) bool {
+		Confirm: confirmFunc(func(req ConfirmRequest) bool {
 			sawDangerous = req.Dangerous
 			sawNote = req.RiskNote
 			return false // stop after capturing
-		},
+		}),
 		Run: okRun(shell.Result{}),
 	}
 	_, err := s.RunGoal(context.Background(), "g")
@@ -248,7 +285,7 @@ func TestRunGoal_DangerFlagReachesConfirm(t *testing.T) {
 }
 
 func TestRunGoal_EmptyGoalRejected(t *testing.T) {
-	s := &Session{Proposer: &stubProposer{}, Confirm: func(ConfirmRequest) bool { return true }}
+	s := &Session{Proposer: &stubProposer{}, Confirm: confirmFunc(func(ConfirmRequest) bool { return true })}
 	_, err := s.RunGoal(context.Background(), "  ")
 	assert.Error(t, err)
 }
@@ -272,10 +309,10 @@ func TestRunGoal_JevBackstopEscalatesOnly(t *testing.T) {
 	var flagged bool
 	s := &Session{
 		Proposer: stub,
-		Confirm: func(req ConfirmRequest) bool {
+		Confirm: confirmFunc(func(req ConfirmRequest) bool {
 			flagged = req.Dangerous
 			return false
-		},
+		}),
 		Run:   okRun(shell.Result{}),
 		Judge: &fakeJudge{noul: 0.9},
 	}
@@ -296,10 +333,10 @@ func TestRunGoal_JevBackstopEscalatesOnly(t *testing.T) {
 			var got bool
 			s := &Session{
 				Proposer: stub,
-				Confirm: func(req ConfirmRequest) bool {
+				Confirm: confirmFunc(func(req ConfirmRequest) bool {
 					got = req.Dangerous
 					return false
-				},
+				}),
 				Run:   okRun(shell.Result{}),
 				Judge: tc.judge,
 			}
@@ -308,6 +345,20 @@ func TestRunGoal_JevBackstopEscalatesOnly(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestRecordStep_DwellOnlyRecordedWhenPositive(t *testing.T) {
+	s := &Session{}
+	res := &GoalResult{Goal: "g"}
+	res.Stats = usage.New().StartGoal("g")
+
+	declined := s.RecordStep(res, propose.Proposal{Command: "ls"}, PreJudgment{}, usage.Usage{}, 0)
+	require.Len(t, res.Stats.Steps, 1)
+	assert.Zero(t, declined.Dwell, "no confirm shown (dwell<=0) must not call SetDwell")
+
+	confirmed := s.RecordStep(res, propose.Proposal{Command: "rm -rf x"}, PreJudgment{}, usage.Usage{}, 5*time.Millisecond)
+	require.Len(t, res.Stats.Steps, 2)
+	assert.Equal(t, 5*time.Millisecond, confirmed.Dwell)
 }
 
 func TestFlagDanger_Table(t *testing.T) {

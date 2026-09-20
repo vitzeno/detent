@@ -64,17 +64,13 @@ type PostJudgment struct {
 	JudgeUsage usage.Usage
 }
 
-// NewPreJudgment returns a PreJudgment with ScopeRisk defaulted to -1
-// ("unknown" — a real score is always in [0,1]). Both judgePre's
-// fallback and its Jev-answered path start from this same shape, so a
-// future call site can't silently default ScopeRisk to 0.0 — a
-// valid-looking "no risk" score — instead of "unknown".
+// NewPreJudgment defaults ScopeRisk to -1 ("unknown"; a real score is
+// always in [0,1]) rather than a valid-looking 0.0.
 func NewPreJudgment(dangerous bool, note string) PreJudgment {
 	return PreJudgment{ScopeRisk: -1, Dangerous: dangerous, RiskNote: note}
 }
 
-// NewPostJudgment returns a PostJudgment with Attention/GoalAchieved
-// defaulted to -1 ("unknown"), for the same reason as NewPreJudgment.
+// NewPostJudgment defaults Attention/GoalAchieved to -1 ("unknown").
 func NewPostJudgment() PostJudgment {
 	return PostJudgment{Attention: -1, GoalAchieved: -1}
 }
@@ -113,9 +109,8 @@ func postQuestions() classify.Questions {
 			}},
 		},
 		// Structured {what, not_for, examples} criteria, not flat strings:
-		// with nine options this Choice is exactly where option count
-		// makes confidence calibration suffer without it — the same
-		// fix this project already validated for next_action/goal_satisfiable.
+		// with nine options, confidence calibration suffers without it.
+		// See TestRenderKindCriteria_AreStructured.
 		"render_kind": {
 			Instructions: "What shape is this command's output? Pick how a human should read it.",
 			Choice: &classify.ChoiceQuestion{Criteria: map[string]any{

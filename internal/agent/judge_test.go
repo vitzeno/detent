@@ -10,12 +10,12 @@ import (
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/shell"
+	"github.com/vitzeno/detent/internal/usage"
 )
 
-// TestRenderKindCriteria_AreStructured guards against a future edit
-// quietly flattening render_kind's criteria back to plain strings —
-// with nine options it's exactly where that calibration regression
-// this project already hit once (and fixed) would reappear silently.
+// TestRenderKindCriteria_AreStructured guards against render_kind's
+// criteria quietly flattening back to plain strings — a calibration
+// regression this project already hit once with nine options.
 func TestRenderKindCriteria_AreStructured(t *testing.T) {
 	q := postQuestions()["render_kind"]
 	require.NotNil(t, q.Choice)
@@ -40,7 +40,7 @@ func TestRunGoal_UnboundedByDefault(t *testing.T) {
 	script = append(script, propose.Proposal{Done: true, Summary: "done"})
 	s := &Session{
 		Proposer: &stubProposer{script: script},
-		Confirm:  func(ConfirmRequest) bool { return true },
+		Confirm:  confirmFunc(func(ConfirmRequest) bool { return true }),
 		Run:      okRun(shell.Result{Stdout: "hi\n"}),
 	}
 
@@ -58,7 +58,7 @@ func TestRunGoal_ExplicitCapStillEnds(t *testing.T) {
 	}
 	s := &Session{
 		Proposer:   &stubProposer{script: script},
-		Confirm:    func(ConfirmRequest) bool { return true },
+		Confirm:    confirmFunc(func(ConfirmRequest) bool { return true }),
 		Run:        okRun(shell.Result{}),
 		StepBudget: 2,
 	}
@@ -75,7 +75,7 @@ func TestRunGoal_HeuristicPostAttached(t *testing.T) {
 	}}
 	s := &Session{
 		Proposer: stub,
-		Confirm:  func(ConfirmRequest) bool { return true },
+		Confirm:  confirmFunc(func(ConfirmRequest) bool { return true }),
 		Run:      okRun(shell.Result{Stdout: "a\nb\n"}),
 	}
 	res, err := s.RunGoal(context.Background(), "g")
@@ -120,11 +120,11 @@ func TestDriver_FullBatchFlowsThrough(t *testing.T) {
 	var confirmedReq *ConfirmRequest
 	s := &Session{
 		Proposer: stub,
-		Confirm: func(req ConfirmRequest) bool {
+		Confirm: confirmFunc(func(req ConfirmRequest) bool {
 			cp := req
 			confirmedReq = &cp
 			return true
-		},
+		}),
 		Run: okRun(shell.Result{Stdout: "a\n"}),
 		Judge: &batchJudge{
 			preMutability: MutReadOnly, preRisk: 0.1,
@@ -140,7 +140,7 @@ func TestDriver_FullBatchFlowsThrough(t *testing.T) {
 	assert.Equal(t, MutReadOnly, gotPre.Mutability)
 	assert.False(t, gotPre.Dangerous)
 
-	approved := s.Confirm(ConfirmRequest{
+	approved := s.Confirm.Confirm(ConfirmRequest{
 		Goal: "g", Command: p.Command, Rationale: p.Rationale,
 		Dangerous: gotPre.Dangerous, RiskNote: gotPre.RiskNote,
 		Mutability: gotPre.Mutability,
@@ -149,9 +149,10 @@ func TestDriver_FullBatchFlowsThrough(t *testing.T) {
 	require.NotNil(t, confirmedReq)
 	assert.Equal(t, MutReadOnly, confirmedReq.Mutability)
 
-	ec, err := s.Execute(context.Background(), res, nil, p, gotPre, nil)
+	ustep := s.RecordStep(res, p, gotPre, usage.Usage{}, 0)
+	ec, err := s.Execute(context.Background(), res, ustep, p, gotPre, nil)
 	require.NoError(t, err)
-	post := s.JudgeResult(context.Background(), "g", ec.Command, ec.Result)
+	post := s.JudgeResult(context.Background(), "g", ec.Command, ec.Result, ustep)
 	ec.Post = &post
 	require.NotNil(t, ec.Post)
 	assert.True(t, ec.Post.FromJudge)
@@ -164,7 +165,7 @@ func TestDriver_FullBatchFlowsThrough(t *testing.T) {
 func TestDriver_MutabilityEscalates(t *testing.T) {
 	s := &Session{
 		Proposer: &stubProposer{},
-		Confirm:  func(ConfirmRequest) bool { return true },
+		Confirm:  confirmFunc(func(ConfirmRequest) bool { return true }),
 		Judge:    &batchJudge{preMutability: MutIrreversible, preRisk: 0.0},
 	}
 	pre := s.judgePre(context.Background(), "g", "echo hi")

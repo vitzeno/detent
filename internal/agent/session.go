@@ -32,13 +32,12 @@ type ConfirmRequest struct {
 	GoalsDone  int
 }
 
-// ConfirmFunc approves the exact command text. Only shown for a command
-// PreJudgment flags Dangerous (Jev's mutability/scope_risk escalation,
-// or the FlagDanger regex backstop); every other command runs straight
-// through — a nil ConfirmFunc still fails the whole session closed,
-// since something must be wired for the commands that do need it.
-// A nil ConfirmFunc fails closed.
-type ConfirmFunc func(req ConfirmRequest) bool
+// Confirmer approves the exact command text. Only shown for a command
+// PreJudgment flags Dangerous. A nil Confirmer fails the whole session
+// closed — the commands that need it need something wired.
+type Confirmer interface {
+	Confirm(req ConfirmRequest) bool
+}
 
 // ExecutedCommand is one approved command plus its outcome; nil Post means judgment pending.
 type ExecutedCommand struct {
@@ -63,9 +62,8 @@ const (
 )
 
 // GoalResult is what ran for one goal, in order, plus how it ended.
-// Commands holds pointers so a caller (the TUI) can keep a reference to
-// one entry — e.g. to attach Post once judgment lands later — that stays
-// valid across further appends to the slice.
+// Commands holds pointers so a caller can keep a reference to one entry
+// (e.g. to attach Post later) that stays valid across further appends.
 type GoalResult struct {
 	Goal     string
 	Commands []*ExecutedCommand
@@ -75,22 +73,48 @@ type GoalResult struct {
 	Stats *usage.Goal
 }
 
-// RunFunc executes a command, defaulting to shell.Stream.
-type RunFunc func(ctx context.Context, command string, onEvent func(shell.StreamEvent)) (shell.Result, error)
+// StreamSink receives live output as a command runs. Execute tolerates a
+// nil sink (RunGoal's blocking path has no live listener to notify).
+type StreamSink interface {
+	OnEvent(shell.StreamEvent)
+}
+
+// Runner executes a command, defaulting to shellRunner (shell.Stream).
+type Runner interface {
+	Run(ctx context.Context, command string, sink StreamSink) (shell.Result, error)
+}
+
+// shellRunner adapts shell.Stream's plain callback to StreamSink.
+type shellRunner struct{}
+
+func (shellRunner) Run(ctx context.Context, command string, sink StreamSink) (shell.Result, error) {
+	var onEvent func(shell.StreamEvent)
+	if sink != nil {
+		onEvent = sink.OnEvent
+	}
+	return shell.Stream(ctx, command, onEvent)
+}
+
+// streamSinkFunc bridges probe.Run's own plain-callback signature to
+// StreamSink (probes never stream, so this always wraps nil).
+type streamSinkFunc func(shell.StreamEvent)
+
+func (f streamSinkFunc) OnEvent(e shell.StreamEvent) {
+	if f != nil {
+		f(e)
+	}
+}
 
 // Proposer proposes the next step for the currently open goal, plus
-// what the call consumed. Declared here, not in propose, since this is
-// the only place it's consumed — propose ships just the data types
-// (Message, Proposal) plus OpenAIProposer, its one implementation.
+// what the call consumed. Declared here, not in propose, since agent is
+// its only consumer.
 type Proposer interface {
 	Propose(ctx context.Context, messages []propose.Message) (propose.Proposal, usage.Usage, error)
 }
 
 // Judge returns typed judgments; Ask batches one iteration into a
-// single call. Declared here rather than in classify for the same
-// reason as Proposer above; probe.Judge is a separate, identically
-// shaped declaration at probe's own boundary, since probe sits below
-// agent and can't import back up to it.
+// single call. probe.Judge is a separate, identically shaped
+// declaration — probe sits below agent and can't import it back up.
 type Judge interface {
 	Ask(ctx context.Context, state classify.State, questions classify.Questions) (classify.Answers, classify.Usage, error)
 }
@@ -98,8 +122,8 @@ type Judge interface {
 // Session is one running instance with an append-only transcript across goals.
 type Session struct {
 	Proposer Proposer
-	Confirm  ConfirmFunc
-	Run      RunFunc
+	Confirm  Confirmer
+	Run      Runner
 
 	// Judge is a classifier only; nil disables both batches.
 	Judge         Judge
@@ -119,7 +143,7 @@ type Session struct {
 // cap, and no tracking unless asked.
 type Option func(*Session)
 
-func WithRun(run RunFunc) Option {
+func WithRun(run Runner) Option {
 	return func(s *Session) { s.Run = run }
 }
 
@@ -139,8 +163,8 @@ func WithStats(t *usage.Tracker) Option {
 	return func(s *Session) { s.Stats = t }
 }
 
-// New builds a session around a proposer and confirm function.
-func New(proposer Proposer, confirm ConfirmFunc, opts ...Option) *Session {
+// New builds a session around a proposer and confirmer.
+func New(proposer Proposer, confirm Confirmer, opts ...Option) *Session {
 	s := &Session{Proposer: proposer, Confirm: confirm}
 	for _, opt := range opts {
 		opt(s)
@@ -170,22 +194,20 @@ func (s *Session) riskThreshold() float64 {
 	return RiskThresholdDefault
 }
 
-func (s *Session) runFunc() RunFunc {
+func (s *Session) runner() Runner {
 	if s.Run != nil {
 		return s.Run
 	}
-	return shell.Stream
+	return shellRunner{}
 }
 
 func (s *Session) append(m propose.Message) {
 	s.Transcript = append(s.Transcript, m)
 }
 
-// finish closes res as reason and syncs GoalsDone with it, so every
-// terminal path (Record*, RecordAbort, Execute's own failure path)
-// updates both exactly once instead of each hand-rolling the same
-// two-step bookkeeping — see the finding in the review that RunGoal's
-// no-Confirm bypass and Execute's error path used to disagree on it.
+// finish closes res as reason and syncs GoalsDone — every terminal path
+// (Record*, RecordAbort, Execute's failure path) goes through here so
+// both update exactly once.
 func (s *Session) finish(res *GoalResult, reason EndReason, summary string) {
 	res.End = reason
 	res.Stats.Finish(string(reason), summary, reason == EndDeclined)
@@ -209,9 +231,8 @@ func formatToolResult(command string, r shell.Result) string {
 	return b.String()
 }
 
-// boundStr caps s at MaxTranscriptOutputBytes, the same discipline
-// every transcript entry (command output, probe output, a saved
-// file's diff) follows so no single turn can blow the context budget.
+// boundStr caps s at MaxTranscriptOutputBytes so no single transcript
+// entry can blow the context budget.
 func boundStr(s string) string {
 	if len(s) <= MaxTranscriptOutputBytes {
 		return s

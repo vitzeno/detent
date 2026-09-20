@@ -12,11 +12,9 @@ import (
 	"github.com/vitzeno/detent/internal/usage"
 )
 
-// BeginGoal opens a goal; only RunGoal (not this) fails closed without Confirm.
-// It also primes the transcript with whatever fixed, read-only probes
-// Jev thinks are relevant (internal/probe) — never model-proposed, so
-// they run without confirm, and appear to the proposer as one RoleTool
-// message right after the goal, the same as any other command's output.
+// BeginGoal opens a goal; only RunGoal (not this) fails closed without
+// Confirm. It also primes the transcript with fixed, read-only probes
+// (internal/probe) — never model-proposed, so they run without confirm.
 func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, error) {
 	if strings.TrimSpace(goal) == "" {
 		return nil, fmt.Errorf("agent: empty goal")
@@ -25,12 +23,16 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 		return nil, fmt.Errorf("agent: no Proposer wired")
 	}
 	s.append(propose.Message{Role: propose.RoleUser, Content: goal})
-	if out := probe.Run(ctx, s.runFunc(), probe.Select(ctx, s.Judge, goal)); out != "" {
+	// probe.Run predates StreamSink and still takes a plain callback.
+	runner := s.runner()
+	probeRun := func(ctx context.Context, command string, onEvent func(shell.StreamEvent)) (shell.Result, error) {
+		return runner.Run(ctx, command, streamSinkFunc(onEvent))
+	}
+	if out := probe.Run(ctx, probeRun, probe.Select(ctx, s.Judge, goal)); out != "" {
 		s.append(propose.Message{Role: propose.RoleTool, Content: out})
 	}
-	// Abort during probe collection must behave like abort during
-	// propose or exec: the caller (ui.onBeginGoal) closes the goal as
-	// aborted rather than silently continuing into the first Propose.
+	// Abort during probe collection must close the goal, not fall
+	// through into the first Propose.
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -62,12 +64,8 @@ func (s *Session) RecordDone(res *GoalResult, p propose.Proposal) {
 	s.finish(res, EndDone, p.Summary)
 }
 
-// RecordFileSave notes that the human — not a proposed command — wrote
-// path directly through the editor, so a later goal in this session
-// sees what changed without needing to re-read the file itself. diff
-// is the unified diff of what changed (fileio.Diff), not goal-scoped:
-// this happens outside RunGoal/BeginGoal entirely, so there's no
-// GoalResult to attach it to the way command output attaches to one.
+// RecordFileSave notes a direct editor write (not a proposed command).
+// Not goal-scoped — this happens outside RunGoal/BeginGoal entirely.
 func (s *Session) RecordFileSave(path, diff string) {
 	s.append(propose.Message{Role: propose.RoleTool, Content: fmt.Sprintf(
 		"The human edited `%s` directly in the editor and saved this change:\n%s", path, boundStr(diff))})
@@ -93,10 +91,8 @@ func (s *Session) RecordProposerError(res *GoalResult, err error) {
 }
 
 // RecordAbort notes the human aborted (Esc or /abort). res is nil when
-// the abort landed before BeginGoal produced one — still mid probe
-// collection, so no Stats.Goal was ever started — in which case only
-// the transcript needs closing, so a later goal doesn't see this one's
-// request left dangling with no resolution.
+// the abort landed before BeginGoal produced one — only the transcript
+// needs closing then.
 func (s *Session) RecordAbort(res *GoalResult) {
 	s.append(propose.Message{Role: propose.RoleUser, Content: "[goal ended by human: aborted]"})
 	if res == nil {
@@ -105,12 +101,11 @@ func (s *Session) RecordAbort(res *GoalResult) {
 	s.finish(res, EndAborted, "")
 }
 
-// Execute runs an approved proposal against its usage step: links the
-// step, times the run, and records the outcome. Post stays nil until
-// the caller attaches JudgeResult.
-func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Step, p propose.Proposal, pre PreJudgment, onEvent func(shell.StreamEvent)) (*ExecutedCommand, error) {
+// Execute runs an approved proposal, times it, and records the outcome.
+// Post stays nil until the caller attaches JudgeResult. sink may be nil.
+func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Step, p propose.Proposal, pre PreJudgment, sink StreamSink) (*ExecutedCommand, error) {
 	t0 := time.Now()
-	outcome, err := s.runFunc()(ctx, p.Command, onEvent)
+	outcome, err := s.runner().Run(ctx, p.Command, sink)
 	elapsed := time.Since(t0)
 	if err != nil {
 		s.append(propose.Message{Role: propose.RoleAssistant,
@@ -135,9 +130,10 @@ func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Ste
 	return ec, nil
 }
 
-// JudgeResult takes values not a slice pointer (appends may move it); judgments never enter the transcript.
-// Without a Judge or on error it returns the heuristic fallback.
-func (s *Session) JudgeResult(ctx context.Context, goal, command string, result shell.Result) PostJudgment {
+// JudgeResult judges; judgments never enter the transcript. Without a
+// Judge or on error it returns the heuristic fallback. step is updated
+// directly (nil-safe) — the caller never touches usage.Step itself.
+func (s *Session) JudgeResult(ctx context.Context, goal, command string, result shell.Result, step *usage.Step) PostJudgment {
 	var out string
 	if result.Stdout != "" {
 		out = result.Stdout
@@ -151,11 +147,26 @@ func (s *Session) JudgeResult(ctx context.Context, goal, command string, result 
 	if len(out) > MaxTranscriptOutputBytes {
 		out = out[:MaxTranscriptOutputBytes] + "\n…[truncated]"
 	}
-	return s.judgePost(ctx, goal, command, resultView{
+	post := s.judgePost(ctx, goal, command, resultView{
 		ExitCode: result.ExitCode,
 		Output:   out,
 		Lines:    countLines(result.Stdout) + countLines(result.Stderr),
 	})
+	step.SetJudgePost(post.JudgeUsage, post.Attention, post.GoalAchieved)
+	return post
+}
+
+// RecordStep opens usage bookkeeping for a proposed command — one place
+// for the sequence both RunGoal and internal/resolver need. dwell > 0
+// only when a confirm was actually shown.
+func (s *Session) RecordStep(res *GoalResult, p propose.Proposal, pre PreJudgment, proposeUsage usage.Usage, dwell time.Duration) *usage.Step {
+	ustep := res.Stats.AddStep(p.Command)
+	ustep.SetPropose(proposeUsage)
+	ustep.SetJudgePre(pre.JudgeUsage)
+	if dwell > 0 {
+		ustep.SetDwell(dwell)
+	}
+	return ustep
 }
 
 // RunGoal works one goal to completion; unbounded unless StepBudget is set.
@@ -201,18 +212,12 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 			return *res, nil
 		}
 
-		ustep := res.Stats.AddStep(proposal.Command)
-		ustep.SetPropose(used)
-		ustep.SetJudgePre(pre.JudgeUsage)
-
-		// Confirm is only shown for a command Dangerous flags — Jev's
-		// mutability/scope_risk escalation or the FlagDanger regex
-		// backstop (risk.go). Everything else runs straight through: no
-		// dwell to measure, nothing to record beyond the run itself.
+		// Confirm is only shown for a command Dangerous flags.
 		approved := true
+		var dwell time.Duration
 		if pre.Dangerous {
 			t0 := time.Now()
-			approved = s.Confirm(ConfirmRequest{
+			approved = s.Confirm.Confirm(ConfirmRequest{
 				Goal:       goal,
 				Command:    proposal.Command,
 				Rationale:  proposal.Rationale,
@@ -224,8 +229,9 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 				History:    append([]*ExecutedCommand(nil), res.Commands...),
 				GoalsDone:  s.GoalsDone,
 			})
-			ustep.SetDwell(time.Since(t0))
+			dwell = time.Since(t0)
 		}
+		ustep := s.RecordStep(res, proposal, pre, used, dwell)
 		if !approved {
 			s.RecordDecline(res, proposal.Command)
 			return *res, nil
@@ -235,8 +241,7 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 		if err != nil {
 			return *res, err
 		}
-		post := s.JudgeResult(ctx, goal, ec.Command, ec.Result)
-		ec.Usage.SetJudgePost(post.JudgeUsage, post.Attention, post.GoalAchieved)
+		post := s.JudgeResult(ctx, goal, ec.Command, ec.Result, ustep)
 		ec.Post = &post
 	}
 }
