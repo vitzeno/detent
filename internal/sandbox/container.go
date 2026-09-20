@@ -20,6 +20,7 @@ import (
 	containerd "github.com/containerd/containerd"
 	"github.com/containerd/containerd/cio"
 	"github.com/containerd/containerd/errdefs"
+	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/oci"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 
@@ -65,6 +66,7 @@ type Container struct {
 	runtime    string
 
 	client    *containerd.Client
+	lease     *leases.Lease // roots this session's checkpoints, see snapshot.go
 	img       containerd.Image
 	container containerd.Container
 	workspace string // host directory bind-mounted in; always os.Getwd()
@@ -106,13 +108,21 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 	}
 	c.client = client
 
+	// Checkpoints need a root of their own, or the GC reclaims them as
+	// soon as a rollback drops them out of the active branch. Close
+	// releases this, which is also what cleans them up.
+	l, err := client.LeasesService().Create(ctx, leases.WithID(containerID(sessionID)+"-checkpoints"))
+	if err != nil {
+		return fmt.Errorf("sandbox: create lease: %w", err)
+	}
+	c.lease = &l
+
 	img, err := resolveImage(ctx, client, c.image)
 	if err != nil {
 		return err
 	}
 	c.img = img
 
-	id := "detent-" + sessionID
 	specOpts := []oci.SpecOpts{
 		// The daemon (and every container it runs) is always Linux,
 		// regardless of the client's own OS; without this the spec
@@ -130,7 +140,7 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 	}
 	containerOpts := []containerd.NewContainerOpts{
 		containerd.WithSnapshotter(defaultSnapshotter),
-		containerd.WithNewSnapshot(id+"-snap", img),
+		containerd.WithNewSnapshot(containerID(sessionID)+"-snap", img),
 		containerd.WithNewSpec(specOpts...),
 	}
 	runtimeName := c.runtime
@@ -139,7 +149,7 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 	}
 	containerOpts = append(containerOpts, containerd.WithRuntime(runtimeName, nil))
 
-	cont, err := client.NewContainer(ctx, id, containerOpts...)
+	cont, err := client.NewContainer(ctx, containerID(sessionID), containerOpts...)
 	if err != nil {
 		return fmt.Errorf("sandbox: create container: %w", err)
 	}
@@ -249,6 +259,14 @@ func (c *Container) Close(ctx context.Context) error {
 			errs = append(errs, err)
 		}
 	}
+	// Dropping the lease is what lets the GC reclaim this session's
+	// checkpoints; without it they would outlive the session forever.
+	if c.lease != nil && c.client != nil {
+		if err := c.client.LeasesService().Delete(ctx, *c.lease); err != nil {
+			errs = append(errs, err)
+		}
+		c.lease = nil
+	}
 	if c.client != nil {
 		if err := c.client.Close(); err != nil {
 			errs = append(errs, err)
@@ -266,6 +284,10 @@ func (c *Container) Close(ctx context.Context) error {
 	}
 	return errors.Join(errs...)
 }
+
+// containerID correlates the containerd container with the
+// agent.Session that owns it, rather than inventing a second identity.
+func containerID(sessionID string) string { return "detent-" + sessionID }
 
 // resolveImage returns the local image if present, pulling it
 // (unpacked) otherwise.

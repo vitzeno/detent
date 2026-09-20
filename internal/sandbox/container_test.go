@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"github.com/containerd/containerd/leases"
 	"os"
 	"path/filepath"
 	"strings"
@@ -197,4 +198,53 @@ func TestContainer_RollbackTargetsTheRightCheckpoint(t *testing.T) {
 	res, err = c.Run(ctx, "cat /steps.txt", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "one\ntwo\n", res.Stdout, "rolling back to checkpoint 2 keeps steps one and two")
+}
+
+// TestContainer_CheckpointsSurviveGarbageCollection pins the bug that
+// made rollback work once and then stop. containerd keeps a snapshot
+// only while something roots it — a container's current SnapshotKey,
+// or a lease. Checkpoints used to be rooted by nothing, surviving
+// incidentally as ancestors of whatever the container pointed at, so
+// rolling back to an earlier one orphaned every checkpoint after it
+// and the next GC pass swept them.
+func TestContainer_CheckpointsSurviveGarbageCollection(t *testing.T) {
+	c := newTestContainer(t)
+	ctx := context.Background()
+
+	var checkpoints []string
+	for _, step := range []string{"one", "two", "three"} {
+		_, err := c.Run(ctx, "echo "+step+" >> /steps.txt", nil)
+		require.NoError(t, err)
+		id, err := c.Snapshot(ctx)
+		require.NoError(t, err)
+		checkpoints = append(checkpoints, id)
+	}
+
+	// Rolling back to the first orphans the two after it.
+	require.NoError(t, c.Rollback(ctx, checkpoints[0]))
+	forceGC(t, c)
+
+	info, err := c.container.Info(ctx)
+	require.NoError(t, err)
+	sn := c.client.SnapshotService(info.Snapshotter)
+	for i, key := range checkpoints {
+		_, err := sn.Stat(ctx, key)
+		assert.NoError(t, err, "checkpoint %d must outlive the branch it was on", i+1)
+	}
+
+	// Which is the point: a later checkpoint is still reachable.
+	require.NoError(t, c.Rollback(ctx, checkpoints[1]))
+	res, err := c.Run(ctx, "cat /steps.txt", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "one\ntwo\n", res.Stdout)
+}
+
+// forceGC runs a containerd garbage collection pass: deleting a lease
+// synchronously sweeps everything left unreferenced.
+func forceGC(t *testing.T, c *Container) {
+	t.Helper()
+	ctx := context.Background()
+	l, err := c.client.LeasesService().Create(ctx, leases.WithRandomID())
+	require.NoError(t, err)
+	require.NoError(t, c.client.LeasesService().Delete(ctx, l, leases.SynchronousDelete))
 }
