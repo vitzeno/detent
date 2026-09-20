@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,27 +13,20 @@ func typeRune(m Model, r rune) Model {
 	return nm.(Model)
 }
 
-func testUIModel() Model {
-	m := New(context.Background(), testSession(), "test-model", "")
-	m.width, m.height = 120, 40
-	m.sizeViewport()
-	return m
-}
-
 func TestSlashDropdown_OpensFiltersAccepts(t *testing.T) {
 	m := testUIModel()
 	m = typeRune(m, '/')
-	require.Len(t, m.slash, 5, "bare / lists every command")
+	require.Len(t, m.slash.matches, 5, "bare / lists every command")
 
 	m = typeRune(m, 'q')
-	require.Len(t, m.slash, 1)
-	require.Equal(t, "/quit", m.slash[0].Name)
+	require.Len(t, m.slash.matches, 1)
+	require.Equal(t, "/quit", m.slash.matches[0].Name)
 
 	// Tab completes into the input bar without running anything.
 	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
 	m = nm.(Model)
 	require.Equal(t, "/quit ", m.input.Value())
-	require.Empty(t, m.slash, "dropdown closes after accept")
+	require.Empty(t, m.slash.matches, "dropdown closes after accept")
 	require.Empty(t, m.blocks)
 
 	// Enter on the exact command runs it.
@@ -47,15 +39,15 @@ func TestSlashDropdown_OpensFiltersAccepts(t *testing.T) {
 func TestSlashDropdown_NavigateAndEsc(t *testing.T) {
 	m := testUIModel()
 	m = typeRune(m, '/')
-	require.Len(t, m.slash, 5)
+	require.Len(t, m.slash.matches, 5)
 
 	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
 	m = nm.(Model)
-	require.Equal(t, 1, m.slashCursor)
+	require.Equal(t, 1, m.slash.cursor)
 
 	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyUp})
 	m = nm.(Model)
-	require.Equal(t, 0, m.slashCursor)
+	require.Equal(t, 0, m.slash.cursor)
 
 	// Down on the completed entry accepts it instead of submitting.
 	m = typeRune(testUIModel(), '/')
@@ -68,7 +60,7 @@ func TestSlashDropdown_NavigateAndEsc(t *testing.T) {
 	// Esc closes the dropdown and keeps the text.
 	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
 	m = nm.(Model)
-	require.Empty(t, m.slash)
+	require.Empty(t, m.slash.matches)
 	require.Equal(t, "/abort ", m.input.Value())
 }
 

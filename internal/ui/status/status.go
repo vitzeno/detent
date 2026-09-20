@@ -1,7 +1,10 @@
 // Package status renders run status: history-row badges and the bottom
-// status bar. It takes plain data (never step or session types) and
-// returns fully styled strings, so Jev's verdicts become color in one
-// place. Callers map kinds and judgments onto Row/Bar inputs.
+// status bar. Its inputs (Row, Bar's plain arguments) are primitives,
+// never agent's own structs (ExecutedCommand, PostJudgment) — a
+// caller maps those onto Row/Bar itself — but Badge and KindLabel do
+// switch directly on agent's exported Status*/Kind* string
+// constants, so this package tracks that classification vocabulary
+// even though it stays decoupled from agent's types.
 package status
 
 import (
@@ -10,7 +13,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vitzeno/detent/internal/agentloop"
+	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/ui/theme"
 )
 
@@ -35,7 +38,7 @@ type Row struct {
 	LiveLines int
 	Dropped   int
 	Judged    bool
-	Status    string // agentloop Status* value, or ""
+	Status    string // agent Status* value, or ""
 	Attention float64
 }
 
@@ -64,11 +67,11 @@ func Badge(s Row, spinner string) (icon, detail string) {
 		return caution.Render("⚠"), detail + fmt.Sprintf(" · attention %.2f", s.Attention)
 	}
 	switch s.Status {
-	case agentloop.StatusClean:
+	case agent.StatusClean:
 		return safe.Render("✓"), detail
-	case agentloop.StatusWarnings:
+	case agent.StatusWarnings:
 		return caution.Render("⚠"), detail
-	case agentloop.StatusFailed:
+	case agent.StatusFailed:
 		return danger.Render("✗"), detail
 	default:
 		return muted.Render("○"), detail
@@ -79,19 +82,19 @@ func Badge(s Row, spinner string) (icon, detail string) {
 // display-label half of RenderKind, alongside Badge's Status half.
 func KindLabel(k string) string {
 	switch k {
-	case agentloop.KindTable:
+	case agent.KindTable:
 		return "table"
-	case agentloop.KindError:
+	case agent.KindError:
 		return "errors"
-	case agentloop.KindDiff:
+	case agent.KindDiff:
 		return "diff"
-	case agentloop.KindJSON:
+	case agent.KindJSON:
 		return "json"
-	case agentloop.KindContent:
+	case agent.KindContent:
 		return "file"
-	case agentloop.KindFiles:
+	case agent.KindFiles:
 		return "files"
-	case agentloop.KindLog:
+	case agent.KindLog:
 		return "log"
 	default:
 		return "output"
@@ -100,13 +103,13 @@ func KindLabel(k string) string {
 
 func statusWord(s string) string {
 	switch s {
-	case agentloop.StatusClean:
+	case agent.StatusClean:
 		return "clean"
-	case agentloop.StatusWarnings:
+	case agent.StatusWarnings:
 		return "warnings"
-	case agentloop.StatusFailed:
+	case agent.StatusFailed:
 		return "failed"
-	case agentloop.StatusEmpty:
+	case agent.StatusEmpty:
 		return "no output"
 	default:
 		return "done"

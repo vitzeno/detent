@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/vitzeno/detent/internal/agentloop"
+	"github.com/vitzeno/detent/internal/agent"
 )
 
 func TestWrapPlain(t *testing.T) {
@@ -30,7 +30,7 @@ func TestWrapPlain(t *testing.T) {
 
 func TestHistoryLines_GoalWraps(t *testing.T) {
 	m := testUIModel()
-	m.histColW = 40 // narrow enough to force a wrap
+	m.layout.histColW = 40 // narrow enough to force a wrap
 	m.blocks = []*goalBlock{{goal: "this goal is long enough that it must wrap across more than one physical line"}}
 
 	lines := m.historyLines()
@@ -51,9 +51,9 @@ func TestHistoryLines_DividerBetweenBlocksOnly(t *testing.T) {
 
 func TestGoalBanner_SummaryWraps(t *testing.T) {
 	m := testUIModel()
-	m.histColW = 40
+	m.layout.histColW = 40
 	b := &goalBlock{
-		ended: true, end: agentloop.EndDone,
+		ended: true, end: agent.EndDone,
 		summary: "a summary sentence long enough that it needs to wrap across two or more lines",
 	}
 	lines := m.goalBanner(b)
@@ -64,7 +64,7 @@ func TestGoalBanner_SummaryWraps(t *testing.T) {
 
 func TestStepLines_CommandStaysTruncatedNotWrapped(t *testing.T) {
 	m := testUIModel()
-	m.histColW = 40
+	m.layout.histColW = 40
 	row := &stepRow{command: strings.Repeat("verylongpathwithnospaces/", 5)}
 	lines := m.stepLines(row)
 	assert.Len(t, lines, 1, "a command with no spaces must truncate to one line, not fragment across several")

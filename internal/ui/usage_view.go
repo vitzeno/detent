@@ -13,8 +13,8 @@ import (
 // per-goal rows, and the selected goal's per-step spans — the same
 // content the old full-screen overlay showed, now living in the output
 // pane like any other focusable entry. Cursor/expand state lives on
-// the row (r.usageCursor/usageExpand) rather than the Model, so it's
-// per-invocation the same way a table row's own cursor is.
+// the row (r.tool.usageCursor/usageExpand) rather than the Model, so
+// it's per-invocation the same way a table row's own cursor is.
 func (m Model) usageLines(r *stepRow) []string {
 	goals := m.sess.Tracker().Goals()
 	snap := m.sess.Tracker().Snapshot()
@@ -24,9 +24,9 @@ func (m Model) usageLines(r *stepRow) []string {
 		snap.Goals, snap.Commands, snap.Declined,
 		status.Dur(snap.MachineTime()), status.Dur(snap.Dwell),
 		status.Tokens(snap.ProposerTokens), status.Tokens(snap.JudgeTokens)))
-	if m.uiPreps > 0 {
+	if m.perf.uiPreps > 0 {
 		lines = append(lines, fmt.Sprintf("ui prep avg %s over %d refreshes",
-			status.Dur(m.uiPrep/time.Duration(m.uiPreps)), m.uiPreps))
+			status.Dur(m.perf.uiPrep/time.Duration(m.perf.uiPreps)), m.perf.uiPreps))
 	}
 	lines = append(lines, "")
 
@@ -38,7 +38,7 @@ func (m Model) usageLines(r *stepRow) []string {
 	}
 	for i, g := range shown {
 		mark := "  "
-		if i == r.usageCursor {
+		if i == r.tool.usageCursor {
 			mark = styleRowCursor.Render("▸ ")
 		}
 		ptok, jtok := 0, 0
@@ -53,7 +53,7 @@ func (m Model) usageLines(r *stepRow) []string {
 		lines = append(lines, fmt.Sprintf("%s%d. %s (%s) · %d steps · %s · %s tok",
 			mark, i+1, truncateWidth(g.Text, 40), end, len(g.Steps),
 			status.Dur(g.MachineTime()), status.Tokens(ptok+jtok)))
-		if i == r.usageExpand {
+		if i == r.tool.usageExpand {
 			lines = append(lines, usageSteps(g)...)
 		}
 	}

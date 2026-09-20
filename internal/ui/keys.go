@@ -32,10 +32,10 @@ func (m Model) owner() keyOwner {
 	if m.mode == modeConfirm {
 		return ownerConfirm
 	}
-	if m.focus == focusOutput {
+	if m.nav.focus == focusOutput {
 		return ownerOutput
 	}
-	if m.focus == focusHistory || !m.input.Focused() {
+	if m.nav.focus == focusHistory || !m.input.Focused() {
 		return ownerHistory
 	}
 	if m.waiting {
@@ -52,7 +52,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.mode == modeSaveConfirm {
 		return m.saveConfirmKey(msg)
 	}
-	if m.editing {
+	if m.save.editing {
 		return m.editorKey(msg)
 	}
 	switch msg.String() {
@@ -81,7 +81,7 @@ func (m Model) onTab() (tea.Model, tea.Cmd) {
 	if m.mode == modeConfirm {
 		return m, nil
 	}
-	if m.focus == focusInput && m.mode == modeInput && m.input.Focused() && len(m.slash) > 0 {
+	if m.nav.focus == focusInput && m.mode == modeInput && m.input.Focused() && len(m.slash.matches) > 0 {
 		return m.acceptSlash()
 	}
 	return m.toggleFocus()
@@ -89,7 +89,7 @@ func (m Model) onTab() (tea.Model, tea.Cmd) {
 
 func (m Model) confirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "y", "Y":
+	case "y", "Y", "enter":
 		return m.approve()
 	case "n", "N":
 		return m.decline()
@@ -99,7 +99,7 @@ func (m Model) confirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) saveConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "y", "Y":
+	case "y", "Y", "enter":
 		return m.confirmSave()
 	case "n", "N", "esc":
 		return m.cancelSave()
@@ -114,13 +114,13 @@ func (m Model) saveConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) editorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	r := m.focused()
 	if r == nil || r.editor == nil {
-		m.editing = false
+		m.save.editing = false
 		return m, nil
 	}
 	switch msg.String() {
 	case "esc":
 		r.editor.Blur()
-		m.editing = false
+		m.save.editing = false
 		return m, nil
 	case "ctrl+s":
 		return m.startSave()
@@ -182,18 +182,18 @@ func (m Model) busyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // slashKey drives the open dropdown (arrows/enter/esc); tab is handled
 // in onTab. Reports handled=false when no dropdown is open.
 func (m Model) slashKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
-	if len(m.slash) == 0 {
+	if len(m.slash.matches) == 0 {
 		return m, nil, false
 	}
 	switch msg.String() {
 	case "up":
-		if m.slashCursor > 0 {
-			m.slashCursor--
+		if m.slash.cursor > 0 {
+			m.slash.cursor--
 		}
 		return m, nil, true
 	case "down":
-		if m.slashCursor < len(m.slash)-1 {
-			m.slashCursor++
+		if m.slash.cursor < len(m.slash.matches)-1 {
+			m.slash.cursor++
 		}
 		return m, nil, true
 	case "enter":
@@ -204,7 +204,7 @@ func (m Model) slashKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		next, cmd := m.startGoal()
 		return next, cmd, true
 	case "esc":
-		m.slash = nil
+		m.slash.matches = nil
 		m.sizeViewport()
 		return m, nil, true
 	}
@@ -227,21 +227,21 @@ func (m Model) outputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", "v", " ":
 		if r := m.focused(); r != nil {
 			if r.editor != nil {
-				m.editing = true
+				m.save.editing = true
 				return m, r.editor.Focus()
 			}
 			switch r.toolKind {
 			case "tree":
 				return m.openTreeSelection(r)
 			case "usage":
-				if r.usageExpand == r.usageCursor {
-					r.usageExpand = -1
+				if r.tool.usageExpand == r.tool.usageCursor {
+					r.tool.usageExpand = -1
 				} else {
-					r.usageExpand = r.usageCursor
+					r.tool.usageExpand = r.tool.usageCursor
 				}
 				return m, nil
 			}
-			r.expanded = !r.expanded
+			r.cmd.expanded = !r.cmd.expanded
 			m.refreshViewport()
 		}
 		return m, nil
@@ -262,14 +262,14 @@ func (m Model) historyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "pgup", "pgdown":
 		return m.scrollViewport(msg.String())
 	case "enter":
-		if r := m.focused(); r != nil && !r.running {
-			r.expanded = !r.expanded
+		if r := m.focused(); r != nil && !r.cmd.running {
+			r.cmd.expanded = !r.cmd.expanded
 			m.refreshViewport()
 		}
 		return m, nil
 	case "v", " ":
 		if r := m.focused(); r != nil {
-			r.expanded = !r.expanded
+			r.cmd.expanded = !r.cmd.expanded
 			m.refreshViewport()
 		}
 		return m, nil
@@ -284,30 +284,30 @@ func (m Model) historyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // outputNav moves inside the detail component: the table cursor for
 // tabular rows, viewport lines otherwise.
 func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
-	if r := m.focused(); r != nil && !r.running {
+	if r := m.focused(); r != nil && !r.cmd.running {
 		if src, ok := r.tableText(); ok {
 			if _, rows, ok := tabular.Parse(src, m.output.Width); ok && len(rows) > 0 {
-				r.tableCursor = min(max(r.tableCursor+d, 0), len(rows)-1)
+				r.cmd.tableCursor = min(max(r.cmd.tableCursor+d, 0), len(rows)-1)
 				return m, nil
 			}
 		}
 		switch r.toolKind {
 		case "tree":
-			if r.tree != nil {
+			if r.tool.tree != nil {
 				if d < 0 {
-					r.tree.Up()
+					r.tool.tree.Up()
 				} else {
-					r.tree.Down()
+					r.tool.tree.Down()
 				}
 			}
 			return m, nil
 		case "usage":
 			n := len(m.sess.Tracker().Goals())
-			if d < 0 && r.usageCursor > 0 {
-				r.usageCursor--
+			if d < 0 && r.tool.usageCursor > 0 {
+				r.tool.usageCursor--
 			}
-			if d > 0 && r.usageCursor < n-1 {
-				r.usageCursor++
+			if d > 0 && r.tool.usageCursor < n-1 {
+				r.tool.usageCursor++
 			}
 			return m, nil
 		}
@@ -321,9 +321,9 @@ func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) navUp() (tea.Model, tea.Cmd) {
-	if m.cursor > 0 {
-		m.cursor--
-		m.follow = false
+	if m.nav.cursor > 0 {
+		m.nav.cursor--
+		m.nav.follow = false
 	}
 	m.refreshViewport()
 	return m, nil
@@ -331,10 +331,10 @@ func (m Model) navUp() (tea.Model, tea.Cmd) {
 
 func (m Model) navDown() (tea.Model, tea.Cmd) {
 	rows := m.rows()
-	if m.cursor < len(rows)-1 {
-		m.cursor++
-		if m.cursor == len(rows)-1 {
-			m.follow = true
+	if m.nav.cursor < len(rows)-1 {
+		m.nav.cursor++
+		if m.nav.cursor == len(rows)-1 {
+			m.nav.follow = true
 		}
 	}
 	m.refreshViewport()
@@ -353,14 +353,14 @@ func (m Model) scrollViewport(key string) (tea.Model, tea.Cmd) {
 // toggleFocus cycles input → history → output → input. Arrows act in
 // whichever pane is focused.
 func (m Model) toggleFocus() (tea.Model, tea.Cmd) {
-	switch m.focus {
+	switch m.nav.focus {
 	case focusInput:
-		m.focus = focusHistory
+		m.nav.focus = focusHistory
 		m.input.Blur()
 	case focusHistory:
-		m.focus = focusOutput
+		m.nav.focus = focusOutput
 	default:
-		m.focus = focusInput
+		m.nav.focus = focusInput
 		m.input.Focus()
 	}
 	return m, nil
@@ -372,8 +372,8 @@ func (m Model) onEscape() (tea.Model, tea.Cmd) {
 	}
 	// Idle esc in the output pane steps back to history; a running
 	// command still aborts.
-	if m.focus == focusOutput && m.abort == nil {
-		m.focus = focusHistory
+	if m.nav.focus == focusOutput && m.abort == nil {
+		m.nav.focus = focusHistory
 		return m, nil
 	}
 	if m.abort != nil {

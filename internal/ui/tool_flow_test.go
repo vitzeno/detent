@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,45 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Tests for tool_flow.go: slash-command dispatch (/quit, /abort, /tree,
+// /usage, /help) and the tool blocks they open.
+
+func TestUI_SlashCommands(t *testing.T) {
+	m := New(context.Background(), testSession(), "test-model", "")
+	m.layout.width, m.layout.height = 120, 40
+	m.sizeViewport()
+
+	m.input.SetValue("/quit")
+	nm, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	require.NotNil(t, cmd, "/quit must return the quit command")
+	require.Empty(t, m.blocks, "/quit must not open a goal")
+
+	m.input.SetValue("/bogus")
+	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	require.Empty(t, m.blocks)
+	require.Contains(t, m.notice, "unknown command")
+
+	m.input.SetValue("/abort")
+	nm, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	require.Equal(t, "nothing running", m.notice)
+}
+
+func TestUI_AbortSlashWhileBusy(t *testing.T) {
+	m := busyUIModel()
+	aborted := false
+	m.abort = func() { aborted = true }
+	m.input.SetValue("/abort")
+	m.updateSlash()
+
+	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	require.True(t, aborted)
+	require.Equal(t, "abort sent", m.notice)
+}
 
 func TestUI_TreeTool_OpensAndFocusesOutput(t *testing.T) {
 	dir := t.TempDir()
@@ -19,7 +59,7 @@ func TestUI_TreeTool_OpensAndFocusesOutput(t *testing.T) {
 	nm, cmd := m.runSlash("/tree")
 	m = nm.(Model)
 	assert.Nil(t, cmd)
-	assert.Equal(t, focusOutput, m.focus)
+	assert.Equal(t, focusOutput, m.nav.focus)
 
 	require.Len(t, m.blocks, 1)
 	b := m.blocks[0]
@@ -28,7 +68,7 @@ func TestUI_TreeTool_OpensAndFocusesOutput(t *testing.T) {
 	require.Len(t, b.steps, 1)
 	row := b.steps[0]
 	assert.Equal(t, "tree", row.toolKind)
-	require.NotNil(t, row.tree)
+	require.NotNil(t, row.tool.tree)
 
 	v := m.View()
 	assert.Contains(t, v, "f.txt")
@@ -49,7 +89,7 @@ func TestUI_TreeTool_NavigateAndOpenFileIntoEditor(t *testing.T) {
 	require.Len(t, m.blocks, 1, "navigating the tree must not itself open anything")
 
 	treeRow := m.blocks[0].steps[0]
-	require.Equal(t, "a.txt", treeRow.tree.Selected().Name)
+	require.Equal(t, "a.txt", treeRow.tool.tree.Selected().Name)
 
 	nm, _ = m.outputKey(tea.KeyMsg{Type: tea.KeyEnter})
 	m = nm.(Model)
@@ -80,7 +120,7 @@ func TestUI_TreeTool_ToggleDirDoesNotOpenAnything(t *testing.T) {
 	nm, _ = m.outputKey(tea.KeyMsg{Type: tea.KeyDown}) // -> sub
 	m = nm.(Model)
 	treeRow := m.blocks[0].steps[0]
-	require.Equal(t, "sub", treeRow.tree.Selected().Name)
+	require.Equal(t, "sub", treeRow.tool.tree.Selected().Name)
 
 	nm, _ = m.outputKey(tea.KeyMsg{Type: tea.KeyEnter}) // toggle expand
 	m = nm.(Model)

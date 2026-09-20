@@ -1,0 +1,121 @@
+package ui
+
+import (
+	"os"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/vitzeno/detent/internal/ui/editor"
+	"github.com/vitzeno/detent/internal/ui/slash"
+	"github.com/vitzeno/detent/internal/ui/tree"
+)
+
+// updateSlash refreshes prefix matches after the input changes.
+func (m *Model) updateSlash() {
+	m.slash.matches = slash.Match(m.input.Value())
+	if m.slash.cursor >= len(m.slash.matches) {
+		m.slash.cursor = 0
+	}
+	m.sizeViewport()
+}
+
+// acceptSlash completes the highlighted entry into the input bar.
+func (m Model) acceptSlash() (tea.Model, tea.Cmd) {
+	if len(m.slash.matches) == 0 {
+		return m, nil
+	}
+	m.input.SetValue(m.slash.matches[m.slash.cursor].Name + " ")
+	m.slash.matches = nil
+	m.slash.cursor = 0
+	m.sizeViewport()
+	return m, nil
+}
+
+// runSlash handles input-bar commands: the always-available buttons for
+// quitting and aborting that don't compete with typing, plus the tool
+// invocations (/tree, /usage, /help) that show their content in the
+// output pane like any other focusable entry — see openTool.
+func (m Model) runSlash(cmd string) (tea.Model, tea.Cmd) {
+	switch strings.ToLower(strings.Fields(cmd)[0]) {
+	case "/q", "/quit":
+		return m, tea.Quit
+	case "/abort":
+		if m.abort != nil {
+			m.abort()
+			m.abort = nil
+			m.notice = "abort sent"
+		} else {
+			m.notice = "nothing running"
+		}
+		return m, nil
+	case "/tree":
+		return m.openTreeTool()
+	case "/usage":
+		return m.openTool("usage", &stepRow{command: "/usage", toolKind: "usage", tool: toolState{usageExpand: -1}})
+	case "/help":
+		return m.openTool("help", &stepRow{command: "/help", toolKind: "help"})
+	default:
+		m.notice = "unknown command " + cmd + " (try /help)"
+		return m, nil
+	}
+}
+
+// openTreeTool walks cwd (a harness-run, read-only filesystem action —
+// same bounded-and-safe spirit as internal/probe, never confirmed since
+// nothing runs and nothing's proposed) and opens it as a tool block.
+func (m Model) openTreeTool() (tea.Model, tea.Cmd) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		m.notice = "tree: " + err.Error()
+		return m, nil
+	}
+	root, truncated, err := tree.Build(cwd)
+	if err != nil {
+		m.notice = "tree: " + err.Error()
+		return m, nil
+	}
+	tm := tree.New(root)
+	command := cwd
+	if truncated {
+		command += " (truncated)"
+	}
+	return m.openTool("tree", &stepRow{command: command, toolKind: "tree", tool: toolState{tree: &tm}})
+}
+
+// openTreeSelection acts on the cursor row of a tree tool row: a
+// directory toggles expand/collapse, a file opens as its own new
+// history entry showing its editor — the same reusable component a
+// command's own File field opens, so editing works identically whether
+// you got to the file via a proposed command or by browsing for it.
+func (m Model) openTreeSelection(r *stepRow) (tea.Model, tea.Cmd) {
+	if r.tool.tree == nil {
+		return m, nil
+	}
+	n := r.tool.tree.Selected()
+	if n == nil {
+		return m, nil
+	}
+	if n.Kind == tree.KindDir {
+		r.tool.tree.Toggle()
+		m.refreshViewport()
+		return m, nil
+	}
+	ed := editor.New(n.Path)
+	fileRow := &stepRow{command: n.Path, editPath: n.Path, toolKind: "file", editor: &ed}
+	return m.openTool("file", fileRow)
+}
+
+// openTool appends a new tool block — a slash command's own content,
+// never a goal driven by propose/confirm/execute — and jumps straight
+// to viewing it: unlike trackNewest's "don't yank a reader's view"
+// default for background events, this is an explicit action the human
+// just took and expects to see the result of immediately.
+func (m Model) openTool(kind string, row *stepRow) (tea.Model, tea.Cmd) {
+	m.blocks = append(m.blocks, &goalBlock{tool: kind, ended: true, steps: []*stepRow{row}})
+	m.nav.cursor = len(m.rows()) - 1
+	m.nav.focus = focusOutput
+	m.sizeViewport()
+	m.refreshViewport()
+	return m, nil
+}

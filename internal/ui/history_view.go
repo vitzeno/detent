@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vitzeno/detent/internal/agentloop"
+	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/ui/status"
 )
 
@@ -55,7 +55,7 @@ func wrapStyled(style lipgloss.Style, text string, width int) []string {
 // divider marks a goal boundary — short and faint rather than a
 // full-width rule, so it reads as a break, not another row of content.
 func (m Model) divider() string {
-	return "  " + styleFaint.Render(strings.Repeat("─", min(20, max(4, m.histColW-8))))
+	return "  " + styleFaint.Render(strings.Repeat("─", min(20, max(4, m.layout.histColW-8))))
 }
 
 // Records the focused row's line for cursor windowing.
@@ -70,7 +70,7 @@ func (m *Model) historyLines() []string {
 		// has no goal text of its own — its one step's own line already
 		// says what it is, so there's no separate header to wrap here.
 		if b.tool == "" {
-			for i, gl := range wrapPlain(b.goal, m.histColW-14) {
+			for i, gl := range wrapPlain(b.goal, m.layout.histColW-14) {
 				if i == 0 {
 					lines = append(lines, styleMuted.Render("goal · ")+styleGoal.Render(gl))
 				} else {
@@ -80,11 +80,11 @@ func (m *Model) historyLines() []string {
 		}
 		for _, r := range b.steps {
 			if r == rows[m.cursorClamped()] && len(rows) > 0 {
-				m.cursorLine = len(lines)
+				m.nav.cursorLine = len(lines)
 			}
 			lines = append(lines, m.stepLines(r)...)
-			if r.expanded {
-				lines = append(lines, previewLines(r, m.histColW-10)...)
+			if r.cmd.expanded {
+				lines = append(lines, previewLines(r, m.layout.histColW-10)...)
 			}
 		}
 		if b.ended && b.tool == "" {
@@ -104,13 +104,13 @@ func (m *Model) cursorClamped() int {
 	if len(rows) == 0 {
 		return -1
 	}
-	if m.cursor < 0 {
+	if m.nav.cursor < 0 {
 		return 0
 	}
-	if m.cursor >= len(rows) {
+	if m.nav.cursor >= len(rows) {
 		return len(rows) - 1
 	}
-	return m.cursor
+	return m.nav.cursor
 }
 
 // stepLines renders one step as physical lines: mark+icon+command on
@@ -124,25 +124,25 @@ func (m Model) stepLines(r *stepRow) []string {
 		mark = styleRowCursor.Render("▸ ")
 	}
 	// A tool row (or a file opened from a tree) never executed a shell
-	// command, so the status.Badge dispatch below — which reads r.ec —
+	// command, so the status.Badge dispatch below — which reads r.cmd.ec —
 	// doesn't apply; show a plain label instead.
 	if r.toolKind != "" {
-		cmd := truncateWidth(r.command, m.histColW-14)
+		cmd := truncateWidth(r.command, m.layout.histColW-14)
 		return []string{fmt.Sprintf("%s%s %s", mark, styleMuted.Render("○"), cmd)}
 	}
 	s := status.Row{}
-	if r.running {
+	if r.cmd.running {
 		s.Running = true
-		s.LiveLines = len(r.live)
-		s.Dropped = r.dropped
-	} else if r.ec != nil {
+		s.LiveLines = len(r.cmd.live)
+		s.Dropped = r.cmd.dropped
+	} else if r.cmd.ec != nil {
 		s.HasResult = true
-		s.ExitCode = r.ec.Result.ExitCode
-		s.Summary = r.ec.Result.Summary()
-		if r.ec.Post != nil {
+		s.ExitCode = r.cmd.ec.Result.ExitCode
+		s.Summary = r.cmd.ec.Result.Summary()
+		if r.cmd.ec.Post != nil {
 			s.Judged = true
-			s.Status = r.ec.Post.Status
-			s.Attention = r.ec.Post.Attention
+			s.Status = r.cmd.ec.Post.Status
+			s.Attention = r.cmd.ec.Post.Attention
 		}
 	}
 	icon, detail := status.Badge(s, m.spinner.View())
@@ -152,13 +152,13 @@ func (m Model) stepLines(r *stepRow) []string {
 	// (a path, a flag string) with no space for word-wrap to break at
 	// — wrapping it produces ugly mid-word fragmentation, so a clean
 	// "…" reads better here. The row stays one physical line.
-	cmd := truncateWidth(r.command, m.histColW-34)
+	cmd := truncateWidth(r.command, m.layout.histColW-34)
 	return []string{fmt.Sprintf("%s%s %s %s", mark, icon, cmd, styleMuted.Render("· "+detail))}
 }
 
 func anyRunning(b *goalBlock) bool {
 	for _, r := range b.steps {
-		if r.running {
+		if r.cmd.running {
 			return true
 		}
 	}
@@ -166,21 +166,21 @@ func anyRunning(b *goalBlock) bool {
 }
 
 func (m Model) goalBanner(b *goalBlock) []string {
-	w := m.histColW - 12
+	w := m.layout.histColW - 12
 	switch {
 	case b.fatalErr != nil:
 		return wrapStyled(styleDanger, "✗ error: "+b.fatalErr.Error(), w)
-	case b.end == agentloop.EndDone:
+	case b.end == agent.EndDone:
 		out := wrapStyled(styleSafe, "✔ "+b.summary, w)
 		if b.judgeNote != "" {
 			out = append(out, wrapStyled(styleCaution, "⚠ "+b.judgeNote, w)...)
 		}
 		return out
-	case b.end == agentloop.EndDeclined:
+	case b.end == agent.EndDeclined:
 		return []string{"  " + styleMuted.Render(fmt.Sprintf("✗ declined — %d command(s) ran", len(b.steps)))}
-	case b.end == agentloop.EndAborted:
+	case b.end == agent.EndAborted:
 		return []string{"  " + styleCaution.Render(fmt.Sprintf("⚠ aborted — %d command(s) ran", len(b.steps)))}
-	case b.end == agentloop.EndBudget:
+	case b.end == agent.EndBudget:
 		return []string{"  " + styleCaution.Render("⚠ step cap reached — goal not confirmed done")}
 	default:
 		return []string{"  " + styleMuted.Render("ended: "+string(b.end))}
@@ -188,9 +188,9 @@ func (m Model) goalBanner(b *goalBlock) []string {
 }
 
 func previewLines(r *stepRow, width int) []string {
-	src := r.live
-	if r.ec != nil {
-		src = strings.Split(strings.TrimSuffix(r.ec.Result.Stdout+r.ec.Result.Stderr, "\n"), "\n")
+	src := r.cmd.live
+	if r.cmd.ec != nil {
+		src = strings.Split(strings.TrimSuffix(r.cmd.ec.Result.Stdout+r.cmd.ec.Result.Stderr, "\n"), "\n")
 	}
 	var out []string
 	for i, l := range src {

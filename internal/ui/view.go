@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vitzeno/detent/internal/editfile"
+	"github.com/vitzeno/detent/internal/fileio"
 	"github.com/vitzeno/detent/internal/ui/editor"
 	"github.com/vitzeno/detent/internal/ui/island"
 	"github.com/vitzeno/detent/internal/ui/layout"
@@ -14,7 +14,7 @@ import (
 	"github.com/vitzeno/detent/internal/ui/status"
 	"github.com/vitzeno/detent/internal/ui/tabular"
 
-	"github.com/vitzeno/detent/internal/agentloop"
+	"github.com/vitzeno/detent/internal/agent"
 )
 
 // bodyWeights sizes the body row's two panes: output (left) gets the
@@ -43,16 +43,16 @@ func (m *Model) sizeViewport() {
 	// set of island chrome (header + border) — output and history sit
 	// side by side at the same height now, so there's only one row's
 	// worth to account for, not two.
-	avail := m.height - 2 - islandOverhead - bottom
+	avail := m.layout.height - 2 - islandOverhead - bottom
 	if avail < 6 {
 		avail = 6
 	}
-	m.histHeight = avail
+	m.nav.histHeight = avail
 	m.output.Height = avail
 
-	widths := layout.Split(m.width, bodyWeights, minPaneWidth)
-	m.outputColW, m.histColW = widths[0], widths[1]
-	m.output.Width = paneInner(m.outputColW)
+	widths := layout.Split(m.layout.width, bodyWeights, minPaneWidth)
+	m.layout.outputColW, m.layout.histColW = widths[0], widths[1]
+	m.output.Width = paneInner(m.layout.outputColW)
 	m.refreshViewport()
 }
 
@@ -68,7 +68,7 @@ func paneInner(outer int) int {
 
 // slashRows is the dropdown's screen height, capped so it can't eat the history.
 func (m Model) slashRows() int {
-	return min(len(m.slash), slash.MaxRows)
+	return min(len(m.slash.matches), slash.MaxRows)
 }
 
 func (m Model) View() string {
@@ -76,14 +76,14 @@ func (m Model) View() string {
 }
 
 func (m Model) baseView() string {
-	if m.width <= 0 {
+	if m.layout.width <= 0 {
 		return "loading…"
 	}
 	// Output (left, primary) and history (right, smaller) side by
 	// side — see bodyWeights. Swapping or restacking this arrangement
 	// is this one Row call, not a resizing rewrite.
-	outputBlock := island.Render(m.viewportHeader(), m.focus == focusOutput, m.detailLines(), m.outputColW, m.output.Height+1)
-	historyBlock := island.Render(m.historyHeader(), m.focus == focusHistory, m.historyWindow(), m.histColW, m.histHeight+1)
+	outputBlock := island.Render(m.viewportHeader(), m.nav.focus == focusOutput, m.detailLines(), m.layout.outputColW, m.output.Height+1)
+	historyBlock := island.Render(m.historyHeader(), m.nav.focus == focusHistory, m.nav.histWindow, m.layout.histColW, m.nav.histHeight+1)
 
 	var b strings.Builder
 	b.WriteString(m.sessionBar())
@@ -98,50 +98,60 @@ func (m Model) baseView() string {
 	case modeSaveConfirm:
 		b.WriteString(m.saveConfirmBox())
 	default:
-		b.WriteString(island.Render("", m.focus == focusInput, strings.Split(m.inputBar(), "\n"), m.width, m.slashRows()+1))
+		b.WriteString(island.Render("", m.nav.focus == focusInput, strings.Split(m.inputBar(), "\n"), m.layout.width, m.slashRows()+1))
 	}
 	return b.String()
 }
 
-// historyWindow returns the visible history slice; the island pads
-// short content. Entries flatten to lines first: expanded rows and
-// two-line banners span several lines each, and windowing entries
-// instead would let the island grow past the terminal height and push
-// the session bar off the top.
-func (m Model) historyWindow() []string {
-	histLines := m.historyLines()
+// updateHistoryWindow recomputes which history lines are visible,
+// keeping the cursor in view with minimal movement, and caches the
+// result on nav.histWindow for baseView to render as-is. It must run
+// here — from refreshViewport, a pointer-receiver method reached from
+// every event that can change history content or move the cursor —
+// rather than inside View()'s own call chain: Bubble Tea always renders
+// View() on a throwaway copy of Model, so a value-receiver method
+// there (as this used to be) can compute histOffset/cursorLine but can
+// never make them stick past that one render, leaving the window stuck
+// permanently at offset zero instead of tracking the cursor.
+//
+// Entries flatten to lines first: expanded rows and two-line banners
+// span several lines each, and windowing entries instead would let the
+// island grow past the terminal height and push the session bar off
+// the top.
+func (m *Model) updateHistoryWindow() {
+	histLines := m.historyLines() // also sets nav.cursorLine to its row's flattened index
 	var lines []string
 	cursorLine := 0
 	for i, e := range histLines {
-		if i == m.cursorLine {
+		if i == m.nav.cursorLine {
 			cursorLine = len(lines)
 		}
 		lines = append(lines, strings.Split(e, "\n")...)
 	}
-	m.cursorLine = cursorLine
+	m.nav.cursorLine = cursorLine
 	start := 0
-	if len(lines) > m.histHeight {
-		if m.follow {
-			start = len(lines) - m.histHeight
+	if len(lines) > m.nav.histHeight {
+		if m.nav.follow {
+			start = len(lines) - m.nav.histHeight
 		} else {
-			start = m.histOffset
-			if m.cursorLine < start {
-				start = m.cursorLine
+			start = m.nav.histOffset
+			if m.nav.cursorLine < start {
+				start = m.nav.cursorLine
 			}
-			if m.cursorLine >= start+m.histHeight {
-				start = m.cursorLine - m.histHeight + 1
+			if m.nav.cursorLine >= start+m.nav.histHeight {
+				start = m.nav.cursorLine - m.nav.histHeight + 1
 			}
 			if start < 0 {
 				start = 0
 			}
 		}
 	}
-	m.histOffset = start
-	end := start + m.histHeight
+	m.nav.histOffset = start
+	end := start + m.nav.histHeight
 	if end > len(lines) {
 		end = len(lines)
 	}
-	return append([]string(nil), lines[start:end]...)
+	m.nav.histWindow = append([]string(nil), lines[start:end]...)
 }
 
 // paneMark is the active/inactive marker shared by every zone header:
@@ -154,7 +164,7 @@ func paneMark(active bool) string {
 }
 
 func (m Model) historyHeader() string {
-	return fmt.Sprintf("%s %s", paneMark(m.focus == focusHistory), paneLabel("history", m.focus == focusHistory))
+	return fmt.Sprintf("%s %s", paneMark(m.nav.focus == focusHistory), paneLabel("history", m.nav.focus == focusHistory))
 }
 
 func paneLabel(name string, active bool) string {
@@ -187,14 +197,14 @@ func (m Model) sessionBar() string {
 }
 
 func (m Model) viewportHeader() string {
-	active := m.focus == focusOutput
+	active := m.nav.focus == focusOutput
 	r := m.focused()
 	if r == nil {
 		return fmt.Sprintf("%s %s", paneMark(active), paneLabel("output", active))
 	}
 	if r.editor != nil && r.editor.Err() == nil {
 		label := "file"
-		if m.editing {
+		if m.save.editing {
 			label = "editing — ctrl+s save"
 		}
 		dirty := ""
@@ -202,18 +212,18 @@ func (m Model) viewportHeader() string {
 			dirty = styleCaution.Render(" ●")
 		}
 		return fmt.Sprintf("%s %s — %s%s", paneMark(active), paneLabel(label, active),
-			styleGoal.Render(truncateWidth(r.editor.Path, m.outputColW-28)), dirty)
+			styleGoal.Render(truncateWidth(r.editor.Path, m.layout.outputColW-28)), dirty)
 	}
 	if r.toolKind != "" {
 		return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(r.toolKind, active),
-			styleGoal.Render(truncateWidth(r.command, m.outputColW-24)))
+			styleGoal.Render(truncateWidth(r.command, m.layout.outputColW-24)))
 	}
 	label := "output"
 	if k := rowKind(r); k != "" {
 		label = status.KindLabel(k)
 	}
 	return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(label, active),
-		styleGoal.Render(truncateWidth(r.command, m.outputColW-24)))
+		styleGoal.Render(truncateWidth(r.command, m.layout.outputColW-24)))
 }
 
 // detailLines renders the focused row's component as lines: the
@@ -228,7 +238,7 @@ func (m Model) detailLines() []string {
 		}
 		switch r.toolKind {
 		case "tree":
-			return r.tree.View(paneInner(m.outputColW), m.output.Height)
+			return r.tool.tree.View(paneInner(m.layout.outputColW), m.output.Height)
 		case "usage":
 			return m.usageLines(r)
 		case "help":
@@ -256,10 +266,10 @@ func (m Model) editorLines(e *editor.Model) []string {
 	if e.Err() != nil {
 		return []string{styleDanger.Render(e.View())} // "could not open <path>: <err>"
 	}
-	e.Resize(paneInner(m.outputColW), m.output.Height)
+	e.Resize(paneInner(m.layout.outputColW), m.output.Height)
 	lines := strings.Split(e.View(), "\n")
 	if e.Truncated() {
-		lines = append(lines, styleCaution.Render(fmt.Sprintf("… file truncated at %d bytes", editfile.MaxBytes)))
+		lines = append(lines, styleCaution.Render(fmt.Sprintf("… file truncated at %d bytes", fileio.MaxBytes)))
 	}
 	return lines
 }
@@ -277,17 +287,18 @@ func (m Model) focusedTable() (string, bool) {
 	if !ok || len(rows) == 0 {
 		return "", false
 	}
-	cursor := min(r.tableCursor, len(rows)-1)
-	t := tabular.Build(cols, rows, cursor, min(len(rows)+1, m.output.Height), m.focus == focusOutput)
+	cursor := min(r.cmd.tableCursor, len(rows)-1)
+	t := tabular.Build(cols, rows, cursor, min(len(rows)+1, m.output.Height), m.nav.focus == focusOutput)
 	return t.View(), true
 }
 
 func (m *Model) refreshViewport() {
 	t0 := time.Now()
 	defer func() {
-		m.uiPrep += time.Since(t0)
-		m.uiPreps++
+		m.perf.uiPrep += time.Since(t0)
+		m.perf.uiPreps++
 	}()
+	m.updateHistoryWindow()
 	r := m.focused()
 	if r == nil {
 		m.setViewContent(styleFaint.Render("(no output yet)"))
@@ -295,9 +306,9 @@ func (m *Model) refreshViewport() {
 	}
 	var body string
 	switch {
-	case r.running:
-		body = strings.Join(r.live, "\n")
-	case r.ec != nil:
+	case r.cmd.running:
+		body = strings.Join(r.cmd.live, "\n")
+	case r.cmd.ec != nil:
 		body = m.styledBody(r)
 	}
 	if body == "" {
@@ -305,7 +316,7 @@ func (m *Model) refreshViewport() {
 		return
 	}
 	m.setViewContent(body)
-	if r.running {
+	if r.cmd.running {
 		m.output.GotoBottom()
 	}
 }
@@ -314,28 +325,28 @@ func (m *Model) refreshViewport() {
 // maxViewportLines. Unknown kinds render raw — the classifier suggests,
 // never mandates.
 func (m *Model) styledBody(r *stepRow) string {
-	combined := r.ec.Result.Stdout
-	if r.ec.Result.Stderr != "" {
+	combined := r.cmd.ec.Result.Stdout
+	if r.cmd.ec.Result.Stderr != "" {
 		if combined != "" && !strings.HasSuffix(combined, "\n") {
 			combined += "\n"
 		}
-		combined += r.ec.Result.Stderr
+		combined += r.cmd.ec.Result.Stderr
 	}
 	lines := strings.Split(strings.TrimSuffix(combined, "\n"), "\n")
 	switch rowKind(r) {
-	case agentloop.KindError:
+	case agent.KindError:
 		for i, l := range lines {
 			lines[i] = styleErrorLine(l)
 		}
-	case agentloop.KindDiff:
+	case agent.KindDiff:
 		for i, l := range lines {
 			lines[i] = styleDiffLine(l)
 		}
-	case agentloop.KindJSON:
+	case agent.KindJSON:
 		if pretty, ok := prettyJSON(combined); ok {
 			lines = strings.Split(pretty, "\n")
 		}
-	case agentloop.KindContent:
+	case agent.KindContent:
 		if markdown.Wants(r.command, combined) {
 			lines = strings.Split(m.markdownBody(r, combined), "\n")
 		} else {
@@ -351,15 +362,15 @@ func (m *Model) styledBody(r *stepRow) string {
 // markdownBody renders through glamour, cached by width — a re-render
 // per frame would churn on every scroll tick.
 func (m *Model) markdownBody(r *stepRow, combined string) string {
-	if r.styled == "" || r.styledWidth != m.output.Width {
+	if r.cmd.styled == "" || r.cmd.styledWidth != m.output.Width {
 		rendered, err := markdown.Render(combined, m.output.Width)
 		if err != nil {
 			rendered = combined
 		}
-		r.styled = strings.TrimSuffix(rendered, "\n")
-		r.styledWidth = m.output.Width
+		r.cmd.styled = strings.TrimSuffix(rendered, "\n")
+		r.cmd.styledWidth = m.output.Width
 	}
-	return r.styled
+	return r.cmd.styled
 }
 
 // setViewContent skips identical content: SetContent resets the scroll
@@ -379,7 +390,7 @@ func (m Model) statusLine() string {
 		phase = "thinking…"
 		for _, b := range m.blocks {
 			for _, r := range b.steps {
-				if r.running {
+				if r.cmd.running {
 					phase = "running…"
 				}
 			}
@@ -393,25 +404,32 @@ func (m Model) statusLine() string {
 // for display, so the two never fall out of sync on which state wins.
 func (m Model) statusHint() string {
 	if m.mode == modeSaveConfirm {
-		return "[y] save · [n] keep editing"
+		return "[y/enter] save · [n] keep editing"
 	}
-	if m.editing {
+	if m.save.editing {
 		return "[ctrl+s] save · [esc] done editing"
 	}
 	switch m.owner() {
 	case ownerConfirm:
-		return "[y] run · [n] stop goal"
+		return "[y/enter] run · [n] stop goal"
 	case ownerOutput:
-		return "[tab] input · [↑/↓] inside · [pgup/pgdn] scroll · [esc] history · [q] quit"
+		// onEscape (keys.go) aborts a running command from here instead
+		// of stepping back to history whenever one is running — match
+		// that exactly, or the hint tells a lie right when it matters.
+		esc := "[esc] history"
+		if m.abort != nil {
+			esc = "[esc] abort"
+		}
+		return "[tab] input · [↑/↓] inside · " + esc + " · [q] quit"
 	case ownerHistory:
 		return "[tab] output · [↑/↓] move · [space] expand · [enter] expand · [q] quit"
 	case ownerBusy:
-		if len(m.slash) > 0 {
+		if len(m.slash.matches) > 0 {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
 		}
 		return "[tab] history · type / + enter for commands · [esc] abort"
 	default: // ownerInput
-		if len(m.slash) > 0 {
+		if len(m.slash.matches) > 0 {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
 		}
 		return "[tab] history · [enter] run · type / for cmds"
@@ -419,12 +437,12 @@ func (m Model) statusHint() string {
 }
 
 func (m Model) inputBar() string {
-	active := m.focus == focusInput
+	active := m.nav.focus == focusInput
 	m.input.PromptStyle = styleFaint
 	if active {
 		m.input.PromptStyle = styleRowCursor
 	}
-	return fmt.Sprintf("%s %s%s", paneMark(active), slash.View(m.slash, m.slashCursor), m.input.View())
+	return fmt.Sprintf("%s %s%s", paneMark(active), slash.View(m.slash.matches, m.slash.cursor), m.input.View())
 }
 
 func truncateWidth(s string, w int) string {
