@@ -8,14 +8,7 @@ import (
 	"strings"
 
 	"github.com/vitzeno/detent/internal/classify"
-	"github.com/vitzeno/detent/internal/shell"
 )
-
-// Judge returns typed judgments. Identical in shape to agent.Judge;
-// probe can't import agent without a cycle.
-type Judge interface {
-	Ask(ctx context.Context, state classify.State, questions classify.Questions) (classify.Answers, classify.Usage, error)
-}
 
 // Probe is one fixed, read-only context snapshot.
 type Probe struct {
@@ -78,9 +71,18 @@ func Select(ctx context.Context, judge Judge, goal string) []Probe {
 	return out
 }
 
-// Run executes probes via run and returns one combined blob, or "" when
-// probes is empty.
-func Run(ctx context.Context, run func(ctx context.Context, command string, onEvent func(shell.StreamEvent)) (shell.Result, error), probes []Probe) string {
+// Prober runs Menu's probes through one Runner.
+type Prober struct {
+	runner Runner
+}
+
+// New builds a Prober around runner.
+func New(runner Runner) *Prober {
+	return &Prober{runner: runner}
+}
+
+// Run executes probes and returns one combined blob, or "" when probes is empty.
+func (pb *Prober) Run(ctx context.Context, probes []Probe) string {
 	if len(probes) == 0 {
 		return ""
 	}
@@ -88,7 +90,7 @@ func Run(ctx context.Context, run func(ctx context.Context, command string, onEv
 	b.WriteString("Environment context gathered automatically before this goal (not something you ran):\n")
 	for _, p := range probes {
 		fmt.Fprintf(&b, "\n$ %s\n", p.Command)
-		res, err := run(ctx, p.Command, nil)
+		res, err := pb.runner.Run(ctx, p.Command)
 		if err != nil {
 			fmt.Fprintf(&b, "(failed: %v)\n", err)
 			continue

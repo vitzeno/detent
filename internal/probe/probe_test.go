@@ -69,9 +69,21 @@ func TestSelect(t *testing.T) {
 	}
 }
 
+type shellRunner struct{}
+
+func (shellRunner) Run(ctx context.Context, command string) (shell.Result, error) {
+	return shell.Stream(ctx, command, nil)
+}
+
+type fakeRunner func(ctx context.Context, command string) (shell.Result, error)
+
+func (f fakeRunner) Run(ctx context.Context, command string) (shell.Result, error) {
+	return f(ctx, command)
+}
+
 func TestRun(t *testing.T) {
 	t.Run("empty probes returns empty", func(t *testing.T) {
-		assert.Empty(t, Run(context.Background(), shell.Stream, nil))
+		assert.Empty(t, New(shellRunner{}).Run(context.Background(), nil))
 	})
 
 	t.Run("combines output from multiple probes in order", func(t *testing.T) {
@@ -79,7 +91,7 @@ func TestRun(t *testing.T) {
 			{Name: "a", Command: "echo one"},
 			{Name: "b", Command: "echo two"},
 		}
-		out := Run(context.Background(), shell.Stream, probes)
+		out := New(shellRunner{}).Run(context.Background(), probes)
 		assert.Contains(t, out, "$ echo one")
 		assert.Contains(t, out, "one")
 		assert.Contains(t, out, "$ echo two")
@@ -89,17 +101,17 @@ func TestRun(t *testing.T) {
 	t.Run("failed command is noted, not fatal", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		out := Run(ctx, shell.Stream, []Probe{{Name: "a", Command: "echo hi"}})
+		out := New(shellRunner{}).Run(ctx, []Probe{{Name: "a", Command: "echo hi"}})
 		assert.Contains(t, out, "failed")
 	})
 
 	t.Run("runs through the injected runner, not shell.Stream directly", func(t *testing.T) {
 		var got string
-		fake := func(_ context.Context, command string, _ func(shell.StreamEvent)) (shell.Result, error) {
+		fake := fakeRunner(func(_ context.Context, command string) (shell.Result, error) {
 			got = command
 			return shell.Result{Stdout: "stubbed\n"}, nil
-		}
-		out := Run(context.Background(), fake, []Probe{{Name: "a", Command: "should not really run"}})
+		})
+		out := New(fake).Run(context.Background(), []Probe{{Name: "a", Command: "should not really run"}})
 		assert.Equal(t, "should not really run", got)
 		assert.Contains(t, out, "stubbed")
 	})

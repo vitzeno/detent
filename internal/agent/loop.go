@@ -12,14 +12,13 @@ import (
 	"github.com/vitzeno/detent/internal/usage"
 )
 
-// streamSinkFunc bridges probe.Run's own plain-callback signature to
-// StreamSink (probes never stream, so this always wraps nil).
-type streamSinkFunc func(shell.StreamEvent)
+// probeRunner adapts a Runner to probe.Runner; probes never stream.
+type probeRunner struct {
+	runner Runner
+}
 
-func (f streamSinkFunc) OnEvent(e shell.StreamEvent) {
-	if f != nil {
-		f(e)
-	}
+func (r probeRunner) Run(ctx context.Context, command string) (shell.Result, error) {
+	return r.runner.Run(ctx, command, nil)
 }
 
 // BeginGoal opens a goal and primes the transcript with fixed, unconfirmed
@@ -32,12 +31,8 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 		return nil, fmt.Errorf("agent: no Proposer wired")
 	}
 	s.append(propose.Message{Role: propose.RoleUser, Content: goal})
-	// probe.Run predates StreamSink and still takes a plain callback.
-	runner := s.runner()
-	probeRun := func(ctx context.Context, command string, onEvent func(shell.StreamEvent)) (shell.Result, error) {
-		return runner.Run(ctx, command, streamSinkFunc(onEvent))
-	}
-	if out := probe.Run(ctx, probeRun, probe.Select(ctx, s.Judge, goal)); out != "" {
+	prober := probe.New(probeRunner{runner: s.runner()})
+	if out := prober.Run(ctx, probe.Select(ctx, s.Judge, goal)); out != "" {
 		s.append(propose.Message{Role: propose.RoleTool, Content: out})
 	}
 	// Abort during probe collection must close the goal, not fall
