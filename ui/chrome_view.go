@@ -104,15 +104,15 @@ func (m Model) statusHint() string {
 		if m.abort != nil {
 			esc = "[esc] abort"
 		}
-		return "[tab] input · [↑/↓] inside · " + esc + " · [q] quit"
+		return "[tab] input · [↑/↓] inside · " + esc
 	case ownerHistory:
 		// esc aborts from here too, and saying so is the difference
 		// between a human knowing they can stop a run and thinking
 		// they can't.
 		if m.abort != nil {
-			return "[esc] abort · [tab] output · [↑/↓] move · [space] expand · [q] quit"
+			return "[esc] abort · [tab] output · [↑/↓] move · [space] expand"
 		}
-		return "[tab] output · [↑/↓] move · [space] expand · [enter] expand · [q] quit"
+		return "[tab] output · [↑/↓] move · [space] expand · [enter] expand"
 	case ownerBusy:
 		if m.prompt.Open() {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"

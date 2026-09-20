@@ -125,8 +125,8 @@ func (m Model) editorKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // inputKey gives a focused idle input every keystroke — typing must
 // never trigger navigation. Only pgup/pgdn and enter bypass the input.
 func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if next, _, handled := m.slashKey(msg); handled {
-		return next, nil
+	if next, cmd, handled := m.slashKey(msg); handled {
+		return next, cmd
 	}
 	switch msg.String() {
 	case "enter":
@@ -142,8 +142,8 @@ func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // busyKey narrows a focused waiting input to slash entry: plain goals
 // can't start mid-run, but /abort and /quit stay reachable.
 func (m Model) busyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if next, _, handled := m.slashKey(msg); handled {
-		return next, nil
+	if next, cmd, handled := m.slashKey(msg); handled {
+		return next, cmd
 	}
 	switch msg.String() {
 	case "pgup", "pgdown":
@@ -179,9 +179,6 @@ func (m Model) slashKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		m.prompt.Accept()
 		next, cmd := m.startGoal()
 		return next, cmd, true
-	case "esc":
-		m.prompt.Close()
-		return m, nil, true
 	}
 	return m, nil, false
 }
@@ -219,8 +216,6 @@ func (m Model) outputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			r.cmd.expanded = !r.cmd.expanded
 		}
 		return m, nil
-	case "q":
-		return m, tea.Quit
 	}
 	var cmd tea.Cmd
 	m.output, cmd = m.output.Update(msg)
@@ -245,17 +240,22 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			r.cmd.expanded = !r.cmd.expanded
 		}
 		return m, nil
-	case "q":
-		return m, tea.Quit
 	}
 	var cmd tea.Cmd
 	m.output, cmd = m.output.Update(msg)
 	return m, cmd
 }
 
+// onEscape backs out of the innermost thing first: an open dropdown,
+// then a running goal, then the output pane. esc is intercepted before
+// owner() runs, so anything wanting it has to be handled here.
 func (m Model) onEscape() (tea.Model, tea.Cmd) {
 	if m.mode == modeConfirm {
 		return m.decline()
+	}
+	if m.prompt.Open() {
+		m.prompt.Close()
+		return m, nil
 	}
 	// Idle esc in the output pane steps back to history; a running
 	// command still aborts.

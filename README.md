@@ -134,8 +134,7 @@ match so the model doesn't keep reasoning from undone work.
 | `↑` / `↓`              | move through history, or scroll the focused pane                                   |
 | `space`                | expand the focused row's output                                                    |
 | `ctrl+s`               | save the file open in the editor pane                                              |
-| `q`                    | quit (when the input isn't focused)                                                |
-| `ctrl+c`               | quit from anywhere                                                                 |
+| `ctrl+c`               | quit from anywhere — or `/quit`                                                    |
 
 **Want `shift+enter` for newlines?** Terminals send the same byte for `enter` and
 `shift+enter`, so no program can tell them apart by default. Bind it in your

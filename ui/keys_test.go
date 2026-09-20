@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"github.com/stretchr/testify/assert"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -131,10 +132,11 @@ func TestUI_TabCyclesThreePanes(t *testing.T) {
 	require.Equal(t, focusHistory, m.nav.focus)
 	require.False(t, m.prompt.Focused())
 
-	// In history focus, "q" quits instead of typing.
+	// "q" is just a letter now — quitting is ctrl+c or /quit, so a
+	// stray keystroke outside the input can't end the session.
 	nm, cmd := m.Update(typeKey("q"))
 	m = nm.(Model)
-	require.NotNil(t, cmd, "q in history focus must quit")
+	require.Nil(t, cmd, "q must not quit")
 
 	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = nm.(Model)
@@ -220,4 +222,74 @@ func TestUI_TableScrollNeverMovesHistory(t *testing.T) {
 		require.Equal(t, 0, m.nav.histOffset, "history window must not scroll")
 	}
 	require.Greater(t, m.blocks[0].steps[0].cmd.tableCursor, 0, "table cursor must move")
+}
+
+// Quitting is deliberate: ctrl+c or /quit. "q" used to end the session
+// from any pane that wasn't the input, so a stray keystroke while
+// reading output threw the session away.
+func TestUI_QDoesNotQuit(t *testing.T) {
+	for _, focus := range []focusPane{focusHistory, focusOutput} {
+		m := testUIModel()
+		m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{{command: "ls"}}}}
+		m.nav.focus = focus
+		m.prompt.Blur()
+		m.sizeViewport()
+
+		_, cmd := m.Update(typeKey("q"))
+		assert.Nil(t, cmd, "q must not quit from focus %v", focus)
+		assert.NotContains(t, m.statusHint(), "[q] quit", "and the hint must not offer it")
+	}
+
+	// The ways out still work.
+	_, cmd := testUIModel().Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	assert.NotNil(t, cmd, "ctrl+c still quits")
+	_, cmd = testUIModel().runSlash("/quit")
+	assert.NotNil(t, cmd, "/quit still quits")
+}
+
+// slashKey produces a command — tea.Quit for /quit, a goal's batch for
+// anything that starts one. Both callers used to discard it, so a
+// command picked from the open dropdown did nothing at all.
+func TestUI_DropdownEnterCarriesTheCommandBack(t *testing.T) {
+	for _, tc := range []struct{ name, typed string }{
+		{"idle", "q"},
+		{"while a goal runs", "q"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := testUIModel()
+			if tc.name != "idle" {
+				m.prompt.SetValue("some goal")
+				nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+				m = nm.(Model)
+				require.Equal(t, ownerBusy, m.owner())
+			}
+			m = typeRune(typeRune(m, '/'), rune(tc.typed[0]))
+			require.True(t, m.prompt.Open(), "the dropdown must be showing /quit")
+
+			_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			assert.NotNil(t, cmd, "enter on the highlighted entry must run it")
+		})
+	}
+}
+
+// esc is intercepted before owner() dispatches, so slashKey's own esc
+// case was unreachable and the dropdown stayed open. Escape backs out
+// of the innermost thing first: dropdown, then a running goal.
+func TestUI_EscapeClosesTheDropdownFirst(t *testing.T) {
+	m := typeRune(testUIModel(), '/')
+	require.True(t, m.prompt.Open())
+
+	aborted := false
+	m.abort = func() { aborted = true }
+
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = nm.(Model)
+	assert.False(t, m.prompt.Open(), "esc closes the dropdown")
+	assert.Equal(t, "/", m.prompt.Value(), "and keeps what was typed")
+	assert.False(t, aborted, "the innermost thing goes first, not the running goal")
+
+	// A second esc reaches past it to the goal.
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	assert.True(t, aborted)
+	assert.Nil(t, nm.(Model).abort)
 }

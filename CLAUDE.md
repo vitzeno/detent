@@ -254,6 +254,11 @@ routing     →  agent, sandbox
   mutators at all now); `tool_flow.go`/`exec_flow.go`/`save_flow.go`
   handle the slash-command, streaming, and file-save flows the same way;
   `keys.go` decides what a keystroke means and `nav.go` what it does.
+  `esc` and `tab` are intercepted in `handleKey` before `owner()`
+  dispatches, so anything wanting either has to be handled there —
+  `onEscape` backs out of the innermost thing first (dropdown, then a
+  running goal, then the output pane). Quitting is `ctrl+c` or
+  `/quit` only; no bare letter ends a session.
   Anything producing display strings from `Model` state lives in a
   `_view.go` file: `view.go` composes the screen, `layout_view.go`
   does the sizing maths, `chrome_view.go` the bars and pane headers,
