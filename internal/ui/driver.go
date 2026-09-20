@@ -36,6 +36,11 @@ type Driver interface {
 	SaveFile(path, diff, content string) error
 	// res is nil when the abort landed before BeginGoal produced one.
 	RecordAbort(res *GoalResult)
+	// Rollback restores the checkpoint after res.Commands[step-1]
+	// (1-based) and truncates res.Commands to it. ok is false only
+	// when no sandbox is wired; an invalid or non-sandboxed step is a
+	// real error to surface.
+	Rollback(ctx context.Context, res *GoalResult, step int) (ok bool, err error)
 	Tracker() []GoalStats
 	UsageSnapshot() Snapshot
 }
@@ -56,6 +61,7 @@ type PreJudgment struct {
 	ScopeRisk  float64
 	Dangerous  bool
 	RiskNote   string
+	RunMode    string // "host", "sandbox", or "" if unset
 }
 
 // RenderKind names the shape of a finished command's output.
@@ -114,6 +120,8 @@ type ExecutedCommand struct {
 	Result  Result
 	Pre     PreJudgment
 	Post    *PostJudgment
+	// SnapshotID is set when this command ran sandboxed; "" otherwise.
+	SnapshotID string
 }
 
 // EndReason names how a goal stopped.

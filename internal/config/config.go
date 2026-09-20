@@ -14,6 +14,7 @@ import (
 
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/propose"
+	"github.com/vitzeno/detent/internal/sandbox"
 )
 
 // Defaults: local LM Studio server, bonsai for now, pinned Jev. Aliased
@@ -22,6 +23,10 @@ const (
 	DefaultBaseURL = propose.DefaultBaseURL
 	DefaultModel   = propose.DefaultModel
 )
+
+// DefaultSandboxWorkspace is the in-container mount point, not the
+// host source (always os.Getwd(); see sandbox.Container).
+const DefaultSandboxWorkspace = "/workspace"
 
 // Config selects what the proposer and judge talk to, plus loop behavior.
 type Config struct {
@@ -39,6 +44,15 @@ type Config struct {
 	// Theme is a name from internal/ui/theme.Themes. Unvalidated here —
 	// main.go does the lookup, so config has no dependency on ui.
 	Theme string `yaml:"theme"`
+
+	// SandboxMode is "auto" or "host"; unvalidated here, like Theme.
+	SandboxMode string `yaml:"sandbox_mode"`
+	// SandboxSocket overrides the OS-conventional containerd socket
+	// path; empty lets main.go's defaultSandboxSocket() pick it.
+	SandboxSocket    string `yaml:"sandbox_socket"`
+	SandboxImage     string `yaml:"sandbox_image"`
+	SandboxRuntime   string `yaml:"sandbox_runtime"`
+	SandboxWorkspace string `yaml:"sandbox_workspace"`
 }
 
 // DefaultTheme mirrors theme.DefaultName, duplicated to avoid the same
@@ -52,6 +66,10 @@ func Default() Config {
 		Model:    DefaultModel,
 		JevModel: classify.DefaultModel,
 		Theme:    DefaultTheme,
+
+		SandboxMode:      "auto",
+		SandboxImage:     sandbox.DefaultImage,
+		SandboxWorkspace: DefaultSandboxWorkspace,
 	}
 }
 

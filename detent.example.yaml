@@ -39,3 +39,27 @@ model: prism-ml/bonsai-27b
 # --- Theme: TUI color scheme ---
 # One of dark (default), light, solarized, dracula.
 # theme: dark
+
+# --- Sandbox: per-command host vs. containerd-backed execution ---
+# "auto" (default) sandboxes by default; "host" never sandboxes.
+# sandbox_mode: auto
+
+# Containerd socket. Empty (default) picks the OS-conventional path
+# (colima --runtime containerd on macOS, /run/containerd/containerd.sock
+# on Linux) — set this if that guess is wrong (e.g. a non-default
+# colima profile, or Windows, which has no safe default at all).
+# sandbox_socket: /run/containerd/containerd.sock
+
+# Image sandboxed commands run in. Must be a fully qualified ref —
+# unlike docker/nerdctl, containerd's client doesn't expand Docker Hub
+# shorthand itself.
+# sandbox_image: docker.io/library/ubuntu:24.04
+
+# OCI runtime handle. Empty (default) is containerd's own default
+# (plain runc); "io.containerd.runsc.v1" switches to gVisor once
+# that's installed and registered on the host.
+# sandbox_runtime: ""
+
+# In-container mount point for the harness's working directory. The
+# host side is always the directory detent was started in.
+# sandbox_workspace: /workspace

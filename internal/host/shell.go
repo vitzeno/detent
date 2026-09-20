@@ -3,7 +3,6 @@
 package host
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -12,19 +11,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/vitzeno/detent/internal/capture"
 )
 
 // DefaultTimeout bounds a single command.
 const DefaultTimeout = 30 * time.Second
-
-// MaxOutputBytes caps each captured stream.
-const MaxOutputBytes = 8 * 1024
-
-// StreamEvent is one line of live output from a running command.
-type StreamEvent struct {
-	Stderr bool
-	Line   string
-}
 
 // Shell runs commands directly on the host, unsandboxed.
 // Satisfies agent.Runner structurally; callers wire it explicitly.
@@ -63,16 +55,7 @@ func (s *Shell) Run(ctx context.Context, command string, events chan<- StreamEve
 	var wg sync.WaitGroup
 	scan := func(pipe io.Reader, isStderr bool, buf *bytes.Buffer) {
 		defer wg.Done()
-		lw := &limitedWriter{buf: buf, limit: s.limit}
-		sc := bufio.NewScanner(pipe)
-		sc.Buffer(make([]byte, 64*1024), 1024*1024)
-		for sc.Scan() {
-			line := sc.Text()
-			_, _ = lw.Write([]byte(line + "\n"))
-			if events != nil {
-				events <- StreamEvent{Stderr: isStderr, Line: line}
-			}
-		}
+		capture.ScanCapped(pipe, isStderr, buf, s.limit, events)
 	}
 	wg.Add(2)
 	go scan(stdoutPipe, false, &stdout)
@@ -102,20 +85,4 @@ func (s *Shell) Run(ctx context.Context, command string, events chan<- StreamEve
 		return res, nil
 	}
 	return res, fmt.Errorf("host: %w", waitErr)
-}
-
-type limitedWriter struct {
-	buf   *bytes.Buffer
-	limit int
-}
-
-func (w *limitedWriter) Write(p []byte) (int, error) {
-	remaining := w.limit - w.buf.Len()
-	if remaining <= 0 {
-		return len(p), nil // discard, but report success so exec continues
-	}
-	if len(p) > remaining {
-		p = p[:remaining]
-	}
-	return w.buf.Write(p)
 }

@@ -47,14 +47,25 @@ func okRun(result host.Result) agent.Runner {
 	})
 }
 
+// modeSelector always reports mode, regardless of PreJudgment; used to
+// prove RunMode survives the agent -> resolver -> ui round trip.
+type modeSelector struct {
+	runner agent.Runner
+	mode   string
+}
+
+func (s modeSelector) Select(agent.PreJudgment) (agent.Runner, string) { return s.runner, s.mode }
+func (s modeSelector) Probe() agent.Runner                             { return s.runner }
+func (s modeSelector) Sandbox() agent.Runner                           { return s.runner }
+
 func TestResolver_GoalToDone_RoundTrip(t *testing.T) {
 	sess := &agent.Session{
 		Proposer: &scriptProposer{script: []propose.Proposal{
 			{Command: "ls -la", Rationale: "list files"},
 			{Done: true, Summary: "saw two files"},
 		}},
-		Run:   okRun(host.Result{Stdout: "a\nb\n"}),
-		Stats: usage.New(),
+		Runners: modeSelector{runner: okRun(host.Result{Stdout: "a\nb\n"}), mode: agent.RunModeSandbox},
+		Stats:   usage.New(),
 	}
 	r := New(sess)
 	ctx := context.Background()
@@ -67,6 +78,7 @@ func TestResolver_GoalToDone_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ls -la", p.Command)
 	assert.False(t, pre.Dangerous, "ls -la must not be flagged")
+	assert.Equal(t, "sandbox", pre.RunMode, "RunMode must survive the agent -> resolver -> ui round trip")
 	assert.Equal(t, 10, used.PromptTokens)
 
 	step := r.RecordStep(res, p, pre, used, 0)
@@ -90,13 +102,56 @@ func TestResolver_GoalToDone_RoundTrip(t *testing.T) {
 	assert.Equal(t, "saw two files", res.Summary)
 }
 
+// snapshotRunner is a Runner that also implements agent.Snapshotter,
+// for proving Rollback/SnapshotID survive the agent -> resolver -> ui
+// round trip (agent's own tests already cover the edge cases).
+type snapshotRunner struct {
+	agent.Runner
+	rolledBackTo agent.SnapshotID
+}
+
+func (f *snapshotRunner) Snapshot(context.Context) (agent.SnapshotID, error) {
+	return "snap-1", nil
+}
+
+func (f *snapshotRunner) Rollback(_ context.Context, id agent.SnapshotID) error {
+	f.rolledBackTo = id
+	return nil
+}
+
+func TestResolver_Rollback_RoundTrip(t *testing.T) {
+	fake := &snapshotRunner{Runner: okRun(host.Result{Stdout: "ok\n"})}
+	sess := &agent.Session{
+		Proposer: &scriptProposer{script: []propose.Proposal{{Command: "echo ok"}}},
+		Runners:  modeSelector{runner: fake, mode: agent.RunModeSandbox},
+		Stats:    usage.New(),
+	}
+	r := New(sess)
+	ctx := context.Background()
+
+	res, err := r.BeginGoal(ctx, "goal")
+	require.NoError(t, err)
+	p, pre, used, err := r.ProposeNext(ctx, "goal")
+	require.NoError(t, err)
+	step := r.RecordStep(res, p, pre, used, 0)
+	ec, err := r.Execute(ctx, res, step, p, pre, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "snap-1", ec.SnapshotID, "SnapshotID must survive the agent -> resolver -> ui round trip")
+
+	ok, err := r.Rollback(ctx, res, 1)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, agent.SnapshotID("snap-1"), fake.rolledBackTo)
+	assert.Len(t, res.Commands, 1, "step 1 itself must survive rolling back to step 1")
+}
+
 func TestResolver_DeclineNeverExecutes(t *testing.T) {
 	sess := &agent.Session{
 		Proposer: &scriptProposer{script: []propose.Proposal{
 			{Command: "rm -rf /tmp/x", Rationale: "remove"},
 		}},
-		Run:   okRun(host.Result{}),
-		Stats: usage.New(),
+		Runners: agent.SingleRunner{Runner: okRun(host.Result{})},
+		Stats:   usage.New(),
 	}
 	r := New(sess)
 	ctx := context.Background()

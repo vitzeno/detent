@@ -1,14 +1,17 @@
 package slash
 
 import (
+	"regexp"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMatchSlash(t *testing.T) {
-	assert.Len(t, Match("/"), 5)
+	assert.Len(t, Match("/"), 6)
 	assert.Equal(t, []Cmd{{"/quit", "quit detent"}}, Match("/q"))
 	assert.Equal(t, []Cmd{{"/abort", "abort the running command"}}, Match("/a"))
 	assert.Empty(t, Match("/x"))
@@ -23,6 +26,23 @@ func TestView(t *testing.T) {
 	require.Contains(t, v, "/abort")
 	require.Contains(t, v, "/tree")
 	require.Contains(t, v, "/usage")
+	require.Contains(t, v, "/rollback")
 	require.Contains(t, v, "/help")
 	assert.Empty(t, View(nil, 0))
+}
+
+// TestView_AlignsUnderColor guards against padding a name after it's
+// already been ANSI-styled: fmt's width verbs count escape bytes too,
+// so %-10s applied post-Render silently drops the padding — invisible
+// with color disabled (as most test runs are), only visible once a
+// real color profile is forced, as here.
+func TestView_AlignsUnderColor(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
+	v := View(Match("/"), 0)
+	ansi := regexp.MustCompile("\x1b\\[[0-9;]*m")
+	lines := ansi.ReplaceAllString(v, "")
+	assert.Contains(t, lines, "▸ /quit      quit detent")
+	assert.Contains(t, lines, "  /abort     abort the running command")
 }

@@ -96,6 +96,17 @@ func TestLoad_Theme(t *testing.T) {
 	assert.Equal(t, "dracula", cfg.Theme)
 }
 
+func TestLoad_SandboxFields(t *testing.T) {
+	p := writeTemp(t, "sandbox_mode: host\nsandbox_socket: /tmp/containerd.sock\nsandbox_image: ubuntu:22.04\nsandbox_runtime: runsc\nsandbox_workspace: /work\n")
+	cfg, err := Load(p)
+	require.NoError(t, err)
+	assert.Equal(t, "host", cfg.SandboxMode)
+	assert.Equal(t, "/tmp/containerd.sock", cfg.SandboxSocket)
+	assert.Equal(t, "ubuntu:22.04", cfg.SandboxImage)
+	assert.Equal(t, "runsc", cfg.SandboxRuntime)
+	assert.Equal(t, "/work", cfg.SandboxWorkspace)
+}
+
 func TestLoad_ExampleFileStaysValid(t *testing.T) {
 	cwd, _ := os.Getwd()
 	require.NoError(t, os.Chdir("../.."))

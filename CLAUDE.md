@@ -63,11 +63,14 @@ Package dependency flow — `ui` and `agent` never import each other;
 `resolver` is the only package that imports both:
 
 ```
-cmd/detent  →  ui, resolver, agent, classify, config, propose (Ping only)
+cmd/detent  →  ui, resolver, agent, classify, config, propose (Ping only),
+                sandbox (composition root only)
 resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio
 ui          →  its own subpackages only (editor, slash, status, tabular,
                 markdown, theme, island, tree, layout)
 agent       →  propose, host, classify, usage
+host        →  capture
+sandbox     →  capture (never host or agent)
 ```
 
 - **`internal/propose`** — `OpenAIProposer`, the reference implementation of
@@ -84,6 +87,16 @@ agent       →  propose, host, classify, usage
   OpenAI-compatible backend. `Proposal.Command` is empty iff `Done` is true;
   `parseProposal` enforces that invariant when decoding the model's JSON.
 
+- **`internal/capture`** — the bounded-output-capture primitives shared
+  by every command backend: `Result`, `StreamEvent`, `MaxOutputBytes`,
+  and `ScanCapped` (reads a stream line by line, capping it and
+  emitting a `StreamEvent` per line). Has no `exec.Cmd`/containerd
+  knowledge of its own — `host` feeds it `os/exec` pipes, `sandbox`
+  feeds it a polling file reader (see below). `host.Result`/
+  `host.StreamEvent`/`host.MaxOutputBytes` are aliases onto this
+  package's own (`internal/host/types.go`), so every existing
+  `host.Result` reference elsewhere is unaffected by the split.
+
 - **`internal/host`** — the only place `exec.Command` is called, all in
   one file (`shell.go`). `Shell.Run` executes via `sh -c` with a bounded
   timeout and per-stream output cap (`MaxOutputBytes`); a non-zero exit
@@ -91,6 +104,24 @@ agent       →  propose, host, classify, usage
   for live output (nil is fine — Run just skips sending) and closes it
   once output ends, instead of taking a callback. `Shell{}` is the
   unsandboxed default `agent.Runner`.
+
+- **`internal/sandbox`** — `Container`, a session-scoped
+  containerd-backed `agent.Runner` (one persistent container per
+  session, not per command, so filesystem state accumulates across
+  commands and can be checkpointed). Imports `capture`, never `host`
+  or `agent` — `Run`'s signature is already spelled in `capture`'s
+  types, which is what lets it satisfy `agent.Runner` structurally.
+  Output is captured by shell-redirecting into files inside the
+  workspace bind mount and polling them (`tail.go`), not via
+  containerd's own `cio` FIFO streaming: a FIFO needs the shim and the
+  reader on the same kernel, which doesn't hold once the daemon runs
+  inside a VM (colima, on macOS). `Snapshot`/`Rollback` map onto
+  containerd's `Prepare`/`Commit` snapshot vocabulary and use plain
+  `string` checkpoint IDs for the same host-package-independence
+  reason; the composition root (`cmd/detent`) adapts that string to
+  `agent.SnapshotID` when wiring `agent.Snapshotter`. Real containerd
+  daemon required for its own tests (`container_test.go`), skipped
+  gracefully when unreachable.
 
 - **`internal/agent`** — the propose → confirm → execute → judge loop,
   one goal at a time, over an append-only `Session.Transcript`
@@ -108,17 +139,14 @@ agent       →  propose, host, classify, usage
   implementations. `probe` declares its own identically-shaped `Judge`,
   since it sits below `agent` and can't import it back. `options.go`
   holds `Option`/`With*`/`New`, same split as `propose`. `session.go`
-  holds the `Session` struct and result/record
-  types; `loop.go` holds the two entry points:
-  - `RunGoal` — blocking, used by the headless `-goal` CLI path; fails
-    closed if `Confirm` is nil.
-  - `BeginGoal`/`ProposeNext`/`RecordStep`/`Execute`/`JudgeResult`/
-    `Record*` — the non-blocking primitives `resolver` drives on the
-    TUI's behalf, because Bubble Tea's async, message-driven `Update`
-    loop can't sit inside a blocking callback. `RecordStep` is the one
-    place `AddStep`/`SetPropose`/`SetJudgePre`/`SetDwell` happen,
-    shared by both `RunGoal` and the non-blocking path so the sequence
-    isn't hand-rolled twice.
+  holds the `Session` struct and result/record types. `loop.go` holds
+  `RunGoal` (blocking, the headless `-goal` path, fails closed without
+  `Confirm`) plus the non-blocking primitives `resolver` drives on the
+  TUI's behalf instead — `BeginGoal`/`ProposeNext`/`RecordStep`/
+  `Execute`/`JudgeResult` — since Bubble Tea's async `Update` loop
+  can't sit inside a blocking callback. `record.go` holds the
+  `Record*` family that closes a goal (or notes a standalone action).
+  `snapshot.go` holds `Snapshot`/`Rollback`.
 
   `judge.go` holds both judgment paths:
   `judgePre` (mutability + scope risk, before confirm) and `judgePost`

@@ -54,6 +54,21 @@ func (c *Config) apply(o Config) {
 	if o.Theme != "" {
 		c.Theme = o.Theme
 	}
+	if o.SandboxMode != "" {
+		c.SandboxMode = o.SandboxMode
+	}
+	if o.SandboxSocket != "" {
+		c.SandboxSocket = o.SandboxSocket
+	}
+	if o.SandboxImage != "" {
+		c.SandboxImage = o.SandboxImage
+	}
+	if o.SandboxRuntime != "" {
+		c.SandboxRuntime = o.SandboxRuntime
+	}
+	if o.SandboxWorkspace != "" {
+		c.SandboxWorkspace = o.SandboxWorkspace
+	}
 }
 
 // Known limitation: a config file with `risk_threshold: 0` is
@@ -75,5 +90,9 @@ func envConfig() Config {
 		),
 		JevAPIKey: os.Getenv("TYPESAFE_API_KEY"),
 		Theme:     os.Getenv("DETENT_THEME"),
+
+		SandboxMode:    os.Getenv("DETENT_SANDBOX_MODE"),
+		SandboxSocket:  os.Getenv("DETENT_SANDBOX_SOCKET"),
+		SandboxRuntime: os.Getenv("DETENT_SANDBOX_RUNTIME"),
 	}
 }

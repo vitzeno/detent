@@ -55,6 +55,15 @@ func saveCmd(sess Driver, row *stepRow, path, content string) tea.Cmd {
 	}
 }
 
+// rollbackCmd runs off the update loop: it's a real containerd RPC
+// (Prepare against the checkpoint), not free.
+func rollbackCmd(ctx context.Context, sess Driver, target *goalBlock, step int) tea.Cmd {
+	return func() tea.Msg {
+		ok, err := sess.Rollback(ctx, target.res, step)
+		return rollbackDoneMsg{target: target, step: step, ok: ok, err: err}
+	}
+}
+
 // Receives one live line; re-dispatched per line while running.
 func streamWaitCmd(ch <-chan StreamEvent, ctx context.Context) tea.Cmd {
 	return func() tea.Msg {

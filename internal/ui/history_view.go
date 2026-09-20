@@ -67,11 +67,11 @@ func (m *Model) historyLines() []string {
 				}
 			}
 		}
-		for _, r := range b.steps {
+		for i, r := range b.steps {
 			if r == rows[m.cursorClamped()] && len(rows) > 0 {
 				m.nav.cursorLine = len(lines)
 			}
-			lines = append(lines, m.stepLines(r)...)
+			lines = append(lines, m.stepLines(r, i+1)...)
 			if r.cmd.expanded {
 				lines = append(lines, previewLines(r, m.layout.histColW-10)...)
 			}
@@ -102,7 +102,9 @@ func (m *Model) cursorClamped() int {
 	return m.nav.cursor
 }
 
-func (m Model) stepLines(r *stepRow) []string {
+// step is this row's 1-based position, what /rollback's argument
+// targets, shown as a dim marker on any step that ran sandboxed.
+func (m Model) stepLines(r *stepRow, step int) []string {
 	mark := "  "
 	if r == m.focused() {
 		mark = styleRowCursor.Render("▸ ")
@@ -130,10 +132,15 @@ func (m Model) stepLines(r *stepRow) []string {
 	}
 	icon, detail := status.Badge(s, m.spinner.View())
 
+	checkpoint := ""
+	if r.cmd.ec != nil && r.cmd.ec.SnapshotID != "" {
+		checkpoint = styleFaint.Render(fmt.Sprintf(" #%d", step))
+	}
+
 	// Truncated not wrapped: a command is often one unbreakable token
 	// with no good place to break.
 	cmd := truncateWidth(r.command, m.layout.histColW-34)
-	return []string{fmt.Sprintf("%s%s %s %s", mark, icon, cmd, styleMuted.Render("· "+detail))}
+	return []string{fmt.Sprintf("%s%s %s %s%s", mark, icon, cmd, styleMuted.Render("· "+detail), checkpoint)}
 }
 
 func anyRunning(b *goalBlock) bool {

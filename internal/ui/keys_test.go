@@ -159,7 +159,7 @@ func TestUI_SlashEntryWhileBusy(t *testing.T) {
 	nm, _ = m.handleKey(typeKey("/"))
 	m = nm.(Model)
 	require.Equal(t, "/", m.input.Value())
-	require.Len(t, m.slash.matches, 5)
+	require.Len(t, m.slash.matches, 6)
 
 	nm, _ = m.handleKey(typeKey("a"))
 	m = nm.(Model)

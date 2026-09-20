@@ -84,6 +84,18 @@ func (r *Resolver) SaveFile(path, diff, content string) error {
 	return nil
 }
 
+func (r *Resolver) Rollback(ctx context.Context, res *ui.GoalResult, step int) (bool, error) {
+	agentRes := goalRef(res)
+	ok, err := r.sess.Rollback(ctx, agentRes, step)
+	if !ok || err != nil {
+		return ok, err
+	}
+	// Mirrors the same truncation onto the DTO the UI holds a pointer to.
+	res.Commands = res.Commands[:step]
+	syncGoalResult(res, agentRes)
+	return true, nil
+}
+
 func (r *Resolver) RecordAbort(res *ui.GoalResult) {
 	if res == nil {
 		r.sess.RecordAbort(nil)

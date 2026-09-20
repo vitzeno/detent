@@ -18,6 +18,12 @@ const (
 	MutIrreversible = "likely_irreversible"
 )
 
+// RunMode* values; "" means no RunnerSelector was configured.
+const (
+	RunModeHost    = "host"
+	RunModeSandbox = "sandbox"
+)
+
 // PreJudgment classifies a proposed command before confirm.
 type PreJudgment struct {
 	FromJudge            bool
@@ -27,6 +33,9 @@ type PreJudgment struct {
 	// Dangerous/RiskNote is escalate-only: FlagDanger or scope risk above threshold.
 	Dangerous bool
 	RiskNote  string
+	// RunMode is which Runner Select picked for this command; "" if
+	// no RunnerSelector was wired.
+	RunMode string
 	// JudgeUsage is what the batch consumed; zero on fallback.
 	JudgeUsage usage.Usage
 }
@@ -178,30 +187,31 @@ func postQuestions() classify.Questions {
 
 func (s *Session) judgePre(ctx context.Context, goal, command string) PreJudgment {
 	dangerous, note := FlagDanger(command)
-	fb := NewPreJudgment(dangerous, note)
+	out := NewPreJudgment(dangerous, note)
 	answers, ju, ok := classify.AskOrFallback(ctx, s.Judge,
 		classify.State(map[string]any{"goal": goal, "command": command}),
 		preQuestions())
-	if !ok {
-		return fb
-	}
-	out := NewPreJudgment(dangerous, note)
-	out.FromJudge = true
-	out.JudgeUsage = convertUsage(ju)
-	if a, ok := answers["mutability"]; ok && a.Choice != "" {
-		out.Mutability = a.Choice
-		out.MutabilityConfidence = a.Confidence
-		if a.Choice == MutSystem || a.Choice == MutIrreversible {
-			out.Dangerous = true
-			out.RiskNote = joinNote(out.RiskNote, "jev mutability: "+a.Choice)
+	if ok {
+		out.FromJudge = true
+		out.JudgeUsage = convertUsage(ju)
+		if a, aok := answers["mutability"]; aok && a.Choice != "" {
+			out.Mutability = a.Choice
+			out.MutabilityConfidence = a.Confidence
+			if a.Choice == MutSystem || a.Choice == MutIrreversible {
+				out.Dangerous = true
+				out.RiskNote = joinNote(out.RiskNote, "jev mutability: "+a.Choice)
+			}
+		}
+		if a, aok := answers["scope_risk"]; aok {
+			out.ScopeRisk = a.Noul
+			if a.Noul >= s.riskThreshold() {
+				out.Dangerous = true
+				out.RiskNote = joinNote(out.RiskNote, fmt.Sprintf("jev scope risk %.2f", a.Noul))
+			}
 		}
 	}
-	if a, ok := answers["scope_risk"]; ok {
-		out.ScopeRisk = a.Noul
-		if a.Noul >= s.riskThreshold() {
-			out.Dangerous = true
-			out.RiskNote = joinNote(out.RiskNote, fmt.Sprintf("jev scope risk %.2f", a.Noul))
-		}
+	if s.Runners != nil {
+		_, out.RunMode = s.Runners.Select(out)
 	}
 	return out
 }

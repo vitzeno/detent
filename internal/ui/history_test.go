@@ -64,7 +64,21 @@ func TestStepLines_CommandStaysTruncatedNotWrapped(t *testing.T) {
 	m := testUIModel()
 	m.layout.histColW = 40
 	row := &stepRow{command: strings.Repeat("verylongpathwithnospaces/", 5)}
-	lines := m.stepLines(row)
+	lines := m.stepLines(row, 1)
 	assert.Len(t, lines, 1, "a command with no spaces must truncate to one line, not fragment across several")
 	assert.Contains(t, lines[0], "…")
+}
+
+func TestStepLines_ShowsCheckpointMarkerForSandboxedStep(t *testing.T) {
+	m := testUIModel()
+	row := &stepRow{command: "echo ok", cmd: cmdState{ec: &ExecutedCommand{SnapshotID: "snap-1"}}}
+	lines := m.stepLines(row, 3)
+	assert.Contains(t, lines[0], "#3", "a sandboxed step shows its rollback target")
+}
+
+func TestStepLines_NoMarkerWithoutSnapshot(t *testing.T) {
+	m := testUIModel()
+	row := &stepRow{command: "echo ok", cmd: cmdState{ec: &ExecutedCommand{}}}
+	lines := m.stepLines(row, 3)
+	assert.NotContains(t, lines[0], "#3", "a host-run step has no checkpoint to roll back to")
 }

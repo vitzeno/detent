@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/vitzeno/detent/internal/sandbox"
 )
 
 func TestResolve_Precedence(t *testing.T) {
@@ -42,6 +44,9 @@ func TestResolve_EmptyIsDefault(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("TYPESAFE_API_KEY", "")
 	t.Setenv("DETENT_THEME", "")
+	t.Setenv("DETENT_SANDBOX_MODE", "")
+	t.Setenv("DETENT_SANDBOX_SOCKET", "")
+	t.Setenv("DETENT_SANDBOX_RUNTIME", "")
 	assert.Equal(t, Default(), Resolve(Config{}, Config{}, -1))
 }
 
@@ -69,4 +74,33 @@ func TestResolve_ThemeDefaultsWhenUnset(t *testing.T) {
 	t.Setenv("DETENT_THEME", "")
 	got := Resolve(Config{}, Config{}, -1)
 	assert.Equal(t, DefaultTheme, got.Theme)
+}
+
+func TestResolve_SandboxPrecedence(t *testing.T) {
+	t.Setenv("DETENT_SANDBOX_MODE", "host")
+	t.Setenv("DETENT_SANDBOX_SOCKET", "/env/containerd.sock")
+	t.Setenv("DETENT_SANDBOX_RUNTIME", "runsc")
+	file := Config{SandboxMode: "auto", SandboxImage: "file-image:latest", SandboxWorkspace: "/file-workspace"}
+
+	got := Resolve(file, Config{}, -1)
+	assert.Equal(t, "host", got.SandboxMode, "env beats file")
+	assert.Equal(t, "/env/containerd.sock", got.SandboxSocket)
+	assert.Equal(t, "runsc", got.SandboxRuntime)
+	assert.Equal(t, "file-image:latest", got.SandboxImage, "no env for image; file survives")
+	assert.Equal(t, "/file-workspace", got.SandboxWorkspace)
+
+	got = Resolve(file, Config{SandboxMode: "auto"}, -1)
+	assert.Equal(t, "auto", got.SandboxMode, "flag beats env beats file")
+}
+
+func TestResolve_SandboxDefaultsWhenUnset(t *testing.T) {
+	t.Setenv("DETENT_SANDBOX_MODE", "")
+	t.Setenv("DETENT_SANDBOX_SOCKET", "")
+	t.Setenv("DETENT_SANDBOX_RUNTIME", "")
+	got := Resolve(Config{}, Config{}, -1)
+	assert.Equal(t, "auto", got.SandboxMode)
+	assert.Equal(t, sandbox.DefaultImage, got.SandboxImage)
+	assert.Equal(t, DefaultSandboxWorkspace, got.SandboxWorkspace)
+	assert.Empty(t, got.SandboxSocket, "no built-in default; main.go's defaultSandboxSocket() picks it")
+	assert.Empty(t, got.SandboxRuntime, "empty means containerd's own default runtime")
 }

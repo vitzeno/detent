@@ -81,7 +81,7 @@ func TestSession_RecordFileSave_BoundsLargeDiffs(t *testing.T) {
 // non-blocking driver path (resolver, not RunGoal): an abort during
 // propose still has to close the goal turn and finish Stats.Goal.
 func TestSession_RecordAbort_ClosesTranscriptAndStats(t *testing.T) {
-	s := &Session{Proposer: &stubProposer{}, Run: okRun(host.Result{}), Stats: usage.New()}
+	s := &Session{Proposer: &stubProposer{}, Runners: SingleRunner{Runner: okRun(host.Result{})}, Stats: usage.New()}
 	res, err := s.BeginGoal(context.Background(), "some goal")
 	require.NoError(t, err)
 
@@ -119,7 +119,7 @@ func TestRunGoal_DonePath(t *testing.T) {
 			confirmed = append(confirmed, req.Command)
 			return true
 		}),
-		Run: okRun(host.Result{Stdout: "a\nb\n"}),
+		Runners: SingleRunner{Runner: okRun(host.Result{Stdout: "a\nb\n"})},
 	}
 
 	res, err := s.RunGoal(context.Background(), "what files are here?")
@@ -150,7 +150,7 @@ func TestRunGoal_SecondGoalSeesFirst(t *testing.T) {
 	s := &Session{
 		Proposer: stub,
 		Confirm:  confirmFunc(func(ConfirmRequest) bool { return true }),
-		Run:      okRun(host.Result{Stdout: "forty-two\n"}),
+		Runners:  SingleRunner{Runner: okRun(host.Result{Stdout: "forty-two\n"})},
 	}
 
 	_, err := s.RunGoal(context.Background(), "print something")
@@ -193,7 +193,7 @@ func TestRunGoal_DeclineStopsGoal(t *testing.T) {
 			confirmed = append(confirmed, req.Command)
 			return false // decline the one command that ever reaches confirm
 		}),
-		Run: okRun(host.Result{}),
+		Runners: SingleRunner{Runner: okRun(host.Result{})},
 	}
 
 	res, err := s.RunGoal(context.Background(), "clean up")
@@ -216,7 +216,7 @@ func TestRunGoal_BudgetExhausts(t *testing.T) {
 	s := &Session{
 		Proposer:   stub,
 		Confirm:    confirmFunc(func(ConfirmRequest) bool { return true }),
-		Run:        okRun(host.Result{}),
+		Runners:    SingleRunner{Runner: okRun(host.Result{})},
 		StepBudget: 2,
 	}
 
@@ -240,7 +240,7 @@ func TestRunGoal_OnlyDangerousCommandsNeedConfirm(t *testing.T) {
 			calls = append(calls, req.Command)
 			return true
 		}),
-		Run: okRun(host.Result{}),
+		Runners: SingleRunner{Runner: okRun(host.Result{})},
 	}
 	res, err := s.RunGoal(context.Background(), "g")
 	require.NoError(t, err)
@@ -251,13 +251,13 @@ func TestRunGoal_OnlyDangerousCommandsNeedConfirm(t *testing.T) {
 func TestRunGoal_NoConfirmFuncStillOKForAnAllSafeGoal(t *testing.T) {
 	// Confirm==nil fails closed even though this goal never needed it.
 	stub := &stubProposer{script: []propose.Proposal{{Command: "echo harmless", Rationale: "safe"}}}
-	s := &Session{Proposer: stub, Confirm: nil, Run: okRun(host.Result{})}
+	s := &Session{Proposer: stub, Confirm: nil, Runners: SingleRunner{Runner: okRun(host.Result{})}}
 	_, err := s.RunGoal(context.Background(), "g")
 	assert.ErrorContains(t, err, "no Confirm")
 }
 
 func TestRunGoal_NoConfirmFailsClosed(t *testing.T) {
-	s := &Session{Proposer: &stubProposer{}, Confirm: nil, Run: okRun(host.Result{})}
+	s := &Session{Proposer: &stubProposer{}, Confirm: nil, Runners: SingleRunner{Runner: okRun(host.Result{})}}
 	_, err := s.RunGoal(context.Background(), "g")
 	assert.ErrorContains(t, err, "no Confirm")
 }
@@ -276,7 +276,7 @@ func TestRunGoal_DangerFlagReachesConfirm(t *testing.T) {
 			sawNote = req.RiskNote
 			return false // stop after capturing
 		}),
-		Run: okRun(host.Result{}),
+		Runners: SingleRunner{Runner: okRun(host.Result{})},
 	}
 	_, err := s.RunGoal(context.Background(), "g")
 	require.NoError(t, err)
@@ -313,8 +313,8 @@ func TestRunGoal_JevBackstopEscalatesOnly(t *testing.T) {
 			flagged = req.Dangerous
 			return false
 		}),
-		Run:   okRun(host.Result{}),
-		Judge: &fakeJudge{noul: 0.9},
+		Runners: SingleRunner{Runner: okRun(host.Result{})},
+		Judge:   &fakeJudge{noul: 0.9},
 	}
 	_, err := s.RunGoal(context.Background(), "g")
 	require.NoError(t, err)
@@ -337,8 +337,8 @@ func TestRunGoal_JevBackstopEscalatesOnly(t *testing.T) {
 					got = req.Dangerous
 					return false
 				}),
-				Run:   okRun(host.Result{}),
-				Judge: tc.judge,
+				Runners: SingleRunner{Runner: okRun(host.Result{})},
+				Judge:   tc.judge,
 			}
 			_, err := s.RunGoal(context.Background(), "g")
 			require.NoError(t, err)
@@ -398,4 +398,134 @@ func truncateStr(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+// fakeSnapshotRunner is a Runner that also implements Snapshotter.
+type fakeSnapshotRunner struct {
+	Runner
+	snapID       SnapshotID
+	snapErr      error
+	rollErr      error
+	rolledBackTo SnapshotID
+}
+
+func (f *fakeSnapshotRunner) Snapshot(context.Context) (SnapshotID, error) {
+	return f.snapID, f.snapErr
+}
+
+func (f *fakeSnapshotRunner) Rollback(_ context.Context, id SnapshotID) error {
+	f.rolledBackTo = id
+	return f.rollErr
+}
+
+// sandboxSelector always routes to sandbox, for testing Snapshot/Rollback.
+type sandboxSelector struct{ sandbox Runner }
+
+func (s sandboxSelector) Select(PreJudgment) (Runner, string) { return s.sandbox, RunModeSandbox }
+func (s sandboxSelector) Probe() Runner                       { return s.sandbox }
+func (s sandboxSelector) Sandbox() Runner                     { return s.sandbox }
+
+func TestSession_Snapshot_NilRunners(t *testing.T) {
+	s := &Session{}
+	id, ok, err := s.Snapshot(context.Background())
+	require.NoError(t, err)
+	assert.False(t, ok)
+	assert.Empty(t, id)
+}
+
+func TestSession_Snapshot_NoSandboxWired(t *testing.T) {
+	s := &Session{Runners: SingleRunner{Runner: okRun(host.Result{})}}
+	id, ok, err := s.Snapshot(context.Background())
+	require.NoError(t, err)
+	assert.False(t, ok)
+	assert.Empty(t, id)
+}
+
+func TestSession_Snapshot_UsesSandboxSnapshotter(t *testing.T) {
+	fake := &fakeSnapshotRunner{snapID: "snap-1"}
+	s := &Session{Runners: sandboxSelector{sandbox: fake}}
+	id, ok, err := s.Snapshot(context.Background())
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, SnapshotID("snap-1"), id)
+}
+
+func TestSession_Rollback_NoSandboxWired(t *testing.T) {
+	s := &Session{Runners: SingleRunner{Runner: okRun(host.Result{})}}
+	res := &GoalResult{Commands: []*ExecutedCommand{{SnapshotID: "snap-1", TranscriptMark: 2}}}
+	ok, err := s.Rollback(context.Background(), res, 1)
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
+func TestSession_Rollback_UsesSandboxSnapshotter(t *testing.T) {
+	fake := &fakeSnapshotRunner{}
+	s := &Session{Runners: sandboxSelector{sandbox: fake}}
+	res := &GoalResult{Commands: []*ExecutedCommand{{SnapshotID: "snap-1"}}}
+	ok, err := s.Rollback(context.Background(), res, 1)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, SnapshotID("snap-1"), fake.rolledBackTo)
+}
+
+func TestSession_Rollback_TruncatesCommandsAndTranscript(t *testing.T) {
+	fake := &fakeSnapshotRunner{}
+	s := &Session{Runners: sandboxSelector{sandbox: fake}, Transcript: make([]propose.Message, 6)}
+	res := &GoalResult{Commands: []*ExecutedCommand{
+		{Command: "one", SnapshotID: "snap-1", TranscriptMark: 2},
+		{Command: "two", SnapshotID: "snap-2", TranscriptMark: 4},
+		{Command: "three", SnapshotID: "snap-3", TranscriptMark: 6},
+	}}
+
+	ok, err := s.Rollback(context.Background(), res, 2)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, SnapshotID("snap-2"), fake.rolledBackTo)
+	require.Len(t, res.Commands, 2, "step 3's effects must be dropped")
+	assert.Equal(t, "two", res.Commands[1].Command)
+	assert.Len(t, s.Transcript, 4, "transcript truncates to step 2's own mark")
+}
+
+func TestSession_Rollback_StepOutOfRange(t *testing.T) {
+	fake := &fakeSnapshotRunner{}
+	s := &Session{Runners: sandboxSelector{sandbox: fake}}
+	res := &GoalResult{Commands: []*ExecutedCommand{{SnapshotID: "snap-1", TranscriptMark: 2}}}
+
+	ok, err := s.Rollback(context.Background(), res, 5)
+	assert.True(t, ok, "a sandbox is wired; this is a real error, not a silent no-op")
+	assert.Error(t, err)
+}
+
+func TestSession_Rollback_StepNotSandboxed(t *testing.T) {
+	fake := &fakeSnapshotRunner{}
+	s := &Session{Runners: sandboxSelector{sandbox: fake}}
+	res := &GoalResult{Commands: []*ExecutedCommand{{Command: "ran on host"}}}
+
+	ok, err := s.Rollback(context.Background(), res, 1)
+	assert.True(t, ok)
+	assert.Error(t, err)
+}
+
+func TestExecute_SnapshotsAfterSandboxedCommand(t *testing.T) {
+	fake := &fakeSnapshotRunner{snapID: "snap-x", Runner: okRun(host.Result{Stdout: "ok\n"})}
+	s := &Session{Runners: sandboxSelector{sandbox: fake}, Stats: usage.New()}
+	res := &GoalResult{Goal: "g"}
+	res.Stats = s.Stats.StartGoal("g")
+	ustep := res.Stats.AddStep("echo ok")
+
+	ec, err := s.Execute(context.Background(), res, ustep, propose.Proposal{Command: "echo ok"}, PreJudgment{RunMode: RunModeSandbox}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, SnapshotID("snap-x"), ec.SnapshotID)
+}
+
+func TestExecute_NoSnapshotWhenNotSandboxed(t *testing.T) {
+	fake := &fakeSnapshotRunner{snapID: "snap-x", Runner: okRun(host.Result{Stdout: "ok\n"})}
+	s := &Session{Runners: sandboxSelector{sandbox: fake}, Stats: usage.New()}
+	res := &GoalResult{Goal: "g"}
+	res.Stats = s.Stats.StartGoal("g")
+	ustep := res.Stats.AddStep("echo ok")
+
+	ec, err := s.Execute(context.Background(), res, ustep, propose.Proposal{Command: "echo ok"}, PreJudgment{RunMode: RunModeHost}, nil)
+	require.NoError(t, err)
+	assert.Empty(t, ec.SnapshotID)
 }

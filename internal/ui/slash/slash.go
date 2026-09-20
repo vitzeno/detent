@@ -27,6 +27,7 @@ var commands = []Cmd{
 	{"/abort", "abort the running command"},
 	{"/tree", "browse files and directories"},
 	{"/usage", "show usage and timings"},
+	{"/rollback", "roll back to a sandboxed step, e.g. /rollback 2"},
 	{"/help", "show slash commands"},
 }
 
@@ -65,11 +66,15 @@ func View(cmds []Cmd, cursor int) string {
 		if i >= MaxRows {
 			break
 		}
-		mark, label := "  ", name.Render(c.Name)
+		mark, style := "  ", name
 		if i == cursor {
-			mark, label = hl.Render("▸ "), hl.Render(c.Name)
+			mark, style = "▸ ", hl
 		}
-		fmt.Fprintf(&b, "  %s%-10s %s\n", mark, label, desc.Render(c.Desc))
+		// Pad the plain name before styling: padding an already
+		// ANSI-wrapped string counts the escape bytes toward the
+		// width and silently drops the padding.
+		label := style.Render(fmt.Sprintf("%-10s", c.Name))
+		fmt.Fprintf(&b, "  %s%s %s\n", style.Render(mark), label, desc.Render(c.Desc))
 	}
 	return b.String()
 }

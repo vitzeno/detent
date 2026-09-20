@@ -51,6 +51,8 @@ func (m Model) runSlash(cmd string) (tea.Model, tea.Cmd) {
 		return m.openTreeTool()
 	case "/usage":
 		return m.openTool("usage", &stepRow{command: "/usage", toolKind: "usage", tool: toolState{usageExpand: -1}})
+	case "/rollback":
+		return m.runRollback(cmd)
 	case "/help":
 		return m.openTool("help", &stepRow{command: "/help", toolKind: "help"})
 	default:

@@ -2,8 +2,11 @@
 package agent
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
@@ -24,6 +27,7 @@ type ConfirmRequest struct {
 	Dangerous  bool
 	RiskNote   string
 	Mutability string
+	RunMode    string
 	Step       int
 	StepBudget int
 	History    []*ExecutedCommand
@@ -36,6 +40,12 @@ type ExecutedCommand struct {
 	Result  host.Result
 	Pre     PreJudgment
 	Post    *PostJudgment
+	// SnapshotID is set when this command ran sandboxed and a
+	// checkpoint was taken after it; "" otherwise.
+	SnapshotID SnapshotID
+	// TranscriptMark is len(Session.Transcript) right after this step;
+	// what Rollback truncates Transcript back to.
+	TranscriptMark int
 	// Usage links the measured step; nil when untracked.
 	Usage *usage.Step
 }
@@ -65,9 +75,13 @@ type GoalResult struct {
 
 // Session is one running instance with an append-only transcript across goals.
 type Session struct {
+	// ID identifies this session, e.g. to correlate with a sandbox
+	// Runner's own resources. Generated in New unless WithID overrides it.
+	ID string
+
 	Proposer Proposer
 	Confirm  Confirmer
-	Run      Runner
+	Runners  RunnerSelector
 
 	// Judge is a classifier only; nil disables both batches.
 	Judge         Judge
@@ -81,6 +95,17 @@ type Session struct {
 
 	Transcript []propose.Message
 	GoalsDone  int
+}
+
+// NewSessionID generates a random session identifier. New calls this
+// for you; exported so a caller needing the ID first (e.g. to start a
+// sandbox Runner) can generate one and pass it to both via WithID.
+func NewSessionID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("sess-%d", time.Now().UnixNano()) // practically unreachable
+	}
+	return hex.EncodeToString(b)
 }
 
 // Tracker exposes the usage tracker for front-ends rendering stats.

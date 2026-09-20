@@ -34,6 +34,10 @@ type fakeDriver struct {
 	execErr    error
 	post       PostJudgment
 
+	rollbackOK  bool
+	rollbackErr error
+	rolledBackN int // records the step Rollback was last called with
+
 	tracker []GoalStats
 	snap    Snapshot
 
@@ -122,6 +126,15 @@ func (f *fakeDriver) ReadFile(path string) (string, bool, int, error) {
 func (f *fakeDriver) SaveFile(path, diff, content string) error {
 	f.savedPath, f.savedDiff, f.savedContent = path, diff, content
 	return f.saveErr
+}
+
+func (f *fakeDriver) Rollback(_ context.Context, res *GoalResult, step int) (bool, error) {
+	f.rolledBackN = step
+	if f.rollbackErr != nil {
+		return f.rollbackOK, f.rollbackErr
+	}
+	res.Commands = res.Commands[:step]
+	return true, nil
 }
 
 func (f *fakeDriver) RecordAbort(res *GoalResult) {

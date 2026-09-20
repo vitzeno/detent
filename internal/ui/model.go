@@ -114,6 +114,13 @@ type saveDoneMsg struct {
 	err     error
 }
 
+type rollbackDoneMsg struct {
+	target *goalBlock
+	step   int
+	ok     bool
+	err    error
+}
+
 // navState is history/output navigation. histWindow/histOffset/cursorLine
 // get computed and cached by updateHistoryWindow via refreshViewport.
 // View() itself runs on a throwaway copy of Model so it can't do this.
@@ -334,6 +341,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case saveDoneMsg:
 		return m.onSaveDone(msg)
+
+	case rollbackDoneMsg:
+		return m.onRollbackDone(msg)
 	}
 
 	var cmd tea.Cmd

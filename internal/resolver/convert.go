@@ -28,6 +28,7 @@ func toPreJudgment(p agent.PreJudgment) ui.PreJudgment {
 		ScopeRisk:  p.ScopeRisk,
 		Dangerous:  p.Dangerous,
 		RiskNote:   p.RiskNote,
+		RunMode:    p.RunMode,
 	}
 }
 
@@ -38,6 +39,7 @@ func fromPreJudgment(p ui.PreJudgment) agent.PreJudgment {
 		ScopeRisk:  p.ScopeRisk,
 		Dangerous:  p.Dangerous,
 		RiskNote:   p.RiskNote,
+		RunMode:    p.RunMode,
 	}
 }
 
@@ -72,9 +74,10 @@ func toExecutedCommand(ec *agent.ExecutedCommand) *ui.ExecutedCommand {
 		return nil
 	}
 	out := &ui.ExecutedCommand{
-		Command: ec.Command,
-		Result:  toResult(ec.Result),
-		Pre:     toPreJudgment(ec.Pre),
+		Command:    ec.Command,
+		Result:     toResult(ec.Result),
+		Pre:        toPreJudgment(ec.Pre),
+		SnapshotID: string(ec.SnapshotID),
 	}
 	if ec.Post != nil {
 		post := toPostJudgment(*ec.Post)

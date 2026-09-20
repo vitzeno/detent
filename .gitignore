@@ -4,6 +4,10 @@
 # local play config (see detent.example.yaml for the template)
 .detent.yaml
 
+# sandbox output-capture scratch dir (internal/sandbox); Close removes
+# it on a clean exit, this just covers a killed/crashed session too
+.detent-sandbox/
+
 docs/
 
 # python

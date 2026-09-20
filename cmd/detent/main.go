@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -18,6 +21,7 @@ import (
 	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/resolver"
+	"github.com/vitzeno/detent/internal/sandbox"
 	"github.com/vitzeno/detent/internal/ui"
 	"github.com/vitzeno/detent/internal/ui/status"
 	"github.com/vitzeno/detent/internal/ui/theme"
@@ -41,13 +45,18 @@ func run() error {
 	goal := flag.String("goal", "", "run one goal headlessly and exit (empty = launch the TUI)")
 	steps := flag.Int("steps", -1, "per-goal step cap, 0 = unbounded (default: config file, else unbounded)")
 	themeName := flag.String("theme", "", "color scheme: "+strings.Join(theme.Names(), ", ")+" (default: config file, else "+config.DefaultTheme+")")
+	sandboxMode := flag.String("sandbox", "", "sandbox mode: auto, host (default: config file, else auto)")
+	sandboxSocket := flag.String("sandbox-socket", "", "containerd socket path (default: config file, else OS-conventional)")
 	flag.Parse()
 
 	fileCfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
 	}
-	flagCfg := config.Config{BaseURL: *baseURL, Model: *model, APIKey: *apiKey, Theme: *themeName}
+	flagCfg := config.Config{
+		BaseURL: *baseURL, Model: *model, APIKey: *apiKey, Theme: *themeName,
+		SandboxMode: *sandboxMode, SandboxSocket: *sandboxSocket,
+	}
 	resolved := config.Resolve(fileCfg, flagCfg, *steps)
 
 	// Validated even for -goal, so a typo fails fast either way.
@@ -57,6 +66,10 @@ func run() error {
 	}
 	theme.Apply(th)
 	ui.RefreshStyles()
+
+	if resolved.SandboxMode != "auto" && resolved.SandboxMode != "host" {
+		return fmt.Errorf("unknown -sandbox %q — choose one of: auto, host", resolved.SandboxMode)
+	}
 
 	if err := propose.Ping(context.Background(), resolved.BaseURL, resolved.APIKey); err != nil {
 		return fmt.Errorf("%v\n\nis the model endpoint up? Wanted %s with model %s — for LM Studio, load the model and Start Server; otherwise point -url/-model (or a config file) at your provider",
@@ -69,8 +82,41 @@ func run() error {
 		propose.WithAPIKey(resolved.APIKey),
 		propose.WithHeaders(resolved.Headers),
 	)
+
+	sessionID := agent.NewSessionID()
+	runners := runnerSelector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
+	if resolved.SandboxMode == "auto" {
+		socket := resolved.SandboxSocket
+		if socket == "" {
+			socket = defaultSandboxSocket()
+		}
+		if socket == "" {
+			return fmt.Errorf("no default containerd socket for this OS — set -sandbox-socket (or sandbox_socket in config), or run with -sandbox host")
+		}
+
+		pctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := sandbox.Preflight(pctx, socket)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("%w\n\nis containerd reachable at %s? check the colima/containerd socket is up, or run with -sandbox host", err, socket)
+		}
+
+		container := sandbox.NewContainer(
+			sandbox.WithSocket(socket),
+			sandbox.WithImage(resolved.SandboxImage),
+			sandbox.WithMountPoint(resolved.SandboxWorkspace),
+			sandbox.WithRuntime(resolved.SandboxRuntime),
+		)
+		if err := container.Start(context.Background(), sessionID); err != nil {
+			return fmt.Errorf("sandbox: starting container: %w", err)
+		}
+		defer container.Close(context.Background())
+		runners.SandboxRunner = sandboxRunner{container}
+	}
+
 	sessOpts := []agent.Option{
-		agent.WithRun(host.NewShell()),
+		agent.WithID(sessionID),
+		agent.WithRunners(runners),
 		agent.WithStepBudget(resolved.Steps),
 		agent.WithRiskThreshold(resolved.RiskThreshold),
 		agent.WithStats(usage.New()),
@@ -165,6 +211,9 @@ func (headlessConfirmer) Confirm(req agent.ConfirmRequest) bool {
 	if req.Mutability != "" {
 		fmt.Printf("scope: %s\n", req.Mutability)
 	}
+	if req.RunMode != "" {
+		fmt.Printf("runs in: %s\n", req.RunMode)
+	}
 	if req.Dangerous {
 		fmt.Printf("flagged: %s\n", req.RiskNote)
 	}
@@ -184,6 +233,58 @@ func (headlessConfirmer) Confirm(req agent.ConfirmRequest) bool {
 		fmt.Fprintf(os.Stderr, "detent: reading confirm response: %v (treating as decline)\n", err)
 	}
 	return strings.TrimSpace(strings.ToLower(line)) == "y"
+}
+
+// runnerSelector picks host vs. sandbox per command; PreJudgment is
+// accepted but unused for now. Lives here, not in internal/sandbox,
+// which stays a producer package that knows nothing about agent.
+type runnerSelector struct {
+	Host          agent.Runner
+	SandboxRunner agent.Runner
+	HostOnly      bool
+}
+
+func (s runnerSelector) Select(agent.PreJudgment) (agent.Runner, string) {
+	if s.HostOnly || s.SandboxRunner == nil {
+		return s.Host, agent.RunModeHost
+	}
+	return s.SandboxRunner, agent.RunModeSandbox
+}
+
+func (s runnerSelector) Probe() agent.Runner   { return s.Host }
+func (s runnerSelector) Sandbox() agent.Runner { return s.SandboxRunner }
+
+// sandboxRunner adapts *sandbox.Container's plain-string Snapshot/
+// Rollback to agent.Snapshotter's SnapshotID. sandbox never imports
+// agent, so this conversion happens here, at the composition root.
+type sandboxRunner struct{ *sandbox.Container }
+
+func (r sandboxRunner) Snapshot(ctx context.Context) (agent.SnapshotID, error) {
+	id, err := r.Container.Snapshot(ctx)
+	return agent.SnapshotID(id), err
+}
+
+func (r sandboxRunner) Rollback(ctx context.Context, id agent.SnapshotID) error {
+	return r.Container.Rollback(ctx, string(id))
+}
+
+// defaultSandboxSocket returns the OS-conventional containerd socket
+// path, or "" when there's no safe default (Windows, or an
+// unrecognized OS), in which case run() requires an explicit override.
+func defaultSandboxSocket() string {
+	switch runtime.GOOS {
+	case "linux":
+		return "/run/containerd/containerd.sock"
+	case "darwin":
+		// colima --runtime containerd, default profile name.
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		return filepath.Join(home, ".colima", "default", "containerd.sock")
+	default:
+		return ""
+	}
 }
 
 // loadDotenv fills gaps from .env; real environment variables always win.

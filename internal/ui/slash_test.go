@@ -16,7 +16,7 @@ func typeRune(m Model, r rune) Model {
 func TestSlashDropdown_OpensFiltersAccepts(t *testing.T) {
 	m := testUIModel()
 	m = typeRune(m, '/')
-	require.Len(t, m.slash.matches, 5, "bare / lists every command")
+	require.Len(t, m.slash.matches, 6, "bare / lists every command")
 
 	m = typeRune(m, 'q')
 	require.Len(t, m.slash.matches, 1)
@@ -39,7 +39,7 @@ func TestSlashDropdown_OpensFiltersAccepts(t *testing.T) {
 func TestSlashDropdown_NavigateAndEsc(t *testing.T) {
 	m := testUIModel()
 	m = typeRune(m, '/')
-	require.Len(t, m.slash.matches, 5)
+	require.Len(t, m.slash.matches, 6)
 
 	nm, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
 	m = nm.(Model)

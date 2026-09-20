@@ -7,6 +7,22 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// runModeTag renders the sandbox/host indicator; emphasized when a
+// Dangerous command has no sandbox isolation.
+func runModeTag(mode string, dangerous bool) string {
+	switch mode {
+	case "sandbox":
+		return styleSafe.Render("sandboxed")
+	case "host":
+		if dangerous {
+			return styleDanger.Render("⚠ host, unsandboxed")
+		}
+		return styleMuted.Render("host")
+	default:
+		return ""
+	}
+}
+
 func (m Model) confirmBox() string {
 	style := styleConfirmAccent
 	if m.confirm.pre.Dangerous {
@@ -20,7 +36,8 @@ func (m Model) confirmBox() string {
 	// Command is the one thing here that matters; everything else is
 	// context for it, so rationale sits directly under it, not floated.
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s  %s\n\n", styleMuted.Render("proposed"), mutabilityStyle(tier).Render(tier))
+	fmt.Fprintf(&b, "%s  %s  %s\n\n", styleMuted.Render("proposed"), mutabilityStyle(tier).Render(tier),
+		runModeTag(m.confirm.pre.RunMode, m.confirm.pre.Dangerous))
 	b.WriteString(styleGoal.Width(max(10, m.layout.width-12)).Render(m.confirm.pending.Command) + "\n")
 	if m.confirm.pending.Rationale != "" {
 		fmt.Fprintf(&b, "%s %s\n", styleMuted.Render("why:"), m.confirm.pending.Rationale)
