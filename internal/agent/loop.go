@@ -49,6 +49,7 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 		res.Baseline = id
 	}
 	res.BaselineMark = len(s.Transcript)
+	s.goalMark = res.BaselineMark
 	return res, nil
 }
 
@@ -62,10 +63,41 @@ func (s *Session) ProposeNext(ctx context.Context, goal string) (propose.Proposa
 	if err != nil {
 		return propose.Proposal{}, PreJudgment{}, used, fmt.Errorf("agent: %w", err)
 	}
+	if p.Done && len(s.Transcript) == s.goalMark {
+		p, used, err = s.reaskAfterEmptyDone(ctx, used)
+		if err != nil {
+			return propose.Proposal{}, PreJudgment{}, used, err
+		}
+	}
 	if p.Done {
 		return p, PreJudgment{}, used, nil
 	}
 	return p, s.judgePre(ctx, goal, p.Command), used, nil
+}
+
+// reaskAfterEmptyDone handles a goal declared finished before anything
+// ran for it. The transcript spans the whole session, so the model can
+// answer a new goal from an older goal's output — which describes the
+// past, not now. The nudge is passed for this call only, never appended
+// to the transcript, and it asks once: a model that insists is taken at
+// its word rather than looped.
+func (s *Session) reaskAfterEmptyDone(ctx context.Context, first usage.Usage) (propose.Proposal, usage.Usage, error) {
+	nudged := append(append([]propose.Message{}, s.Transcript...), propose.Message{
+		Role: propose.RoleUser,
+		Content: "Nothing has run for this goal yet, so there is no output of its own to conclude from. " +
+			"Earlier goals' output describes the past. Propose the command that answers this goal now.",
+	})
+	p, again, err := s.Proposer.Propose(ctx, nudged)
+	total := usage.Usage{
+		PromptTokens:     first.PromptTokens + again.PromptTokens,
+		CompletionTokens: first.CompletionTokens + again.CompletionTokens,
+		Latency:          first.Latency + again.Latency,
+		Model:            again.Model,
+	}
+	if err != nil {
+		return propose.Proposal{}, total, fmt.Errorf("agent: %w", err)
+	}
+	return p, total, nil
 }
 
 // RecordStep opens usage bookkeeping, shared by RunGoal and resolver.

@@ -145,7 +145,11 @@ func TestRunGoal_SecondGoalSeesFirst(t *testing.T) {
 	stub := &stubProposer{script: []propose.Proposal{
 		{Command: "echo forty-two", Rationale: "print"},
 		{Done: true, Summary: "printed"},
+		// Answering the second goal from the first's output: the nudge
+		// sends it back, and it runs something of its own.
 		{Done: true, Summary: "the last command printed forty-two"},
+		{Command: "echo forty-two", Rationale: "check again"},
+		{Done: true, Summary: "it printed forty-two"},
 	}}
 	s := &Session{
 		Proposer: stub,
@@ -158,9 +162,9 @@ func TestRunGoal_SecondGoalSeesFirst(t *testing.T) {
 	res2, err := s.RunGoal(context.Background(), "what did the last command print?")
 	require.NoError(t, err)
 	assert.Equal(t, EndDone, res2.End)
-	assert.Empty(t, res2.Commands)
+	assert.Len(t, res2.Commands, 1, "a goal answered from stale transcript is sent back to run something")
 
-	require.Len(t, stub.seen, 3)
+	require.GreaterOrEqual(t, len(stub.seen), 3)
 	secondGoalFirstCall := stub.seen[2]
 	var roles []string
 	for _, m := range secondGoalFirstCall {
@@ -550,4 +554,75 @@ func TestExecute_NoSnapshotWhenNotSandboxed(t *testing.T) {
 	ec, err := s.Execute(context.Background(), res, ustep, propose.Proposal{Command: "echo ok"}, PreJudgment{RunMode: RunModeHost}, nil)
 	require.NoError(t, err)
 	assert.Empty(t, ec.SnapshotID)
+}
+
+// A goal that ends with nothing run is almost always the model
+// answering from an earlier goal's output: the transcript spans the
+// whole session, and that output describes the past. ProposeNext sends
+// it back once with a nudge — but takes no for an answer, so a model
+// that insists can't be looped forever.
+func TestProposeNext_EmptyDoneIsSentBackOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		second    propose.Proposal
+		wantCmd   string
+		wantDone  bool
+		wantCalls int
+	}{
+		{
+			name:      "reconsiders and runs something",
+			second:    propose.Proposal{Command: "ls -la", Rationale: "look now"},
+			wantCmd:   "ls -la",
+			wantCalls: 2,
+		},
+		{
+			name:      "insists, and is believed",
+			second:    propose.Proposal{Done: true, Summary: "nothing to run"},
+			wantDone:  true,
+			wantCalls: 2,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := &stubProposer{script: []propose.Proposal{
+				{Done: true, Summary: "already know the answer"},
+				tc.second,
+			}}
+			s := &Session{Proposer: stub, Runners: SingleRunner{Runner: okRun(host.Result{})}}
+			_, err := s.BeginGoal(context.Background(), "list the files")
+			require.NoError(t, err)
+
+			p, _, _, err := s.ProposeNext(context.Background(), "list the files")
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantDone, p.Done)
+			assert.Equal(t, tc.wantCmd, p.Command)
+			require.Len(t, stub.seen, tc.wantCalls)
+
+			// The nudge steers this one call and never becomes history.
+			last := stub.seen[len(stub.seen)-1]
+			assert.Contains(t, last[len(last)-1].Content, "Nothing has run for this goal yet")
+			for _, m := range s.Transcript {
+				assert.NotContains(t, m.Content, "Nothing has run for this goal yet",
+					"the nudge must not be appended to the transcript")
+			}
+		})
+	}
+}
+
+// Once a command has run for the goal, done is taken at face value —
+// the backstop must not re-ask on every completion.
+func TestProposeNext_DoneAfterACommandIsAccepted(t *testing.T) {
+	stub := &stubProposer{script: []propose.Proposal{
+		{Command: "ls", Rationale: "list"},
+		{Done: true, Summary: "saw the files"},
+	}}
+	s := &Session{
+		Proposer: stub,
+		Confirm:  confirmFunc(func(ConfirmRequest) bool { return true }),
+		Runners:  SingleRunner{Runner: okRun(host.Result{Stdout: "a\n"})},
+	}
+	res, err := s.RunGoal(context.Background(), "what files are here?")
+	require.NoError(t, err)
+	assert.Equal(t, EndDone, res.End)
+	assert.Equal(t, "saw the files", res.Summary)
+	assert.Equal(t, 2, stub.calls, "no extra propose call once a command has run")
 }

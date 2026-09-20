@@ -100,6 +100,11 @@ type Session struct {
 
 	Transcript []propose.Message
 	GoalsDone  int
+
+	// goalMark is the transcript length when the open goal began, so
+	// ProposeNext can tell "nothing has run for this goal" from
+	// "nothing has run at all". One goal is open at a time.
+	goalMark int
 }
 
 // NewSessionID generates a random session identifier. New calls this
