@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vitzeno/detent/internal/fileio"
 	"github.com/vitzeno/detent/internal/ui/editor"
 	"github.com/vitzeno/detent/internal/ui/island"
 	"github.com/vitzeno/detent/internal/ui/layout"
@@ -13,25 +12,17 @@ import (
 	"github.com/vitzeno/detent/internal/ui/slash"
 	"github.com/vitzeno/detent/internal/ui/status"
 	"github.com/vitzeno/detent/internal/ui/tabular"
-
-	"github.com/vitzeno/detent/internal/agent"
 )
 
-// bodyWeights sizes the body row's two panes: output (left) gets the
-// larger share — it's where a running or just-finished command's
-// output actually lives — history (right) the smaller. Rebalancing or
-// swapping the arrangement is a change here and in baseView's Row
-// call, not a rederivation of this sizing math.
-var bodyWeights = []int{3, 2} // [output, history]
+var bodyWeights = []int{3, 2} // [output, history]; output gets the larger share
 
 // minPaneWidth is the outer-width floor below which a pane stops being
 // worth rendering as its own island.
 const minPaneWidth = 28
 
 func (m *Model) sizeViewport() {
-	// Bottom zone: input island content (dropdown + line + border), or
-	// the self-bordered confirm box, measured not guessed — its content
-	// varies with rationale and danger flags.
+	// Bottom zone height is measured, not guessed — content varies with
+	// rationale and danger flags.
 	bottom := m.slashRows() + 1 + 2
 	switch m.mode {
 	case modeConfirm:
@@ -39,10 +30,6 @@ func (m *Model) sizeViewport() {
 	case modeSaveConfirm:
 		bottom = len(strings.Split(m.saveConfirmBox(), "\n"))
 	}
-	// Fixed chrome: session bar, status line, and the body row's one
-	// set of island chrome (header + border) — output and history sit
-	// side by side at the same height now, so there's only one row's
-	// worth to account for, not two.
 	avail := m.layout.height - 2 - islandOverhead - bottom
 	if avail < 6 {
 		avail = 6
@@ -56,17 +43,16 @@ func (m *Model) sizeViewport() {
 	m.refreshViewport()
 }
 
-// islandOverhead is a titled zone island's non-content lines: its
-// header plus the top and bottom border.
+// islandOverhead is a titled zone island's non-content lines: header
+// plus top and bottom border.
 const islandOverhead = 3
 
-// paneInner is the content width inside an island border of the given
-// outer width — matches island.Render's own inner := width-4.
+// paneInner matches island.Render's own inner := width-4.
 func paneInner(outer int) int {
 	return max(20, outer-4)
 }
 
-// slashRows is the dropdown's screen height, capped so it can't eat the history.
+// slashRows caps the dropdown so it can't eat the history pane.
 func (m Model) slashRows() int {
 	return min(len(m.slash.matches), slash.MaxRows)
 }
@@ -79,9 +65,6 @@ func (m Model) baseView() string {
 	if m.layout.width <= 0 {
 		return "loading…"
 	}
-	// Output (left, primary) and history (right, smaller) side by
-	// side — see bodyWeights. Swapping or restacking this arrangement
-	// is this one Row call, not a resizing rewrite.
 	outputBlock := island.Render(m.viewportHeader(), m.nav.focus == focusOutput, m.detailLines(), m.layout.outputColW, m.output.Height+1)
 	historyBlock := island.Render(m.historyHeader(), m.nav.focus == focusHistory, m.nav.histWindow, m.layout.histColW, m.nav.histHeight+1)
 
@@ -103,23 +86,14 @@ func (m Model) baseView() string {
 	return b.String()
 }
 
-// updateHistoryWindow recomputes which history lines are visible,
-// keeping the cursor in view with minimal movement, and caches the
-// result on nav.histWindow for baseView to render as-is. It must run
-// here — from refreshViewport, a pointer-receiver method reached from
-// every event that can change history content or move the cursor —
-// rather than inside View()'s own call chain: Bubble Tea always renders
-// View() on a throwaway copy of Model, so a value-receiver method
-// there (as this used to be) can compute histOffset/cursorLine but can
-// never make them stick past that one render, leaving the window stuck
-// permanently at offset zero instead of tracking the cursor.
-//
-// Entries flatten to lines first: expanded rows and two-line banners
-// span several lines each, and windowing entries instead would let the
-// island grow past the terminal height and push the session bar off
-// the top.
+// updateHistoryWindow recomputes which history lines are visible and
+// caches the result on nav.histWindow. Must run via refreshViewport (a
+// pointer receiver), not inside View()'s call chain — Bubble Tea always
+// renders View() on a throwaway copy of Model, so writes there never
+// persist. Entries flatten to lines first since expanded rows/banners
+// span several lines each.
 func (m *Model) updateHistoryWindow() {
-	histLines := m.historyLines() // also sets nav.cursorLine to its row's flattened index
+	histLines := m.historyLines() // also sets nav.cursorLine
 	var lines []string
 	cursorLine := 0
 	for i, e := range histLines {
@@ -154,8 +128,6 @@ func (m *Model) updateHistoryWindow() {
 	m.nav.histWindow = append([]string(nil), lines[start:end]...)
 }
 
-// paneMark is the active/inactive marker shared by every zone header:
-// a filled accent dot for the focused pane, a faint ring otherwise.
 func paneMark(active bool) string {
 	if active {
 		return styleBrand.Render("●")
@@ -188,7 +160,7 @@ func (m Model) sessionBar() string {
 	if m.cur != nil {
 		goals++
 	}
-	snap := m.sess.Tracker().Snapshot()
+	snap := m.sess.UsageSnapshot()
 	usage := styleFaint.Render(fmt.Sprintf("⏱ %s · %stok",
 		status.Dur(snap.MachineTime()), status.Tokens(snap.ProposerTokens+snap.JudgeTokens)))
 	return fmt.Sprintf("%s %s · %d goal(s) · %d cmd(s)  %s  %s",
@@ -220,17 +192,15 @@ func (m Model) viewportHeader() string {
 	}
 	label := "output"
 	if k := rowKind(r); k != "" {
-		label = status.KindLabel(k)
+		label = status.KindLabel(string(k))
 	}
 	return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(label, active),
 		styleGoal.Render(truncateWidth(r.command, m.layout.outputColW-24)))
 }
 
-// detailLines renders the focused row's component as lines: the
-// editor when this row has one — it's the whole point of a row that
-// wrote a file, so it takes priority over a table or the plain
-// viewport — otherwise a real table for tabular output, or the
-// scrolling viewport for everything else. The island pads to height.
+// detailLines renders the focused row's component: editor takes
+// priority when present, then a table for tabular output, else the
+// scrolling viewport.
 func (m Model) detailLines() []string {
 	if r := m.focused(); r != nil {
 		if r.editor != nil {
@@ -251,9 +221,8 @@ func (m Model) detailLines() []string {
 	return strings.Split(m.output.View(), "\n")
 }
 
-// helpLines lists every slash command from the registry — Match("/")
-// with an empty suffix matches all of them, so there's no separate
-// list to keep in sync with slash's own.
+// helpLines lists every slash command via Match("/") (empty suffix
+// matches all), so there's no separate list to keep in sync.
 func helpLines() []string {
 	var lines []string
 	for _, c := range slash.Match("/") {
@@ -269,14 +238,13 @@ func (m Model) editorLines(e *editor.Model) []string {
 	e.Resize(paneInner(m.layout.outputColW), m.output.Height)
 	lines := strings.Split(e.View(), "\n")
 	if e.Truncated() {
-		lines = append(lines, styleCaution.Render(fmt.Sprintf("… file truncated at %d bytes", fileio.MaxBytes)))
+		lines = append(lines, styleCaution.Render(fmt.Sprintf("… file truncated at %d bytes", e.MaxBytes())))
 	}
 	return lines
 }
 
-// focusedTable builds the table component for a table-kind row. Falls
-// back (ok=false) when the output won't parse — a wrong component is
-// worse than a plain viewport.
+// focusedTable falls back (ok=false) when the output won't parse — a
+// wrong component is worse than a plain viewport.
 func (m Model) focusedTable() (string, bool) {
 	r := m.focused()
 	src, ok := r.tableText()
@@ -321,9 +289,8 @@ func (m *Model) refreshViewport() {
 	}
 }
 
-// styledBody renders a finished result per its judged kind, capped to
-// maxViewportLines. Unknown kinds render raw — the classifier suggests,
-// never mandates.
+// styledBody renders per judged kind, capped to maxViewportLines.
+// Unknown kinds render raw.
 func (m *Model) styledBody(r *stepRow) string {
 	combined := r.cmd.ec.Result.Stdout
 	if r.cmd.ec.Result.Stderr != "" {
@@ -334,19 +301,19 @@ func (m *Model) styledBody(r *stepRow) string {
 	}
 	lines := strings.Split(strings.TrimSuffix(combined, "\n"), "\n")
 	switch rowKind(r) {
-	case agent.KindError:
+	case KindError:
 		for i, l := range lines {
 			lines[i] = styleErrorLine(l)
 		}
-	case agent.KindDiff:
+	case KindDiff:
 		for i, l := range lines {
 			lines[i] = styleDiffLine(l)
 		}
-	case agent.KindJSON:
+	case KindJSON:
 		if pretty, ok := prettyJSON(combined); ok {
 			lines = strings.Split(pretty, "\n")
 		}
-	case agent.KindContent:
+	case KindContent:
 		if markdown.Wants(r.command, combined) {
 			lines = strings.Split(m.markdownBody(r, combined), "\n")
 		} else {
@@ -359,8 +326,8 @@ func (m *Model) styledBody(r *stepRow) string {
 	return strings.Join(lines, "\n")
 }
 
-// markdownBody renders through glamour, cached by width — a re-render
-// per frame would churn on every scroll tick.
+// markdownBody caches by width — a re-render per frame would churn on
+// every scroll tick.
 func (m *Model) markdownBody(r *stepRow, combined string) string {
 	if r.cmd.styled == "" || r.cmd.styledWidth != m.output.Width {
 		rendered, err := markdown.Render(combined, m.output.Width)
@@ -373,9 +340,8 @@ func (m *Model) markdownBody(r *stepRow, combined string) string {
 	return r.cmd.styled
 }
 
-// setViewContent skips identical content: SetContent resets the scroll
-// position, so resizing for the slash dropdown must not disturb a
-// viewport the user deliberately scrolled.
+// setViewContent skips identical content: SetContent resets scroll
+// position, which must not happen just from resizing for the dropdown.
 func (m *Model) setViewContent(s string) {
 	if s == m.viewContent {
 		return
@@ -399,9 +365,8 @@ func (m Model) statusLine() string {
 	return status.Bar(m.spinner.View(), phase, m.statusHint(), m.notice, m.waiting)
 }
 
-// statusHint picks the key hint for the current owner — the same
-// question handleKey's owner() answers for routing, asked again here
-// for display, so the two never fall out of sync on which state wins.
+// statusHint mirrors handleKey's owner() so the hint never falls out of
+// sync with what actually routes the keystroke.
 func (m Model) statusHint() string {
 	if m.mode == modeSaveConfirm {
 		return "[y/enter] save · [n] keep editing"
@@ -413,9 +378,8 @@ func (m Model) statusHint() string {
 	case ownerConfirm:
 		return "[y/enter] run · [n] stop goal"
 	case ownerOutput:
-		// onEscape (keys.go) aborts a running command from here instead
-		// of stepping back to history whenever one is running — match
-		// that exactly, or the hint tells a lie right when it matters.
+		// Must match onEscape's actual behavior (keys.go): it aborts a
+		// running command here instead of stepping back to history.
 		esc := "[esc] history"
 		if m.abort != nil {
 			esc = "[esc] abort"

@@ -9,15 +9,9 @@ import (
 	"github.com/vitzeno/detent/internal/ui/tabular"
 )
 
-// Editing and modeSaveConfirm are deliberately not keyOwner values:
-// both take over every key unconditionally, the same way modeConfirm
-// already does, and handleKey short-circuits to them before owner()
-// is even consulted — see handleKey.
-
-// keyOwner names who owns a keystroke. mode × focus × waiting collapse
-// to five real states; handleKey computes exactly one and switches on
-// it, so priority is visible in one place instead of emerging from
-// nested ifs.
+// keyOwner names who owns a keystroke; handleKey computes exactly one.
+// Editing and modeSaveConfirm aren't keyOwner values — both take over
+// every key unconditionally and short-circuit before owner() runs.
 type keyOwner int
 
 const (
@@ -45,7 +39,6 @@ func (m Model) owner() keyOwner {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Global first: these preempt every state.
 	if msg.String() == "ctrl+c" {
 		return m, tea.Quit
 	}
@@ -75,8 +68,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// onTab completes an open dropdown, otherwise cycles panes. One place —
-// tab racing two nest levels was a real bug here before the router.
+// onTab completes an open dropdown, otherwise cycles panes.
 func (m Model) onTab() (tea.Model, tea.Cmd) {
 	if m.mode == modeConfirm {
 		return m, nil
@@ -107,10 +99,9 @@ func (m Model) saveConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// editorKey owns every key while editing: esc leaves edit mode
-// (the buffer, unsaved changes included, is untouched — only a
-// confirmed save via ctrl+s ever touches disk), ctrl+s opens the diff
-// confirm, everything else goes straight to the textarea.
+// editorKey owns every key while editing: esc leaves edit mode without
+// touching disk, ctrl+s opens the diff confirm, everything else goes to
+// the textarea.
 func (m Model) editorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	r := m.focused()
 	if r == nil || r.editor == nil {
@@ -130,13 +121,8 @@ func (m Model) editorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// inputKey gives a focused idle input every keystroke — typing a goal
-// containing "q", "v", "j", "k" or space must never trigger navigation,
-// and neither does up/down: while input has focus, arrows are the
-// input's own (textinput no-ops them by default; only pgup/pgdn peek at
-// the output viewport) rather than silently scrolling history out from
-// under whatever the human is typing. Only pgup/pgdn and enter (submit)
-// bypass the input entirely.
+// inputKey gives a focused idle input every keystroke — typing must
+// never trigger navigation. Only pgup/pgdn and enter bypass the input.
 func (m Model) inputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if next, _, handled := m.slashKey(msg); handled {
 		return next, nil
@@ -155,9 +141,7 @@ func (m Model) inputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // busyKey narrows a focused waiting input to slash entry: plain goals
-// can't start mid-run, but /abort and /quit stay reachable — exactly
-// when they matter most. Up/down are left to fall through to the guard
-// below rather than scrolling history — same reasoning as inputKey.
+// can't start mid-run, but /abort and /quit stay reachable.
 func (m Model) busyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if next, _, handled := m.slashKey(msg); handled {
 		return next, nil
@@ -166,8 +150,7 @@ func (m Model) busyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "pgup", "pgdown":
 		return m.scrollViewport(msg.String())
 	}
-	// Busy with empty input: only "/" may start slash entry.
-	// With a "/" prefix already typed, all keys go to the input.
+	// Only "/" may start slash entry; once typed, all keys go to input.
 	if strings.HasPrefix(m.input.Value(), "/") ||
 		(msg.String() == "/" && m.input.Value() == "") {
 		var cmd tea.Cmd
@@ -302,7 +285,7 @@ func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "usage":
-			n := len(m.sess.Tracker().Goals())
+			n := len(m.sess.Tracker())
 			if d < 0 && r.tool.usageCursor > 0 {
 				r.tool.usageCursor--
 			}

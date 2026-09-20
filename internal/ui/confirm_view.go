@@ -17,10 +17,8 @@ func (m Model) confirmBox() string {
 		tier = "unknown scope"
 	}
 
-	// Header (label + scope badge), then the command itself as the one
-	// thing on this screen that most deserves the eye — everything else
-	// here is context for it, not a peer to it — with its rationale
-	// tucked directly beneath rather than floated as its own paragraph.
+	// Command is the one thing here that matters; everything else is
+	// context for it, so rationale sits directly under it, not floated.
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s  %s\n\n", styleMuted.Render("proposed"), mutabilityStyle(tier).Render(tier))
 	b.WriteString(styleGoal.Width(max(10, m.layout.width-12)).Render(m.confirm.pending.Command) + "\n")
@@ -36,22 +34,18 @@ func (m Model) confirmBox() string {
 	}
 	fmt.Fprintf(&b, "\n%s\n", styleMuted.Render(fmt.Sprintf("command %d this session · step %d this goal", m.totalCmds+1, stepNo)))
 	fmt.Fprintf(&b, "%s run   %s stop goal", styleKey.Render("[y/enter]"), styleKey.Render("[n]"))
-	// Bottom-centered popup: fixed comfortable width, centered — not a
-	// full-bleed strip. History and output stay visible above, which is
-	// the context the decision needs.
+	// Fixed-width popup, not a full-bleed strip, so history and output
+	// stay visible above for context.
 	w := min(72, max(24, m.layout.width-8))
 	return lipgloss.PlaceHorizontal(m.layout.width, lipgloss.Center, style.Width(w).Render(b.String()))
 }
 
-// maxSaveDiffLines caps the diff shown in the save confirm — a huge
-// diff would otherwise push sizeViewport's bottom-zone measurement to
-// swallow the whole screen.
+// maxSaveDiffLines caps the diff shown, or a huge one eats the screen.
 const maxSaveDiffLines = 20
 
-// diffHunksOnly drops the ---/+++ file-path header lines — the box
-// title already names the file, and the full path repeated twice
-// wraps badly at confirm-box width — keeping the @@ hunk headers and
-// the actual +/- lines, which are what the human is here to review.
+// diffHunksOnly drops the ---/+++ path header lines — the box title
+// already names the file — keeping the @@ hunks and +/- lines that
+// actually matter for review.
 func diffHunksOnly(diff string) []string {
 	var out []string
 	for _, l := range strings.Split(strings.TrimSuffix(diff, "\n"), "\n") {
@@ -63,10 +57,8 @@ func diffHunksOnly(diff string) []string {
 	return out
 }
 
-// saveConfirmBox shows what a direct file write would change — a diff,
-// not a command — because this write is the harness's own action, not
-// something the model proposed; see internal/fileio and
-// Driver.RecordFileSave.
+// saveConfirmBox shows a diff, not a command — this write is the
+// harness's own action, not something the model proposed.
 func (m Model) saveConfirmBox() string {
 	if m.save.row == nil || m.save.row.editor == nil {
 		return ""

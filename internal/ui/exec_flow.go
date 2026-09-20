@@ -50,10 +50,10 @@ func (m Model) onExecDone(msg execDoneMsg) (tea.Model, tea.Cmd) {
 	}
 	row.cmd.ec = msg.ec
 	if row.editPath != "" {
-		// Read from disk, not msg.ec.Result.Stdout: a file-writing
-		// command (a heredoc, a redirect) typically prints nothing —
-		// the content lives on disk, never in captured output.
-		ed := editor.New(row.editPath)
+		// Read from disk, not msg.ec.Result.Stdout: a heredoc or
+		// redirect usually prints nothing.
+		content, truncated, maxBytes, err := m.sess.ReadFile(row.editPath)
+		ed := editor.New(row.editPath, content, truncated, maxBytes, err)
 		row.editor = &ed
 	}
 	cmds := []tea.Cmd{

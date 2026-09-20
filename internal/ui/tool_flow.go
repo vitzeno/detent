@@ -32,10 +32,8 @@ func (m Model) acceptSlash() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// runSlash handles input-bar commands: the always-available buttons for
-// quitting and aborting that don't compete with typing, plus the tool
-// invocations (/tree, /usage, /help) that show their content in the
-// output pane like any other focusable entry — see openTool.
+// runSlash handles input-bar commands: quit/abort, plus tool
+// invocations (/tree, /usage, /help) — see openTool.
 func (m Model) runSlash(cmd string) (tea.Model, tea.Cmd) {
 	switch strings.ToLower(strings.Fields(cmd)[0]) {
 	case "/q", "/quit":
@@ -61,9 +59,8 @@ func (m Model) runSlash(cmd string) (tea.Model, tea.Cmd) {
 	}
 }
 
-// openTreeTool walks cwd (a harness-run, read-only filesystem action —
-// same bounded-and-safe spirit as internal/probe, never confirmed since
-// nothing runs and nothing's proposed) and opens it as a tool block.
+// openTreeTool walks cwd (read-only, never confirmed) and opens it as a
+// tool block.
 func (m Model) openTreeTool() (tea.Model, tea.Cmd) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -83,11 +80,8 @@ func (m Model) openTreeTool() (tea.Model, tea.Cmd) {
 	return m.openTool("tree", &stepRow{command: command, toolKind: "tree", tool: toolState{tree: &tm}})
 }
 
-// openTreeSelection acts on the cursor row of a tree tool row: a
-// directory toggles expand/collapse, a file opens as its own new
-// history entry showing its editor — the same reusable component a
-// command's own File field opens, so editing works identically whether
-// you got to the file via a proposed command or by browsing for it.
+// openTreeSelection: a directory toggles expand/collapse, a file opens
+// as its own new history entry showing its editor.
 func (m Model) openTreeSelection(r *stepRow) (tea.Model, tea.Cmd) {
 	if r.tool.tree == nil {
 		return m, nil
@@ -101,16 +95,14 @@ func (m Model) openTreeSelection(r *stepRow) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 		return m, nil
 	}
-	ed := editor.New(n.Path)
+	content, truncated, maxBytes, err := m.sess.ReadFile(n.Path)
+	ed := editor.New(n.Path, content, truncated, maxBytes, err)
 	fileRow := &stepRow{command: n.Path, editPath: n.Path, toolKind: "file", editor: &ed}
 	return m.openTool("file", fileRow)
 }
 
-// openTool appends a new tool block — a slash command's own content,
-// never a goal driven by propose/confirm/execute — and jumps straight
-// to viewing it: unlike trackNewest's "don't yank a reader's view"
-// default for background events, this is an explicit action the human
-// just took and expects to see the result of immediately.
+// openTool appends a tool block and jumps straight to viewing it — an
+// explicit human action, unlike trackNewest's background-event default.
 func (m Model) openTool(kind string, row *stepRow) (tea.Model, tea.Cmd) {
 	m.blocks = append(m.blocks, &goalBlock{tool: kind, ended: true, steps: []*stepRow{row}})
 	m.nav.cursor = len(m.rows()) - 1

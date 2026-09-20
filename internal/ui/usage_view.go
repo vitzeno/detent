@@ -6,18 +6,14 @@ import (
 	"time"
 
 	"github.com/vitzeno/detent/internal/ui/status"
-	"github.com/vitzeno/detent/internal/usage"
 )
 
-// usageLines renders the /usage tool row's content: session totals,
-// per-goal rows, and the selected goal's per-step spans — the same
-// content the old full-screen overlay showed, now living in the output
-// pane like any other focusable entry. Cursor/expand state lives on
-// the row (r.tool.usageCursor/usageExpand) rather than the Model, so
-// it's per-invocation the same way a table row's own cursor is.
+// usageLines renders the /usage row: session totals, per-goal rows, and
+// the selected goal's per-step spans. Cursor/expand state lives on the
+// row, not Model, so more than one /usage invocation can coexist.
 func (m Model) usageLines(r *stepRow) []string {
-	goals := m.sess.Tracker().Goals()
-	snap := m.sess.Tracker().Snapshot()
+	goals := m.sess.Tracker()
+	snap := m.sess.UsageSnapshot()
 
 	var lines []string
 	lines = append(lines, fmt.Sprintf("session · %d goal(s) · %d cmd(s) · %d declined · machine %s · dwell %s · %s proposer tok · %s judge tok",
@@ -64,7 +60,7 @@ func (m Model) usageLines(r *stepRow) []string {
 }
 
 // usageSteps renders one goal's per-step spans, capped.
-func usageSteps(g *usage.Goal) []string {
+func usageSteps(g GoalStats) []string {
 	var out []string
 	steps := g.Steps
 	more := 0

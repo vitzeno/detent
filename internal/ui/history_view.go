@@ -6,7 +6,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/ui/status"
 )
 
@@ -14,12 +13,9 @@ import (
 // paragraph under its label, not flush against the pane edge.
 const contPrefix = "    "
 
-// wrapPlain word-wraps plain (unstyled) text to width columns — history
-// entries can run long, and truncating them with "…" throws away
-// information a human might specifically be looking for (a file's full
-// path, a command's full output summary), so history wraps instead of
-// truncating; the output pane keeps truncating, where one command's
-// detail view has room to scroll instead.
+// wrapPlain word-wraps unstyled text — history wraps rather than
+// truncates, unlike the output pane, since a human may be looking for
+// exactly the part that would get cut.
 func wrapPlain(s string, width int) []string {
 	if width < 8 {
 		width = 8
@@ -27,18 +23,14 @@ func wrapPlain(s string, width int) []string {
 	wrapped := lipgloss.NewStyle().Width(width).Render(s)
 	lines := strings.Split(strings.TrimRight(wrapped, "\n"), "\n")
 	for i, l := range lines {
-		// Width() pads every line to exactly width — trim it back off so
-		// callers appending more text (a "· detail" suffix, a style) never
-		// have to reason about trailing padding in the middle of a line.
-		lines[i] = strings.TrimRight(l, " ")
+		lines[i] = strings.TrimRight(l, " ") // undo Width()'s padding
 	}
 	return lines
 }
 
-// wrapStyled wraps text to width, styling each physical line; the
-// first line gets prefix (e.g. "  ✔ ", already inside text), every
-// continuation line gets contPrefix instead — so a multi-line banner
-// indents the same way a wrapped goal or command does.
+// wrapStyled styles each physical line; the first gets prefix, every
+// continuation gets contPrefix, so a multi-line banner indents like a
+// wrapped goal or command.
 func wrapStyled(style lipgloss.Style, text string, width int) []string {
 	lines := wrapPlain(text, width)
 	out := make([]string, len(lines))
@@ -52,8 +44,6 @@ func wrapStyled(style lipgloss.Style, text string, width int) []string {
 	return out
 }
 
-// divider marks a goal boundary — short and faint rather than a
-// full-width rule, so it reads as a break, not another row of content.
 func (m Model) divider() string {
 	return "  " + styleFaint.Render(strings.Repeat("─", min(20, max(4, m.layout.histColW-8))))
 }
@@ -66,9 +56,8 @@ func (m *Model) historyLines() []string {
 		if bi > 0 {
 			lines = append(lines, m.divider())
 		}
-		// A tool block (/tree, /usage, /help, a file opened from a tree)
-		// has no goal text of its own — its one step's own line already
-		// says what it is, so there's no separate header to wrap here.
+		// A tool block has no goal text of its own — its one step already
+		// says what it is.
 		if b.tool == "" {
 			for i, gl := range wrapPlain(b.goal, m.layout.histColW-14) {
 				if i == 0 {
@@ -113,19 +102,13 @@ func (m *Model) cursorClamped() int {
 	return m.nav.cursor
 }
 
-// stepLines renders one step as physical lines: mark+icon+command on
-// the first, wrapped command continuation beneath it, then the
-// judged/provisional detail appended after the last line — provisional
-// styling first, upgraded when judged post lands, both from the status
-// component.
 func (m Model) stepLines(r *stepRow) []string {
 	mark := "  "
 	if r == m.focused() {
 		mark = styleRowCursor.Render("▸ ")
 	}
-	// A tool row (or a file opened from a tree) never executed a shell
-	// command, so the status.Badge dispatch below — which reads r.cmd.ec —
-	// doesn't apply; show a plain label instead.
+	// A tool row never executed a shell command, so status.Badge (which
+	// reads r.cmd.ec) doesn't apply.
 	if r.toolKind != "" {
 		cmd := truncateWidth(r.command, m.layout.histColW-14)
 		return []string{fmt.Sprintf("%s%s %s", mark, styleMuted.Render("○"), cmd)}
@@ -147,11 +130,8 @@ func (m Model) stepLines(r *stepRow) []string {
 	}
 	icon, detail := status.Badge(s, m.spinner.View())
 
-	// The command itself stays truncated, not wrapped: unlike a goal
-	// or summary sentence, a command is often one unbreakable token
-	// (a path, a flag string) with no space for word-wrap to break at
-	// — wrapping it produces ugly mid-word fragmentation, so a clean
-	// "…" reads better here. The row stays one physical line.
+	// Truncated not wrapped: a command is often one unbreakable token
+	// with no good place to break.
 	cmd := truncateWidth(r.command, m.layout.histColW-34)
 	return []string{fmt.Sprintf("%s%s %s %s", mark, icon, cmd, styleMuted.Render("· "+detail))}
 }
@@ -170,17 +150,17 @@ func (m Model) goalBanner(b *goalBlock) []string {
 	switch {
 	case b.fatalErr != nil:
 		return wrapStyled(styleDanger, "✗ error: "+b.fatalErr.Error(), w)
-	case b.end == agent.EndDone:
+	case b.end == EndDone:
 		out := wrapStyled(styleSafe, "✔ "+b.summary, w)
 		if b.judgeNote != "" {
 			out = append(out, wrapStyled(styleCaution, "⚠ "+b.judgeNote, w)...)
 		}
 		return out
-	case b.end == agent.EndDeclined:
+	case b.end == EndDeclined:
 		return []string{"  " + styleMuted.Render(fmt.Sprintf("✗ declined — %d command(s) ran", len(b.steps)))}
-	case b.end == agent.EndAborted:
+	case b.end == EndAborted:
 		return []string{"  " + styleCaution.Render(fmt.Sprintf("⚠ aborted — %d command(s) ran", len(b.steps)))}
-	case b.end == agent.EndBudget:
+	case b.end == EndBudget:
 		return []string{"  " + styleCaution.Render("⚠ step cap reached — goal not confirmed done")}
 	default:
 		return []string{"  " + styleMuted.Render("ended: "+string(b.end))}
