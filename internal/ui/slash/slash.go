@@ -27,7 +27,7 @@ var commands = []Cmd{
 	{"/abort", "abort the running command"},
 	{"/tree", "browse files and directories"},
 	{"/usage", "show usage and timings"},
-	{"/rollback", "roll back to a sandboxed step, e.g. /rollback 2"},
+	{"/rollback", "undo a step and everything after it, e.g. /rollback 2"},
 	{"/help", "show slash commands"},
 }
 

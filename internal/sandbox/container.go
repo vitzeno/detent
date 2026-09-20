@@ -26,10 +26,11 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// DefaultImage has broad GNU/coreutils compatibility, unlike alpine's
-// BusyBox utils. Fully qualified since containerd's client, unlike
-// docker/nerdctl, doesn't expand Docker Hub shorthand itself.
-const DefaultImage = "docker.io/library/ubuntu:24.04"
+// DefaultImage is Ubuntu (GNU coreutils, not alpine's BusyBox) plus
+// git, curl and ca-certificates, which bare ubuntu lacks and the
+// container can't install itself without network. Fully qualified
+// since containerd's client doesn't expand Docker Hub shorthand.
+const DefaultImage = "docker.io/library/buildpack-deps:24.04-scm"
 
 // DefaultNamespace keeps this tool's containers separate from other
 // containerd users (Docker, Kubernetes) on the same daemon.

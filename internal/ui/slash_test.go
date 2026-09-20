@@ -1,9 +1,12 @@
 package ui
 
 import (
+	"regexp"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,4 +74,28 @@ func TestSlashDropdown_RendersAboveInput(t *testing.T) {
 	assert.Contains(t, v, "/quit")
 	assert.Contains(t, v, "/abort")
 	assert.Contains(t, v, "/help")
+}
+
+// TestSlashDropdown_RowsAlign guards the whole rendered view, not just
+// slash.View: the dropdown is multi-line, so anything prefixed onto it
+// (the pane mark, once) indents only its first row.
+func TestSlashDropdown_RowsAlign(t *testing.T) {
+	m := testUIModel()
+	m = typeRune(m, '/')
+
+	ansi := regexp.MustCompile("\x1b\\[[0-9;]*m")
+	var cols []int
+	for _, line := range strings.Split(m.View(), "\n") {
+		plain := ansi.ReplaceAllString(line, "")
+		for _, name := range []string{"/quit", "/abort", "/tree"} {
+			if i := strings.Index(plain, name); i >= 0 {
+				// Display width, not byte offset: the cursor row
+				// carries a multi-byte ▸ the others don't.
+				cols = append(cols, lipgloss.Width(plain[:i]))
+			}
+		}
+	}
+	require.Len(t, cols, 3, "every dropdown row must render")
+	assert.Equal(t, cols[0], cols[1], "cursor row must start in the same column as the rest")
+	assert.Equal(t, cols[1], cols[2])
 }

@@ -147,7 +147,7 @@ func (f *fakeDriver) Tracker() []GoalStats    { return f.tracker }
 func (f *fakeDriver) UsageSnapshot() Snapshot { return f.snap }
 
 func testUIModel() Model {
-	m := New(context.Background(), newFakeDriver(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "test-model"})
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	return m
@@ -206,7 +206,7 @@ func usageModel() (Model, *fakeDriver) {
 	}}
 	drv.snap = Snapshot{Goals: 1, Commands: 1, Propose: 200 * time.Millisecond, Dwell: 1500 * time.Millisecond,
 		Exec: 90 * time.Millisecond, Judge: 120 * time.Millisecond, ProposerTokens: 120, JudgeTokens: 60}
-	m := New(context.Background(), drv, "test-model", "")
+	m := New(context.Background(), drv, SessionInfo{Proposer: "test-model"})
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	return m, drv

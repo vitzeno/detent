@@ -45,6 +45,10 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 	}
 	res := &GoalResult{Goal: goal}
 	res.Stats = s.Stats.StartGoal(goal)
+	if id, ok, err := s.Snapshot(ctx); ok && err == nil {
+		res.Baseline = id
+	}
+	res.BaselineMark = len(s.Transcript)
 	return res, nil
 }
 

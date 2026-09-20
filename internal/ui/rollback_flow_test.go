@@ -70,13 +70,13 @@ func TestUI_OnRollbackDone_TruncatesSteps(t *testing.T) {
 	m.blocks = []*goalBlock{target}
 	m.waiting = true
 
-	nm, cmd := m.Update(rollbackDoneMsg{target: target, step: 1, ok: true})
+	nm, cmd := m.Update(rollbackDoneMsg{target: target, step: 2, ok: true})
 	m = nm.(Model)
 	assert.Nil(t, cmd)
 	assert.False(t, m.waiting)
-	require.Len(t, target.steps, 1, "steps after the rollback point must be dropped")
+	require.Len(t, target.steps, 1, "step 2 and everything after it is undone")
 	assert.Equal(t, "one", target.steps[0].command)
-	assert.Contains(t, m.notice, "rolled back to step 1")
+	assert.Contains(t, m.notice, "undid step 2")
 }
 
 func TestUI_OnRollbackDone_ErrorLeavesStepsIntact(t *testing.T) {

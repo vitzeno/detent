@@ -168,13 +168,21 @@ type perfState struct {
 	uiPreps int
 }
 
+// SessionInfo is what the session bar reports about this run. Grouped
+// rather than passed as three bare strings, which read identically at
+// a call site and so swap silently.
+type SessionInfo struct {
+	Proposer string
+	Judge    string // "" when no judge is wired
+	RunMode  string // "host" or "sandbox"
+}
+
 // Model is the TUI state.
 type Model struct {
 	sess Driver
 	ctx  context.Context
 
-	proposerName string
-	judgeName    string
+	info SessionInfo
 
 	input   textinput.Model
 	output  viewport.Model
@@ -230,7 +238,7 @@ func (r *stepRow) tableText() (string, bool) {
 }
 
 // New builds the TUI over sess.
-func New(ctx context.Context, sess Driver, proposerName, judgeName string) Model {
+func New(ctx context.Context, sess Driver, info SessionInfo) Model {
 	ti := textinput.New()
 	ti.Placeholder = "describe a goal, e.g. what is listening on port 3000?"
 	ti.Focus()
@@ -242,15 +250,14 @@ func New(ctx context.Context, sess Driver, proposerName, judgeName string) Model
 	sp.Style = lipgloss.NewStyle().Foreground(accent)
 
 	return Model{
-		sess:         sess,
-		ctx:          ctx,
-		proposerName: proposerName,
-		judgeName:    judgeName,
-		input:        ti,
-		output:       viewport.New(0, 0),
-		spinner:      sp,
-		streamCh:     make(chan StreamEvent, streamBufSize),
-		nav:          navState{follow: true},
+		sess:     sess,
+		ctx:      ctx,
+		info:     info,
+		input:    ti,
+		output:   viewport.New(0, 0),
+		spinner:  sp,
+		streamCh: make(chan StreamEvent, streamBufSize),
+		nav:      navState{follow: true},
 	}
 }
 

@@ -52,8 +52,10 @@ model: prism-ml/bonsai-27b
 
 # Image sandboxed commands run in. Must be a fully qualified ref —
 # unlike docker/nerdctl, containerd's client doesn't expand Docker Hub
-# shorthand itself.
-# sandbox_image: docker.io/library/ubuntu:24.04
+# shorthand itself. The default is Ubuntu plus git/curl; the container
+# has no network, so it can't install tooling itself — pick an image
+# that already carries whatever your goals need.
+# sandbox_image: docker.io/library/buildpack-deps:24.04-scm
 
 # OCI runtime handle. Empty (default) is containerd's own default
 # (plain runc); "io.containerd.runsc.v1" switches to gVisor once

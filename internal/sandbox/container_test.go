@@ -135,3 +135,66 @@ func TestContainer_SnapshotAndRollback(t *testing.T) {
 	_, err = c.Run(ctx, "echo new-branch >> /rollback-marker.txt", nil)
 	require.NoError(t, err, "the container must still be usable for new commands after rollback")
 }
+
+// TestContainer_RollbackLeavesTheWorkspaceAlone pins a real limit of
+// snapshot-based rollback: the workspace is a bind mount to the host,
+// not part of the snapshot, so edits to the user's own files survive
+// a rollback. Everything outside the mount is restored.
+func TestContainer_RollbackLeavesTheWorkspaceAlone(t *testing.T) {
+	c := newTestContainer(t)
+	ctx := context.Background()
+
+	_, err := c.Run(ctx, "echo before > /workspace/.rbtest; echo before > /outside.txt", nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = c.Run(context.Background(), "rm -f /workspace/.rbtest", nil) })
+
+	checkpoint, err := c.Snapshot(ctx)
+	require.NoError(t, err)
+
+	_, err = c.Run(ctx, "echo after > /workspace/.rbtest; echo after > /outside.txt", nil)
+	require.NoError(t, err)
+	require.NoError(t, c.Rollback(ctx, checkpoint))
+
+	res, err := c.Run(ctx, "cat /outside.txt", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "before\n", res.Stdout, "container state outside the mount is restored")
+
+	res, err = c.Run(ctx, "cat /workspace/.rbtest", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "after\n", res.Stdout, "bind-mounted workspace is not snapshotted, so it is not restored")
+}
+
+// TestContainer_RollbackTargetsTheRightCheckpoint mirrors the real
+// loop: snapshot after every step, then roll back to an earlier one.
+// Each checkpoint must hold exactly the state as of its own step, so
+// an off-by-one in either direction fails here.
+func TestContainer_RollbackTargetsTheRightCheckpoint(t *testing.T) {
+	c := newTestContainer(t)
+	ctx := context.Background()
+
+	var checkpoints []string
+	for _, step := range []string{"one", "two", "three"} {
+		_, err := c.Run(ctx, "echo "+step+" >> /steps.txt", nil)
+		require.NoError(t, err)
+		id, err := c.Snapshot(ctx)
+		require.NoError(t, err)
+		checkpoints = append(checkpoints, id)
+	}
+
+	res, err := c.Run(ctx, "cat /steps.txt", nil)
+	require.NoError(t, err)
+	require.Equal(t, "one\ntwo\nthree\n", res.Stdout, "all three steps ran")
+
+	// Checkpoint 1 was taken after step one, so it holds step one only.
+	require.NoError(t, c.Rollback(ctx, checkpoints[0]))
+	res, err = c.Run(ctx, "cat /steps.txt", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "one\n", res.Stdout, "rolling back to checkpoint 1 keeps step one and drops two and three")
+
+	// Checkpoint 2 holds steps one and two, and is still reachable
+	// after having rolled back past it.
+	require.NoError(t, c.Rollback(ctx, checkpoints[1]))
+	res, err = c.Run(ctx, "cat /steps.txt", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "one\ntwo\n", res.Stdout, "rolling back to checkpoint 2 keeps steps one and two")
+}

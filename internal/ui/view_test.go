@@ -83,6 +83,20 @@ func TestUI_StyledBodyKinds(t *testing.T) {
 	assert.Equal(t, "plain", raw)
 }
 
+func TestUI_SessionBarShowsRunMode(t *testing.T) {
+	sandboxed := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "m", RunMode: "sandbox"})
+	sandboxed.layout.width, sandboxed.layout.height = 120, 40
+	sandboxed.sizeViewport()
+	require.Contains(t, sandboxed.View(), "sandbox")
+
+	onHost := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "m", RunMode: "host"})
+	onHost.layout.width, onHost.layout.height = 120, 40
+	onHost.sizeViewport()
+	v := onHost.View()
+	require.Contains(t, v, "host")
+	require.Contains(t, v, "unsandboxed", "host mode must say so, not just omit the sandbox badge")
+}
+
 func TestUI_PaneMarkersFollowFocus(t *testing.T) {
 	m := testUIModel()
 

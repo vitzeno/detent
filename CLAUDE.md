@@ -115,12 +115,18 @@ routing     →  agent, sandbox
   workspace bind mount and polling them (`tail.go`), not via
   containerd's own `cio` FIFO streaming: a FIFO needs the shim and the
   reader on the same kernel, which doesn't hold once the daemon runs
-  inside a VM (colima, on macOS). `Snapshot`/`Rollback` map onto
-  containerd's `Prepare`/`Commit` snapshot vocabulary and use plain
+  inside a VM (colima, on macOS). `Snapshot`/`Rollback` (`snapshot.go`)
+  map onto containerd's `Prepare`/`Commit` vocabulary and use plain
   `string` checkpoint IDs for the same reason; `routing.WrapSandbox`
   adapts that string to `agent.SnapshotID` when wiring
-  `agent.Snapshotter`. Real containerd daemon required for its own
-  tests (`container_test.go`), skipped gracefully when unreachable.
+  `agent.Snapshotter`. **A rollback does not revert the workspace** —
+  that's a bind mount to the user's real directory, deliberately not
+  part of the snapshot, so only container state outside it is
+  restored (`TestContainer_RollbackLeavesTheWorkspaceAlone` pins
+  this). The container also has no network, so `DefaultImage` has to
+  carry whatever tooling goals need (hence buildpack-deps, not bare
+  ubuntu — apt can't reach anything). Real containerd daemon required
+  for its own tests (`container_test.go`), skipped when unreachable.
 
 - **`internal/routing`** — `Selector`, the `agent.RunnerSelector`
   `cmd/detent` wires: host vs. sandbox per command, deliberately dumb
@@ -152,7 +158,12 @@ routing     →  agent, sandbox
   `Execute`/`JudgeResult` — since Bubble Tea's async `Update` loop
   can't sit inside a blocking callback. `record.go` holds the
   `Record*` family that closes a goal (or notes a standalone action).
-  `snapshot.go` holds `Snapshot`/`Rollback`.
+  `snapshot.go` holds `Snapshot`/`Rollback`: `Rollback(res, N)` undoes
+  step N **and everything after it**, restoring the checkpoint from
+  before N ran — the one after N-1, or `GoalResult.Baseline` (captured
+  in `BeginGoal`) when N is the first step. Naming a step the user can
+  see and having it disappear is the point; restoring *to* a step
+  instead would make `/rollback <last>` a no-op.
 
   `judge.go` holds both judgment paths:
   `judgePre` (mutability + scope risk, before confirm) and `judgePost`

@@ -69,6 +69,11 @@ type GoalResult struct {
 	Commands []*ExecutedCommand
 	Summary  string
 	End      EndReason
+	// Baseline checkpoints the sandbox before step 1 runs, so the
+	// first step is undoable like any other; "" when not sandboxed.
+	// BaselineMark is the matching Transcript length.
+	Baseline     SnapshotID
+	BaselineMark int
 	// Stats links the measured goal; nil when untracked.
 	Stats *usage.Goal
 }

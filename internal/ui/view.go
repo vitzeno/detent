@@ -146,10 +146,19 @@ func paneLabel(name string, active bool) string {
 	return styleFaint.Render(name)
 }
 
+// runModeBadge says where commands actually run. Host is called out
+// rather than left implicit: it's the unsandboxed case.
+func runModeBadge(mode string) string {
+	if mode == "sandbox" {
+		return styleSafe.Render("sandbox ●")
+	}
+	return styleCaution.Render("host ⚠ unsandboxed")
+}
+
 func (m Model) sessionBar() string {
 	jev := styleFaint.Render("jev ○ off")
-	if m.judgeName != "" {
-		jev = styleSafe.Render("jev ● " + m.judgeName)
+	if m.info.Judge != "" {
+		jev = styleSafe.Render("jev ● " + m.info.Judge)
 	}
 	goals := 0
 	for _, b := range m.blocks {
@@ -163,9 +172,9 @@ func (m Model) sessionBar() string {
 	snap := m.sess.UsageSnapshot()
 	usage := styleFaint.Render(fmt.Sprintf("⏱ %s · %stok",
 		status.Dur(snap.MachineTime()), status.Tokens(snap.ProposerTokens+snap.JudgeTokens)))
-	return fmt.Sprintf("%s %s · %d goal(s) · %d cmd(s)  %s  %s",
-		styleBrand.Render("◆ detent v2"), styleFaint.Render(m.proposerName),
-		goals, m.totalCmds, usage, jev)
+	return fmt.Sprintf("%s %s · %d goal(s) · %d cmd(s)  %s  %s  %s",
+		styleBrand.Render("◆ detent v2"), styleFaint.Render(m.info.Proposer),
+		goals, m.totalCmds, usage, runModeBadge(m.info.RunMode), jev)
 }
 
 func (m Model) viewportHeader() string {
@@ -406,7 +415,13 @@ func (m Model) inputBar() string {
 	if active {
 		m.input.PromptStyle = styleRowCursor
 	}
-	return fmt.Sprintf("%s %s%s", paneMark(active), slash.View(m.slash.matches, m.slash.cursor), m.input.View())
+	// The dropdown is multi-line, so it goes first: prefixing it with
+	// the pane mark would indent only its first row and strand the
+	// mark away from the prompt it belongs to.
+	// The dropdown is multi-line, so it goes first: prefixing it with
+	// the pane mark would indent only its first row and strand the
+	// mark away from the prompt it belongs to.
+	return fmt.Sprintf("%s%s %s", slash.View(m.slash.matches, m.slash.cursor), paneMark(active), m.input.View())
 }
 
 func truncateWidth(s string, w int) string {

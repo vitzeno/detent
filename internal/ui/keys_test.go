@@ -44,7 +44,7 @@ func TestUI_EnterAcceptsConfirmAndSaveConfirm(t *testing.T) {
 // TestUI_TypingReachesInput locks space/q/v/j/k landing in the input
 // field instead of getting swallowed by navigation.
 func TestUI_TypingReachesInput(t *testing.T) {
-	m := New(context.Background(), newFakeDriver(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "test-model"})
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 
@@ -59,7 +59,7 @@ func TestUI_TypingReachesInput(t *testing.T) {
 // TestUI_ArrowsDoNotScrollHistoryWhileInputFocused: up/down must stay
 // the input's own while focused, not move the history cursor.
 func TestUI_ArrowsDoNotScrollHistoryWhileInputFocused(t *testing.T) {
-	m := New(context.Background(), newFakeDriver(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "test-model"})
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{{command: "a"}, {command: "b"}}}}
@@ -79,7 +79,7 @@ func TestUI_ArrowsDoNotScrollHistoryWhileInputFocused(t *testing.T) {
 // TestUI_JKNoLongerNavigate: j/k do nothing special anywhere; only
 // up/down navigate.
 func TestUI_JKNoLongerNavigate(t *testing.T) {
-	m := New(context.Background(), newFakeDriver(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "test-model"})
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{{command: "a"}, {command: "b"}}}}
@@ -100,7 +100,7 @@ func TestUI_JKNoLongerNavigate(t *testing.T) {
 // TestUI_NavKeysWorkWhenInputBlurred: arrows move the cursor and space
 // toggles while a command runs (input blurred).
 func TestUI_NavKeysWorkWhenInputBlurred(t *testing.T) {
-	m := New(context.Background(), newFakeDriver(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "test-model"})
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{
@@ -121,7 +121,7 @@ func TestUI_NavKeysWorkWhenInputBlurred(t *testing.T) {
 }
 
 func TestUI_TabCyclesThreePanes(t *testing.T) {
-	m := New(context.Background(), newFakeDriver(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "test-model"})
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	require.Equal(t, focusInput, m.nav.focus)

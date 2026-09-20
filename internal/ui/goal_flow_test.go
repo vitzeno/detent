@@ -29,7 +29,7 @@ func TestCompletionDisagreement(t *testing.T) {
 }
 
 func TestUI_GoalSubmitMovesFocusToHistory(t *testing.T) {
-	m := New(context.Background(), newFakeDriver(), "test-model", "")
+	m := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "test-model"})
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	m.input.SetValue("real goal here")

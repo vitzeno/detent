@@ -90,8 +90,9 @@ func (r *Resolver) Rollback(ctx context.Context, res *ui.GoalResult, step int) (
 	if !ok || err != nil {
 		return ok, err
 	}
-	// Mirrors the same truncation onto the DTO the UI holds a pointer to.
-	res.Commands = res.Commands[:step]
+	// Mirrors the same truncation onto the DTO the UI holds a pointer
+	// to: step itself is undone, so it goes too.
+	res.Commands = res.Commands[:step-1]
 	syncGoalResult(res, agentRes)
 	return true, nil
 }

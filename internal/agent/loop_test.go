@@ -458,14 +458,31 @@ func TestSession_Rollback_NoSandboxWired(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestSession_Rollback_UsesSandboxSnapshotter(t *testing.T) {
+// Undoing step 1 restores the goal's baseline: the checkpoint taken
+// before any step ran.
+func TestSession_Rollback_FirstStepUsesBaseline(t *testing.T) {
 	fake := &fakeSnapshotRunner{}
 	s := &Session{Runners: sandboxSelector{sandbox: fake}}
-	res := &GoalResult{Commands: []*ExecutedCommand{{SnapshotID: "snap-1"}}}
+	res := &GoalResult{
+		Baseline: "snap-0",
+		Commands: []*ExecutedCommand{{SnapshotID: "snap-1"}},
+	}
 	ok, err := s.Rollback(context.Background(), res, 1)
 	require.NoError(t, err)
 	assert.True(t, ok)
-	assert.Equal(t, SnapshotID("snap-1"), fake.rolledBackTo)
+	assert.Equal(t, SnapshotID("snap-0"), fake.rolledBackTo)
+	assert.Empty(t, res.Commands, "step 1 itself is undone")
+}
+
+func TestSession_Rollback_NoBaselineIsAnError(t *testing.T) {
+	fake := &fakeSnapshotRunner{}
+	s := &Session{Runners: sandboxSelector{sandbox: fake}}
+	res := &GoalResult{Commands: []*ExecutedCommand{{SnapshotID: "snap-1"}}}
+
+	ok, err := s.Rollback(context.Background(), res, 1)
+	assert.True(t, ok)
+	assert.Error(t, err, "nothing captured before step 1 to restore")
+	assert.Len(t, res.Commands, 1, "a failed rollback must not truncate")
 }
 
 func TestSession_Rollback_TruncatesCommandsAndTranscript(t *testing.T) {
@@ -477,13 +494,14 @@ func TestSession_Rollback_TruncatesCommandsAndTranscript(t *testing.T) {
 		{Command: "three", SnapshotID: "snap-3", TranscriptMark: 6},
 	}}
 
+	// Undo step 2 onward: restores the checkpoint from after step 1.
 	ok, err := s.Rollback(context.Background(), res, 2)
 	require.NoError(t, err)
 	assert.True(t, ok)
-	assert.Equal(t, SnapshotID("snap-2"), fake.rolledBackTo)
-	require.Len(t, res.Commands, 2, "step 3's effects must be dropped")
-	assert.Equal(t, "two", res.Commands[1].Command)
-	assert.Len(t, s.Transcript, 4, "transcript truncates to step 2's own mark")
+	assert.Equal(t, SnapshotID("snap-1"), fake.rolledBackTo)
+	require.Len(t, res.Commands, 1, "steps 2 and 3 are both undone")
+	assert.Equal(t, "one", res.Commands[0].Command)
+	assert.Len(t, s.Transcript, 2, "transcript truncates to step 1's mark")
 }
 
 func TestSession_Rollback_StepOutOfRange(t *testing.T) {
@@ -496,14 +514,18 @@ func TestSession_Rollback_StepOutOfRange(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestSession_Rollback_StepNotSandboxed(t *testing.T) {
+func TestSession_Rollback_PredecessorNotSandboxed(t *testing.T) {
 	fake := &fakeSnapshotRunner{}
 	s := &Session{Runners: sandboxSelector{sandbox: fake}}
-	res := &GoalResult{Commands: []*ExecutedCommand{{Command: "ran on host"}}}
+	res := &GoalResult{Baseline: "snap-0", Commands: []*ExecutedCommand{
+		{Command: "ran on host"}, // no checkpoint to restore step 2 to
+		{Command: "sandboxed", SnapshotID: "snap-2"},
+	}}
 
-	ok, err := s.Rollback(context.Background(), res, 1)
+	ok, err := s.Rollback(context.Background(), res, 2)
 	assert.True(t, ok)
 	assert.Error(t, err)
+	assert.Len(t, res.Commands, 2, "a failed rollback must not truncate")
 }
 
 func TestExecute_SnapshotsAfterSandboxedCommand(t *testing.T) {

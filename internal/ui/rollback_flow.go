@@ -53,9 +53,11 @@ func (m Model) onRollbackDone(msg rollbackDoneMsg) (tea.Model, tea.Cmd) {
 	}
 	// Mirrors the same truncation onto this parallel UI-side list.
 	if msg.step <= len(msg.target.steps) {
-		msg.target.steps = msg.target.steps[:msg.step]
+		msg.target.steps = msg.target.steps[:msg.step-1]
 	}
-	m.notice = fmt.Sprintf("rolled back to step %d", msg.step)
+	// The workspace is a bind mount, not part of the snapshot, so say
+	// plainly that the user's own files were not reverted.
+	m.notice = fmt.Sprintf("undid step %d onward (workspace files unchanged)", msg.step)
 	m.nav.cursor = len(m.rows()) - 1
 	m.refreshViewport()
 	return m, nil

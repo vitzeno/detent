@@ -139,8 +139,12 @@ func run() error {
 	if sess.Judge != nil {
 		judgeName = resolved.JevModel
 	}
+	// The effective mode, not the configured one: "auto" still reports
+	// host when no sandbox ended up wired.
+	_, runMode := runners.Select(agent.PreJudgment{})
+	info := ui.SessionInfo{Proposer: resolved.Model, Judge: judgeName, RunMode: runMode}
 	drv := resolver.New(sess)
-	p := tea.NewProgram(ui.New(context.Background(), drv, resolved.Model, judgeName), tea.WithAltScreen())
+	p := tea.NewProgram(ui.New(context.Background(), drv, info), tea.WithAltScreen())
 	_, err = p.Run()
 	return err
 }

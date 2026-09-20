@@ -19,7 +19,7 @@ import (
 func TestUI_EndToEnd_GoalToDone(t *testing.T) {
 	// newFakeDriver's default script never flags Dangerous, so this
 	// proves execute/judge/done work without a confirm step.
-	m := New(context.Background(), newFakeDriver(), "test-model", "jev-test")
+	m := New(context.Background(), newFakeDriver(), SessionInfo{Proposer: "test-model", Judge: "jev-test"})
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 40))
 
 	tm.Type("what files are here?")
@@ -52,7 +52,7 @@ func TestUI_DeclineStopsGoal(t *testing.T) {
 	drv := newFakeDriver()
 	drv.proposals = []Proposal{{Command: "rm -rf /tmp/x", Rationale: "remove"}}
 	drv.pre.Dangerous = true
-	m := New(context.Background(), drv, "test-model", "")
+	m := New(context.Background(), drv, SessionInfo{Proposer: "test-model"})
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 40))
 
 	tm.Type("goal")

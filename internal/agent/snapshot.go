@@ -19,10 +19,11 @@ func (s *Session) Snapshot(ctx context.Context) (SnapshotID, bool, error) {
 	return id, true, err
 }
 
-// Rollback restores the checkpoint after res.Commands[step-1]
-// (1-based) and truncates res and Transcript to that point. ok is
-// false only when no sandbox Snapshotter is wired; an invalid or
-// non-sandboxed step is a real error, not a silent no-op.
+// Rollback undoes step (1-based) and every step after it, restoring
+// the checkpoint taken before step ran and truncating res and
+// Transcript to match. ok is false only when no sandbox Snapshotter is
+// wired; an invalid step, or one whose predecessor left no checkpoint,
+// is a real error rather than a silent no-op.
 func (s *Session) Rollback(ctx context.Context, res *GoalResult, step int) (bool, error) {
 	if s.Runners == nil {
 		return false, nil
@@ -34,14 +35,20 @@ func (s *Session) Rollback(ctx context.Context, res *GoalResult, step int) (bool
 	if step < 1 || step > len(res.Commands) {
 		return true, fmt.Errorf("agent: rollback step %d out of range (1-%d)", step, len(res.Commands))
 	}
-	ec := res.Commands[step-1]
-	if ec.SnapshotID == "" {
-		return true, fmt.Errorf("agent: step %d did not run sandboxed, nothing to roll back to", step)
+	// Undoing step N means restoring the state it started from: the
+	// checkpoint after N-1, or the goal's baseline when N is the first.
+	target, mark := res.Baseline, res.BaselineMark
+	if step > 1 {
+		prev := res.Commands[step-2]
+		target, mark = prev.SnapshotID, prev.TranscriptMark
 	}
-	if err := snap.Rollback(ctx, ec.SnapshotID); err != nil {
+	if target == "" {
+		return true, fmt.Errorf("agent: no checkpoint before step %d, nothing to roll back to", step)
+	}
+	if err := snap.Rollback(ctx, target); err != nil {
 		return true, err
 	}
-	res.Commands = res.Commands[:step]
-	s.Transcript = s.Transcript[:ec.TranscriptMark]
+	res.Commands = res.Commands[:step-1]
+	s.Transcript = s.Transcript[:mark]
 	return true, nil
 }
