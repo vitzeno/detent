@@ -1,0 +1,155 @@
+package resolver
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/internal/agent"
+	"github.com/vitzeno/detent/internal/propose"
+	"github.com/vitzeno/detent/internal/shell"
+	"github.com/vitzeno/detent/internal/ui"
+	"github.com/vitzeno/detent/internal/usage"
+)
+
+// These tests drive a real *agent.Session through Resolver — coverage
+// ui's own tests can't provide, since package ui can't import this
+// package back (see testutil_test.go's fakeDriver). This is what
+// actually proves convert.go/driver.go/stream.go translate correctly.
+
+type scriptProposer struct {
+	script []propose.Proposal
+	n      int
+}
+
+func (s *scriptProposer) Propose(_ context.Context, _ []propose.Message) (propose.Proposal, usage.Usage, error) {
+	p := s.script[s.n]
+	if s.n < len(s.script)-1 {
+		s.n++
+	}
+	return p, usage.Usage{PromptTokens: 10, CompletionTokens: 5}, nil
+}
+
+type runFunc func(context.Context, string, agent.StreamSink) (shell.Result, error)
+
+func (f runFunc) Run(ctx context.Context, command string, sink agent.StreamSink) (shell.Result, error) {
+	return f(ctx, command, sink)
+}
+
+func okRun(result shell.Result) agent.Runner {
+	return runFunc(func(_ context.Context, _ string, _ agent.StreamSink) (shell.Result, error) {
+		return result, nil
+	})
+}
+
+func TestResolver_GoalToDone_RoundTrip(t *testing.T) {
+	sess := &agent.Session{
+		Proposer: &scriptProposer{script: []propose.Proposal{
+			{Command: "ls -la", Rationale: "list files"},
+			{Done: true, Summary: "saw two files"},
+		}},
+		Run:   okRun(shell.Result{Stdout: "a\nb\n"}),
+		Stats: usage.New(),
+	}
+	r := New(sess)
+	ctx := context.Background()
+
+	res, err := r.BeginGoal(ctx, "what files are here?")
+	require.NoError(t, err)
+	require.Equal(t, "what files are here?", res.Goal)
+
+	p, pre, used, err := r.ProposeNext(ctx, "what files are here?")
+	require.NoError(t, err)
+	assert.Equal(t, "ls -la", p.Command)
+	assert.False(t, pre.Dangerous, "ls -la must not be flagged")
+	assert.Equal(t, 10, used.PromptTokens)
+
+	step := r.RecordStep(res, p, pre, used, 0)
+
+	ec, err := r.Execute(ctx, res, step, p, pre, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "a\nb\n", ec.Result.Stdout)
+	require.Len(t, res.Commands, 1, "Execute must append onto the same GoalResult the caller holds")
+	assert.Same(t, ec, res.Commands[0], "Execute's return must be the same object appended, not a copy")
+
+	post := r.JudgeResult(ctx, "what files are here?", ec.Command, ec.Result, step)
+	assert.False(t, post.FromJudge, "no Judge wired: heuristic fallback")
+	assert.NotEmpty(t, post.RenderKind)
+
+	done, _, _, err := r.ProposeNext(ctx, "what files are here?")
+	require.NoError(t, err)
+	require.True(t, done.Done)
+	r.RecordDone(res, done)
+
+	assert.Equal(t, ui.EndDone, res.End)
+	assert.Equal(t, "saw two files", res.Summary)
+}
+
+func TestResolver_DeclineNeverExecutes(t *testing.T) {
+	sess := &agent.Session{
+		Proposer: &scriptProposer{script: []propose.Proposal{
+			{Command: "rm -rf /tmp/x", Rationale: "remove"},
+		}},
+		Run:   okRun(shell.Result{}),
+		Stats: usage.New(),
+	}
+	r := New(sess)
+	ctx := context.Background()
+
+	res, err := r.BeginGoal(ctx, "clean up")
+	require.NoError(t, err)
+	p, pre, used, err := r.ProposeNext(ctx, "clean up")
+	require.NoError(t, err)
+	require.True(t, pre.Dangerous, "rm -rf must be flagged by the regex backstop")
+
+	r.RecordStep(res, p, pre, used, 50*time.Millisecond)
+	r.RecordDecline(res, p.Command)
+
+	assert.Equal(t, ui.EndDeclined, res.End)
+	assert.Empty(t, res.Commands, "declined command must never execute")
+}
+
+func TestResolver_ReadWriteFile(t *testing.T) {
+	r := New(&agent.Session{})
+	path := filepath.Join(t.TempDir(), "f.txt")
+	require.NoError(t, os.WriteFile(path, []byte("old\n"), 0o644))
+
+	content, truncated, maxBytes, err := r.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "old\n", content)
+	assert.False(t, truncated)
+	assert.Positive(t, maxBytes)
+
+	require.NoError(t, r.SaveFile(path, "-old\n+new\n", "new\n"))
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "new\n", string(got))
+}
+
+func TestResolver_RecordAbort_NilResSafe(t *testing.T) {
+	r := New(&agent.Session{})
+	r.RecordAbort(nil) // must not panic
+}
+
+func TestResolver_TrackerAndSnapshot(t *testing.T) {
+	sess := &agent.Session{Stats: usage.New()}
+	g := sess.Stats.StartGoal("g")
+	s := g.AddStep("ls")
+	s.SetPropose(usage.Usage{PromptTokens: 5})
+	g.Finish("done", "", false)
+
+	r := New(sess)
+	goals := r.Tracker()
+	require.Len(t, goals, 1)
+	assert.Equal(t, "g", goals[0].Text)
+	require.Len(t, goals[0].Steps, 1)
+	assert.Equal(t, "ls", goals[0].Steps[0].Command)
+
+	snap := r.UsageSnapshot()
+	assert.Equal(t, 1, snap.Goals)
+}

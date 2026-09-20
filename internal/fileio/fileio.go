@@ -8,8 +8,6 @@ package fileio
 import (
 	"fmt"
 	"os"
-
-	"github.com/aymanbagabas/go-udiff"
 )
 
 // MaxBytes bounds how much of a file the editor will load — matches
@@ -32,15 +30,6 @@ func Read(path string) (content string, truncated bool, err error) {
 		return string(raw[:MaxBytes]), true, nil
 	}
 	return string(raw), false, nil
-}
-
-// Diff renders a unified diff of old -> new for path, or "" when they
-// don't differ — the caller's cue that there's nothing to save.
-func Diff(path, old, newContent string) string {
-	if old == newContent {
-		return ""
-	}
-	return udiff.Unified(path, path, old, newContent)
 }
 
 // Write persists content to path, replacing it entirely. If path

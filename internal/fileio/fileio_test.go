@@ -38,19 +38,6 @@ func TestRead(t *testing.T) {
 	})
 }
 
-func TestDiff(t *testing.T) {
-	t.Run("identical content diffs to empty", func(t *testing.T) {
-		assert.Empty(t, Diff("f.txt", "same\n", "same\n"))
-	})
-
-	t.Run("changed content produces a unified diff", func(t *testing.T) {
-		d := Diff("f.txt", "line one\nline two\n", "line one\nline TWO\n")
-		assert.Contains(t, d, "-line two")
-		assert.Contains(t, d, "+line TWO")
-		assert.Contains(t, d, "f.txt")
-	})
-}
-
 func TestWrite(t *testing.T) {
 	t.Run("writes new content and it round-trips", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "f.txt")
