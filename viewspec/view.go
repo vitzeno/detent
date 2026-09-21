@@ -178,27 +178,45 @@ func (c *Compiled) Bind(output string) (*Bound, error) {
 	return out, nil
 }
 
+// Render is one drawn view. It is a struct rather than a bare
+// []string so a caller can scroll to the selection without knowing
+// how the blocks above it were laid out.
+type Render struct {
+	Lines []string
+	// CursorLine indexes Lines for the selected row, or -1 when
+	// nothing in the view takes a selection.
+	CursorLine int
+}
+
 // Draw assembles lines at a size. Called on every resize, scroll and
-// focus change, so it parses nothing and validates nothing.
-func (b *Bound) Draw(f Frame) ([]string, error) {
+// focus change, so it parses nothing and validates nothing. A Height
+// of 0 draws the view whole, for a caller windowing it itself.
+func (b *Bound) Draw(f Frame) (Render, error) {
 	if f.Paint == nil {
 		f.Paint = Plain()
 	}
 	if f.Width <= 0 {
-		return nil, errors.New("viewspec: frame has no width")
+		return Render{}, errors.New("viewspec: frame has no width")
 	}
-	var lines []string
+	out := Render{CursorLine: -1}
 	for i, bb := range b.blocks {
-		out, err := bb.w.Draw(bb.block, bb.data, f)
+		lines, err := bb.w.Draw(bb.block, bb.data, f)
 		if err != nil {
-			return nil, &BindError{Block: i, Kind: bb.block.Kind, Err: err}
+			return Render{}, &BindError{Block: i, Kind: bb.block.Kind, Err: err}
 		}
-		lines = append(lines, out...)
+		if bb.block.OnEnter != "" && out.CursorLine < 0 {
+			if s, ok := bb.w.(Selector); ok {
+				if n := s.CursorLine(bb.block, bb.data, f); n >= 0 {
+					out.CursorLine = len(out.Lines) + n
+				}
+			}
+		}
+		out.Lines = append(out.Lines, lines...)
 	}
-	if f.Height > 0 && len(lines) > f.Height {
-		lines = lines[:f.Height]
+	if f.Height > 0 && len(out.Lines) > f.Height {
+		out.Lines = out.Lines[:f.Height]
 	}
-	return lines, nil
+	return out, nil
 }
 
 // Action resolves the on_enter template for the cursor row. A string

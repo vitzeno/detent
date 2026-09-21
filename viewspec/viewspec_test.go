@@ -35,9 +35,9 @@ func bind(t *testing.T, spec viewspec.Spec, output string) *viewspec.Bound {
 
 func draw(t *testing.T, spec viewspec.Spec, output string, width int) []string {
 	t.Helper()
-	lines, err := bind(t, spec, output).Draw(viewspec.Frame{Width: width, Paint: viewspec.Plain()})
+	r, err := bind(t, spec, output).Draw(viewspec.Frame{Width: width, Paint: viewspec.Plain()})
 	require.NoError(t, err)
-	return lines
+	return r.Lines
 }
 
 func TestExtract_Kinds(t *testing.T) {
@@ -347,9 +347,9 @@ func TestRegistry_IsTheExtensionPoint(t *testing.T) {
 	require.NoError(t, err)
 	b, err := c.Bind(goTest)
 	require.NoError(t, err)
-	lines, err := b.Draw(viewspec.Frame{Width: 40, Paint: viewspec.Plain()})
+	r, err := b.Draw(viewspec.Frame{Width: 40, Paint: viewspec.Plain()})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"a better table", "▁▂▃"}, lines,
+	assert.Equal(t, []string{"a better table", "▁▂▃"}, r.Lines,
 		"a registered widget overrides a built-in of the same kind")
 
 	_, err = viewspec.Compile(spec)
@@ -412,4 +412,46 @@ func TestSelectableRows_ClampsWithoutKnowingTheShape(t *testing.T) {
 	spec.Blocks[1].OnEnter = ""
 	_, ok = bind(t, spec, goTest).SelectableRows()
 	assert.False(t, ok, "nothing takes a selection")
+}
+
+// A caller windowing a tall view has to scroll to the selection
+// without knowing how the blocks above it were laid out.
+func TestRender_ReportsWhereTheCursorLanded(t *testing.T) {
+	spec := viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{
+		{Kind: "meter", CountWhere: "status=ok", Of: "*"},
+		{Kind: "table", Columns: []viewspec.Column{{Field: "pkg"}},
+			OnEnter: "go test -v {pkg}"},
+	}}
+	b := bind(t, spec, goTest)
+
+	r, err := b.Draw(viewspec.Frame{Width: 40, Cursor: 2, Paint: viewspec.Plain()})
+	require.NoError(t, err)
+	assert.Equal(t, 4, r.CursorLine, "one meter line, one header, then row 2")
+	assert.Contains(t, r.Lines[r.CursorLine], "github.com/x/c")
+
+	spec.Blocks[1].OnEnter = ""
+	r, err = bind(t, spec, goTest).Draw(viewspec.Frame{Width: 40, Paint: viewspec.Plain()})
+	require.NoError(t, err)
+	assert.Equal(t, -1, r.CursorLine, "nothing takes a selection")
+
+	spec.Blocks[1].OnEnter = "go test -v {pkg}"
+	r, err = bind(t, spec, goTest).Draw(viewspec.Frame{Width: 40, Cursor: 99, Paint: viewspec.Plain()})
+	require.NoError(t, err)
+	assert.Equal(t, -1, r.CursorLine, "a cursor past the rows lands nowhere")
+}
+
+// Height 0 draws the view whole, which is what a caller scrolling it
+// through its own viewport needs.
+func TestDraw_HeightZeroDrawsEverything(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "none"},
+		Blocks: []viewspec.Block{{Kind: "log"}}}
+	long := strings.Repeat("a line\n", 50)
+
+	r, err := bind(t, spec, long).Draw(viewspec.Frame{Width: 40, Paint: viewspec.Plain()})
+	require.NoError(t, err)
+	assert.Len(t, r.Lines, 50)
+
+	r, err = bind(t, spec, long).Draw(viewspec.Frame{Width: 40, Height: 10, Paint: viewspec.Plain()})
+	require.NoError(t, err)
+	assert.Len(t, r.Lines, 10, "a height still bounds it")
 }

@@ -43,35 +43,51 @@ func (m Model) detailLines() []string {
 			return helpLines()
 		}
 	}
-	if lines, ok := m.viewLines(); ok {
-		return lines
-	}
 	if t, ok := m.focusedTable(); ok {
 		return strings.Split(t, "\n")
 	}
 	return strings.Split(m.output.View(), "\n")
 }
 
-// viewLines draws the focused row through its viewspec view. Any
-// failure falls through to the render_kind path below: a confidently
-// wrong view is worse than the plain one.
-func (m Model) viewLines() ([]string, bool) {
-	r := m.focused()
+// viewBody draws the row's view whole — no Height — and leaves the
+// windowing to the viewport, which is what gives a generated view the
+// same scrolling as any other output. Any failure falls through to the
+// render_kind path: a confidently wrong view is worse than a plain one.
+func (m Model) viewBody(r *stepRow) (viewspec.Render, bool) {
 	b, ok := boundView(r)
 	if !ok {
-		return nil, false
+		return viewspec.Render{}, false
 	}
-	lines, err := b.Draw(viewspec.Frame{
+	out, err := b.Draw(viewspec.Frame{
 		Width:   paneInner(m.layout.outputColW),
-		Height:  m.output.Height(),
 		Focused: m.nav.focus == focusOutput,
 		Cursor:  r.cmd.tableCursor,
 		Paint:   painter{},
 	})
 	if err != nil {
-		return nil, false
+		return viewspec.Render{}, false
 	}
-	return lines, true
+	return out, true
+}
+
+// scrollMargin is how many lines of context the selection keeps. Two,
+// so reaching a table's first row brings its header back rather than
+// resting exactly on the top edge with the header just above it.
+const scrollMargin = 2
+
+// scrollToLine brings line into view without recentring: a selection
+// already on screen must not make the pane jump under the cursor.
+func (m *Model) scrollToLine(line int) {
+	top, h := m.output.YOffset(), m.output.Height()
+	if h <= 0 {
+		return
+	}
+	switch {
+	case line-scrollMargin < top:
+		m.output.SetYOffset(max(0, line-scrollMargin))
+	case line+scrollMargin >= top+h:
+		m.output.SetYOffset(line + scrollMargin - h + 1)
+	}
 }
 
 // helpLines lists every slash command via Match("/") (empty suffix
@@ -130,11 +146,16 @@ func (m *Model) refreshViewport() {
 		return
 	}
 	var body string
+	cursor := -1
 	switch {
 	case r.cmd.running:
 		body = strings.Join(r.cmd.live, "\n")
 	case r.cmd.ec != nil:
-		body = m.styledBody(r)
+		if rendered, ok := m.viewBody(r); ok {
+			body, cursor = strings.Join(rendered.Lines, "\n"), rendered.CursorLine
+		} else {
+			body = m.styledBody(r)
+		}
 	}
 	if body == "" {
 		m.setViewContent(styleFaint.Render("(no output)"))
@@ -143,6 +164,9 @@ func (m *Model) refreshViewport() {
 	m.setViewContent(body)
 	if r.cmd.running {
 		m.output.GotoBottom()
+	}
+	if cursor >= 0 {
+		m.scrollToLine(cursor)
 	}
 }
 

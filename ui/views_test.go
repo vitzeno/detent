@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -35,11 +36,17 @@ func rowFor(command, stdout string) Model {
 	return m
 }
 
+// plainLines is what the pane actually shows, stripped of colour. The
+// viewport pads to its own height, so trailing blanks are dropped —
+// they are the empty pane, not the view.
 func plainLines(m Model) []string {
-	lines := m.detailLines()
-	out := make([]string, len(lines))
-	for i, l := range lines {
-		out[i] = strings.TrimRight(ansi.Strip(l), " ")
+	m.refreshViewport()
+	var out []string
+	for _, l := range m.detailLines() {
+		out = append(out, strings.TrimRight(ansi.Strip(l), " "))
+	}
+	for len(out) > 0 && out[len(out)-1] == "" {
+		out = out[:len(out)-1]
 	}
 	return out
 }
@@ -91,9 +98,9 @@ func TestViews_FallBackRatherThanRenderWrong(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			m := rowFor(tc.command, tc.stdout)
-			_, ok := m.viewLines()
+			_, ok := m.viewBody(m.blocks[0].steps[0])
 			assert.False(t, ok, "must fall through to render_kind")
-			assert.NotEmpty(t, m.detailLines(), "the pane still draws")
+			assert.NotEmpty(t, plainLines(m), "the pane still draws")
 		})
 	}
 }
@@ -226,4 +233,66 @@ func TestViews_OnlyEnterActivates(t *testing.T) {
 		assert.Empty(t, m.prompt.Value(), key.Text)
 		assert.True(t, row.cmd.expanded, key.Text)
 	}
+}
+
+// A view taller than the pane scrolls like any other output, and the
+// selection stays on screen — a cursor you cannot see is not a cursor.
+func TestViews_TallViewScrollsAndFollowsTheCursor(t *testing.T) {
+	var out strings.Builder
+	for i := range 60 {
+		fmt.Fprintf(&out, "ok  \tgithub.com/x/p%02d\t%d.000s\n", i, 60-i)
+	}
+	m := rowFor("go test ./...", out.String())
+	row := m.blocks[0].steps[0]
+	m.refreshViewport()
+
+	h := m.output.Height()
+	require.Positive(t, h)
+	require.Greater(t, m.output.TotalLineCount(), h, "the view outgrows the pane")
+	assert.Equal(t, 0, m.output.YOffset(), "and starts at the top")
+
+	for range h + 5 {
+		nm, _ := m.outputKey(tea.KeyPressMsg{Code: tea.KeyDown})
+		m = nm.(Model)
+		m.refreshViewport()
+	}
+	assert.Positive(t, m.output.YOffset(), "the pane scrolled to follow the cursor")
+	assertCursorVisible(t, m, row)
+
+	for range 100 {
+		nm, _ := m.outputKey(tea.KeyPressMsg{Code: tea.KeyUp})
+		m = nm.(Model)
+		m.refreshViewport()
+	}
+	assert.Equal(t, 0, row.cmd.tableCursor)
+	assert.Equal(t, 0, m.output.YOffset(), "and back to the top")
+	assert.Contains(t, plainLines(m)[1], "package",
+		"the header is in sight again, not scrolled just off")
+}
+
+func assertCursorVisible(t *testing.T, m Model, row *stepRow) {
+	t.Helper()
+	rendered, ok := m.viewBody(row)
+	require.True(t, ok)
+	require.GreaterOrEqual(t, rendered.CursorLine, 0)
+	assert.GreaterOrEqual(t, rendered.CursorLine, m.output.YOffset(),
+		"the selection is not above the window")
+	assert.Less(t, rendered.CursorLine, m.output.YOffset()+m.output.Height(),
+		"nor below it")
+}
+
+// Scrolling must not drag the selection with it: pgdn moves the
+// window, the cursor stays on the row the human chose.
+func TestViews_ScrollingLeavesTheSelectionAlone(t *testing.T) {
+	var out strings.Builder
+	for i := range 60 {
+		fmt.Fprintf(&out, "ok  \tgithub.com/x/p%02d\t%d.000s\n", i, 60-i)
+	}
+	m := rowFor("go test ./...", out.String())
+	row := m.blocks[0].steps[0]
+	m.refreshViewport()
+
+	nm, _ := m.outputKey(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	m = nm.(Model)
+	assert.Equal(t, 0, row.cmd.tableCursor, "pgdn scrolls, it does not select")
 }

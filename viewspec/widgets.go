@@ -366,3 +366,19 @@ func pad(s string, w int, p Painter) string {
 	}
 	return s
 }
+
+// The two row widgets draw a cursor, so both report where it landed.
+// A table's header sits above its rows; a list's does not.
+func (tableWidget) CursorLine(_ Block, d Data, f Frame) int {
+	if f.Cursor < 0 || f.Cursor >= len(d.Rows) {
+		return -1
+	}
+	return f.Cursor + 1
+}
+
+func (listWidget) CursorLine(_ Block, d Data, f Frame) int {
+	if f.Cursor < 0 || f.Cursor >= len(d.Rows) {
+		return -1
+	}
+	return f.Cursor
+}

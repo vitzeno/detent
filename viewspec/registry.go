@@ -25,6 +25,13 @@ type Validator interface {
 	Validate(b Block, fields []string) error
 }
 
+// Selector is an optional Widget extension: a widget drawing a cursor
+// reports which of its own lines the cursor sits on, so a caller can
+// scroll to a selection it cannot see the layout of.
+type Selector interface {
+	CursorLine(b Block, d Data, f Frame) int
+}
+
 // Extractor turns captured bytes into rows. It never sees a Block: a
 // parse describes the output, not the view drawn from it.
 type Extractor interface {
