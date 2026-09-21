@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -156,4 +158,72 @@ func TestHandWrittenSpecs_AllCompile(t *testing.T) {
 		assert.NoError(t, err, key)
 	}
 	assert.Len(t, compiled, len(handWritten), "every hand-written spec compiled")
+}
+
+// Phase 3: a view row activates into the prompt. It never runs — from
+// the prompt it is an ordinary goal taking the ordinary path.
+
+func TestViews_EnterSeedsThePromptFromTheCursorRow(t *testing.T) {
+	m := rowFor("go test ./...", goTestOutput)
+
+	nm, _ := m.outputKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = nm.(Model)
+
+	assert.Equal(t, "go test -v github.com/x/c", m.prompt.Value(),
+		"the slowest package, which is row 0 after the sort")
+	assert.Equal(t, focusInput, m.nav.focus, "focus comes back to the prompt")
+	assert.True(t, m.prompt.Focused())
+	assert.Equal(t, modeInput, m.mode, "nothing ran and no confirm was shown")
+}
+
+func TestViews_SelectionMovesWithinTheViewAndClamps(t *testing.T) {
+	m := rowFor("go test ./...", goTestOutput)
+	row := m.blocks[0].steps[0]
+
+	nm, _ := m.outputKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	m = nm.(Model)
+	assert.Equal(t, 1, row.cmd.tableCursor)
+
+	nm, _ = m.outputKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	assert.Equal(t, "go test -v github.com/x/b", nm.(Model).prompt.Value(),
+		"the seeded command follows the cursor")
+
+	for range 5 {
+		nm, _ = m.outputKey(tea.KeyPressMsg{Code: tea.KeyDown})
+		m = nm.(Model)
+	}
+	assert.Equal(t, 2, row.cmd.tableCursor, "clamped to the last row")
+
+	for range 9 {
+		nm, _ = m.outputKey(tea.KeyPressMsg{Code: tea.KeyUp})
+		m = nm.(Model)
+	}
+	assert.Equal(t, 0, row.cmd.tableCursor, "and to the first")
+}
+
+func TestViews_EnterWithoutAViewStillTogglesTheRow(t *testing.T) {
+	m := rowFor("curl https://example.com", "hello\n")
+	row := m.blocks[0].steps[0]
+	require.False(t, row.cmd.expanded)
+
+	nm, _ := m.outputKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = nm.(Model)
+	assert.True(t, row.cmd.expanded, "the old behaviour is untouched")
+	assert.Empty(t, m.prompt.Value())
+}
+
+// v and space mean "look at this", enter means "act on it". A view
+// must not hijack the two keys that only ever expanded a row.
+func TestViews_OnlyEnterActivates(t *testing.T) {
+	for _, key := range []tea.KeyPressMsg{
+		{Code: 'v', Text: "v"}, {Code: ' ', Text: " "},
+	} {
+		m := rowFor("go test ./...", goTestOutput)
+		row := m.blocks[0].steps[0]
+
+		nm, _ := m.outputKey(key)
+		m = nm.(Model)
+		assert.Empty(t, m.prompt.Value(), key.Text)
+		assert.True(t, row.cmd.expanded, key.Text)
+	}
 }

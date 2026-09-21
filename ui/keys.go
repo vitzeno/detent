@@ -233,6 +233,11 @@ func (m Model) outputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.save.editing = true
 				return m, r.editor.Focus()
 			}
+			if msg.String() == "enter" {
+				if nm, ok := m.seedFromView(r); ok {
+					return nm, nil
+				}
+			}
 			switch r.toolKind {
 			case "tree":
 				return m.openTreeSelection(r)

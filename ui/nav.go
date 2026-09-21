@@ -14,6 +14,12 @@ import (
 // tabular rows, viewport lines otherwise.
 func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
 	if r := m.focused(); r != nil && !r.cmd.running {
+		if b, ok := boundView(r); ok {
+			if n, ok := b.SelectableRows(); ok && n > 0 {
+				r.cmd.tableCursor = min(max(r.cmd.tableCursor+d, 0), n-1)
+				return m, nil
+			}
+		}
 		if src, ok := r.tableText(); ok {
 			if _, rows, ok := tabular.Parse(src, m.output.Width()); ok && len(rows) > 0 {
 				r.cmd.tableCursor = min(max(r.cmd.tableCursor+d, 0), len(rows)-1)

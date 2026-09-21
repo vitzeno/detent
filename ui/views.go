@@ -175,3 +175,20 @@ func commandOutput(ec *ExecutedCommand) string {
 	}
 	return out
 }
+
+// seedFromView puts a view row's on_enter command in the prompt as
+// editable text. It does not run: from here it is an ordinary goal
+// taking the ordinary propose → judge → confirm path, which is why a
+// generated view can offer one at all.
+func (m Model) seedFromView(r *stepRow) (Model, bool) {
+	b, ok := boundView(r)
+	if !ok {
+		return m, false
+	}
+	command, ok := b.Action(viewspec.Frame{Cursor: r.cmd.tableCursor})
+	if !ok {
+		return m, false
+	}
+	m.prompt.SetValue(command)
+	return m.backToInput(), true
+}

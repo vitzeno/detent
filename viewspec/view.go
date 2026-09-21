@@ -203,22 +203,39 @@ func (b *Bound) Draw(f Frame) ([]string, error) {
 
 // Action resolves the on_enter template for the cursor row. A string
 // and nothing else: this package has no idea what a prompt or a shell
-// is. v1 addresses the first block carrying on_enter.
+// is.
 func (b *Bound) Action(f Frame) (string, bool) {
-	for _, bb := range b.blocks {
-		if bb.block.OnEnter == "" {
-			continue
-		}
-		if f.Cursor < 0 || f.Cursor >= len(bb.data.Rows) {
-			return "", false
-		}
-		out, err := substitute(bb.block.OnEnter, bb.data.Rows[f.Cursor])
-		if err != nil {
-			return "", false
-		}
-		return out, true
+	bb, ok := b.selectable()
+	if !ok || f.Cursor < 0 || f.Cursor >= len(bb.data.Rows) {
+		return "", false
 	}
-	return "", false
+	out, err := substitute(bb.block.OnEnter, bb.data.Rows[f.Cursor])
+	if err != nil {
+		return "", false
+	}
+	return out, true
+}
+
+// SelectableRows reports how many rows Frame.Cursor addresses, so a
+// caller can clamp its own cursor without knowing the view's shape.
+func (b *Bound) SelectableRows() (int, bool) {
+	bb, ok := b.selectable()
+	if !ok {
+		return 0, false
+	}
+	return len(bb.data.Rows), true
+}
+
+// selectable is the block the cursor addresses. v1 takes the first one
+// carrying on_enter; a view wanting two interactive blocks needs
+// Frame.Cursor to become a (block, row) pair.
+func (b *Bound) selectable() (boundBlock, bool) {
+	for _, bb := range b.blocks {
+		if bb.block.OnEnter != "" {
+			return bb, true
+		}
+	}
+	return boundBlock{}, false
 }
 
 // selectRows applies a block's Where filter then its Sort. Both are

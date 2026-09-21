@@ -399,3 +399,17 @@ func TestRole_IsNamedOnTheWire(t *testing.T) {
 	assert.Error(t, json.Unmarshal([]byte(`"#ff0000"`), &r), "a colour is not a role")
 	assert.Error(t, json.Unmarshal([]byte(`7`), &r), "a number is not a role")
 }
+
+func TestSelectableRows_ClampsWithoutKnowingTheShape(t *testing.T) {
+	spec := viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{
+		{Kind: "meter", CountWhere: "status=ok", Of: "*"},
+		{Kind: "list", Field: "pkg", Where: "status=ok", OnEnter: "go test -v {pkg}"},
+	}}
+	n, ok := bind(t, spec, goTest).SelectableRows()
+	require.True(t, ok)
+	assert.Equal(t, 3, n, "counts the on_enter block's rows, not every parsed row")
+
+	spec.Blocks[1].OnEnter = ""
+	_, ok = bind(t, spec, goTest).SelectableRows()
+	assert.False(t, ok, "nothing takes a selection")
+}
