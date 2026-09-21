@@ -10,6 +10,10 @@ import (
 // Structurer asks a model for JSON matching a schema. Declared here
 // because viewgen is what calls it; propose.OpenAIProposer satisfies
 // it structurally, so this package never imports the proposer.
+//
+// It must be safe for concurrent use: the candidates for one view are
+// asked together, because waiting for each in turn made a view land
+// after the goal that wanted it had already ended.
 type Structurer interface {
 	Structured(ctx context.Context, system, user string, schema map[string]any) ([]byte, usage.Usage, error)
 }

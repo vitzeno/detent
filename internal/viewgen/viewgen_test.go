@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,13 +42,18 @@ const goodSpec = `{"version":1,"match":"","parse":{"kind":"lines",
 
 // fakeModel replies with each canned answer in turn.
 type fakeModel struct {
+	mu      sync.Mutex
 	replies []string
 	calls   int
 	schema  map[string]any
 	err     error
 }
 
+// Locked because Structured is called from several goroutines at once,
+// which is the contract viewgen now states.
 func (m *fakeModel) Structured(_ context.Context, _, _ string, schema map[string]any) ([]byte, usage.Usage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.schema = schema
 	if m.err != nil {
 		return nil, usage.Usage{}, m.err
@@ -60,9 +66,16 @@ func (m *fakeModel) Structured(_ context.Context, _, _ string, schema map[string
 type fakeJudge struct {
 	scores []float64
 	calls  int
+	// byState scores from what the judge was shown rather than from
+	// call order, which stopped saying which candidate is which once
+	// they were asked together.
+	byState func(classify.State) float64
 }
 
-func (j *fakeJudge) Ask(context.Context, classify.State, classify.Questions) (classify.Answers, classify.Usage, error) {
+func (j *fakeJudge) Ask(_ context.Context, state classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
+	if j.byState != nil {
+		return classify.Answers{"view_fit": {Noul: j.byState(state)}}, classify.Usage{}, nil
+	}
 	s := j.scores[min(j.calls, len(j.scores)-1)]
 	j.calls++
 	return classify.Answers{"view_fit": {Noul: s}}, classify.Usage{}, nil
@@ -130,7 +143,13 @@ func TestGenerate_JevDecidesBetweenCandidatesAndCanRejectBoth(t *testing.T) {
 
 	g := &viewgen.Generator{
 		Model: &fakeModel{replies: []string{plainer, goodSpec}},
-		Judge: &fakeJudge{scores: []float64{0.2, 0.9}},
+		Judge: &fakeJudge{byState: func(s classify.State) float64 {
+			// State is any; the generator always passes this map.
+			if len(s.(map[string]any)["blocks_chosen"].([]string)) > 1 {
+				return 0.9
+			}
+			return 0.2
+		}},
 		Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 2}
 	got, err := g.Generate(context.Background(), request())
 	require.NoError(t, err)

@@ -56,7 +56,7 @@ var kinds = []Kind{
 		Examples: []string{"ps aux", "df -h", "ls -la", "docker ps"},
 		Widgets: []string{"table", "bar", "gauge", "stack", "diverge", "delta", "histogram",
 			"boxplot", "series", "heatmap", "scatter", "gantt", "timeline", "dots",
-			"stat", "keyvalue", "badges", "text", viewspec.PanelKind, viewspec.RowKind},
+			"meter", "stat", "keyvalue", "badges", "text", viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
 	},
 	{

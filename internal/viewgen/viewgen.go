@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/usage"
@@ -58,9 +59,25 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
 		user := userPrompt(req)
 		log.InfoContext(ctx, "asking for a view", logging.KeyEvent, logging.LLMRequest,
 			"kind", req.Kind, "offered", reg.Kinds(), "candidates", g.candidates())
-		for i := range g.candidates() {
-			raw, used, err := g.Model.Structured(ctx, systemPrompt, user, schema)
-			total = add(total, used)
+		// Asked together rather than one after the other: the
+		// candidates are independent, and waiting for each in turn
+		// made a view arrive after the goal that wanted it had ended.
+		asked := make([]attempt, g.candidates())
+		var wg sync.WaitGroup
+		for i := range asked {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				asked[i].raw, asked[i].used, asked[i].err =
+					g.Model.Structured(ctx, systemPrompt, user, schema)
+			}()
+		}
+		wg.Wait()
+
+		// Read back in order, so the log reads the same either way.
+		for i, a := range asked {
+			raw, err := a.raw, a.err
+			total = add(total, a.used)
 			if err != nil {
 				log.WarnContext(ctx, "the model call failed", logging.KeyEvent, logging.LLMError,
 					"candidate", i, logging.KeyReason, err.Error())
@@ -80,8 +97,9 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
 			}
 			fit := 1.0
 			if g.Judge != nil {
-				fit, used = g.fit(ctx, req, spec, bound)
-				total = add(total, used)
+				var judged usage.Usage
+				fit, judged = g.fit(ctx, req, spec, bound)
+				total = add(total, judged)
 				log.InfoContext(ctx, "judged the candidate", logging.KeyEvent, logging.ViewFit,
 					"candidate", i, "score", fit, "threshold", g.threshold(),
 					"fields", bound.Fields())
@@ -111,6 +129,14 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
 	log.InfoContext(ctx, "nothing generated fit the output", logging.KeyEvent, logging.ViewDeclined,
 		"candidates", g.candidates(), "best_score", bestFit)
 	return Result{Usage: total}, ErrNoneFit
+}
+
+// attempt is one candidate's outcome, kept so the calls can overlap
+// and still be read back in a fixed order.
+type attempt struct {
+	raw  []byte
+	used usage.Usage
+	err  error
 }
 
 // worthAsking reports whether this output earns a model call. Shape
