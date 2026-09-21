@@ -75,6 +75,8 @@ type ViewSource string
 
 const (
 	// ViewBuiltin was chosen by output shape alone, not by command.
+	// Along with ViewShipped it is detent's own work, so the pane
+	// draws it without comment: these two are the baseline.
 	ViewBuiltin ViewSource = "built-in"
 	// ViewShipped was written for this command shape.
 	ViewShipped ViewSource = "shipped"

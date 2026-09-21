@@ -65,15 +65,8 @@ func (m Model) viewportHeader() string {
 	if k := rowKind(r); k != "" {
 		label = status.KindLabel(string(k))
 	}
-	// Which spec drew this pane. Always stated: an unmarked pane left
-	// the human guessing which of four paths produced it. Faint,
-	// because a spec is not a result.
 	mark, width := "", m.layout.outputColW-24
-	if src := r.cmd.viewSource; src != "" {
-		note := string(src)
-		if r.cmd.viewDeclined {
-			note += ", generated " + string(ViewDeclined)
-		}
+	if note := viewNote(r); note != "" {
 		mark = styleFaint.Render(" " + viewSourceMark + " " + note)
 		width -= len(note) + 3
 	}
@@ -81,9 +74,25 @@ func (m Model) viewportHeader() string {
 		styleGoal.Render(layout.Truncate(r.command, width)))
 }
 
-// viewSourceMark flags a pane drawn from a spec rather than from the
-// built-in rendering for its judged kind.
+// viewSourceMark precedes anything worth saying about how the pane
+// was drawn.
 const viewSourceMark = "✦"
+
+// viewNote is what the header says about the drawing, and usually it
+// says nothing. Only framing a model had a hand in is worth a word,
+// plus an attempt that came to nothing, since that is otherwise
+// indistinguishable from never having tried. detent's own renderings
+// are the baseline and naming them on every row was just noise.
+func viewNote(r *stepRow) string {
+	if r.cmd.viewDeclined {
+		return "generate declined"
+	}
+	switch r.cmd.viewSource {
+	case ViewGenerated, ViewSaved:
+		return string(r.cmd.viewSource)
+	}
+	return ""
+}
 
 func (m Model) historyHeader() string {
 	return fmt.Sprintf("%s %s", paneMark(m.nav.focus == focusHistory), paneLabel("history", m.nav.focus == focusHistory))

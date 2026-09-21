@@ -311,11 +311,11 @@ func TestViewRegistry_CarriesWhatOnlyDetentCanDo(t *testing.T) {
 	assert.Contains(t, kinds, "markdown")
 }
 
-// Every drawn pane says which spec produced it. An unmarked one left
-// the human guessing which of four paths they were looking at, which
-// is the whole complaint the mark answers.
-func TestViews_ThePaneAlwaysSaysWhereItsFramingCameFrom(t *testing.T) {
-	for _, src := range []ViewSource{ViewShipped, ViewSaved, ViewGenerated} {
+// The header speaks up only about framing a model had a hand in.
+// detent's own renderings are the baseline, and naming them on every
+// row was noise that made the interesting cases harder to spot.
+func TestViews_ThePaneNamesOnlyModelAuthoredFraming(t *testing.T) {
+	for _, src := range []ViewSource{ViewGenerated, ViewSaved} {
 		m := rowWithSourcedView("go test ./...", goTestOutput, goTestSpec(), src)
 		header := ansi.Strip(m.viewportHeader())
 		assert.Contains(t, header, viewSourceMark, string(src))
@@ -323,16 +323,18 @@ func TestViews_ThePaneAlwaysSaysWhereItsFramingCameFrom(t *testing.T) {
 		assert.Contains(t, header, "go test ./...", "the command still fits")
 	}
 
-	// The built-in rendering is a spec too, so it says so.
+	for _, src := range []ViewSource{ViewBuiltin, ViewShipped} {
+		m := rowWithSourcedView("go test ./...", goTestOutput, goTestSpec(), src)
+		assert.NotContains(t, ansi.Strip(m.viewportHeader()), viewSourceMark,
+			"%s is detent's own, so it is drawn without comment", src)
+	}
+
+	// And the default path says nothing at all.
 	m := rowFor("curl https://example.com", "hello\n")
 	m.refreshViewport()
-	header := ansi.Strip(m.viewportHeader())
-	assert.Contains(t, header, viewSourceMark)
-	assert.Contains(t, header, string(ViewBuiltin))
+	assert.NotContains(t, ansi.Strip(m.viewportHeader()), viewSourceMark)
 }
 
-// A model that was asked and came back with nothing usable looks
-// identical to one never asked, unless the pane says so.
 func TestViews_ADeclinedGenerationSaysSo(t *testing.T) {
 	m := rowFor("df -h", "a\nb\nc\n")
 	row := m.blocks[0].steps[0]
@@ -342,7 +344,7 @@ func TestViews_ADeclinedGenerationSaysSo(t *testing.T) {
 	nm, _ := m.Update(viewMsg{row: row, view: GeneratedView{Source: ViewDeclined}})
 	m = nm.(Model)
 	assert.True(t, row.cmd.viewDeclined)
-	assert.Contains(t, ansi.Strip(m.viewportHeader()), "generated declined")
-	assert.Contains(t, ansi.Strip(m.viewportHeader()), string(ViewBuiltin),
-		"and the built-in rendering still stands")
+	assert.Contains(t, ansi.Strip(m.viewportHeader()), "generate declined")
+	assert.NotContains(t, ansi.Strip(m.viewportHeader()), string(ViewBuiltin),
+		"the rendering that stood in is the baseline, and goes unnamed")
 }

@@ -366,9 +366,11 @@ routing     →  agent, sandbox
   `Bound.Action` returns an `on_enter` template with `{field}`
   substituted, and `ui`'s `enter` seeds the prompt with it. A view
   carries its provenance (`shipped`/`saved`/`generated`) across the
-  Driver in `ui.GeneratedView`, and `viewportHeader` marks the pane
-  with it; the built-in rendering for a judged kind is unmarked,
-  because it is detent's own and has nothing to disclose. The pane always
+  Driver in `ui.GeneratedView`. `viewportHeader` names only what a
+  model had a hand in (`saved`, `generated`) plus `generate declined`,
+  which is otherwise indistinguishable from never having tried;
+  `built-in` and `shipped` are detent's own work and draw without
+  comment, since naming them on every row was noise. The pane always
   draws from a spec, so there is no "off": `views: saved` draws only
   from specs that already exist, `views: generate` also authors one
   when nothing covers the output. Only `generate` ever writes a spec,
