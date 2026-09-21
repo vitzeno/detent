@@ -77,7 +77,7 @@ Package dependency flow — `ui` and `agent` never import each other;
 cmd/detent  →  ui, resolver, agent, classify, config, routing, propose (Ping only)
 resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio, viewgen
 ui          →  its own subpackages (editor, welcome, render, status,
-                markdown, theme, island, tree, layout) + viewspec
+                markdown, theme, island, tree, layout) + viewspec, logging
 viewspec    →  the standard library, nothing else
 logging     →  the standard library, nothing else
 agent       →  propose, host, classify, usage, viewgen (render kinds)
@@ -439,7 +439,13 @@ routing     →  agent, sandbox
   command's first word, so `ps` and `ps aux` share one, and an
   unchecked seed matched, drew nothing, and blocked generation behind
   itself. `Generator.usable` is that check, and it logs either way,
-  because a silent lookup is why the logs said nothing at all.
+  because a silent lookup is why the logs said nothing at all. Three guards keep a spec from
+  drawing nothing in silence: `ui`'s `TestBoundView_AlwaysYieldsSomethingDrawable`
+  binds and draws every render kind against empty, ragged and
+  header-only output; `viewgen`'s seed tests refuse a shipped spec that
+  has no sample of its own command's output to bind against; and both
+  `boundView` and `applyView` now log the drop, since the pane falling
+  back looks identical to the pane having nothing to say.
 
   **There is one render path.** `ui/views.go`'s `specChain` tries, in
   order: a spec keyed to the command (`normaliseCommand`), the built-in

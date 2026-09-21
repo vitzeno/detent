@@ -249,15 +249,6 @@ func TestExisting_StoreBeatsWhatWeShipped(t *testing.T) {
 	assert.Len(t, got.Spec.Blocks, 1, "the human's edit wins")
 }
 
-func TestSeeds_AllCompileAndFitTheirOwnShape(t *testing.T) {
-	for command, output := range seedOutput {
-		got, ok := (&viewgen.Generator{}).Existing(context.Background(),
-			viewgen.Request{Command: command, Output: output})
-		require.True(t, ok, "%s: the shipped spec should draw its own command", command)
-		assert.Equal(t, viewgen.SourceShipped, got.Source, command)
-	}
-}
-
 // A spec that already exists still has to bind. "ps" and "ps aux"
 // normalise to one key and print different columns, so the shipped
 // spec matched, drew nothing, and blocked generation behind itself.
@@ -266,28 +257,16 @@ func TestExisting_RejectsASpecThatCannotDrawTheOutput(t *testing.T) {
 root    1  0.1  0.0   1090   640 ?   Ss   20:41 0:00 /bin/sh
 root   14  0.0  0.0   7376  3200 ?   R    20:47 0:00 ps aux
 `
+	const plainPs = "  PID TTY          TIME CMD\n    1 ?        00:00:00 sh\n"
+
 	g := &viewgen.Generator{}
 	_, ok := g.Existing(context.Background(),
-		viewgen.Request{Command: "ps", Output: seedOutput["ps"]})
+		viewgen.Request{Command: "ps", Output: plainPs})
 	require.True(t, ok, "plain ps is what the seed was written for")
 
 	_, ok = g.Existing(context.Background(),
 		viewgen.Request{Command: "ps aux --sort=-%cpu | head -n 20", Output: psAux})
 	assert.False(t, ok, "ps aux has command, not cmd, so the seed must stand aside")
-}
-
-// One sample of each shipped command's real output, so "fits its own
-// shape" means it binds rather than merely compiles.
-var seedOutput = map[string]string{
-	"go test ./...": goTest,
-	"git status":    " M internal/agent/loop.go\n?? notes.txt\nA  ui/paste_test.go\n",
-	"docker ps": "CONTAINER ID   IMAGE     STATUS         NAMES\n" +
-		"9f2a1c3d4e5f   nginx     Up 2 hours     web\n",
-	"env":    "PATH=/usr/bin\nHOME=/root\nSHELL=/bin/sh\n",
-	"find .": "./main.go\n./internal/agent/loop.go\n./ui/keys.go\n",
-	"tree":   ".\n  internal\n    agent\n      loop.go\n  ui\n    keys.go\n",
-	"ps": "  PID TTY          TIME CMD\n" +
-		"  1 ?        00:00:00 sh\n 14 ?        00:00:00 ps\n",
 }
 
 // One table defines a kind's criteria and what may draw it, so a kind

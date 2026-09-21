@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/ui/markdown"
 	"github.com/vitzeno/detent/viewspec"
 )
@@ -63,6 +64,12 @@ func boundView(r *stepRow) (*viewspec.Bound, bool) {
 	for _, c := range fallbackChain(r, output) {
 		b, err := c.Bind(output)
 		if err != nil {
+			// The chain ends at raw bytes, so this is recoverable.
+			// It is still the only trace that a kind's own rendering
+			// was dropped, which used to leave no trace at all.
+			logging.For(logging.UI).Debug("a built-in view could not draw this output",
+				logging.KeyEvent, logging.ViewInvalid, "kind", string(rowKind(r)),
+				"source", string(ViewBuiltin), logging.KeyReason, err.Error())
 			continue
 		}
 		r.cmd.view, r.cmd.viewSource = b, ViewBuiltin
@@ -79,16 +86,22 @@ func applyView(r *stepRow, got GeneratedView) bool {
 		return false
 	}
 	c, err := viewspec.Compile(*got.Spec, viewspec.WithRegistry(viewRegistry))
-	if err != nil {
-		return false
+	if err == nil {
+		var b *viewspec.Bound
+		if b, err = c.Bind(commandOutput(r.cmd.ec)); err == nil {
+			r.cmd.view, r.cmd.viewTried = b, true
+			r.cmd.viewSource = got.Source
+			return true
+		}
 	}
-	b, err := c.Bind(commandOutput(r.cmd.ec))
-	if err != nil {
-		return false
-	}
-	r.cmd.view, r.cmd.viewTried = b, true
-	r.cmd.viewSource = got.Source
-	return true
+	// viewgen binds every spec against this same output and registry
+	// before handing one over, so reaching here means the two have
+	// drifted apart. Silence is what made the last one take an
+	// afternoon to find.
+	logging.For(logging.UI).Warn("a fitted view could not draw this output",
+		logging.KeyEvent, logging.ViewInvalid, "source", string(got.Source),
+		logging.KeyReason, err.Error())
+	return false
 }
 
 // fallbackChain is what a row's view is tried against with no model
