@@ -65,7 +65,7 @@ type SessionInfo struct {
 	Proposer string
 	Judge    string // "" when no judge is wired
 	RunMode  string // "host" or "sandbox"
-	// Views is "off", "saved" or "generate".
+	// Views is "saved" or "generate".
 	Views string
 
 	// Sandbox facts for the welcome pane; empty in host mode.

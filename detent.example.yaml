@@ -83,19 +83,18 @@ model: prism-ml/bonsai-27b
 # host side is always the directory detent was started in.
 # sandbox_workspace: /workspace
 
-# How the output pane draws a command's result.
-#   off       the built-in rendering for each judged kind, and nothing
-#             else. Exactly how output looked before views existed.
-#   saved     also draw from specs that already exist: the ones detent
-#             ships, and any saved under ~/.local/state/detent/views.
-#             Never calls a model, so that set never grows. (default)
-#   generate  do what saved does first, and when neither covers an
-#             output, ask the proposer for a spec, verify it with Jev,
-#             and save it. The next run of that command shape is then
-#             served from disk for nothing, so the cost is per command
-#             shape, not per step.
+# Whether a model may write a view for output nothing covers.
 #
-# The pane's header flags any view drawn from a spec and says which it
-# was: shipped, saved, or generated just now. No flag means the
-# built-in rendering.
+# The pane always draws from a spec. The built-in rendering for each
+# judged kind is one, the ones detent ships for known commands are
+# more, and any you have saved under ~/.local/state/detent/views are
+# more again. The header says which of them drew what you are reading.
+#
+#   saved     draw only from specs that already exist. Never calls a
+#             model, so that set never grows.  (default)
+#   generate  do that first, and when nothing covers an output, ask the
+#             proposer for a spec, verify it with Jev, and save it. The
+#             next run of that command shape is then served from disk
+#             for nothing, so the cost is per command shape, not per
+#             step.
 views: saved

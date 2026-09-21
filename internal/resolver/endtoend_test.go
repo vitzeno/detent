@@ -142,9 +142,10 @@ func TestEndToEnd_GoalRunsAndItsOutputGetsAView(t *testing.T) {
 	assert.Equal(t, ui.EndDone, res.End)
 }
 
-// The same run with views off must reach the pane exactly as it did
-// before generated views existed.
-func TestEndToEnd_ViewsOffChangesNothingBelowTheDriver(t *testing.T) {
+// A Driver with no generator wired leaves ui on its built-in
+// rendering. There is no "off" mode, but a nil generator is still a
+// state the boundary has to survive.
+func TestEndToEnd_NoGeneratorLeavesTheBuiltinRendering(t *testing.T) {
 	srv := fakeEndpoint(t, []string{`{"command":"ps","rationale":"r","done":false,"summary":"","file":""}`}, "")
 	defer srv.Close()
 
@@ -158,5 +159,5 @@ func TestEndToEnd_ViewsOffChangesNothingBelowTheDriver(t *testing.T) {
 
 	drv := New(sess) // no Views generator at all
 	_, ok := drv.GenerateView(context.Background(), "ps", psOutput, 0, ui.KindLog)
-	assert.False(t, ok, "ui falls back to the render_kind spec, as before")
+	assert.False(t, ok, "ui draws its built-in spec for the judged kind")
 }

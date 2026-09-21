@@ -311,10 +311,10 @@ func TestViewRegistry_CarriesWhatOnlyDetentCanDo(t *testing.T) {
 	assert.Contains(t, kinds, "markdown")
 }
 
-// A view drawn from a spec says so, and where the spec came from. The
-// built-in rendering for a judged kind says nothing, because it is
-// detent's own and there is nothing to disclose.
-func TestViews_ThePaneSaysWhereItsFramingCameFrom(t *testing.T) {
+// Every drawn pane says which spec produced it. An unmarked one left
+// the human guessing which of four paths they were looking at, which
+// is the whole complaint the mark answers.
+func TestViews_ThePaneAlwaysSaysWhereItsFramingCameFrom(t *testing.T) {
 	for _, src := range []ViewSource{ViewShipped, ViewSaved, ViewGenerated} {
 		m := rowWithSourcedView("go test ./...", goTestOutput, goTestSpec(), src)
 		header := ansi.Strip(m.viewportHeader())
@@ -323,7 +323,10 @@ func TestViews_ThePaneSaysWhereItsFramingCameFrom(t *testing.T) {
 		assert.Contains(t, header, "go test ./...", "the command still fits")
 	}
 
-	plain := ansi.Strip(rowFor("curl https://example.com", "hello\n").viewportHeader())
-	assert.NotContains(t, plain, viewSourceMark,
-		"the built-in rendering is detent's own, so it claims nothing")
+	// The built-in rendering is a spec too, so it says so.
+	m := rowFor("curl https://example.com", "hello\n")
+	m.refreshViewport()
+	header := ansi.Strip(m.viewportHeader())
+	assert.Contains(t, header, viewSourceMark)
+	assert.Contains(t, header, string(ViewBuiltin))
 }

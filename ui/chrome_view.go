@@ -65,8 +65,9 @@ func (m Model) viewportHeader() string {
 	if k := rowKind(r); k != "" {
 		label = status.KindLabel(string(k))
 	}
-	// Where the framing came from, when it is not detent's own
-	// built-in rendering. Faint, because a spec is not a result.
+	// Which spec drew this pane. Always stated: an unmarked pane left
+	// the human guessing which of four paths produced it. Faint,
+	// because a spec is not a result.
 	mark, width := "", m.layout.outputColW-24
 	if src := r.cmd.viewSource; src != "" {
 		mark = styleFaint.Render(" " + viewSourceMark + " " + string(src))

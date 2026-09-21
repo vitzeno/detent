@@ -118,7 +118,7 @@ func TestLoad_ExampleFileStaysValid(t *testing.T) {
 }
 
 // Only generate ever writes to the cache. saved is read-only, which
-// is the distinction its old name ("cached") got backwards.
+// is the distinction the old name ("cached") got backwards.
 func TestViews_DefaultsToSavedAndSpendsNothing(t *testing.T) {
 	assert.Equal(t, ViewsSaved, Default().Views)
 	assert.Equal(t, "saved", ViewsSaved)

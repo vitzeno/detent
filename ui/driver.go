@@ -69,13 +69,18 @@ type GeneratedView struct {
 	Source ViewSource
 }
 
-// ViewSource mirrors viewgen's own. Shipped is detent's, saved is on
-// disk and editable, generated is a model's work this session.
+// ViewSource says how specific to this command the drawn view is, so
+// the pane never leaves a human guessing which path produced it.
 type ViewSource string
 
 const (
-	ViewShipped   ViewSource = "shipped"
-	ViewSaved     ViewSource = "saved"
+	// ViewBuiltin was chosen by output shape alone, not by command.
+	ViewBuiltin ViewSource = "built-in"
+	// ViewShipped was written for this command shape.
+	ViewShipped ViewSource = "shipped"
+	// ViewSaved is on disk, and so editable.
+	ViewSaved ViewSource = "saved"
+	// ViewGenerated is framing a model wrote this session.
 	ViewGenerated ViewSource = "generated"
 )
 

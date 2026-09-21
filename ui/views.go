@@ -65,7 +65,7 @@ func boundView(r *stepRow) (*viewspec.Bound, bool) {
 		if err != nil {
 			continue
 		}
-		r.cmd.view = b
+		r.cmd.view, r.cmd.viewSource = b, ViewBuiltin
 		return b, true
 	}
 	return nil, false

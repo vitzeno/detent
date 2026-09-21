@@ -54,8 +54,7 @@ type Config struct {
 	// main.go does the lookup, so config has no dependency on ui.
 	Theme string `yaml:"theme"`
 
-	// Views is "off", "saved" or "generate". See the constants for
-	// what each one does.
+	// Views is "saved" or "generate". See the constants.
 	Views string `yaml:"views"`
 
 	// SandboxMode is "auto" or "host"; unvalidated here, like Theme.
@@ -75,18 +74,18 @@ type Config struct {
 // dependency.
 const DefaultTheme = "dark"
 
-// How the output pane may draw a command's result.
+// How far the output pane may go to draw a command's result. There is
+// no "off": the pane draws from a spec either way, and the built-in
+// rendering for a judged kind is one. The only question worth a
+// setting is whether a model may write a new spec.
 const (
-	// ViewsOff draws with the built-in rendering for the judged kind
-	// and nothing else. Exactly how output looked before views existed.
-	ViewsOff = "off"
-	// ViewsSaved also draws from specs that already exist: the ones
-	// detent ships and any saved on disk. It never calls a model, so
-	// the set of specs never grows.
+	// ViewsSaved draws only from specs that already exist: the
+	// built-in rendering for the judged kind, the ones detent ships
+	// for known commands, and any saved on disk. Never calls a model.
 	ViewsSaved = "saved"
-	// ViewsGenerate does what ViewsSaved does first, and when neither
+	// ViewsGenerate does what ViewsSaved does first, and when nothing
 	// covers an output, asks a model for a spec and saves it. The next
-	// run of that command shape is then served from disk for nothing.
+	// run of that command shape is served from disk for nothing.
 	ViewsGenerate = "generate"
 )
 

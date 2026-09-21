@@ -319,14 +319,10 @@ func loadDotenv(path string) {
 	}
 }
 
-// views builds the output-view generator. "off" returns nil, which
-// leaves the pane exactly as it was before views existed. Without a
-// Model the generator can only serve specs that already exist, which
-// is what makes "saved" a mode rather than a flag.
+// views builds the output-view generator. Without a Model it can only
+// serve specs that already exist, which is what makes "saved" a mode
+// rather than a flag.
 func views(mode string, proposer *propose.OpenAIProposer, judge *classify.JevJudge) *viewgen.Generator {
-	if mode == config.ViewsOff {
-		return nil
-	}
 	g := &viewgen.Generator{
 		Registry: ui.Registry(),
 		Store:    &viewgen.Store{Dir: viewgen.DefaultDir()},
