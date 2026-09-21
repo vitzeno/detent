@@ -1,0 +1,28 @@
+name: "Go tests"
+description: "Run Go tests"
+
+inputs:
+    working-directory:
+        description: "Working directory to run the steps from"
+        required: false
+        default: "."
+    race:
+        description: "Enable the race detector"
+        required: false
+        default: "true"
+
+runs:
+    using: "composite"
+    steps:
+        - name: Run tests
+          working-directory: ${{ inputs.working-directory }}
+          env:
+              RACE: ${{ inputs.race }}
+          run: |
+              set -euo pipefail
+              flags="-cover -json -v"
+              if [ "$RACE" = "true" ]; then
+                  flags="$flags -race"
+              fi
+              go test $flags ./...
+          shell: bash

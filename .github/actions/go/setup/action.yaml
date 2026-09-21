@@ -1,0 +1,17 @@
+name: "Go Setup"
+description: "Setup Go using the toolchain version pinned in go.mod"
+
+inputs:
+    go-version-file:
+        description: "Path to the go.mod that pins the toolchain version"
+        required: false
+        default: "go.mod"
+
+runs:
+    using: "composite"
+    steps:
+        - name: Set up Go
+          uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+          with:
+              go-version-file: ${{ inputs.go-version-file }}
+              cache: true

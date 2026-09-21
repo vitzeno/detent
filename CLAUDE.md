@@ -39,6 +39,15 @@ make fmt-check     # fail if anything isn't gofmt'd
 Run a single package's tests: `go test ./internal/propose/...`
 Run a single test: `go test ./internal/agent/ -run TestSession_RunGoal`
 
+CI (`.github/workflows/ci.yaml`) runs the same three things on every push
+and PR: `go test -race -cover` on ubuntu and macos, gofmt/vet/`go mod
+tidy`, and a five-target cross-build with `CGO_ENABLED=0`. Windows is
+cross-built but never tested, since every command goes through `sh -c`
+and the sandbox talks to containerd over a unix socket. The containerd
+tests skip themselves in CI; rollback is covered locally against colima.
+Keeping `CGO_ENABLED=0` green is what makes a pure-Go SQLite driver the
+only option when persistence lands.
+
 ## Configuration
 
 Precedence: flags > environment > config file > built-ins. Config file is
