@@ -77,8 +77,9 @@ func (m Model) saveConfirmBox() string {
 }
 
 // rollbackConfirmBox asks before writing to the human's own files. It
-// names every path first: the container rolls back regardless, and
-// this is the only part that can destroy work detent never made.
+// names every path, and marks the ones nothing detent ran can account
+// for — reverting those destroys work it never made, which is the
+// only irreversible thing here.
 func (m Model) rollbackConfirmBox() string {
 	r := m.rollback
 	if r.target == nil {
@@ -86,10 +87,18 @@ func (m Model) rollbackConfirmBox() string {
 	}
 	w := min(90, max(24, m.layout.width-8))
 
+	unseen := 0
+	for _, f := range r.files {
+		if f.Unseen {
+			unseen++
+		}
+	}
+
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s  %s\n\n", styleMuted.Render("undo to before"),
 		styleGoal.Render(fmt.Sprintf("#%d  %s", r.step, layout.Truncate(r.target.goal, w-24))))
-	b.WriteString(styleMuted.Render("this would also change your own files:") + "\n")
+	fmt.Fprintf(&b, "%s\n", styleMuted.Render(fmt.Sprintf(
+		"reverting the workspace would change %s:", plural(len(r.files), "file"))))
 
 	files, more := r.files, 0
 	if len(files) > maxRollbackFiles {
@@ -100,14 +109,32 @@ func (m Model) rollbackConfirmBox() string {
 		if f.Removed {
 			mark, style = "delete ", styleDiffDel
 		}
-		fmt.Fprintf(&b, "  %s %s\n", style.Render(mark), styleGoal.Render(layout.Truncate(f.Path, w-14)))
+		note := ""
+		if f.Unseen {
+			note = styleDanger.Render("  ⚠ not detent's")
+		}
+		fmt.Fprintf(&b, "  %s %s%s\n", style.Render(mark),
+			styleGoal.Render(layout.Truncate(f.Path, w-28)), note)
 	}
 	if more > 0 {
 		fmt.Fprintf(&b, "%s\n", styleFaint.Render(fmt.Sprintf("  … +%d more", more)))
 	}
-	fmt.Fprintf(&b, "\n%s revert them   %s container only   %s cancel",
-		styleKey.Render("[y]"), styleKey.Render("[n]"), styleKey.Render("[esc]"))
+	if unseen > 0 {
+		fmt.Fprintf(&b, "\n%s %s\n", styleDanger.Render("⚠"), styleCaution.Render(fmt.Sprintf(
+			"%s changed after detent's last step — reverting throws that away",
+			plural(unseen, "file"))))
+	}
+	fmt.Fprintf(&b, "\n%s container only   %s revert the files too   %s cancel",
+		styleKey.Render("[n/enter]"), styleKey.Render("[y]"), styleKey.Render("[esc]"))
 	return lipgloss.PlaceHorizontal(m.layout.width, lipgloss.Center, styleConfirmDanger.Width(w).Render(b.String()))
+}
+
+// plural counts a thing without the "(s)" hedge.
+func plural(n int, thing string) string {
+	if n == 1 {
+		return "1 " + thing
+	}
+	return fmt.Sprintf("%d %ss", n, thing)
 }
 
 // maxRollbackFiles caps the list, or a wide-reaching goal fills the

@@ -130,7 +130,7 @@ func (r *Resolver) PlanRollback(ctx context.Context, res *ui.GoalResult, step in
 	}
 	out := make([]ui.FileChange, len(plan.Files))
 	for i, f := range plan.Files {
-		out[i] = ui.FileChange{Path: f.Path, Removed: f.Kind == worktree.Removed}
+		out[i] = ui.FileChange{Path: f.Path, Removed: f.Kind == worktree.Removed, Unseen: f.Unseen}
 	}
 	return out, nil
 }

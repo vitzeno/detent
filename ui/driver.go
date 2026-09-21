@@ -55,6 +55,9 @@ type Driver interface {
 type FileChange struct {
 	Path    string
 	Removed bool
+	// Unseen marks a file changed after detent's last checkpoint —
+	// work it never made, which reverting would throw away.
+	Unseen bool
 }
 
 // StreamEvent is one line of live output from a running command.

@@ -71,8 +71,34 @@ func (s *Session) PlanRollback(ctx context.Context, res *GoalResult, step int) (
 		// rollback; it just means nothing is offered for the files.
 		return plan, nil
 	}
-	plan.Files = files
+	plan.Files = markUnseen(ctx, dir, res, files)
 	return plan, nil
+}
+
+// markUnseen flags paths that changed after detent's last checkpoint.
+// Nothing it ran can account for those — they are the human's own
+// edits, and reverting is the one thing here that can destroy work
+// detent never made.
+func markUnseen(ctx context.Context, dir string, res *GoalResult, files []worktree.Change) []worktree.Change {
+	newest := res.BaselineTree
+	if n := len(res.Commands); n > 0 && res.Commands[n-1].Worktree != "" {
+		newest = res.Commands[n-1].Worktree
+	}
+	if newest == "" {
+		return files
+	}
+	since, err := worktree.Diff(ctx, dir, newest)
+	if err != nil {
+		return files
+	}
+	unseen := make(map[string]bool, len(since))
+	for _, c := range since {
+		unseen[c.Path] = true
+	}
+	for i := range files {
+		files[i].Unseen = unseen[files[i].Path]
+	}
+	return files
 }
 
 // Rollback undoes step (1-based) and every step after it, restoring

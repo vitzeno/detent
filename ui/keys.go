@@ -99,7 +99,9 @@ func (m Model) rollbackConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
 		return m.confirmRollback()
-	case "n", "N":
+	case "n", "N", "enter":
+		// enter takes the safe branch: the destructive answer has to
+		// be typed deliberately.
 		return m.declineRollback()
 	case "esc":
 		return m.cancelRollback()

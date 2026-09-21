@@ -286,3 +286,37 @@ func TestUI_Rollback_NoSuccessFlashWhileConfirming(t *testing.T) {
 	require.Equal(t, modeRollbackConfirm, m.mode)
 	assert.Empty(t, m.notice.text, "nothing to report until the human answers")
 }
+
+// Reverting is the one irreversible thing a rollback does, and the
+// case that bites is a file the human edited themselves while detent
+// sat idle — nothing it ran accounts for that, and reverting throws
+// the work away. So those are marked, counted, and enter takes the
+// safe branch rather than the destructive one.
+func TestUI_Rollback_FlagsWorkDetentDidNotMake(t *testing.T) {
+	m := testUIModel()
+	m.sess.(*fakeDriver).planFiles = []FileChange{
+		{Path: "internal/sandbox/container.go", Unseen: true},
+		{Path: "test.py", Removed: true},
+	}
+	m.blocks = []*goalBlock{{goal: "write a script", res: &GoalResult{Goal: "g"}, ended: true,
+		end: EndDone, steps: []*stepRow{{command: "cat > test.py"}}}}
+	m.sizeViewport()
+
+	nm, _ := m.runSlash("/rollback 1")
+	m = nm.(Model)
+	require.Equal(t, modeRollbackConfirm, m.mode)
+
+	box := plain(m.View().Content)
+	assert.Contains(t, box, "not detent's", "the file it never touched is marked")
+	assert.Contains(t, box, "1 file changed after detent's last step",
+		"and counted, so the risk is stated once in plain words")
+	assert.Contains(t, box, "would change 2 files")
+
+	// enter is the safe answer: destroying work has to be typed.
+	drv := m.sess.(*fakeDriver)
+	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	assert.Equal(t, modeInput, nm.(Model).mode)
+	_ = rollbackCmd(m.ctx, m.sess, m.blocks[0], 1, 1, false)()
+	assert.False(t, drv.rolledBackFiles, "enter rolls back the container only")
+}

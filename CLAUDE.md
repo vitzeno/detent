@@ -154,7 +154,11 @@ routing     →  agent, sandbox
   per sandboxed step (`ExecutedCommand.Worktree`), `PlanRollback`
   reports what a restore would change, and `Rollback`'s `revertFiles`
   decides whether it happens — the UI asks first, because the
-  workspace can hold edits detent never made.
+  workspace can hold edits detent never made. `markUnseen` flags paths
+  that changed after the last checkpoint: nothing detent ran accounts
+  for those, so reverting them destroys work it never made, and the
+  confirm says so in as many words. Its default answer is the
+  non-destructive one.
 
 - **`internal/routing`** — `Selector`, the `agent.RunnerSelector`
   `cmd/detent` wires: host vs. sandbox per command, deliberately dumb

@@ -37,6 +37,10 @@ const (
 type Change struct {
 	Path string
 	Kind Kind
+	// Unseen marks a path that changed after the last checkpoint, so
+	// nothing detent ran can account for it. Reverting throws that
+	// work away, which is the case worth making loud.
+	Unseen bool
 }
 
 func (c Change) String() string { return string(c.Kind) + " " + c.Path }
