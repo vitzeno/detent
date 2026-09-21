@@ -26,6 +26,7 @@ var standard = func() *Registry {
 	must(r.Extractor("indent", newIndentExtractor))
 	must(r.Extractor("none", newNoneExtractor))
 	must(r.Widget(RowKind, rowWidget{}))
+	must(r.Widget(PanelKind, panelWidget{}))
 	must(r.Widget("text", textWidget{}))
 	must(r.Widget("table", tableWidget{}))
 	must(r.Widget("list", listWidget{}))
@@ -35,6 +36,20 @@ var standard = func() *Registry {
 	must(r.Widget("tree", treeWidget{}))
 	must(r.Widget("sparkline", sparklineWidget{}))
 	must(r.Widget("bar", barWidget{}))
+	must(r.Widget("histogram", histogramWidget{}))
+	must(r.Widget("gauge", gaugeWidget{}))
+	must(r.Widget("stack", stackWidget{}))
+	must(r.Widget("diverge", divergeWidget{}))
+	must(r.Widget("scatter", scatterWidget{}))
+	must(r.Widget("heatmap", heatmapWidget{}))
+	must(r.Widget("stat", statWidget{}))
+	must(r.Widget("dots", dotsWidget{}))
+	must(r.Widget("flow", flowWidget{}))
+	must(r.Widget("gantt", ganttWidget{}))
+	must(r.Widget("timeline", timelineWidget{}))
+	must(r.Widget("boxplot", boxplotWidget{}))
+	must(r.Widget("series", seriesWidget{}))
+	must(r.Widget("delta", deltaWidget{}))
 	must(r.Widget("log", rawWidget{mode: "log"}))
 	must(r.Widget("errors", rawWidget{mode: "errors"}))
 	must(r.Widget("json", rawWidget{mode: "json"}))
@@ -191,7 +206,9 @@ func (meterWidget) Validate(b Block, fields []string) error {
 	return nil
 }
 
-const meterCells = 20
+// meterFloor keeps a meter legible in a narrow pane rather than
+// letting the label squeeze the bar out of existence.
+const meterFloor = 8
 
 func (meterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	hit, _ := parseMatch(b.CountWhere)
@@ -200,23 +217,26 @@ func (meterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		return nil, err
 	}
 	n, total := hit.count(d.Rows), of.count(d.Rows)
-	filled := 0
-	if total > 0 {
-		filled = n * meterCells / total
-	}
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", meterCells-filled)
-	role := RoleSafe
-	if n < total {
-		role = RoleCaution
-	}
 	label := b.Title
 	if label == "" {
 		label = b.CountWhere
 	}
-	line := f.Paint.Paint(RoleFaint, label+" ") +
-		f.Paint.Paint(role, bar) +
-		f.Paint.Paint(RoleDefault, fmt.Sprintf(" %d/%d", n, total))
-	return []string{line}, nil
+	note := fmt.Sprintf(" %d/%d", n, total)
+	// The bar takes whatever the label and the count leave, so a meter
+	// in a wide pane reads as a bar rather than as a stub in a corner.
+	cells := max(f.Width-f.Paint.Width(label)-f.Paint.Width(note)-1, meterFloor)
+	filled := 0
+	if total > 0 {
+		filled = n * cells / total
+	}
+	role := RoleSafe
+	if n < total {
+		role = RoleCaution
+	}
+	return []string{f.Paint.Paint(RoleFaint, label+" ") +
+		f.Paint.Paint(role, strings.Repeat("█", filled)) +
+		f.Paint.Paint(RoleFaint, strings.Repeat("░", cells-filled)) +
+		f.Paint.Paint(RoleDefault, note)}, nil
 }
 
 // badges summarises one field as its distinct values with counts.
@@ -287,9 +307,6 @@ func (w rawWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		}
 	}
 	src := splitLines(body)
-	if f.Height > 0 && len(src) > f.Height {
-		src = src[len(src)-f.Height:]
-	}
 	out := make([]string, 0, len(src))
 	for i, l := range src {
 		switch w.mode {
@@ -577,7 +594,7 @@ var sparkCells = []rune("▁▂▃▄▅▆▇█")
 func (sparklineWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	values := make([]float64, 0, len(d.Rows))
 	for _, r := range d.Rows {
-		values = append(values, parseFloat(r[b.Field]))
+		values = append(values, number(r[b.Field]))
 	}
 	if len(values) == 0 {
 		return nil, fmt.Errorf("no values to plot")
@@ -627,7 +644,7 @@ func (barWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	labelW, hi := 0, 0.0
 	for _, r := range d.Rows {
 		labelW = max(labelW, f.Paint.Width(r[label]))
-		hi = max(hi, parseFloat(r[value]))
+		hi = max(hi, number(r[value]))
 	}
 	labelW = min(labelW, f.Width/3)
 	numW := 0
@@ -642,7 +659,7 @@ func (barWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	for i, r := range d.Rows {
 		n := 0
 		if hi > 0 {
-			n = int(parseFloat(r[value]) / hi * float64(barW))
+			n = int(number(r[value]) / hi * float64(barW))
 		}
 		role := accentOr(b, r, RoleAccent)
 		if f.Focused && i == f.Cursor {
@@ -790,6 +807,23 @@ type rowWidget struct{}
 
 func (rowWidget) Draw(Block, Data, Frame) ([]string, error) {
 	return nil, fmt.Errorf("a row is laid out by the interpreter, not drawn")
+}
+
+// panelWidget is in Kinds and the guide like anything else; the
+// interpreter frames it, for the reason rowWidget states.
+type panelWidget struct{}
+
+func (panelWidget) Draw(Block, Data, Frame) ([]string, error) {
+	return nil, fmt.Errorf("a panel is framed by the interpreter, not drawn")
+}
+
+func (panelWidget) Describe() Description {
+	return Description{
+		What:     "frames one pane of blocks in a border, with its title written into the top edge",
+		Needs:    []string{"panes (exactly one)", "title"},
+		NotFor:   "putting two things side by side, which is row",
+		Examples: []string{"a summary set apart from the listing beneath it"},
+	}
 }
 
 func (rowWidget) Describe() Description {

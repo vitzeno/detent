@@ -167,7 +167,7 @@ func TestDraw_Widgets(t *testing.T) {
 		{
 			name:  "meter counts rows",
 			block: viewspec.Block{Kind: "meter", Title: "passed", CountWhere: "status=ok", Of: "*"},
-			want:  []string{"passed ███████████████░░░░░ 3/4"},
+			want:  []string{"passed █████████████████████░░░░░░░░ 3/4"},
 		},
 		{
 			name:  "badges counts distinct values",
@@ -446,7 +446,7 @@ func TestRender_ReportsWhereTheCursorLanded(t *testing.T) {
 
 // Height 0 draws the view whole, which is what a caller scrolling it
 // through its own viewport needs.
-func TestDraw_HeightZeroDrawsEverything(t *testing.T) {
+func TestDraw_AlwaysDrawsWholeSoTheCallerCanWindow(t *testing.T) {
 	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "none"},
 		Blocks: []viewspec.Block{{Kind: "log"}}}
 	long := strings.Repeat("a line\n", 50)
@@ -455,9 +455,11 @@ func TestDraw_HeightZeroDrawsEverything(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, r.Lines, 50)
 
+	// Height says how tall the pane is, for the widgets that grow into
+	// it. Clipping to it would stop a long view scrolling.
 	r, err = bind(t, spec, long).Draw(viewspec.Frame{Width: 40, Height: 10, Paint: viewspec.Plain()})
 	require.NoError(t, err)
-	assert.Len(t, r.Lines, 10, "a height still bounds it")
+	assert.Len(t, r.Lines, 50, "a height never bounds it")
 }
 
 // rolePainter makes roles visible to assertions. Plain paints nothing,

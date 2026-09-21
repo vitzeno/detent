@@ -43,8 +43,9 @@ func (m Model) detailLines() []string {
 	return strings.Split(m.output.View(), "\n")
 }
 
-// viewBody draws the row's view whole, passing no Height, so the
-// viewport windows it and a view scrolls like any other output.
+// viewBody draws the row's view whole. Height says how tall the pane
+// is so a plot can grow into it; nothing clips to it, so the viewport
+// still windows the result and a view scrolls like any other output.
 func (m Model) viewBody(r *stepRow) (viewspec.Render, bool) {
 	b, ok := boundView(r)
 	if !ok {
@@ -52,6 +53,7 @@ func (m Model) viewBody(r *stepRow) (viewspec.Render, bool) {
 	}
 	out, err := b.Draw(viewspec.Frame{
 		Width:   paneInner(m.layout.outputColW),
+		Height:  m.output.Height(),
 		Focused: m.nav.focus == focusOutput,
 		Cursor:  r.cmd.tableCursor,
 		Paint:   painter{},

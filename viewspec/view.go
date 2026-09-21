@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 )
 
@@ -61,8 +60,9 @@ func (c *Compiled) Bind(output string) (*Bound, error) {
 }
 
 // Draw assembles lines at a size. Called on every resize, scroll and
-// focus change, so it parses nothing and validates nothing. A Height
-// of 0 draws the view whole, for a caller windowing it itself.
+// focus change, so it parses nothing and validates nothing. It always
+// draws the view whole: windowing belongs to the caller, which is what
+// lets a long view scroll.
 func (b *Bound) Draw(f Frame) (Render, error) {
 	if f.Paint == nil {
 		f.Paint = Plain()
@@ -74,11 +74,7 @@ func (b *Bound) Draw(f Frame) (Render, error) {
 	if err != nil {
 		return Render{}, err
 	}
-	out := Render{Lines: lines, CursorLine: cursor}
-	if f.Height > 0 && len(out.Lines) > f.Height {
-		out.Lines = out.Lines[:f.Height]
-	}
-	return out, nil
+	return Render{Lines: lines, CursorLine: cursor}, nil
 }
 
 // Action resolves the on_enter template for the cursor row. A string
@@ -144,10 +140,14 @@ type Render struct {
 // here, not on Compiled, so Compile and Bind stay pure data and test
 // with no styling at all.
 type Frame struct {
-	Width, Height int
-	Focused       bool
-	Cursor        int
-	Paint         Painter
+	// Width is what a block has to draw in, and every widget fills it.
+	Width int
+	// Height is how tall the pane is, for the widgets that can grow
+	// into it. 0 means unknown, and nothing is ever clipped to it.
+	Height  int
+	Focused bool
+	Cursor  int
+	Paint   Painter
 }
 
 // Option configures Compile.
@@ -189,16 +189,19 @@ func checkBlock(b Block, reg *Registry, topLevel bool) error {
 		return &BindError{Kind: b.Kind,
 			Err: fmt.Errorf("unknown block kind (have %s)", strings.Join(reg.Kinds(), ", "))}
 	}
-	if b.Kind != RowKind {
+	if !isContainer(b.Kind) {
 		if len(b.Panes) > 0 {
-			return &BindError{Kind: b.Kind, Err: errors.New("only a row has panes")}
+			return &BindError{Kind: b.Kind, Err: errors.New("only a row or a panel has panes")}
 		}
 		return checkStatic(b)
 	}
 	if !topLevel {
-		return &BindError{Kind: b.Kind, Err: errors.New("rows do not nest")}
+		return &BindError{Kind: b.Kind, Err: errors.New("rows and panels do not nest")}
 	}
-	if len(b.Panes) < 2 {
+	if b.Kind == PanelKind && len(b.Panes) != 1 {
+		return &BindError{Kind: b.Kind, Err: errors.New("a panel frames exactly one pane")}
+	}
+	if b.Kind == RowKind && len(b.Panes) < 2 {
 		return &BindError{Kind: b.Kind, Err: errors.New("a row needs at least two panes")}
 	}
 	for _, pane := range b.Panes {
@@ -269,7 +272,7 @@ func (c *Compiled) bindBlocks(blocks []Block, rows []Row, shared Data, fields []
 	out := make([]boundBlock, 0, len(blocks))
 	for i, b := range blocks {
 		w, _ := c.reg.widget(b.Kind)
-		if b.Kind == RowKind {
+		if isContainer(b.Kind) {
 			bb := boundBlock{block: b, w: w, seq: -1}
 			for _, pane := range b.Panes {
 				inner, err := c.bindBlocks(pane.Blocks, rows, shared, fields, seq)
@@ -313,7 +316,7 @@ func drawBlocks(blocks []boundBlock, f Frame, sel int) ([]string, int, error) {
 		at := -1
 		var err error
 		if bb.panes != nil {
-			out, at, err = drawRow(bb, f, sel)
+			out, at, err = drawContainer(bb, f, sel)
 		} else {
 			out, err = bb.w.Draw(bb.block, bb.data, f)
 			if bb.seq == sel {
@@ -331,6 +334,47 @@ func drawBlocks(blocks []boundBlock, f Frame, sel int) ([]string, int, error) {
 		lines = append(lines, out...)
 	}
 	return lines, cursor, nil
+}
+
+// drawContainer picks the layout a container kind means.
+func drawContainer(bb boundBlock, f Frame, sel int) ([]string, int, error) {
+	if bb.block.Kind == PanelKind {
+		return drawPanel(bb, f, sel)
+	}
+	return drawRow(bb, f, sel)
+}
+
+// drawPanel frames its one pane. The border costs four columns, so
+// what is inside is drawn narrower rather than clipped at the edge.
+func drawPanel(bb boundBlock, f Frame, sel int) ([]string, int, error) {
+	inner := f
+	inner.Width = f.Width - 4
+	if inner.Width < 1 {
+		return nil, -1, errors.New("no width left to frame")
+	}
+	body, at, err := drawBlocks(bb.panes[0], inner, sel)
+	if err != nil {
+		return nil, -1, err
+	}
+	lines := []string{f.Paint.Paint(RoleFaint, panelTop(bb.block.Title, f))}
+	for _, l := range body {
+		gap := strings.Repeat(" ", max(inner.Width-f.Paint.Width(l), 0))
+		lines = append(lines, f.Paint.Paint(RoleFaint, "│ ")+l+gap+f.Paint.Paint(RoleFaint, " │"))
+	}
+	lines = append(lines, f.Paint.Paint(RoleFaint, "╰"+strings.Repeat("─", f.Width-2)+"╯"))
+	if at >= 0 {
+		at++
+	}
+	return lines, at, nil
+}
+
+// panelTop writes the title into the top edge, the way a fieldset does.
+func panelTop(title string, f Frame) string {
+	if title == "" {
+		return "╭" + strings.Repeat("─", f.Width-2) + "╮"
+	}
+	head := "╭─ " + f.Paint.Truncate(title, max(f.Width-6, 1)) + " "
+	return head + strings.Repeat("─", max(f.Width-f.Paint.Width(head)-1, 0)) + "╮"
 }
 
 // drawRow lays panes side by side, each stacked at its own width and
@@ -445,7 +489,7 @@ func compareRows(x, y Row, s Sort) int {
 	a, bb := x[s.Field], y[s.Field]
 	var n int
 	if s.Numeric {
-		n = cmpFloat(parseFloat(a), parseFloat(bb))
+		n = cmpFloat(number(a), number(bb))
 	} else {
 		n = strings.Compare(a, bb)
 	}
@@ -453,14 +497,6 @@ func compareRows(x, y Row, s Sort) int {
 		return -n
 	}
 	return n
-}
-
-func parseFloat(s string) float64 {
-	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	if err != nil {
-		return 0
-	}
-	return f
 }
 
 func cmpFloat(a, b float64) int {
