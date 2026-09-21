@@ -376,7 +376,14 @@ routing     →  agent, sandbox
   an error anyone could see. Registering a widget is half the job:
   `internal/viewgen/kinds.go` decides which render kinds may draw with
   it, and one missing from every `Kind.Widgets` list is never offered
-  to the model. `widgets.go` is only the registry table and
+  to the model. That list is also a latency knob, worth watching as it
+  grows: every offered widget carries a `widget_guide` entry into the
+  schema and structured decoding runs over the whole of it. Measured
+  against OpenRouter, a propose call costs 1.5 to 1.9s and one view
+  candidate 18 to 37s, so a long list is paid for on every generation
+  and again in candidates that come back naming the wrong number of
+  columns. Generation is cached per command shape, so the cost is per
+  shape rather than per step, but the first one is felt. `widgets.go` is only the registry table and
   `widget_shared.go` what more than one widget needs. They stay in
   `viewspec` rather than a sub-package because a widget's `Draw` takes
   `Block`, `Data` and `Frame`, so the sub-package would import
