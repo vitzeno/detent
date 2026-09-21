@@ -252,7 +252,13 @@ const (
 const DefaultCandidates = 2
 
 // DefaultFitThreshold is the Jev score a spec must reach to be kept.
-const DefaultFitThreshold = 0.5
+// At 0.5 nothing was ever kept: a session's four valid candidates came
+// back 0.45, 0.48, 0.45, 0.45, a band too tight to be Jev disliking
+// them and wide enough to sit entirely under the bar. A declined view
+// costs the human nothing to look at, since the pane falls back to
+// plain text either way, so the bar belongs below where the judge
+// actually answers.
+const DefaultFitThreshold = 0.3
 
 // MinLinesToGenerate is the output below which no view is worth a
 // model call. Length used to live inside render_kind as inline_short;

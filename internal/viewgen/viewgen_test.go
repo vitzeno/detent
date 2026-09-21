@@ -423,3 +423,29 @@ func TestGenerate_SaysWhyOnEveryPath(t *testing.T) {
 		assert.Contains(t, string(raw), logging.ViewDeclined)
 	})
 }
+
+// The bar is tuned, so it is worth pinning what it lets through. Jev
+// answered 0.45 to 0.48 on valid candidates across a whole session and
+// nothing was ever kept; a declined view and a bad one look the same
+// to the human, since the pane falls back to plain text either way.
+func TestFitThreshold_KeepsWhatJevActuallyScores(t *testing.T) {
+	for _, tc := range []struct {
+		score float64
+		keep  bool
+	}{
+		{0.48, true}, {0.45, true}, {0.3, true},
+		{0.29, false}, {0.1, false},
+	} {
+		g := &viewgen.Generator{
+			Model: &fakeModel{replies: []string{goodSpec}},
+			Judge: &fakeJudge{scores: []float64{tc.score}},
+			Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
+		got, err := g.Generate(context.Background(), request())
+		if tc.keep {
+			require.NoError(t, err, "%v", tc.score)
+			assert.Equal(t, viewgen.SourceGenerated, got.Source)
+			continue
+		}
+		assert.ErrorIs(t, err, viewgen.ErrNoneFit, "%v", tc.score)
+	}
+}
