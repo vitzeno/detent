@@ -199,20 +199,18 @@ func checkBlock(b Block, reg *Registry, topLevel bool) error {
 				Err: errors.New("on_enter needs a kind that draws one row per line")}
 		}
 	}
-	if !isContainer(b.Kind) {
+	c, ok := w.(Container)
+	if !ok {
 		if len(b.Panes) > 0 {
-			return &BindError{Kind: b.Kind, Err: errors.New("only a row or a panel has panes")}
+			return &BindError{Kind: b.Kind, Err: errors.New("only a container has panes")}
 		}
 		return checkStatic(b)
 	}
 	if !topLevel {
-		return &BindError{Kind: b.Kind, Err: errors.New("rows and panels do not nest")}
+		return &BindError{Kind: b.Kind, Err: errors.New("containers do not nest")}
 	}
-	if b.Kind == PanelKind && len(b.Panes) != 1 {
-		return &BindError{Kind: b.Kind, Err: errors.New("a panel frames exactly one pane")}
-	}
-	if b.Kind == RowKind && len(b.Panes) < 2 {
-		return &BindError{Kind: b.Kind, Err: errors.New("a row needs at least two panes")}
+	if err := c.Accept(b.Panes); err != nil {
+		return &BindError{Kind: b.Kind, Err: err}
 	}
 	for _, pane := range b.Panes {
 		if len(pane.Blocks) == 0 {
@@ -282,7 +280,7 @@ func (c *Compiled) bindBlocks(blocks []Block, rows []Row, shared Data, fields []
 	out := make([]boundBlock, 0, len(blocks))
 	for i, b := range blocks {
 		w, _ := c.reg.widget(b.Kind)
-		if isContainer(b.Kind) {
+		if _, ok := w.(Container); ok {
 			bb := boundBlock{block: b, w: w, seq: -1}
 			for _, pane := range b.Panes {
 				inner, err := c.bindBlocks(pane.Blocks, rows, shared, fields, seq)
@@ -346,54 +344,20 @@ func drawBlocks(blocks []boundBlock, f Frame, sel int) ([]string, int, error) {
 	return lines, cursor, nil
 }
 
-// drawContainer picks the layout a container kind means.
+// drawContainer draws a container's panes at the widths it asks for
+// and hands them back to it to assemble. The geometry loop is shared;
+// what differs between a row and a panel is only the arrangement.
 func drawContainer(bb boundBlock, f Frame, sel int) ([]string, int, error) {
-	if bb.block.Kind == PanelKind {
-		return drawPanel(bb, f, sel)
+	c, ok := bb.w.(Container)
+	if !ok {
+		return nil, -1, fmt.Errorf("%q holds panes but cannot arrange them", bb.block.Kind)
 	}
-	return drawRow(bb, f, sel)
-}
-
-// drawPanel frames its one pane. The border costs four columns, so
-// what is inside is drawn narrower rather than clipped at the edge.
-func drawPanel(bb boundBlock, f Frame, sel int) ([]string, int, error) {
-	inner := f
-	inner.Width = f.Width - 4
-	if inner.Width < 1 {
-		return nil, -1, errors.New("no width left to frame")
-	}
-	body, at, err := drawBlocks(bb.panes[0], inner, sel)
+	widths, err := c.Widths(bb.block.Panes, f.Width)
 	if err != nil {
 		return nil, -1, err
 	}
-	lines := []string{f.Paint.Paint(RoleFaint, panelTop(bb.block.Title, f))}
-	for _, l := range body {
-		gap := strings.Repeat(" ", max(inner.Width-f.Paint.Width(l), 0))
-		lines = append(lines, f.Paint.Paint(RoleFaint, "│ ")+l+gap+f.Paint.Paint(RoleFaint, " │"))
-	}
-	lines = append(lines, f.Paint.Paint(RoleFaint, "╰"+strings.Repeat("─", f.Width-2)+"╯"))
-	if at >= 0 {
-		at++
-	}
-	return lines, at, nil
-}
-
-// panelTop writes the title into the top edge, the way a fieldset does.
-func panelTop(title string, f Frame) string {
-	if title == "" {
-		return "╭" + strings.Repeat("─", f.Width-2) + "╮"
-	}
-	head := "╭─ " + f.Paint.Truncate(title, max(f.Width-6, 1)) + " "
-	return head + strings.Repeat("─", max(f.Width-f.Paint.Width(head)-1, 0)) + "╮"
-}
-
-// drawRow lays panes side by side, each stacked at its own width and
-// padded to the tallest. Joining horizontally keeps line indexes, so a
-// pane's cursor line is the row's cursor line.
-func drawRow(bb boundBlock, f Frame, sel int) ([]string, int, error) {
-	widths := paneWidths(bb.block.Panes, f.Width)
 	cols := make([][]string, len(bb.panes))
-	cursor, height := -1, 0
+	holder, within := -1, -1
 	for i, pane := range bb.panes {
 		pf := f
 		pf.Width = widths[i]
@@ -401,56 +365,17 @@ func drawRow(bb boundBlock, f Frame, sel int) ([]string, int, error) {
 		if err != nil {
 			return nil, -1, err
 		}
-		if at >= 0 && cursor < 0 {
-			cursor = at
+		if at >= 0 && holder < 0 {
+			holder, within = i, at
 		}
 		cols[i] = out
-		height = max(height, len(out))
 	}
-	lines := make([]string, height)
-	for row := range height {
-		var line strings.Builder
-		for i, col := range cols {
-			if i > 0 {
-				line.WriteString(" ")
-			}
-			cell := ""
-			if row < len(col) {
-				cell = col[row]
-			}
-			line.WriteString(pad(f.Paint.Truncate(cell, widths[i]), widths[i], f.Paint))
-		}
-		lines[row] = strings.TrimRight(line.String(), " ")
+	out, paneAt := c.Arrange(cols, widths, bb.block, f)
+	cursor := -1
+	if holder >= 0 && holder < len(paneAt) {
+		cursor = paneAt[holder] + within
 	}
-	return lines, cursor, nil
-}
-
-// paneWidths shares the row across its panes by weight, with a floor
-// so a pane never vanishes, and one space of gutter between them.
-func paneWidths(panes []Pane, total int) []int {
-	const floor = 6
-	n := len(panes)
-	avail := total - (n - 1)
-	sum := 0
-	for _, p := range panes {
-		sum += max(1, p.Weight)
-	}
-	out := make([]int, n)
-	used := 0
-	for i, p := range panes {
-		out[i] = max(floor, avail*max(1, p.Weight)/sum)
-		used += out[i]
-	}
-	if used < avail {
-		out[0] += avail - used
-		used = avail
-	}
-	for i := 0; used > avail; i, used = (i+1)%n, used-1 {
-		if out[i] > floor {
-			out[i]--
-		}
-	}
-	return out
+	return out, cursor, nil
 }
 
 // selectable is the block the cursor addresses. Navigable and

@@ -2,6 +2,8 @@ package viewspec_test
 
 import (
 	"encoding/json"
+	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -966,4 +968,82 @@ func TestSchema_KindsStateWhatTheyCannotBeDrawnWithout(t *testing.T) {
 	for _, kind := range []string{"log", "errors", "json", "diff", "code", "table"} {
 		assert.Empty(t, got[kind].Needs, "%s draws without a named field", kind)
 	}
+}
+
+// stacked is a layout the package has never heard of, registered from
+// outside it. It exists to prove the interpreter asks the widget what
+// it is rather than knowing "row" and "panel" by name.
+type stacked struct{}
+
+func (stacked) Draw(viewspec.Block, viewspec.Data, viewspec.Frame) ([]string, error) {
+	return nil, errors.New("arranged, not drawn")
+}
+
+func (stacked) Accept(panes []viewspec.Pane) error {
+	if len(panes) < 2 {
+		return errors.New("stacked needs two panes")
+	}
+	return nil
+}
+
+func (stacked) Widths(panes []viewspec.Pane, total int) ([]int, error) {
+	out := make([]int, len(panes))
+	for i := range out {
+		out[i] = total
+	}
+	return out, nil
+}
+
+func (stacked) Arrange(cols [][]string, _ []int, _ viewspec.Block, _ viewspec.Frame) ([]string, []int) {
+	lines := []string{"== top =="}
+	at := make([]int, len(cols))
+	for i, col := range cols {
+		if i > 0 {
+			lines = append(lines, "--")
+		}
+		at[i] = len(lines)
+		lines = append(lines, col...)
+	}
+	return lines, at
+}
+
+func TestContainer_IsAnExtensionPoint(t *testing.T) {
+	reg := viewspec.Standard()
+	require.NoError(t, reg.Widget("stacked", stacked{}))
+
+	spec := viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{{
+		Kind: "stacked",
+		Panes: []viewspec.Pane{
+			{Blocks: []viewspec.Block{{Kind: "badges", Field: "status"}}},
+			{Blocks: []viewspec.Block{{Kind: "list", Field: "pkg", OnEnter: "x {pkg}"}}},
+		},
+	}}}
+	c, err := viewspec.Compile(spec, viewspec.WithRegistry(reg))
+	require.NoError(t, err)
+	b, err := c.Bind(goTest)
+	require.NoError(t, err)
+
+	r, err := b.Draw(viewspec.Frame{Width: 60, Cursor: 1, Paint: viewspec.Plain()})
+	require.NoError(t, err)
+	assert.Equal(t, "== top ==", r.Lines[0], "the consumer's own arrangement")
+	assert.Contains(t, r.Lines, "--")
+	assert.Equal(t, 4, r.CursorLine, "the container said where its second pane starts")
+
+	// It is a container to every rule, not just to Draw.
+	assert.False(t, slices.Contains(nestedKinds(t, reg), "stacked"),
+		"a container cannot sit inside a pane")
+	_, err = viewspec.Compile(viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{
+		{Kind: "stacked", Panes: []viewspec.Pane{{Blocks: []viewspec.Block{{Kind: "log"}}}}}}},
+		viewspec.WithRegistry(reg))
+	assert.ErrorContains(t, err, "stacked needs two panes", "its own Accept decides the shape")
+}
+
+// nestedKinds is what a pane may hold, per the schema.
+func nestedKinds(t *testing.T, reg *viewspec.Registry) []string {
+	t.Helper()
+	blocks := reg.Schema()["properties"].(map[string]any)["blocks"].(map[string]any)
+	panes := blocks["items"].(map[string]any)["properties"].(map[string]any)["panes"].(map[string]any)
+	inner := panes["items"].(map[string]any)["properties"].(map[string]any)["blocks"].(map[string]any)
+	kinds := inner["items"].(map[string]any)["properties"].(map[string]any)["kind"].(map[string]any)
+	return kinds["enum"].([]string)
 }

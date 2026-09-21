@@ -60,7 +60,7 @@ func (r *Registry) parseSchema() map[string]any {
 func (r *Registry) blockSchema(allowContainers bool) map[string]any {
 	kinds := r.Kinds()
 	if !allowContainers {
-		kinds = slices.DeleteFunc(slices.Clone(kinds), isContainer)
+		kinds = slices.DeleteFunc(slices.Clone(kinds), r.isContainer)
 	}
 	schema := map[string]any{
 		"type": "object",

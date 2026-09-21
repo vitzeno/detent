@@ -86,11 +86,6 @@ const (
 	PanelKind = "panel"
 )
 
-// isContainer reports whether a kind holds blocks instead of drawing
-// data. Containers live at the top level only, so nesting stays capped
-// at one and the schema stays finite.
-func isContainer(kind string) bool { return kind == RowKind || kind == PanelKind }
-
 // Column is one table or keyvalue column. Width 0 shares the frame
 // proportionally.
 type Column struct {

@@ -391,9 +391,18 @@ routing     →  agent, sandbox
   into it (`scatter` trades height for resolution, four dot rows a
   line) and **clips nothing**, because windowing is the caller's job
   and clipping is what would stop a long view scrolling.
-  A widget must implement `Widget`; `Validator`, `Selector` and
-  `Described` are optional and found by type assertion, so a consumer
-  registering one is not made to write methods it has no use for.
+  A widget must implement `Widget`; `Validator`, `Selector`,
+  `Described` and `Container` are optional and found by type assertion,
+  so a consumer registering one is not made to write methods it has no
+  use for. `Container` is how a kind holds blocks instead of drawing
+  data: it says what pane shape it accepts, how wide to draw each one,
+  and how to assemble them once the interpreter has resolved and drawn
+  the children (which a Widget cannot do, never seeing the registry).
+  `row` and `panel` are two implementations rather than two names the
+  interpreter knows, so a third layout is a registration.
+  Its `Arrange` reports where each pane's first line landed rather than
+  one offset, because how far a pane moved depends on the panes above
+  it in anything that stacks.
   `Selector` is the load-bearing one: only a kind that can say which
   line the cursor is on may carry `on_enter`, checked in `checkBlock`,
   because accepting it elsewhere drew a spec that looked right and did

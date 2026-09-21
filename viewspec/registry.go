@@ -104,6 +104,22 @@ type Selector interface {
 	CursorLine(b Block, d Data, f Frame) int
 }
 
+// Container is an optional Widget extension: a kind that arranges
+// other blocks instead of drawing data. The interpreter resolves and
+// draws the children, because a Widget never sees the registry, then
+// hands them back here to be put together.
+type Container interface {
+	// Accept reports whether this is a shape the kind can arrange.
+	Accept(panes []Pane) error
+	// Widths is how wide each pane should be drawn.
+	Widths(panes []Pane, total int) ([]int, error)
+	// Arrange assembles the drawn panes and reports where each one's
+	// first line landed. A single offset would do for a row or a
+	// panel and not for a layout that stacks, where how far a pane
+	// moved depends on how tall the panes above it came out.
+	Arrange(cols [][]string, widths []int, b Block, f Frame) (lines []string, paneAt []int)
+}
+
 // Description is what a widget is for, stated the way a many-way
 // choice needs: structured, with a counter-case. Flat one-liners lose
 // a model's calibration once there are more than a handful of options.
@@ -141,6 +157,17 @@ func (fn ExtractorFunc) Extract(output string) ([]Row, error) { return fn(output
 func (r *Registry) widget(kind string) (Widget, bool) {
 	w, ok := r.widgets[kind]
 	return w, ok
+}
+
+// isContainer asks the registered widget rather than the kind's name,
+// so a consumer can register a layout of its own.
+func (r *Registry) isContainer(kind string) bool {
+	w, ok := r.widgets[kind]
+	if !ok {
+		return false
+	}
+	_, ok = w.(Container)
+	return ok
 }
 
 func (r *Registry) extractor(p Parse) (Extractor, error) {
