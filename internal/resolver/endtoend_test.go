@@ -1,0 +1,153 @@
+package resolver
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/internal/agent"
+	"github.com/vitzeno/detent/internal/host"
+	"github.com/vitzeno/detent/internal/propose"
+	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/internal/viewgen"
+	"github.com/vitzeno/detent/ui"
+	"github.com/vitzeno/detent/viewspec"
+)
+
+// One goal from the top, through the parts ui cannot reach: a real
+// OpenAI-compatible endpoint, a real Session, a real Resolver, and a
+// real generator authoring the view the pane would draw. ui's own
+// tests cover the half above Driver against its fake.
+
+// Long enough that the no-Jev heuristic calls it a log rather than
+// inline_short, which is the set viewgen deliberately skips: a few
+// lines have no view worth a model call.
+var psOutput = func() string {
+	out := "  PID TTY           TIME CMD\n"
+	for i := range 14 {
+		out += fmt.Sprintf("  %3d ttys%03d    0:0%d.412 proc%02d\n", 501+i, i, i%9, i)
+	}
+	return out
+}()
+
+// fakeEndpoint answers proposals and view specs on one /chat/completions
+// route, the way a real backend does.
+func fakeEndpoint(t *testing.T, replies ...string) *httptest.Server {
+	t.Helper()
+	n := 0
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ResponseFormat struct {
+				Schema struct {
+					Name string `json:"name"`
+				} `json:"json_schema"`
+			} `json:"response_format"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+
+		reply := replies[min(n, len(replies)-1)]
+		n++
+		out, err := json.Marshal(map[string]any{
+			"choices": []any{map[string]any{"message": map[string]any{"content": reply}}},
+			"usage":   map[string]any{"prompt_tokens": 12, "completion_tokens": 4},
+			"model":   "fake",
+		})
+		require.NoError(t, err)
+		_, _ = w.Write(out)
+	}))
+}
+
+func TestEndToEnd_GoalRunsAndItsOutputGetsAView(t *testing.T) {
+	const proposal = `{"command":"ps -U someone","rationale":"look at processes",` +
+		`"done":false,"summary":"","file":""}`
+	const done = `{"command":"","rationale":"","done":true,` +
+		`"summary":"Listed the processes.","file":""}`
+	const spec = `{"version":1,"match":"ps","parse":{"kind":"columns","header":true},
+		"blocks":[{"kind":"table","columns":[{"field":"pid"},{"field":"cmd"}],
+		"on_enter":"lsof -p {pid}"}]}`
+
+	srv := fakeEndpoint(t, proposal, done, spec)
+	defer srv.Close()
+
+	proposer := propose.New(propose.WithBaseURL(srv.URL), propose.WithModel("fake"))
+	sess := agent.New(proposer, nil,
+		agent.WithRunners(agent.SingleRunner{Runner: runFunc(
+			func(context.Context, string, chan<- host.StreamEvent) (host.Result, error) {
+				return host.Result{Stdout: psOutput}, nil
+			})}),
+		agent.WithStats(usage.New()))
+
+	drv := New(sess)
+	drv.Views = &viewgen.Generator{Model: proposer, Candidates: 1,
+		Store: &viewgen.Store{Dir: t.TempDir()}}
+
+	ctx := context.Background()
+	res, err := drv.BeginGoal(ctx, "what is running")
+	require.NoError(t, err)
+
+	// Step one: propose, record, execute.
+	p, pre, used, err := drv.ProposeNext(ctx, "what is running")
+	require.NoError(t, err)
+	require.False(t, p.Done)
+	assert.Equal(t, "ps -U someone", p.Command)
+
+	step := drv.RecordStep(res, p, pre, used, 0)
+	ec, err := drv.Execute(ctx, res, step, p, pre, nil)
+	require.NoError(t, err)
+	require.Equal(t, psOutput, ec.Result.Stdout)
+
+	post := drv.JudgeResult(ctx, "what is running", p.Command, ec.Result, step)
+	require.Equal(t, ui.KindLog, post.RenderKind,
+		"no Jev wired, so the heuristic classifies by length; a log is worth a view")
+
+	// The pane's half: a generated spec that actually draws this output.
+	got, ok := drv.GenerateView(ctx, p.Command, ec.Result.Stdout, ec.Result.ExitCode, post.RenderKind)
+	require.True(t, ok, "the endpoint authored a view")
+	require.NotNil(t, got)
+
+	compiled, err := viewspec.Compile(*got)
+	require.NoError(t, err)
+	bound, err := compiled.Bind(ec.Result.Stdout)
+	require.NoError(t, err)
+	drawn, err := bound.Draw(viewspec.Frame{Width: 50, Paint: viewspec.Plain()})
+	require.NoError(t, err)
+	require.Len(t, drawn.Lines, 15, "a header and fourteen processes")
+	assert.Contains(t, drawn.Lines[0], "PID")
+	assert.Contains(t, drawn.Lines[1], "501")
+
+	action, ok := bound.Action(viewspec.Frame{Cursor: 0})
+	require.True(t, ok)
+	assert.Equal(t, "lsof -p 501", action, "enter would seed this, from a real parsed row")
+
+	// Step two closes the goal.
+	p, _, _, err = drv.ProposeNext(ctx, "what is running")
+	require.NoError(t, err)
+	require.True(t, p.Done)
+	drv.RecordDone(res, p)
+	assert.Equal(t, ui.EndDone, res.End)
+}
+
+// The same run with views off must reach the pane exactly as it did
+// before generated views existed.
+func TestEndToEnd_ViewsOffChangesNothingBelowTheDriver(t *testing.T) {
+	srv := fakeEndpoint(t, `{"command":"ps","rationale":"r","done":false,"summary":"","file":""}`)
+	defer srv.Close()
+
+	proposer := propose.New(propose.WithBaseURL(srv.URL), propose.WithModel("fake"))
+	sess := agent.New(proposer, nil,
+		agent.WithRunners(agent.SingleRunner{Runner: runFunc(
+			func(context.Context, string, chan<- host.StreamEvent) (host.Result, error) {
+				return host.Result{Stdout: psOutput}, nil
+			})}),
+		agent.WithStats(usage.New()))
+
+	drv := New(sess) // no Views generator at all
+	_, ok := drv.GenerateView(context.Background(), "ps", psOutput, 0, ui.KindLog)
+	assert.False(t, ok, "ui falls back to the render_kind spec, as before")
+}

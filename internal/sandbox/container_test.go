@@ -2,6 +2,8 @@ package sandbox
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"github.com/containerd/containerd/leases"
 	"os"
 	"path/filepath"
@@ -37,13 +39,26 @@ var daemonAvailable = sync.OnceValue(func() bool {
 	return Preflight(ctx, testSocket) == nil
 })
 
+// testContainerID is unique per run. Naming a container after its
+// test alone lets a second run inherit the first's filesystem:
+// containerd reclaims a dropped snapshot asynchronously, so the old
+// name can still resolve. Only a test asserting on absolute state
+// notices, which is why routing's rollback cover found it first.
+func testContainerID(t *testing.T) string {
+	t.Helper()
+	var b [6]byte
+	_, err := rand.Read(b[:])
+	require.NoError(t, err)
+	return strings.ReplaceAll(strings.ToLower(t.Name()), "/", "-") + "-" + hex.EncodeToString(b[:])
+}
+
 func newTestContainer(t *testing.T) *Container {
 	t.Helper()
 	if !daemonAvailable() {
 		t.Skip("containerd not reachable at", testSocket)
 	}
 	c := NewContainer(WithSocket(testSocket), WithNamespace("detent-test"))
-	id := strings.ReplaceAll(strings.ToLower(t.Name()), "/", "-")
+	id := testContainerID(t)
 	require.NoError(t, c.Start(context.Background(), id))
 	t.Cleanup(func() {
 		_ = c.Close(context.Background())
@@ -262,7 +277,7 @@ func TestContainer_NetworkPosture(t *testing.T) {
 				t.Skip("containerd not reachable at", testSocket)
 			}
 			c := NewContainer(WithSocket(testSocket), WithNamespace("detent-test"), WithNetwork(tc.mode))
-			id := strings.ReplaceAll(strings.ToLower(t.Name()), "/", "-")
+			id := testContainerID(t)
 			require.NoError(t, c.Start(context.Background(), id))
 			t.Cleanup(func() { _ = c.Close(context.Background()) })
 

@@ -2,6 +2,8 @@ package routing
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +24,19 @@ import (
 // container: agent's Session driving a real sandbox.Container via the
 // Selector, which is the only place all three meet. Skipped without a
 // reachable daemon, like sandbox's own tests.
+
+// testContainerID is unique per run. The test asserts on absolute
+// container state, so it needs a container that is genuinely fresh:
+// naming one after the test alone made a second run inherit the
+// first's filesystem, because containerd's GC reclaims a dropped
+// snapshot asynchronously. That is why this failed under -count=2.
+func testContainerID(t *testing.T) string {
+	t.Helper()
+	var b [6]byte
+	_, err := rand.Read(b[:])
+	require.NoError(t, err)
+	return strings.ToLower(t.Name()) + "-" + hex.EncodeToString(b[:])
+}
 
 var testSocket = func() string {
 	home, err := os.UserHomeDir()
@@ -56,7 +71,7 @@ func TestRollback_UndoesTheNamedStepOnward(t *testing.T) {
 	}
 
 	c := sandbox.NewContainer(sandbox.WithSocket(testSocket), sandbox.WithNamespace("detent-test"))
-	require.NoError(t, c.Start(context.Background(), strings.ToLower(t.Name())))
+	require.NoError(t, c.Start(context.Background(), testContainerID(t)))
 	t.Cleanup(func() { _ = c.Close(context.Background()) })
 
 	sess := agent.New(stubProposer{}, nil,
