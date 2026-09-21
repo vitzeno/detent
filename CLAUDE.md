@@ -67,8 +67,9 @@ Package dependency flow — `ui` and `agent` never import each other;
 ```
 cmd/detent  →  ui, resolver, agent, classify, config, routing, propose (Ping only)
 resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio
-ui          →  its own subpackages only (editor, welcome, render, status,
-                tabular, markdown, theme, island, tree, layout)
+ui          →  its own subpackages (editor, welcome, render, status,
+                tabular, markdown, theme, island, tree, layout) + viewspec
+viewspec    →  the standard library, nothing else
 agent       →  propose, host, classify, usage
 config      →  agent, classify, propose, sandbox (for their defaults only)
 host        →  capture
@@ -259,8 +260,9 @@ routing     →  agent, sandbox
   only ever threads through, never inspects.
 
 - **`ui`** — the Bubble Tea TUI, decoupled from the core harness
-  entirely: it imports nothing under `internal/*`, only its own
-  subpackages. That independence is why it sits outside `internal/`
+  entirely: it imports nothing under `internal/*` — only its own
+  subpackages and `viewspec`, which is likewise outside `internal/`
+  and depends on nothing. That independence is why it sits outside `internal/`
   and is importable on its own: everything it needs arrives through
   `Driver` and `SessionInfo`, so it never reaches into the harness.
   `driver.go` declares `Driver` (the narrow surface the UI
@@ -331,6 +333,25 @@ routing     →  agent, sandbox
   `ui.RefreshStyles`; `editor` wraps a `textarea` around content the
   caller already read (it doesn't read files itself, only diffs
   in-memory content via `go-udiff` directly).
+
+- **`viewspec`** — the view interpreter, outside `internal/` like `ui`
+  and stricter: it imports **only the standard library**, enforced by
+  `TestPackage_DependsOnStdlibOnly`. A `Spec` says how to read a
+  command's output (`Parse`, a named-capture regexp or column map) and
+  how to draw what was read (`Blocks`, a flat list over a closed widget
+  vocabulary). Three calls priced by frequency: `Compile` once per spec,
+  `Bind` once per output, `Draw` per frame — `Painter` is on `Frame`,
+  not `Compiled`, so the first two are pure data and test with no
+  styling at all. It declares `Painter`, `Widget` and `Extractor`
+  because it calls them; `ui/painter.go` and `ui/views.go` implement and
+  register them. `Registry.Schema()` describes the registered vocabulary
+  as JSON Schema, so generation can't drift from what will actually
+  draw. Any unresolved binding fails the **whole** view (`BindError`)
+  and the caller falls back to the `render_kind` switch — a table with
+  one silently empty column is worse than plain text. It runs nothing:
+  `Bound.Action` returns an `on_enter` template with `{field}`
+  substituted, and `ui` seeds the prompt with it. See
+  `docs/design/viewspec.md`.
 
 - **`internal/usage`** — timing and token accounting (`Tracker` → `Goal` →
   `Step`), independent of everything else; `agent` attaches measurements

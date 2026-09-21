@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/vitzeno/detent/ui/editor"
 	"github.com/vitzeno/detent/ui/tree"
+	"github.com/vitzeno/detent/viewspec"
 )
 
 // What the history pane is a list of: one goalBlock per goal (or
@@ -57,6 +58,11 @@ type cmdState struct {
 	tableCursor int    // selected table row
 	styled      string // cached transformed output
 	styledWidth int    // viewport width the cache was built for
+
+	// view is the row's bound viewspec, resolved once; viewTried marks
+	// the attempt so a spec that doesn't fit is not retried per frame.
+	view      *viewspec.Bound
+	viewTried bool
 }
 
 // toolState holds a stepRow's fields for a slash-command row (/tree,

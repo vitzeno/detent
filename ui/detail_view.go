@@ -11,6 +11,7 @@ import (
 	"github.com/vitzeno/detent/ui/render"
 	"github.com/vitzeno/detent/ui/tabular"
 	"github.com/vitzeno/detent/ui/welcome"
+	"github.com/vitzeno/detent/viewspec"
 )
 
 // The output pane: what the focused row's component renders into
@@ -42,10 +43,35 @@ func (m Model) detailLines() []string {
 			return helpLines()
 		}
 	}
+	if lines, ok := m.viewLines(); ok {
+		return lines
+	}
 	if t, ok := m.focusedTable(); ok {
 		return strings.Split(t, "\n")
 	}
 	return strings.Split(m.output.View(), "\n")
+}
+
+// viewLines draws the focused row through its viewspec view. Any
+// failure falls through to the render_kind path below: a confidently
+// wrong view is worse than the plain one.
+func (m Model) viewLines() ([]string, bool) {
+	r := m.focused()
+	b, ok := boundView(r)
+	if !ok {
+		return nil, false
+	}
+	lines, err := b.Draw(viewspec.Frame{
+		Width:   paneInner(m.layout.outputColW),
+		Height:  m.output.Height(),
+		Focused: m.nav.focus == focusOutput,
+		Cursor:  r.cmd.tableCursor,
+		Paint:   painter{},
+	})
+	if err != nil {
+		return nil, false
+	}
+	return lines, true
 }
 
 // helpLines lists every slash command via Match("/") (empty suffix
