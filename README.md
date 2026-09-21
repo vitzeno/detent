@@ -91,9 +91,9 @@ containerd over TCP and pass `-sandbox-socket`.
 - **`/new` forgets the conversation, not the container.** It clears the transcript,
   the history pane and the usage counters, so the next goal starts fresh. A
   sandbox container and anything already written inside it carry on.
-- **A rollback does not revert `/workspace`.** That's a bind mount to your real
-  directory, deliberately outside the snapshot, so your own files survive. Only
-  container state outside the mount is restored.
+- **The container snapshot stops at `/workspace`.** That's a bind mount to your
+  real directory, outside the snapshot, so reverting your files is a separate
+  step that detent asks about rather than doing for you — see below.
 
 ## How safety works
 
@@ -119,9 +119,37 @@ containerd over TCP and pass `-sandbox-socket`.
 ## Undoing a step
 
 Every sandboxed step is checkpointed, and each one shows a dim `#N` marker in the
-history pane. `/rollback N` undoes step N **and everything after it**, restoring
-the container to how it was before that step ran, and trimming the transcript to
-match so the model doesn't keep reasoning from undone work.
+history pane, numbered across the whole session. `/rollback N` undoes step N
+**and everything after it**, restoring the container to how it was before that
+step ran and trimming the transcript to match, so the model doesn't keep
+reasoning from undone work.
+
+Your own files are a separate question. `/workspace` is a bind mount, not part of
+the container snapshot, so detent shows what reverting it would change and asks
+first — the file list takes the output pane, since a wide-reaching goal touches
+more paths than a dialog can hold. The default answer is the non-destructive one:
+roll the container back, leave your files alone.
+
+Paths that changed *after* detent's last checkpoint are marked `⚠ not detent's`.
+Nothing it ran accounts for those, so reverting them throws away work it never
+made. Its one blind spot is an edit made between two steps — the next checkpoint
+absorbs it, and it won't be flagged.
+
+## Long sessions
+
+One transcript spans every goal, and all of it is resent on each proposal — so
+without a ceiling a long session gets steadily more expensive and eventually
+overruns the model's context window.
+
+`context_tokens` (default 24000, sized for a 32k model) is that ceiling. Past it,
+at the next goal boundary, the oldest turns are replaced by a summary the same
+model writes; what survives is the recent half plus that summary. With no
+summariser reachable it says plainly that the turns are gone rather than
+pretending the session started there.
+
+Compaction and rollback have to agree on what a step points at, so a step whose
+turns have been summarised away can't be rolled back to — `/rollback` says so
+instead of restoring a container the transcript can no longer describe.
 
 ## Keys
 
@@ -162,13 +190,14 @@ Config file at `./.detent.yaml` or `~/.config/detent/config.yaml` (see
 built-ins.
 
 Key env vars: `DETENT_BASE_URL`, `DETENT_MODEL`, `DETENT_API_KEY`,
-`TYPESAFE_API_KEY` (enables the Jev judge), `DETENT_SANDBOX_MODE`,
-`DETENT_SANDBOX_SOCKET`. A repo-local `.env` is also loaded.
+`TYPESAFE_API_KEY` (enables the Jev judge), `DETENT_CONTEXT_TOKENS`,
+`DETENT_SANDBOX_MODE`, `DETENT_SANDBOX_SOCKET`. A repo-local `.env` is also
+loaded.
 
 ## Architecture
 
 ```
-cmd/detent  →  ui  ⇄  resolver  ⇄  agent  →  propose, classify, usage
+cmd/detent  →  ui  ⇄  resolver  ⇄  agent  →  propose, classify, usage, worktree
                                       ↑
                                    routing  →  host     (unsandboxed)
                                             →  sandbox  (containerd)
@@ -178,7 +207,7 @@ cmd/detent  →  ui  ⇄  resolver  ⇄  agent  →  propose, classify, usage
 the TUI's vocabulary and the harness's domain stay independent. `ui` depends on
 nothing under `internal/`, which is why it lives outside it.
 
-One persistent transcript per session, not disconnected per-goal requests. The
-model's proposal is strict JSON (command or done), executed via a single `sh -c`
-boundary with timeouts and output caps, then judged for status before the next
-proposal.
+One transcript per session, not disconnected per-goal requests, compacted at goal
+boundaries once it outgrows its budget. The model's proposal is strict JSON
+(command or done), executed via a single `sh -c` boundary with timeouts and
+output caps, then judged for status before the next proposal.
