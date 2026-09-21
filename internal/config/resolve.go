@@ -34,7 +34,10 @@ func (c *Config) apply(o Config) {
 	if o.APIKey != "" {
 		c.APIKey = o.APIKey
 	}
-	if o.Headers != nil {
+	// len, not nil: an empty map is a layer setting nothing, the same
+	// as every zero value here, and the example config spells the key
+	// out as {} so an editor reads the file as YAML.
+	if len(o.Headers) > 0 {
 		c.Headers = o.Headers
 	}
 	if o.Steps != 0 {

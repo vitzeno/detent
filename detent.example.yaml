@@ -1,89 +1,101 @@
 # detent example configuration. Copy to .detent.yaml (repo-local) or
-# ~/.config/detent/config.yaml and uncomment what you need.
+# ~/.config/detent/config.yaml and change what you need.
 # Precedence: flags > environment > this file > built-ins.
+#
+# Every key is spelled out rather than commented, so an editor reads
+# the file as YAML. An empty string or a 0 means "use the built-in",
+# so copying this as-is changes nothing: fill in only what you want to
+# override. The alternatives further down stay commented because YAML
+# will not take the same key twice.
 
 # --- Proposer: any OpenAI-compatible /chat/completions endpoint ---
 
-# LM Studio (local default — works as-is with no key):
+# LM Studio, the local default. Works as-is with no key.
 base_url: http://localhost:1234/v1
 model: prism-ml/bonsai-27b
-# api_key: ""
+api_key: ""
 
-# OpenRouter instead (needs OPENROUTER_API_KEY env or api_key below):
-# base_url: https://openrouter.ai/api/v1
-# model: qwen/qwen3-32b
-# api_key: sk-or-...
-# headers:
-#   HTTP-Referer: https://github.com/your/repo
-#   X-Title: detent
+# Extra request headers, for a provider that wants them.
+headers: {}
 
-# Hosted OpenAI instead (needs OPENAI_API_KEY env or api_key below):
-# base_url: https://api.openai.com/v1
-# model: gpt-4o-mini
+# OpenRouter instead (needs OPENROUTER_API_KEY env or api_key above):
+#   base_url: https://openrouter.ai/api/v1
+#   model: qwen/qwen3-32b
+#   headers:
+#     HTTP-Referer: https://github.com/your/repo
+#     X-Title: detent
+#
+# Hosted OpenAI instead (needs OPENAI_API_KEY env or api_key above):
+#   base_url: https://api.openai.com/v1
+#   model: gpt-4o-mini
 
-# Per-goal step cap. 0 (the default) means unbounded: the human confirm
-# on every command is the bound.
-# steps: 0
+# Per-goal step cap. 0 means unbounded: the human confirm on every
+# dangerous command is the bound.
+steps: 0
 
 # How much of the model's context window the transcript may fill.
 # Every proposal resends the whole thing, so without a ceiling a long
 # session gets steadily more expensive and eventually overruns the
 # window. Past it, the oldest turns are replaced by a summary the same
 # model writes; what's left is the recent half plus that summary.
-# The default suits a 32k model — raise it if yours has more to spend,
-# and remember the system prompt and the reply need room too.
-# context_tokens: 24000
+# 0 takes the built-in 24000, which suits a 32k model. Raise it if
+# yours has more to spend, remembering the system prompt and the reply
+# need room too.
+context_tokens: 0
 
 # --- Judge (Jev): classifier for confirm emphasis and row rendering ---
-# Omit jev_api_key (and TYPESAFE_API_KEY) to run without a judge; rows
-# stay heuristic and confirms stay neutral.
+# Leave jev_api_key empty (and TYPESAFE_API_KEY unset) to run without a
+# judge; rows stay heuristic and confirms stay neutral.
 
-# jev_api_key: apikey_...
-# jev_model: jev-1.13.0
-# jev_endpoint: https://api.typesafe.ai/v1/systemone
+jev_api_key: ""
+jev_model: ""
+jev_endpoint: ""
 
-# Scope-risk Noul floor for extra confirm emphasis. 0 selects the 0.5 default.
-# risk_threshold: 0.5
+# Scope-risk Noul floor for extra confirm emphasis. 0 takes the 0.5
+# built-in.
+risk_threshold: 0
 
-# --- Theme: TUI color scheme ---
-# One of dark (default), light, solarized, dracula.
-# theme: dark
+# --- Theme: TUI colour scheme ---
+# dark, light, solarized or dracula. Empty takes dark.
+theme: ""
 
 # --- Sandbox: per-command host vs. containerd-backed execution ---
-# "auto" (default) sandboxes by default; "host" never sandboxes.
-# sandbox_mode: auto
 
-# Containerd socket. Empty (default) picks the OS-conventional path
-# (colima --runtime containerd on macOS, /run/containerd/containerd.sock
-# on Linux) — set this if that guess is wrong (e.g. a non-default
-# colima profile, or Windows, which has no safe default at all).
-# sandbox_socket: /run/containerd/containerd.sock
+# "auto" sandboxes by default; "host" never sandboxes. Empty takes auto.
+sandbox_mode: ""
 
-# Image sandboxed commands run in. Must be a fully qualified ref —
-# unlike docker/nerdctl, containerd's client doesn't expand Docker Hub
-# shorthand itself. The default is Ubuntu plus git/curl, which is what
-# makes goals work under sandbox_network: none — with no network the
-# container can't install tooling itself, so pick an image that already
-# carries whatever your goals need.
-# sandbox_image: docker.io/library/buildpack-deps:24.04-scm
+# Containerd socket. Empty picks the OS-conventional path (colima
+# --runtime containerd on macOS, /run/containerd/containerd.sock on
+# Linux). Set it if that guess is wrong, such as a non-default colima
+# profile, or Windows, which has no safe default at all.
+sandbox_socket: ""
 
-# OCI runtime handle. Empty (default) is containerd's own default
-# (plain runc); "io.containerd.runsc.v1" switches to gVisor once
-# that's installed and registered on the host.
-# sandbox_runtime: ""
+# Image sandboxed commands run in. Must be a fully qualified ref:
+# unlike docker and nerdctl, containerd's client does not expand Docker
+# Hub shorthand itself. Empty takes Ubuntu plus git and curl, which is
+# what makes goals work under sandbox_network: none. With no network
+# the container cannot install tooling itself, so pick an image that
+# already carries whatever your goals need.
+sandbox_image: ""
 
-# What the container can reach. "host" (default) shares the network of
-# whatever machine runs containerd — on macOS that is the colima VM, so
-# your Mac stays behind the VM boundary; on Linux it is this machine,
-# localhost services and LAN included. "none" leaves the container with
-# loopback only: no DNS, nothing fetchable.
-# sandbox_network: host
+# OCI runtime handle. Empty is containerd's own default, plain runc.
+# "io.containerd.runsc.v1" switches to gVisor once that is installed
+# and registered on the host.
+sandbox_runtime: ""
+
+# What the container can reach. "host" shares the network of whatever
+# machine runs containerd: on macOS that is the colima VM, so your Mac
+# stays behind the VM boundary; on Linux it is this machine, localhost
+# services and LAN included. "none" leaves the container with loopback
+# only, no DNS and nothing fetchable. Empty takes host.
+sandbox_network: ""
 
 # In-container mount point for the harness's working directory. The
-# host side is always the directory detent was started in.
-# sandbox_workspace: /workspace
+# host side is always the directory detent was started in. Empty takes
+# /workspace.
+sandbox_workspace: ""
 
-# Whether a model may write a view for output nothing covers.
+# --- Views: whether a model may write a view for output nothing covers ---
 #
 # The pane always draws from a spec. The built-in rendering for each
 # judged kind is one, the ones detent ships for known commands are
@@ -91,7 +103,7 @@ model: prism-ml/bonsai-27b
 # more again. The header says which of them drew what you are reading.
 #
 #   saved     draw only from specs that already exist. Never calls a
-#             model, so that set never grows.  (default)
+#             model, so that set never grows.
 #   generate  do that first, and when nothing covers an output, ask the
 #             proposer for a spec, verify it with Jev, and save it. The
 #             next run of that command shape is then served from disk
@@ -99,6 +111,8 @@ model: prism-ml/bonsai-27b
 #             step.
 views: saved
 
+# --- Logs ---
+#
 # One structured log per session, at
 # ~/.local/state/detent/logs/<session>.jsonl, one JSON record per line.
 #
@@ -110,7 +124,7 @@ views: saved
 #   jq 'select(.step == 7)'                    everything about step 7
 #   jq 'select(.component == "viewgen")'       one subsystem
 #   jq 'select(.event | startswith("view."))'  one subsystem's events
-#
-log_level: info        # debug, info, warn, error
-log_bodies: false      # record prompts, model replies and command output
-# log_dir: /somewhere/else
+
+log_level: info      # debug, info, warn, error
+log_bodies: false    # record prompts, model replies and command output
+log_dir: ""          # empty takes ~/.local/state/detent/logs
