@@ -171,7 +171,7 @@ routing     →  agent, sandbox
   imports it back, so it's the one place allowed to bridge them.
 
 - **`internal/agent`** — the propose → confirm → execute → judge loop,
-  one goal at a time, over an append-only `Session.Transcript`
+  one goal at a time, over a single `Session.Transcript`
   (`[]propose.Message` shared across every goal in the session). Has no
   idea `ui` or `resolver` exist. `interfaces.go` declares every interface
   `agent` consumes: `Proposer`, `Judge`, `Confirmer`, `Runner` — the last
@@ -199,6 +199,18 @@ routing     →  agent, sandbox
   in `BeginGoal`) when N is the first step. Naming a step the user can
   see and having it disappear is the point; restoring *to* a step
   instead would make `/rollback <last>` a no-op.
+
+  `compact.go` keeps the transcript under `MaxTranscriptBytes`, since
+  every propose call resends all of it. It runs in `BeginGoal` only —
+  a goal boundary is the one place the model doesn't need the turns
+  being dropped, and it happens *before* the new goal is appended so
+  the fresh ask can't be what goes. Because compaction rewrites the
+  front of the slice, `TranscriptMark`/`BaselineMark` count **appends**
+  (`Session.seq`), not slice positions; `Session.index` converts one
+  back, and `Rollback` errors rather than restoring a container to a
+  state the transcript can no longer describe. The invariant to hold
+  onto: `seq - dropped == len(Transcript)`. A nil `Summarizer` is fine
+  — the dropped turns become a note saying they're gone.
 
   `judge.go` holds both judgment paths:
   `judgePre` (mutability + scope risk, before confirm) and `judgePost`
