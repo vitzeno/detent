@@ -34,7 +34,8 @@ type saveDoneMsg struct {
 
 type rollbackDoneMsg struct {
 	target *goalBlock
-	step   int
+	local  int // step's position within target, what the harness takes
+	step   int // the session-wide number the human typed
 	ok     bool
 	err    error
 }

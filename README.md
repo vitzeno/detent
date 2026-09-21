@@ -6,9 +6,9 @@ Works with any OpenAI-compatible `/chat/completions` endpoint — LM Studio by d
 
 ## Screenshots
 
-![detent TUI](screenshots/tui-0.png)
-
-![detent TUI](screenshots/tui-2.png)
+![detent TUI](screenshots/tui-0-dark.png)
+![detent TUI](screenshots/tui-1-dark.png)
+![detent TUI](screenshots/tui-2-dark.png)
 
 ## Quick start
 
@@ -72,17 +72,18 @@ containerd over TCP and pass `-sandbox-socket`.
   `sandbox_network: host`, the default, so goals can clone, curl and install.
   What "host" means depends on where the daemon runs:
 
-  | Platform | Container gets | Your machine |
-  | --- | --- | --- |
-  | macOS | the colima VM's network | behind the VM boundary |
-  | Linux | this machine's network | localhost and LAN reachable |
+    | Platform | Container gets          | Your machine                |
+    | -------- | ----------------------- | --------------------------- |
+    | macOS    | the colima VM's network | behind the VM boundary      |
+    | Linux    | this machine's network  | localhost and LAN reachable |
 
-  Set `sandbox_network: none` for loopback only: isolated, but no DNS and
-  nothing fetchable. The welcome pane says which one is live.
+    Set `sandbox_network: none` for loopback only: isolated, but no DNS and
+    nothing fetchable. The welcome pane says which one is live.
 
-  An isolated bridge network with real connectivity would need CNI. `go-cni`
-  shells out to plugin binaries and needs a netns on the daemon's kernel, which
-  doesn't hold with the daemon in a VM, so it isn't wired up.
+    An isolated bridge network with real connectivity would need CNI. `go-cni`
+    shells out to plugin binaries and needs a netns on the daemon's kernel, which
+    doesn't hold with the daemon in a VM, so it isn't wired up.
+
 - **The default image is `buildpack-deps:24.04-scm`**: Ubuntu plus git, curl and
   ca-certificates, so goals have them even with `sandbox_network: none`. Point
   `sandbox_image` at something else if you need more.
@@ -123,18 +124,18 @@ match so the model doesn't keep reasoning from undone work.
 
 ## Keys
 
-| Key                    | Does                                                                               |
-| ---------------------- | ---------------------------------------------------------------------------------- |
-| `enter`                | run the goal in the input box                                                      |
-| `shift+enter`          | insert a newline (needs a Kitty-protocol terminal; the status line says which)     |
-| `alt+enter` / `ctrl+j` | insert a newline anywhere                                                          |
+| Key                    | Does                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------ |
+| `enter`                | run the goal in the input box                                                              |
+| `shift+enter`          | insert a newline (needs a Kitty-protocol terminal; the status line says which)             |
+| `alt+enter` / `ctrl+j` | insert a newline anywhere                                                                  |
 | `/`                    | open the command list (`/rollback`, `/tree`, `/usage`, `/new`, `/abort`, `/help`, `/quit`) |
-| `esc`                  | abort the running goal — so does `/abort`, which stays typeable mid-run            |
-| `tab`                  | cycle input → history → output                                                     |
-| `↑` / `↓`              | move through history, or scroll the focused pane                                   |
-| `space`                | expand the focused row's output                                                    |
-| `ctrl+s`               | save the file open in the editor pane                                              |
-| `ctrl+c`               | quit from anywhere — or `/quit`                                                    |
+| `esc`                  | abort the running goal — so does `/abort`, which stays typeable mid-run                    |
+| `tab`                  | cycle input → history → output                                                             |
+| `↑` / `↓`              | move through history, or scroll the focused pane                                           |
+| `space`                | expand the focused row's output                                                            |
+| `ctrl+s`               | save the file open in the editor pane                                                      |
+| `ctrl+c`               | quit from anywhere — or `/quit`                                                            |
 
 **Want `shift+enter` for newlines?** Terminals send the same byte for `enter` and
 `shift+enter`, so no program can tell them apart by default. Bind it in your

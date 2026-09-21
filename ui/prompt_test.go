@@ -293,7 +293,7 @@ func TestSlashOutcome_FlashesGreenOrRed(t *testing.T) {
 	}{
 		{"unknown command", "/nope", true, "unknown command"},
 		{"abort with nothing running", "/abort", true, "nothing running"},
-		{"rollback with no goal", "/rollback 1", true, "no goal"},
+		{"rollback with no steps", "/rollback 1", true, "no step #1"},
 		{"rollback misuse", "/rollback", true, "usage:"},
 		{"help opens", "/help", false, "/help"},
 		{"usage opens", "/usage", false, "/usage"},

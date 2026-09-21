@@ -19,6 +19,7 @@ import (
 // past. Pure, so View can call it on its throwaway copy.
 func (m Model) historyLines() (lines []string, cursorEntry int) {
 	rows := m.rows()
+	step := 0 // counts across the whole session, not per goal
 	for bi, b := range m.blocks {
 		if bi > 0 {
 			lines = append(lines, "")
@@ -32,11 +33,12 @@ func (m Model) historyLines() (lines []string, cursorEntry int) {
 				block = append(block, styleGoal.Render(gl))
 			}
 		}
-		for i, r := range b.steps {
+		for _, r := range b.steps {
 			if len(rows) > 0 && r == rows[m.cursorClamped()] {
 				cursorEntry = len(lines) + len(block)
 			}
-			block = append(block, m.stepLines(r, i+1)...)
+			step++
+			block = append(block, m.stepLines(r, step)...)
 			if r.cmd.expanded {
 				block = append(block, previewLines(r, m.blockWidth()-6)...)
 			}
@@ -112,8 +114,11 @@ func (m *Model) cursorClamped() int {
 	return m.nav.cursor
 }
 
-// step is this row's 1-based position, what /rollback's argument
-// targets, shown as a dim marker on any step that ran sandboxed.
+// step is this row's 1-based position in the session, what
+// /rollback's argument targets, shown as a dim marker on any step
+// that ran sandboxed. Session-wide, not per goal: numbering restarted
+// each goal meant every row read "#1" and the number a human typed
+// addressed a different step from the one they were pointing at.
 func (m Model) stepLines(r *stepRow, step int) []string {
 	mark := "  "
 	if r == m.focused() {

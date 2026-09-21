@@ -57,10 +57,10 @@ func saveCmd(sess Driver, row *stepRow, path, content string) tea.Cmd {
 
 // rollbackCmd runs off the update loop: it's a real containerd RPC
 // (Prepare against the checkpoint), not free.
-func rollbackCmd(ctx context.Context, sess Driver, target *goalBlock, step int) tea.Cmd {
+func rollbackCmd(ctx context.Context, sess Driver, target *goalBlock, local, step int) tea.Cmd {
 	return func() tea.Msg {
-		ok, err := sess.Rollback(ctx, target.res, step)
-		return rollbackDoneMsg{target: target, step: step, ok: ok, err: err}
+		ok, err := sess.Rollback(ctx, target.res, local)
+		return rollbackDoneMsg{target: target, local: local, step: step, ok: ok, err: err}
 	}
 }
 

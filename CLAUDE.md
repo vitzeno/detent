@@ -174,7 +174,7 @@ routing     →  agent, sandbox
   can't sit inside a blocking callback. `record.go` holds the
   `Record*` family that closes a goal (or notes a standalone action).
   `snapshot.go` holds `Snapshot`/`Rollback`: `Rollback(res, N)` undoes
-  step N **and everything after it**, restoring the checkpoint from
+  step N of that goal **and everything after it**, restoring the checkpoint from
   before N ran — the one after N-1, or `GoalResult.Baseline` (captured
   in `BeginGoal`) when N is the first step. Naming a step the user can
   see and having it disappear is the point; restoring *to* a step
@@ -263,7 +263,12 @@ routing     →  agent, sandbox
   `_view.go` file: `view.go` composes the screen, `layout_view.go`
   does the sizing maths, `chrome_view.go` the bars and pane headers,
   `detail_view.go` the output pane, plus `history_view.go`,
-  `confirm_view.go` and `usage_view.go`. History draws each goal as a
+  `confirm_view.go` and `usage_view.go`. The `#N` marker on a step
+  counts across the **session**, not within its goal, and `/rollback N`
+  resolves that number back to the goal that owns it
+  (`findStep`/`truncateFrom`): numbering per goal made every row read
+  "#1" and the argument silently addressed the last goal instead of
+  the step being pointed at. History draws each goal as a
   block against a coloured rail (`railed`/`railStyle`) rather than
   separating them with a divider: a rail marks how far a block
   reaches, not just where two meet, and its colour carries the
