@@ -881,3 +881,19 @@ func TestCursor_EveryRowWidgetReportsIt(t *testing.T) {
 		assert.False(t, ok, "%s summarises rather than addressing rows", block.Kind)
 	}
 }
+
+func TestSubset_NarrowsWidgetsAndValidatesAgainstTheSame(t *testing.T) {
+	reg := viewspec.Standard().Subset("list", "meter", "nope")
+	assert.Equal(t, []string{"list", "meter"}, reg.Kinds())
+	assert.Equal(t, viewspec.Standard().ParseKinds(), reg.ParseKinds(),
+		"parse kinds are not what gets narrowed")
+
+	spec := viewspec.Spec{Parse: linesParse(),
+		Blocks: []viewspec.Block{{Kind: "table", Columns: []viewspec.Column{{Field: "pkg"}}}}}
+	_, err := viewspec.Compile(spec, viewspec.WithRegistry(reg))
+	assert.Error(t, err, "a kind outside the subset will not compile")
+
+	guide := reg.Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)
+	assert.Len(t, guide["const"].(map[string]viewspec.Description), 2,
+		"and the model is only told about what it may use")
+}

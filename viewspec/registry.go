@@ -150,3 +150,19 @@ func (r *Registry) describe() map[string]Description {
 	}
 	return out
 }
+
+// Subset returns a registry holding only the named widget kinds, with
+// every parse kind intact. Narrowing what a model may choose from is
+// what keeps a many-way choice calibrated; compiling against the same
+// subset is what stops it choosing outside the set anyway. Unknown
+// names are ignored, so a caller can name kinds it isn't sure exist.
+func (r *Registry) Subset(kinds ...string) *Registry {
+	out := NewRegistry()
+	maps.Copy(out.extractors, r.extractors)
+	for _, kind := range kinds {
+		if w, ok := r.widgets[kind]; ok {
+			out.widgets[kind] = w
+		}
+	}
+	return out
+}
