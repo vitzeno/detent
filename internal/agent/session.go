@@ -11,6 +11,7 @@ import (
 	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/internal/worktree"
 )
 
 // MaxTranscriptOutputBytes caps each recorded output stream.
@@ -43,6 +44,10 @@ type ExecutedCommand struct {
 	// SnapshotID is set when this command ran sandboxed and a
 	// checkpoint was taken after it; "" otherwise.
 	SnapshotID SnapshotID
+	// Worktree is the human's own working directory as it stood right
+	// after this step, so a rollback can offer to revert it. The
+	// container snapshot stops at the bind mount.
+	Worktree worktree.Checkpoint
 	// TranscriptMark is len(Session.Transcript) right after this step;
 	// what Rollback truncates Transcript back to.
 	TranscriptMark int
@@ -74,6 +79,8 @@ type GoalResult struct {
 	// BaselineMark is the matching Transcript length.
 	Baseline     SnapshotID
 	BaselineMark int
+	// BaselineTree is the working directory before step 1 ran.
+	BaselineTree worktree.Checkpoint
 	// Stats links the measured goal; nil when untracked.
 	Stats *usage.Goal
 }

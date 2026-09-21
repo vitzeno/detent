@@ -457,7 +457,7 @@ func TestSession_Snapshot_UsesSandboxSnapshotter(t *testing.T) {
 func TestSession_Rollback_NoSandboxWired(t *testing.T) {
 	s := &Session{Runners: SingleRunner{Runner: okRun(host.Result{})}}
 	res := &GoalResult{Commands: []*ExecutedCommand{{SnapshotID: "snap-1", TranscriptMark: 2}}}
-	ok, err := s.Rollback(context.Background(), res, 1)
+	ok, err := s.Rollback(context.Background(), res, 1, false)
 	require.NoError(t, err)
 	assert.False(t, ok)
 }
@@ -471,7 +471,7 @@ func TestSession_Rollback_FirstStepUsesBaseline(t *testing.T) {
 		Baseline: "snap-0",
 		Commands: []*ExecutedCommand{{SnapshotID: "snap-1"}},
 	}
-	ok, err := s.Rollback(context.Background(), res, 1)
+	ok, err := s.Rollback(context.Background(), res, 1, false)
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, SnapshotID("snap-0"), fake.rolledBackTo)
@@ -483,7 +483,7 @@ func TestSession_Rollback_NoBaselineIsAnError(t *testing.T) {
 	s := &Session{Runners: sandboxSelector{sandbox: fake}}
 	res := &GoalResult{Commands: []*ExecutedCommand{{SnapshotID: "snap-1"}}}
 
-	ok, err := s.Rollback(context.Background(), res, 1)
+	ok, err := s.Rollback(context.Background(), res, 1, false)
 	assert.True(t, ok)
 	assert.Error(t, err, "nothing captured before step 1 to restore")
 	assert.Len(t, res.Commands, 1, "a failed rollback must not truncate")
@@ -499,7 +499,7 @@ func TestSession_Rollback_TruncatesCommandsAndTranscript(t *testing.T) {
 	}}
 
 	// Undo step 2 onward: restores the checkpoint from after step 1.
-	ok, err := s.Rollback(context.Background(), res, 2)
+	ok, err := s.Rollback(context.Background(), res, 2, false)
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, SnapshotID("snap-1"), fake.rolledBackTo)
@@ -513,7 +513,7 @@ func TestSession_Rollback_StepOutOfRange(t *testing.T) {
 	s := &Session{Runners: sandboxSelector{sandbox: fake}}
 	res := &GoalResult{Commands: []*ExecutedCommand{{SnapshotID: "snap-1", TranscriptMark: 2}}}
 
-	ok, err := s.Rollback(context.Background(), res, 5)
+	ok, err := s.Rollback(context.Background(), res, 5, false)
 	assert.True(t, ok, "a sandbox is wired; this is a real error, not a silent no-op")
 	assert.Error(t, err)
 }
@@ -526,7 +526,7 @@ func TestSession_Rollback_PredecessorNotSandboxed(t *testing.T) {
 		{Command: "sandboxed", SnapshotID: "snap-2"},
 	}}
 
-	ok, err := s.Rollback(context.Background(), res, 2)
+	ok, err := s.Rollback(context.Background(), res, 2, false)
 	assert.True(t, ok)
 	assert.Error(t, err)
 	assert.Len(t, res.Commands, 2, "a failed rollback must not truncate")

@@ -38,6 +38,9 @@ type rollbackDoneMsg struct {
 	step   int // the session-wide number the human typed
 	ok     bool
 	err    error
+	// revertedFiles records whether the human's own files went back
+	// too, so the notice can say which of the two happened.
+	revertedFiles bool
 }
 
 type welcomeTickMsg struct{}

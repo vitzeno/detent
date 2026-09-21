@@ -19,7 +19,9 @@ func (m Model) runSlash(input string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	next, cmd := c.run(m, input)
-	if nm, isModel := next.(Model); isModel && nm.notice.text == "" {
+	// A command that opened a confirm hasn't finished, so it hasn't
+	// succeeded either — its own outcome comes once it's answered.
+	if nm, isModel := next.(Model); isModel && nm.notice.text == "" && nm.mode == modeInput {
 		nm.noteOK(c.Name)
 		return nm, cmd
 	}

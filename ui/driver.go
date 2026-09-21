@@ -34,13 +34,27 @@ type Driver interface {
 	// (1-based) and truncates res.Commands to it. ok is false only
 	// when no sandbox is wired; an invalid or non-sandboxed step is a
 	// real error to surface.
-	Rollback(ctx context.Context, res *GoalResult, step int) (ok bool, err error)
+	// revertFiles also puts the human's own files back; false rolls
+	// back the container only.
+	Rollback(ctx context.Context, res *GoalResult, step int, revertFiles bool) (ok bool, err error)
 	// Reset forgets the session's transcript, goals and usage, so a
 	// new goal starts with no history behind it.
 	Reset()
 
+	// PlanRollback reports which of the human's own files rolling back
+	// to step would touch, without writing any of them.
+	PlanRollback(ctx context.Context, res *GoalResult, step int) ([]FileChange, error)
+
 	Tracker() []GoalStats
 	UsageSnapshot() Snapshot
+}
+
+// FileChange is one path a rollback would touch in the human's own
+// working directory. Removed distinguishes "this file arrived after
+// the checkpoint, so reverting deletes it" from "this comes back".
+type FileChange struct {
+	Path    string
+	Removed bool
 }
 
 // StreamEvent is one line of live output from a running command.

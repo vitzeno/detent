@@ -1,6 +1,7 @@
 package ui
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"errors"
 	"fmt"
 	"testing"
@@ -187,4 +188,101 @@ func TestUI_OnRollbackDone_NotOKShowsNoSandboxNotice(t *testing.T) {
 	m = nm.(Model)
 	assert.Len(t, target.steps, 1)
 	assert.Contains(t, m.notice.text, "no sandbox")
+}
+
+// The reported failure end to end: a goal writes a file, the human
+// rolls back, and nothing had touched the file. Rolling back now
+// offers to revert it — and asks first, because the workspace can hold
+// edits detent never made.
+func TestUI_Rollback_AsksBeforeTouchingTheHumansFiles(t *testing.T) {
+	setup := func() (Model, *fakeDriver, *goalBlock) {
+		m := testUIModel()
+		drv := m.sess.(*fakeDriver)
+		drv.planFiles = []FileChange{
+			{Path: "test.py", Removed: true},
+			{Path: "notes.md"},
+		}
+		b := &goalBlock{goal: "write a script", res: &GoalResult{Goal: "g"}, ended: true, end: EndDone,
+			steps: []*stepRow{{command: "cat > test.py"}}}
+		m.blocks = []*goalBlock{b}
+		m.sizeViewport()
+		return m, drv, b
+	}
+
+	t.Run("names every file before writing any", func(t *testing.T) {
+		m, drv, _ := setup()
+		nm, cmd := m.runSlash("/rollback 1")
+		m = nm.(Model)
+
+		require.Equal(t, modeRollbackConfirm, m.mode, "it must ask, not act")
+		assert.Nil(t, cmd, "and dispatch nothing until it has an answer")
+		assert.Zero(t, drv.rolledBackN, "the harness has not been called")
+
+		box := plain(m.View().Content)
+		assert.Contains(t, box, "test.py")
+		assert.Contains(t, box, "notes.md")
+		assert.Contains(t, box, "delete", "a file created since the checkpoint is deleted")
+		assert.Contains(t, box, "restore", "one that changed comes back")
+	})
+
+	t.Run("y reverts the files too", func(t *testing.T) {
+		m, drv, _ := setup()
+		nm, _ := m.runSlash("/rollback 1")
+		nm, cmd := nm.(Model).Update(typeKey("y"))
+		require.NotNil(t, cmd)
+		_ = nm
+		msg := rollbackCmd(m.ctx, m.sess, m.blocks[0], 1, 1, true)().(rollbackDoneMsg)
+		assert.True(t, drv.rolledBackFiles, "the harness was asked for the files back")
+		assert.True(t, msg.revertedFiles)
+	})
+
+	t.Run("n rolls the container back and leaves them", func(t *testing.T) {
+		m, drv, _ := setup()
+		nm, _ := m.runSlash("/rollback 1")
+		nm, cmd := nm.(Model).Update(typeKey("n"))
+		require.NotNil(t, cmd)
+		assert.Equal(t, modeInput, nm.(Model).mode)
+		_ = rollbackCmd(m.ctx, m.sess, m.blocks[0], 1, 1, false)()
+		assert.False(t, drv.rolledBackFiles, "the files are left alone")
+	})
+
+	t.Run("esc does nothing at all", func(t *testing.T) {
+		m, drv, b := setup()
+		nm, _ := m.runSlash("/rollback 1")
+		nm, cmd := nm.(Model).Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+		m = nm.(Model)
+
+		assert.Nil(t, cmd)
+		assert.Equal(t, modeInput, m.mode)
+		assert.Zero(t, drv.rolledBackN, "nothing was rolled back")
+		assert.Len(t, b.steps, 1, "and history is untouched")
+		assert.Contains(t, m.notice.text, "cancelled")
+	})
+}
+
+// Nothing to revert means nothing to ask about.
+func TestUI_Rollback_SkipsTheConfirmWhenNoFilesChange(t *testing.T) {
+	m := testUIModel()
+	m.blocks = []*goalBlock{{res: &GoalResult{}, steps: []*stepRow{{command: "ls"}}}}
+	m.sizeViewport()
+
+	nm, cmd := m.runSlash("/rollback 1")
+	m = nm.(Model)
+	assert.Equal(t, modeInput, m.mode, "no confirm when the workspace is unaffected")
+	assert.NotNil(t, cmd, "it just goes")
+	assert.True(t, m.waiting)
+}
+
+// A command still waiting on a human hasn't succeeded, so the status
+// line must not flash it green before it has an answer.
+func TestUI_Rollback_NoSuccessFlashWhileConfirming(t *testing.T) {
+	m := testUIModel()
+	m.sess.(*fakeDriver).planFiles = []FileChange{{Path: "test.py", Removed: true}}
+	m.blocks = []*goalBlock{{res: &GoalResult{}, steps: []*stepRow{{command: "cat > test.py"}}}}
+	m.sizeViewport()
+
+	nm, _ := m.runSlash("/rollback 1")
+	m = nm.(Model)
+	require.Equal(t, modeRollbackConfirm, m.mode)
+	assert.Empty(t, m.notice.text, "nothing to report until the human answers")
 }

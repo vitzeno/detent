@@ -48,6 +48,7 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 	if id, ok, err := s.Snapshot(ctx); ok && err == nil {
 		res.Baseline = id
 	}
+	res.BaselineTree = s.SnapshotWorktree(ctx)
 	res.BaselineMark = len(s.Transcript)
 	s.goalMark = res.BaselineMark
 	return res, nil
@@ -137,6 +138,7 @@ func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Ste
 		if id, ok, snapErr := s.Snapshot(ctx); ok && snapErr == nil {
 			ec.SnapshotID = id
 		}
+		ec.Worktree = s.SnapshotWorktree(ctx)
 	}
 	res.Commands = append(res.Commands, ec)
 	s.append(propose.Message{Role: propose.RoleAssistant,

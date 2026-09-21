@@ -17,6 +17,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.mode == modeSaveConfirm {
 		return m.saveConfirmKey(msg)
 	}
+	if m.mode == modeRollbackConfirm {
+		return m.rollbackConfirmKey(msg)
+	}
 	if m.save.editing {
 		return m.editorKey(msg)
 	}
@@ -86,6 +89,20 @@ func (m Model) confirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.approve()
 	case "n", "N":
 		return m.decline()
+	}
+	return m, nil
+}
+
+// rollbackConfirmKey owns every key while the rollback confirm is up:
+// three outcomes, none of them implicit.
+func (m Model) rollbackConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y":
+		return m.confirmRollback()
+	case "n", "N":
+		return m.declineRollback()
+	case "esc":
+		return m.cancelRollback()
 	}
 	return m, nil
 }

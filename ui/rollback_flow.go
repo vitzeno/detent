@@ -27,8 +27,57 @@ func (m Model) runRollback(cmd string) (tea.Model, tea.Cmd) {
 		m.noteErr(fmt.Sprintf("rollback: no step #%d — this session has %d", step, m.stepCount()))
 		return m, nil
 	}
+
+	// Ask before writing to the human's own files. The container rolls
+	// back either way; the workspace may hold edits detent never made,
+	// so reverting it is a decision, not a side effect.
+	files, err := m.sess.PlanRollback(m.ctx, target.res, local)
+	if err != nil {
+		m.noteErr("rollback: " + err.Error())
+		return m, nil
+	}
+	if len(files) > 0 {
+		m.rollback = rollbackState{target: target, local: local, step: step, files: files}
+		m.mode = modeRollbackConfirm
+		return m, nil
+	}
+	return m.dispatchRollback(target, local, step, false)
+}
+
+// confirmRollback reverts the human's files along with the container.
+func (m Model) confirmRollback() (tea.Model, tea.Cmd) {
+	m.mode = modeInput
+	r := m.rollback
+	m.rollback = rollbackState{}
+	if r.target == nil {
+		return m, nil
+	}
+	return m.dispatchRollback(r.target, r.local, r.step, true)
+}
+
+// declineRollback rolls the container back and leaves the files alone,
+// which is the old behaviour and still the safe one.
+func (m Model) declineRollback() (tea.Model, tea.Cmd) {
+	m.mode = modeInput
+	r := m.rollback
+	m.rollback = rollbackState{}
+	if r.target == nil {
+		return m, nil
+	}
+	return m.dispatchRollback(r.target, r.local, r.step, false)
+}
+
+// cancelRollback backs out without touching anything.
+func (m Model) cancelRollback() (tea.Model, tea.Cmd) {
+	m.mode = modeInput
+	m.rollback = rollbackState{}
+	m.noteErr("rollback cancelled")
+	return m, nil
+}
+
+func (m Model) dispatchRollback(target *goalBlock, local, step int, revertFiles bool) (tea.Model, tea.Cmd) {
 	m.waiting = true
-	return m, tea.Batch(m.spinner.Tick, rollbackCmd(m.ctx, m.sess, target, local, step))
+	return m, tea.Batch(m.spinner.Tick, rollbackCmd(m.ctx, m.sess, target, local, step, revertFiles))
 }
 
 // findStep resolves a session-wide step number to the goal that owns
@@ -75,10 +124,11 @@ func (m Model) onRollbackDone(msg rollbackDoneMsg) (tea.Model, tea.Cmd) {
 	}
 	m.truncateFrom(msg.target, msg.local)
 
-	// The workspace is a bind mount, not part of the snapshot. Saying
-	// so is the difference between "undone" and what a human can still
-	// see on disk — which is what made a working rollback look broken.
-	m.noteOK(fmt.Sprintf("undid #%d onward — files in the workspace are untouched", msg.step))
+	if msg.revertedFiles {
+		m.noteOK(fmt.Sprintf("undid #%d onward, your files with it", msg.step))
+	} else {
+		m.noteOK(fmt.Sprintf("undid #%d onward — files in the workspace are untouched", msg.step))
+	}
 	m.nav.follow = true
 	m.nav.cursor = len(m.rows()) - 1
 	if m.showWelcome() {

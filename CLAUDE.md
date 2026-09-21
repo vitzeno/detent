@@ -143,6 +143,19 @@ routing     →  agent, sandbox
   work under `NetworkNone` too. Real containerd daemon required
   for its own tests (`container_test.go`), skipped when unreachable.
 
+- **`internal/worktree`** — checkpoints the human's own working
+  directory, which the container snapshot never covers: `/workspace`
+  is a bind mount from outside it, and that's where a goal does its
+  real work. Git plumbing against a scratch `GIT_INDEX_FILE`, so
+  `add -A`/`write-tree` capture tracked *and* untracked files without
+  touching the user's index, branch or stash — and `.gitignore` is
+  honoured for free, which is both correct (build output isn't state)
+  and what keeps a per-step capture cheap. `agent.Session` records one
+  per sandboxed step (`ExecutedCommand.Worktree`), `PlanRollback`
+  reports what a restore would change, and `Rollback`'s `revertFiles`
+  decides whether it happens — the UI asks first, because the
+  workspace can hold edits detent never made.
+
 - **`internal/routing`** — `Selector`, the `agent.RunnerSelector`
   `cmd/detent` wires: host vs. sandbox per command, deliberately dumb
   for v1 (a global toggle; `PreJudgment` is threaded through but

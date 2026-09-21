@@ -23,6 +23,8 @@ func (m *Model) sizeViewport() {
 		bottom = len(strings.Split(m.confirmBox(), "\n"))
 	case modeSaveConfirm:
 		bottom = len(strings.Split(m.saveConfirmBox(), "\n"))
+	case modeRollbackConfirm:
+		bottom = len(strings.Split(m.rollbackConfirmBox(), "\n"))
 	}
 	avail := m.layout.height - 2 - islandOverhead - bottom
 	if avail < 6 {

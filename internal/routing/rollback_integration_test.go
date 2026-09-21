@@ -81,7 +81,7 @@ func TestRollback_UndoesTheNamedStepOnward(t *testing.T) {
 	require.Equal(t, "one\ntwo\nthree\n", out.Stdout)
 
 	// Undo step 2 onward: step 1 survives, steps 2 and 3 are gone.
-	ok, err := sess.Rollback(bg, res, 2)
+	ok, err := sess.Rollback(bg, res, 2, false)
 	require.NoError(t, err)
 	require.True(t, ok)
 	out, err = c.Run(bg, "cat /log.txt", nil)
@@ -90,7 +90,7 @@ func TestRollback_UndoesTheNamedStepOnward(t *testing.T) {
 	assert.Len(t, res.Commands, 1, "history drops the undone steps")
 
 	// Undo step 1 as well: back to the goal's baseline, empty file.
-	ok, err = sess.Rollback(bg, res, 1)
+	ok, err = sess.Rollback(bg, res, 1, false)
 	require.NoError(t, err)
 	require.True(t, ok)
 	out, err = c.Run(bg, "cat /log.txt 2>/dev/null; echo done", nil)

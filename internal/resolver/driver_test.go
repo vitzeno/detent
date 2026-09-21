@@ -139,7 +139,7 @@ func TestResolver_Rollback_RoundTrip(t *testing.T) {
 	assert.Equal(t, "snap-1", ec.SnapshotID, "SnapshotID must survive the agent -> resolver -> ui round trip")
 
 	// Undoing step 1 restores the baseline BeginGoal captured.
-	ok, err := r.Rollback(ctx, res, 1)
+	ok, err := r.Rollback(ctx, res, 1, false)
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, agent.SnapshotID("snap-1"), fake.rolledBackTo, "baseline, taken before step 1 ran")

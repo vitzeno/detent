@@ -38,11 +38,12 @@ type Model struct {
 	waiting bool
 	abort   context.CancelFunc
 
-	nav     navState
-	layout  layoutState
-	confirm confirmState
-	save    saveState
-	perf    perfState
+	nav      navState
+	layout   layoutState
+	confirm  confirmState
+	save     saveState
+	rollback rollbackState
+	perf     perfState
 
 	streamCh chan StreamEvent
 
@@ -228,7 +229,8 @@ type mode int
 const (
 	modeInput mode = iota
 	modeConfirm
-	modeSaveConfirm // diff confirm for a direct editor save, see saveConfirmBox
+	modeSaveConfirm     // diff confirm for a direct editor save, see saveConfirmBox
+	modeRollbackConfirm // asks before reverting the human's own files
 )
 
 // focusPane is which zone the arrow keys act in.
@@ -271,6 +273,15 @@ type confirmState struct {
 type saveState struct {
 	editing bool
 	row     *stepRow
+}
+
+// rollbackState is a rollback waiting on the human to say whether
+// their own files go back with the container.
+type rollbackState struct {
+	target *goalBlock
+	local  int
+	step   int
+	files  []FileChange
 }
 
 // perfState is UI-prep cost, measured around viewport refreshes.

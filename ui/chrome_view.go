@@ -91,6 +91,9 @@ func (m Model) statusHint() string {
 	if m.mode == modeSaveConfirm {
 		return "[y/enter] save · [n] keep editing"
 	}
+	if m.mode == modeRollbackConfirm {
+		return "[y] revert your files · [n] container only · [esc] cancel"
+	}
 	if m.save.editing {
 		return "[ctrl+s] save · [esc] done editing"
 	}

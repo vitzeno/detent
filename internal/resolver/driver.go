@@ -6,6 +6,7 @@ import (
 
 	"github.com/vitzeno/detent/internal/fileio"
 	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/internal/worktree"
 	"github.com/vitzeno/detent/ui"
 )
 
@@ -84,9 +85,9 @@ func (r *Resolver) SaveFile(path, diff, content string) error {
 	return nil
 }
 
-func (r *Resolver) Rollback(ctx context.Context, res *ui.GoalResult, step int) (bool, error) {
+func (r *Resolver) Rollback(ctx context.Context, res *ui.GoalResult, step int, revertFiles bool) (bool, error) {
 	agentRes := goalRef(res)
-	ok, err := r.sess.Rollback(ctx, agentRes, step)
+	ok, err := r.sess.Rollback(ctx, agentRes, step, revertFiles)
 	if !ok || err != nil {
 		return ok, err
 	}
@@ -119,6 +120,20 @@ func (r *Resolver) Tracker() []ui.GoalStats {
 // Reset forgets the conversation: transcript, goals and usage. The
 // sandbox container is left alone.
 func (r *Resolver) Reset() { r.sess.Reset() }
+
+// PlanRollback reports which of the human's own files rolling back to
+// step would touch, so the UI can ask before anything is written.
+func (r *Resolver) PlanRollback(ctx context.Context, res *ui.GoalResult, step int) ([]ui.FileChange, error) {
+	plan, err := r.sess.PlanRollback(ctx, goalRef(res), step)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ui.FileChange, len(plan.Files))
+	for i, f := range plan.Files {
+		out[i] = ui.FileChange{Path: f.Path, Removed: f.Kind == worktree.Removed}
+	}
+	return out, nil
+}
 
 func (r *Resolver) UsageSnapshot() ui.Snapshot {
 	return toSnapshot(r.sess.Tracker().Snapshot())

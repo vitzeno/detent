@@ -76,6 +76,44 @@ func (m Model) saveConfirmBox() string {
 	return lipgloss.PlaceHorizontal(m.layout.width, lipgloss.Center, styleConfirmAccent.Width(w).Render(b.String()))
 }
 
+// rollbackConfirmBox asks before writing to the human's own files. It
+// names every path first: the container rolls back regardless, and
+// this is the only part that can destroy work detent never made.
+func (m Model) rollbackConfirmBox() string {
+	r := m.rollback
+	if r.target == nil {
+		return ""
+	}
+	w := min(90, max(24, m.layout.width-8))
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s  %s\n\n", styleMuted.Render("undo to before"),
+		styleGoal.Render(fmt.Sprintf("#%d  %s", r.step, layout.Truncate(r.target.goal, w-24))))
+	b.WriteString(styleMuted.Render("this would also change your own files:") + "\n")
+
+	files, more := r.files, 0
+	if len(files) > maxRollbackFiles {
+		more, files = len(files)-maxRollbackFiles, files[:maxRollbackFiles]
+	}
+	for _, f := range files {
+		mark, style := "restore", styleDiffAdd
+		if f.Removed {
+			mark, style = "delete ", styleDiffDel
+		}
+		fmt.Fprintf(&b, "  %s %s\n", style.Render(mark), styleGoal.Render(layout.Truncate(f.Path, w-14)))
+	}
+	if more > 0 {
+		fmt.Fprintf(&b, "%s\n", styleFaint.Render(fmt.Sprintf("  … +%d more", more)))
+	}
+	fmt.Fprintf(&b, "\n%s revert them   %s container only   %s cancel",
+		styleKey.Render("[y]"), styleKey.Render("[n]"), styleKey.Render("[esc]"))
+	return lipgloss.PlaceHorizontal(m.layout.width, lipgloss.Center, styleConfirmDanger.Width(w).Render(b.String()))
+}
+
+// maxRollbackFiles caps the list, or a wide-reaching goal fills the
+// screen with paths.
+const maxRollbackFiles = 12
+
 // maxSaveDiffLines caps the diff shown, or a huge one eats the screen.
 const maxSaveDiffLines = 20
 

@@ -45,6 +45,8 @@ func (m Model) baseView() string {
 		b.WriteString(m.confirmBox())
 	case modeSaveConfirm:
 		b.WriteString(m.saveConfirmBox())
+	case modeRollbackConfirm:
+		b.WriteString(m.rollbackConfirmBox())
 	default:
 		b.WriteString(island.Render("", m.nav.focus == focusInput, strings.Split(m.inputBar(), "\n"), m.layout.width, m.prompt.Rows()))
 	}
