@@ -81,7 +81,7 @@ func themedModel() Model {
 		Image: "img", Mount: "/workspace", Network: "host",
 	})
 	m.layout.width, m.layout.height = 120, 40
-	p := PostJudgment{FromJudge: true, Status: "clean_success", RenderKind: KindInline, GoalAchieved: 0.9}
+	p := PostJudgment{FromJudge: true, Status: "clean_success", RenderKind: KindText, GoalAchieved: 0.9}
 	b := &goalBlock{
 		goal: "g", res: &GoalResult{Goal: "g"}, ended: true, end: EndDone, summary: "did the thing",
 		steps: []*stepRow{{command: "ls -la", cmd: cmdState{ec: &ExecutedCommand{

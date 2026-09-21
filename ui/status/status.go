@@ -105,8 +105,8 @@ func KindLabel(k string) string {
 		return "file"
 	case "file_listing":
 		return "files"
-	case "scrollable_log":
-		return "log"
+	case "plain_text":
+		return "output"
 	default:
 		return "output"
 	}

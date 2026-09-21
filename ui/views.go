@@ -147,9 +147,7 @@ func must(err error) {
 // to the command. One block each: the nine kinds were always specs,
 // they just used to be a switch.
 var fallbackSpecs = map[RenderKind]viewspec.Spec{
-	KindInline:  rawSpec("log"),
-	KindQuiet:   rawSpec("log"),
-	KindLog:     rawSpec("log"),
+	KindText:    rawSpec("log"),
 	KindError:   rawSpec("errors"),
 	KindDiff:    rawSpec("diff"),
 	KindJSON:    rawSpec("json"),

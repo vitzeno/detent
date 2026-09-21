@@ -19,7 +19,7 @@ ok  	github.com/x/c	9.500s
 `
 
 // goTestSpec stands in for whatever the Driver hands back, generated
-// or cached. ui never authors one.
+// or saved. ui never authors one.
 func goTestSpec() viewspec.Spec {
 	return viewspec.Spec{
 		Version: viewspec.Version,
@@ -40,7 +40,7 @@ func goTestSpec() viewspec.Spec {
 }
 
 func rowFor(command, stdout string) Model {
-	return rowForKind(command, stdout, KindLog)
+	return rowForKind(command, stdout, KindText)
 }
 
 func rowForKind(command, stdout string, kind RenderKind) Model {
@@ -122,7 +122,7 @@ func TestViews_FallBackRatherThanRenderWrong(t *testing.T) {
 		kind    RenderKind
 		want    []string
 	}{
-		{"nothing generated yet", "curl https://example.com", "hello\n", KindLog,
+		{"nothing generated yet", "curl https://example.com", "hello\n", KindText,
 			[]string{"hello"}},
 		{"json indents", "curl /api", `{"b":2,"a":1}`, KindJSON,
 			[]string{"{", `  "a": 1,`, `  "b": 2`, "}"}},

@@ -41,7 +41,7 @@ func Normalise(command string) string {
 
 var unsafeName = regexp.MustCompile(`[^a-z0-9]+`)
 
-// Key identifies a cached view. The judged kind is part of it because
+// Key identifies a saved view. The judged kind is part of it because
 // one command shape can print two shapes: "ls" is a file_listing and
 // "ls -la" a table, and they cannot share a parse.
 func Key(command, kind string) string {

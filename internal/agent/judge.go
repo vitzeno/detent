@@ -51,17 +51,15 @@ const (
 
 // Kind* values come from viewgen, which is the only thing that
 // consumes them: they choose a view, prune what a generated one may
-// use, and key its cache. "" still means unknown.
+// use, and key the spec saved for it. "" still means unknown.
 const (
-	KindInline  = viewgen.KindInline
-	KindLog     = viewgen.KindLog
+	KindText    = viewgen.KindText
 	KindTable   = viewgen.KindTable
 	KindFiles   = viewgen.KindFiles
 	KindContent = viewgen.KindContent
 	KindError   = viewgen.KindError
 	KindDiff    = viewgen.KindDiff
 	KindJSON    = viewgen.KindJSON
-	KindQuiet   = viewgen.KindQuiet
 )
 
 // PostJudgment classifies a finished command for rendering.
@@ -232,16 +230,14 @@ func heuristicPost(res resultView) PostJudgment {
 		out.Attention = 0.9
 	case res.Lines == 0:
 		out.Status = StatusEmpty
-		out.RenderKind = KindInline
+		out.RenderKind = KindText
 		out.Attention = 0.1
 	default:
 		out.Status = StatusClean
 		out.Attention = 0.1
-		if res.Lines <= 10 {
-			out.RenderKind = KindInline
-		} else {
-			out.RenderKind = KindLog
-		}
+		// No length branch: the viewport scrolls whatever it is given,
+		// and viewgen gates a model call on size itself.
+		out.RenderKind = KindText
 	}
 	return out
 }

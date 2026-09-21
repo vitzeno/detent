@@ -162,7 +162,7 @@ func TestHistory_RailSpansTheBlockAndCarriesOutcome(t *testing.T) {
 }
 
 func railTestBlock() *goalBlock {
-	p := PostJudgment{FromJudge: true, Status: "clean_success", RenderKind: KindInline, GoalAchieved: 0.95}
+	p := PostJudgment{FromJudge: true, Status: "clean_success", RenderKind: KindText, GoalAchieved: 0.95}
 	b := &goalBlock{
 		goal: "find the very large files somewhere under this project directory",
 		res:  &GoalResult{Goal: "g"}, ended: true, end: EndDone,

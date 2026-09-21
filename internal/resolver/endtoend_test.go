@@ -110,7 +110,7 @@ func TestEndToEnd_GoalRunsAndItsOutputGetsAView(t *testing.T) {
 	require.Equal(t, psOutput, ec.Result.Stdout)
 
 	post := drv.JudgeResult(ctx, "what is running", p.Command, ec.Result, step)
-	require.Equal(t, ui.KindLog, post.RenderKind,
+	require.Equal(t, ui.KindText, post.RenderKind,
 		"no Jev wired, so the heuristic classifies by length; a log is worth a view")
 
 	// The pane's half: a generated spec that actually draws this output.
@@ -158,6 +158,6 @@ func TestEndToEnd_NoGeneratorLeavesTheBuiltinRendering(t *testing.T) {
 		agent.WithStats(usage.New()))
 
 	drv := New(sess) // no Views generator at all
-	_, ok := drv.GenerateView(context.Background(), "ps", psOutput, 0, ui.KindLog)
+	_, ok := drv.GenerateView(context.Background(), "ps", psOutput, 0, ui.KindText)
 	assert.False(t, ok, "ui draws its built-in spec for the judged kind")
 }

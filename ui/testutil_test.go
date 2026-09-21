@@ -79,7 +79,7 @@ func newFakeDriver() *fakeDriver {
 		},
 		pre:        PreJudgment{Mutability: "read_only"},
 		execResult: Result{Stdout: "a\nb\n"},
-		post:       PostJudgment{FromJudge: true, Status: "clean_success", RenderKind: KindInline, Attention: 0.2, GoalAchieved: 0.9},
+		post:       PostJudgment{FromJudge: true, Status: "clean_success", RenderKind: KindText, Attention: 0.2, GoalAchieved: 0.9},
 	}
 }
 
@@ -240,7 +240,7 @@ func tableBlock() *goalBlock {
 	}
 	steps := []*stepRow{mkrow("ps aux", "USER PID COMMAND\nroot 1 init\na 2 x\nb 3 y\nc 4 z\nd 5 w\ne 6 v\n", KindTable)}
 	for range 30 {
-		steps = append(steps, mkrow("echo x", "x\n", KindInline))
+		steps = append(steps, mkrow("echo x", "x\n", KindText))
 	}
 	return &goalBlock{goal: "g", steps: steps}
 }

@@ -52,8 +52,8 @@ type Driver interface {
 
 	// GenerateView authors a view for a finished command's output, or
 	// reports ok=false when nothing beats the render_kind fallback.
-	// Blocking: ui calls it from a tea.Cmd, never from Update. A cached
-	// spec returns without reaching a model at all.
+	// Blocking: ui calls it from a tea.Cmd, never from Update. A spec
+	// that already exists returns without reaching a model at all.
 	//
 	// No DTO mirror for the spec: viewspec is outside internal/ and
 	// both sides import it, so it crosses untranslated.
@@ -124,15 +124,13 @@ type PreJudgment struct {
 type RenderKind string
 
 const (
-	KindInline  RenderKind = "inline_short"
-	KindLog     RenderKind = "scrollable_log"
+	KindText    RenderKind = "plain_text"
 	KindTable   RenderKind = "table"
 	KindFiles   RenderKind = "file_listing"
 	KindContent RenderKind = "file_content"
 	KindError   RenderKind = "error_text"
 	KindDiff    RenderKind = "diff"
 	KindJSON    RenderKind = "structured_json"
-	KindQuiet   RenderKind = "quiet_progress"
 )
 
 // PostJudgment classifies a finished command for rendering.

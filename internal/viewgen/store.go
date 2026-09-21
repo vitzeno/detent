@@ -14,7 +14,7 @@ import (
 // hand is the payoff for caching one at all, and /view edit opens it.
 type Store struct{ Dir string }
 
-// Load returns the cached spec for key. A missing or unreadable file
+// Load returns the saved spec for key. A missing or unreadable file
 // is a miss, never an error: the worst case is generating again.
 func (s *Store) Load(key string) (*viewspec.Spec, bool) {
 	if s == nil || s.Dir == "" {
@@ -37,7 +37,7 @@ func (s *Store) Save(key string, spec *viewspec.Spec) error {
 		return nil
 	}
 	if err := os.MkdirAll(s.Dir, 0o755); err != nil {
-		return fmt.Errorf("viewgen: cache dir: %w", err)
+		return fmt.Errorf("viewgen: spec dir: %w", err)
 	}
 	raw, err := json.MarshalIndent(spec, "", "  ")
 	if err != nil {

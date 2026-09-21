@@ -14,12 +14,14 @@ import (
 )
 
 // TestRenderKindCriteria_AreStructured guards against render_kind's
-// criteria quietly flattening back to plain strings — a calibration
-// regression this project already hit once with nine options.
+// criteria quietly flattening back to plain strings, a calibration
+// regression this project already hit once. Seven kinds now: three
+// that differed only by how long the output ran became one, since the
+// viewport scrolls whatever it is handed.
 func TestRenderKindCriteria_AreStructured(t *testing.T) {
 	q := postQuestions()["render_kind"]
 	require.NotNil(t, q.Choice)
-	wantKinds := []string{KindInline, KindQuiet, KindLog, KindTable, KindFiles, KindContent, KindError, KindDiff, KindJSON}
+	wantKinds := []string{KindText, KindTable, KindFiles, KindContent, KindError, KindDiff, KindJSON}
 	require.Len(t, q.Choice.Criteria, len(wantKinds))
 	for _, kind := range wantKinds {
 		v, ok := q.Choice.Criteria[kind]
@@ -84,7 +86,7 @@ func TestRunGoal_HeuristicPostAttached(t *testing.T) {
 	require.NotNil(t, res.Commands[0].Post)
 	assert.False(t, res.Commands[0].Post.FromJudge)
 	assert.Equal(t, StatusClean, res.Commands[0].Post.Status)
-	assert.Equal(t, KindInline, res.Commands[0].Post.RenderKind)
+	assert.Equal(t, KindText, res.Commands[0].Post.RenderKind)
 }
 
 type batchJudge struct {
@@ -128,7 +130,7 @@ func TestDriver_FullBatchFlowsThrough(t *testing.T) {
 		Runners: SingleRunner{Runner: okRun(host.Result{Stdout: "a\n"})},
 		Judge: &batchJudge{
 			preMutability: MutReadOnly, preRisk: 0.1,
-			status: StatusClean, kind: KindInline, attention: 0.2, achieved: 0.9,
+			status: StatusClean, kind: KindText, attention: 0.2, achieved: 0.9,
 		},
 	}
 
@@ -157,7 +159,7 @@ func TestDriver_FullBatchFlowsThrough(t *testing.T) {
 	require.NotNil(t, ec.Post)
 	assert.True(t, ec.Post.FromJudge)
 	assert.Equal(t, StatusClean, ec.Post.Status)
-	assert.Equal(t, KindInline, ec.Post.RenderKind)
+	assert.Equal(t, KindText, ec.Post.RenderKind)
 	assert.Equal(t, 0.9, ec.Post.GoalAchieved)
 	assert.Equal(t, MutReadOnly, confirmedReq.Mutability)
 }
@@ -178,6 +180,6 @@ func TestHeuristicPost_Table(t *testing.T) {
 	assert.Equal(t, StatusFailed, heuristicPost(resultView{ExitCode: 1, Lines: 3}).Status)
 	assert.Equal(t, KindError, heuristicPost(resultView{ExitCode: 1}).RenderKind)
 	assert.Equal(t, StatusEmpty, heuristicPost(resultView{Lines: 0}).Status)
-	assert.Equal(t, KindInline, heuristicPost(resultView{Lines: 5}).RenderKind)
-	assert.Equal(t, KindLog, heuristicPost(resultView{Lines: 50}).RenderKind)
+	assert.Equal(t, KindText, heuristicPost(resultView{Lines: 5}).RenderKind)
+	assert.Equal(t, KindText, heuristicPost(resultView{Lines: 50}).RenderKind)
 }

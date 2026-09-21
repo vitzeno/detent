@@ -7,15 +7,18 @@ import "github.com/vitzeno/detent/viewspec"
 // the criteria Jev classifies by, the widgets a generated view may
 // draw from, and whether a view is worth generating at all.
 const (
-	KindInline  = "inline_short"
-	KindLog     = "scrollable_log"
+	// KindText is any unstructured text read top to bottom. It covers
+	// what used to be three kinds split by length: the viewport scrolls
+	// whatever it is given, so how long the output runs never decided
+	// how to draw it, and asking Jev to tell three of those apart cost
+	// calibration on the distinctions that matter.
+	KindText    = "plain_text"
 	KindTable   = "table"
 	KindFiles   = "file_listing"
 	KindContent = "file_content"
 	KindError   = "error_text"
 	KindDiff    = "diff"
 	KindJSON    = "structured_json"
-	KindQuiet   = "quiet_progress"
 )
 
 // Kind describes one output shape.
@@ -38,24 +41,10 @@ type Kind struct {
 
 var kinds = []Kind{
 	{
-		Name:     KindInline,
-		What:     "a few short lines that fit inline under the command, naturally brief rather than truncated",
-		NotFor:   "a long-running command that happened to print little, which is quiet_progress",
-		Examples: []string{"pwd", "echo done", "git rev-parse HEAD"},
-		Widgets:  []string{"log", "keyvalue", "text"},
-	},
-	{
-		Name:     KindQuiet,
-		What:     "a long-running or build-like command that printed almost nothing, where one line suffices",
-		NotFor:   "a command that is always brief, which is inline_short even when it is also quick",
-		Examples: []string{"npm install with a minimal log", "a background service start"},
-		Widgets:  []string{"log", "meter", "text"},
-	},
-	{
-		Name:     KindLog,
-		What:     "a long log, listing or build output, read top to bottom for events over time",
-		NotFor:   "a file's own prose or code body, which is file_content, or output whose point is one failure, which is error_text",
-		Examples: []string{"go test ./... output", "a docker build log", "tail -n 200 app.log"},
+		Name:     KindText,
+		What:     "unstructured text, read top to bottom: logs, build output, a few lines of status",
+		NotFor:   "text with a shape worth drawing: aligned columns, a listing, a diff, JSON, or a failure",
+		Examples: []string{"go test ./... output", "a docker build log", "pwd", "npm install"},
 		Widgets:  []string{"log", "errors", "table", "meter", "badges", "text", viewspec.RowKind},
 		Generate: true,
 	},
@@ -86,7 +75,7 @@ var kinds = []Kind{
 	{
 		Name:     KindError,
 		What:     "an error, traceback or compiler complaint that is the command's whole point",
-		NotFor:   "a log that merely contains some warnings among normal output, which is scrollable_log",
+		NotFor:   "text that merely contains some warnings among normal output, which is plain_text",
 		Examples: []string{"a failed build's compiler error", "a stack trace", "command not found"},
 		Widgets:  []string{"errors", "log", "text"},
 		Generate: true,

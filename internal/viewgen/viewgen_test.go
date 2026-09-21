@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,7 +18,19 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-const goTest = "ok  \tgithub.com/x/a\t0.412s\nFAIL\tgithub.com/x/b\t1.203s\n"
+// Long enough to be worth a model call: a handful of lines is not,
+// whatever shape it is.
+var goTest = func() string {
+	out := ""
+	for i := range 10 {
+		status := "ok  "
+		if i == 3 {
+			status = "FAIL"
+		}
+		out += fmt.Sprintf("%s\tgithub.com/x/p%02d\t%d.412s\n", status, i, i)
+	}
+	return out
+}()
 
 const goodSpec = `{"version":1,"match":"","parse":{"kind":"lines",
 "pattern":"^(?P<status>ok|FAIL)\\s+(?P<pkg>\\S+)\\s+(?P<secs>[\\d.]+)s"},
@@ -54,9 +67,9 @@ func (j *fakeJudge) Ask(context.Context, classify.State, classify.Questions) (cl
 }
 
 // An unseeded command, so the generator actually runs: anything
-// detent ships a spec for short-circuits in Cached.
+// detent ships a spec for is answered by Existing instead.
 func request() viewgen.Request {
-	return viewgen.Request{Command: "pytest -q", Output: goTest, Kind: "scrollable_log"}
+	return viewgen.Request{Command: "pytest -q", Output: goTest, Kind: "plain_text"}
 }
 
 func TestGenerate_AuthorsValidatesAndCaches(t *testing.T) {
@@ -81,7 +94,7 @@ func TestGenerate_AuthorsValidatesAndCaches(t *testing.T) {
 	again, err := g.Generate(context.Background(), request())
 	require.NoError(t, err)
 	assert.Equal(t, viewgen.SourceSaved, again.Source)
-	assert.Zero(t, again.Usage.PromptTokens, "the cost of a cached view is nothing")
+	assert.Zero(t, again.Usage.PromptTokens, "a spec that already exists costs nothing")
 	assert.Equal(t, 1, model.calls)
 }
 
@@ -131,9 +144,9 @@ func TestGenerate_JevDecidesBetweenCandidatesAndCanRejectBoth(t *testing.T) {
 	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
 }
 
-// Most steps print a few lines; a model call for those is waste.
-func TestGenerate_SkipsOutputWithNothingToGain(t *testing.T) {
-	for _, kind := range []string{"inline_short", "quiet_progress", "diff"} {
+// A diff already draws itself; there is no view to gain from one.
+func TestGenerate_SkipsShapesWithNothingToGain(t *testing.T) {
+	for _, kind := range []string{"diff"} {
 		model := &fakeModel{replies: []string{goodSpec}}
 		g := &viewgen.Generator{Model: model, Store: &viewgen.Store{Dir: t.TempDir()}}
 		req := request()
@@ -213,12 +226,12 @@ func TestStore_WritesSomethingAHumanCanEdit(t *testing.T) {
 }
 
 // Shipped specs are seeds, not defaults: an edited one on disk wins.
-func TestCached_StoreBeatsWhatWeShipped(t *testing.T) {
+func TestExisting_StoreBeatsWhatWeShipped(t *testing.T) {
 	dir := t.TempDir()
 	g := &viewgen.Generator{Store: &viewgen.Store{Dir: dir}}
-	req := viewgen.Request{Command: "go test ./...", Kind: "scrollable_log"}
+	req := viewgen.Request{Command: "go test ./...", Kind: "plain_text"}
 
-	got, ok := g.Cached(req)
+	got, ok := g.Existing(req)
 	require.True(t, ok, "a seed serves before anything is generated")
 	assert.Equal(t, viewgen.SourceShipped, got.Source)
 	assert.Len(t, got.Spec.Blocks, 2, "the shipped go test view")
@@ -228,7 +241,7 @@ func TestCached_StoreBeatsWhatWeShipped(t *testing.T) {
 		Blocks: []viewspec.Block{{Kind: "log"}}}
 	require.NoError(t, g.Store.Save(viewgen.Key(req.Command, req.Kind), edited))
 
-	got, ok = g.Cached(req)
+	got, ok = g.Existing(req)
 	require.True(t, ok)
 	assert.Equal(t, viewgen.SourceSaved, got.Source, "and says so, since it is editable")
 	assert.Len(t, got.Spec.Blocks, 1, "the human's edit wins")
@@ -238,7 +251,7 @@ func TestSeeds_AllCompileAndFitTheirOwnShape(t *testing.T) {
 	for _, command := range []string{
 		"go test ./...", "git status", "docker ps", "env", "find .", "tree", "ps",
 	} {
-		got, ok := (&viewgen.Generator{}).Cached(viewgen.Request{Command: command})
+		got, ok := (&viewgen.Generator{}).Existing(viewgen.Request{Command: command})
 		require.True(t, ok, command)
 		_, err := viewspec.Compile(*got.Spec)
 		assert.NoError(t, err, command)
@@ -267,4 +280,43 @@ func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
 				"%s narrows the vocabulary rather than offering all of it", k.Name)
 		}
 	}
+}
+
+// A shipped spec is the floor, not the ceiling: a seeded command still
+// gets the model's attempt, and only falls back when it comes to
+// nothing. Checking seeds first made those commands ungeneratable.
+func TestGenerate_AShippedSpecDoesNotShadowTheModel(t *testing.T) {
+	seeded := viewgen.Request{Command: "go test ./...", Output: goTest, Kind: "plain_text"}
+
+	model := &fakeModel{replies: []string{goodSpec}}
+	g := &viewgen.Generator{Model: model, Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
+	got, err := g.Generate(context.Background(), seeded)
+	require.NoError(t, err)
+	assert.Equal(t, viewgen.SourceGenerated, got.Source, "the model was asked")
+	assert.Positive(t, model.calls)
+
+	// When nothing generated survives, the shipped spec catches it.
+	g = &viewgen.Generator{Model: &fakeModel{replies: []string{`not a spec`}},
+		Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
+	got, err = g.Generate(context.Background(), seeded)
+	require.NoError(t, err)
+	assert.Equal(t, viewgen.SourceShipped, got.Source, "and the floor held")
+	assert.Len(t, got.Spec.Blocks, 2, "detent's own go test view")
+
+	// With no model at all, Existing is the whole of views: saved.
+	out, ok := (&viewgen.Generator{}).Existing(seeded)
+	require.True(t, ok)
+	assert.Equal(t, viewgen.SourceShipped, out.Source)
+}
+
+// Length is a property of the output, not of its shape, so it gates
+// the model call rather than hiding inside a render kind.
+func TestGenerate_ShortOutputIsNotWorthAModelCall(t *testing.T) {
+	model := &fakeModel{replies: []string{goodSpec}}
+	g := &viewgen.Generator{Model: model, Store: &viewgen.Store{Dir: t.TempDir()}}
+
+	_, err := g.Generate(context.Background(), viewgen.Request{
+		Command: "pytest -q", Output: "2 passed\n", Kind: "plain_text"})
+	assert.ErrorIs(t, err, viewgen.ErrNotWorth)
+	assert.Zero(t, model.calls, "and it never asks")
 }

@@ -149,7 +149,7 @@ func TestUI_ExpandedRowsCannotPushOutSessionBar(t *testing.T) {
 		steps = append(steps, &stepRow{command: "cmd", cmd: cmdState{
 			ec: &ExecutedCommand{
 				Result: Result{Stdout: "out\n"},
-				Post:   &PostJudgment{RenderKind: KindInline},
+				Post:   &PostJudgment{RenderKind: KindText},
 			},
 			expanded: true,
 		}})
@@ -170,7 +170,7 @@ func TestUI_WideLinesCannotPushOutSessionBar(t *testing.T) {
 	for range 30 {
 		steps = append(steps, &stepRow{command: "cmd " + wide, cmd: cmdState{ec: &ExecutedCommand{
 			Result: Result{Stdout: wide + "\n"},
-			Post:   &PostJudgment{RenderKind: KindLog},
+			Post:   &PostJudgment{RenderKind: KindText},
 		}}})
 	}
 	m.blocks = []*goalBlock{{goal: "g", steps: steps}}

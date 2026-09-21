@@ -216,15 +216,13 @@ func TestResolver_TrackerAndSnapshot(t *testing.T) {
 // so this is the only place the two can be checked against each other.
 func TestRenderKinds_UIMirrorsTheOneDefinition(t *testing.T) {
 	mirror := map[string]ui.RenderKind{
-		agent.KindInline:  ui.KindInline,
-		agent.KindLog:     ui.KindLog,
+		agent.KindText:    ui.KindText,
 		agent.KindTable:   ui.KindTable,
 		agent.KindFiles:   ui.KindFiles,
 		agent.KindContent: ui.KindContent,
 		agent.KindError:   ui.KindError,
 		agent.KindDiff:    ui.KindDiff,
 		agent.KindJSON:    ui.KindJSON,
-		agent.KindQuiet:   ui.KindQuiet,
 	}
 	require.Len(t, mirror, len(viewgen.Kinds()),
 		"every kind viewgen defines has a ui constant")

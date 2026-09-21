@@ -3,9 +3,9 @@ package viewgen
 import "github.com/vitzeno/detent/viewspec"
 
 // Specs that ship with detent, keyed by command shape. They are seeds
-// rather than defaults: Cached looks in the store first, so a spec the
-// human has edited beats the one we shipped, and a generated one beats
-// nothing at all.
+// rather than defaults: the store is read first, so a spec the human
+// has edited wins, and Generate asks the model before falling back
+// here, so a shipped spec is a floor rather than a ceiling.
 var seeds = map[string]viewspec.Spec{
 	"go test": {
 		Version: viewspec.Version,

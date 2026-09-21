@@ -371,8 +371,10 @@ routing     →  agent, sandbox
   because it is detent's own and has nothing to disclose. The pane always
   draws from a spec, so there is no "off": `views: saved` draws only
   from specs that already exist, `views: generate` also authors one
-  when nothing covers the output. Only `generate` writes to the cache,
-  which is why `saved` alone leaves it empty. See
+  when nothing covers the output. Only `generate` ever writes a spec,
+  which is why `saved` alone never grows the set. `Generate` asks the
+  model before falling back to a shipped spec, so shipping one is a
+  floor rather than a ceiling. See
   `docs/design/viewspec.md`.
 
   **There is one render path.** `ui/views.go`'s `specChain` tries, in

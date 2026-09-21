@@ -1,6 +1,6 @@
-// Package viewgen generates a viewspec.Spec for a command's output:
-// the model authors it, Jev verifies it, and the result is cached by
-// command shape so the cost falls to nothing on the second run.
+// Package viewgen produces a viewspec.Spec for a command's output:
+// the model authors it, Jev verifies it, and the result is saved
+// under the command's shape so the second run costs nothing.
 package viewgen
 
 import (
@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/usage"
@@ -27,62 +28,81 @@ type Generator struct {
 }
 
 // Generate authors a spec for req, verifies it against the output that
-// actually came out, and caches it. Cached specs short-circuit.
+// actually came out, and caches it.
+//
+// Order matters: disk, then the model, then what detent ships. A
+// shipped spec is the floor and not the ceiling, so a seeded command
+// still gets a model's attempt. Checking seeds first made those
+// commands permanently ungeneratable, and the only way to override one
+// was to hand-write a file at a hashed key.
 func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
 	if g.Model == nil {
 		return Result{}, errors.New("viewgen: no Model wired")
 	}
-	if !worthGenerating(req.Kind) {
+	key := Key(req.Command, req.Kind)
+	if spec, ok := g.Store.Load(key); ok {
+		return Result{Spec: spec, Key: key, Source: SourceSaved}, nil
+	}
+
+	total, best, bestFit := usage.Usage{}, (*viewspec.Spec)(nil), -1.0
+	if g.worthAsking(req) {
+		reg := prune(g.registry(), req.Kind)
+		schema := reg.Schema()
+		user := userPrompt(req)
+		for range g.candidates() {
+			raw, used, err := g.Model.Structured(ctx, systemPrompt, user, schema)
+			total = add(total, used)
+			if err != nil {
+				continue
+			}
+			spec, bound, err := validate(raw, reg, req.Output)
+			if err != nil {
+				continue
+			}
+			fit := 1.0
+			if g.Judge != nil {
+				fit, used = g.fit(ctx, req, spec, bound)
+				total = add(total, used)
+			}
+			if fit > bestFit {
+				best, bestFit = spec, fit
+			}
+		}
+	}
+	if best != nil && bestFit >= g.threshold() {
+		best.Version = viewspec.Version
+		best.Match = Normalise(req.Command)
+		if err := g.Store.Save(key, best); err != nil {
+			return Result{Usage: total}, err
+		}
+		return Result{Spec: best, Key: key, Source: SourceGenerated, Fit: bestFit, Usage: total}, nil
+	}
+	if spec, ok := seed(req.Command); ok {
+		return Result{Spec: spec, Key: key, Source: SourceShipped, Usage: total}, nil
+	}
+	if !g.worthAsking(req) {
 		return Result{}, ErrNotWorth
 	}
-	if out, ok := g.Cached(req); ok {
-		return out, nil
-	}
-
-	reg := prune(g.registry(), req.Kind)
-	schema := reg.Schema()
-	user := userPrompt(req)
-
-	var total usage.Usage
-	var best *viewspec.Spec
-	bestFit := -1.0
-	for range g.candidates() {
-		raw, used, err := g.Model.Structured(ctx, systemPrompt, user, schema)
-		total = add(total, used)
-		if err != nil {
-			continue
-		}
-		spec, bound, err := validate(raw, reg, req.Output)
-		if err != nil {
-			continue
-		}
-		fit := 1.0
-		if g.Judge != nil {
-			fit, used = g.fit(ctx, req, spec, bound)
-			total = add(total, used)
-		}
-		if fit > bestFit {
-			best, bestFit = spec, fit
-		}
-	}
-	if best == nil || bestFit < g.threshold() {
-		return Result{Usage: total}, ErrNoneFit
-	}
-
-	key := Key(req.Command, req.Kind)
-	best.Version = viewspec.Version
-	best.Match = Normalise(req.Command)
-	if err := g.Store.Save(key, best); err != nil {
-		return Result{Usage: total}, err
-	}
-	return Result{Spec: best, Key: key, Source: SourceGenerated, Fit: bestFit, Usage: total}, nil
+	return Result{Usage: total}, ErrNoneFit
 }
 
-// Cached returns a spec without calling anything: the store first,
-// then what detent ships. Store first so a spec the human has edited
-// beats the one we shipped, which is the whole reason a cached spec
-// is a file rather than a row.
-func (g *Generator) Cached(req Request) (Result, bool) {
+// worthAsking reports whether this output earns a model call. Shape
+// decides most of it; length decides the rest, because a handful of
+// lines has no view worth paying for whatever shape it is.
+func (g *Generator) worthAsking(req Request) bool {
+	if !worthGenerating(req.Kind) {
+		return false
+	}
+	return strings.Count(strings.TrimSuffix(req.Output, "\n"), "\n")+1 >= MinLinesToGenerate
+}
+
+// Existing returns a spec that is already written, without calling
+// anything: the store first, then what detent ships. Store first so a
+// spec the human has edited beats the one we shipped, which is the
+// whole reason a saved spec is a file rather than a row.
+//
+// This is the entirety of views: saved.
+func (g *Generator) Existing(req Request) (Result, bool) {
 	key := Key(req.Command, req.Kind)
 	if spec, ok := g.Store.Load(key); ok {
 		return Result{Spec: spec, Key: key, Source: SourceSaved}, true
@@ -128,6 +148,12 @@ const DefaultCandidates = 2
 
 // DefaultFitThreshold is the Jev score a spec must reach to be kept.
 const DefaultFitThreshold = 0.5
+
+// MinLinesToGenerate is the output below which no view is worth a
+// model call. Length used to live inside render_kind as inline_short;
+// it belongs here, because it is a property of the output rather than
+// of its shape.
+const MinLinesToGenerate = 8
 
 // ErrNotWorth means this output has no view worth a model call: a few
 // lines, or a shape already drawn well. Not a failure.
