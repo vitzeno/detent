@@ -2,27 +2,19 @@ package ui
 
 import (
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/vitzeno/detent/ui/tabular"
 )
 
 // Where a keystroke moves things: the history cursor, the output
 // pane's own scroll, and which zone has focus. keys.go decides what a
 // key means; this decides what it does.
 
-// outputNav moves inside the detail component: the table cursor for
-// tabular rows, viewport lines otherwise.
+// outputNav moves inside the detail component: the view's own
+// selection when it draws one, viewport lines otherwise.
 func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
 	if r := m.focused(); r != nil && !r.cmd.running {
 		if b, ok := boundView(r); ok {
 			if n, ok := b.SelectableRows(); ok && n > 0 {
 				r.cmd.tableCursor = min(max(r.cmd.tableCursor+d, 0), n-1)
-				return m, nil
-			}
-		}
-		if src, ok := r.tableText(); ok {
-			if _, rows, ok := tabular.Parse(src, m.output.Width()); ok && len(rows) > 0 {
-				r.cmd.tableCursor = min(max(r.cmd.tableCursor+d, 0), len(rows)-1)
 				return m, nil
 			}
 		}

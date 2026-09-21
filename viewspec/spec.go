@@ -39,6 +39,11 @@ type Row map[string]string
 type Data struct {
 	Rows []Row
 	Raw  string
+	// Columns names the row keys in the order the parse produced them,
+	// with the spelling the output used — neither of which a Row (a
+	// map of lowercased keys) can carry. A table with no Columns of
+	// its own draws these.
+	Columns []Column
 }
 
 // Block configures one widget. Kind decides which fields are read; the

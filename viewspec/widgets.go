@@ -1,8 +1,10 @@
 package viewspec
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -25,6 +27,8 @@ var standard = func() *Registry {
 	must(r.Widget("meter", meterWidget{}))
 	must(r.Widget("badges", badgesWidget{}))
 	must(r.Widget("log", rawWidget{mode: "log"}))
+	must(r.Widget("errors", rawWidget{mode: "errors"}))
+	must(r.Widget("json", rawWidget{mode: "json"}))
 	must(r.Widget("diff", rawWidget{mode: "diff"}))
 	must(r.Widget("code", rawWidget{mode: "code"}))
 	return r
@@ -54,9 +58,6 @@ func (textWidget) Draw(b Block, _ Data, f Frame) ([]string, error) {
 type tableWidget struct{}
 
 func (tableWidget) Validate(b Block, fields []string) error {
-	if len(b.Columns) == 0 {
-		return fmt.Errorf("table needs columns")
-	}
 	if len(fields) == 0 {
 		return ErrNoRows
 	}
@@ -69,15 +70,19 @@ func (tableWidget) Validate(b Block, fields []string) error {
 }
 
 func (tableWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
-	widths := fitColumns(b.Columns, d.Rows, f.Width, f.Paint)
-	head := make([]string, len(b.Columns))
-	for i, c := range b.Columns {
+	cols := tableColumns(b, d)
+	if len(cols) == 0 {
+		return nil, fmt.Errorf("no columns to draw")
+	}
+	widths := fitColumns(cols, d.Rows, f.Width, f.Paint)
+	head := make([]string, len(cols))
+	for i, c := range cols {
 		head[i] = pad(f.Paint.Truncate(c.title(), widths[i]), widths[i], f.Paint)
 	}
 	lines := []string{f.Paint.Paint(RoleHeading, strings.Join(head, " "))}
 	for i, r := range d.Rows {
-		cells := make([]string, len(b.Columns))
-		for j, c := range b.Columns {
+		cells := make([]string, len(cols))
+		for j, c := range cols {
 			cells[j] = pad(f.Paint.Truncate(r[c.Field], widths[j]), widths[j], f.Paint)
 		}
 		line := strings.Join(cells, " ")
@@ -230,6 +235,16 @@ func (badgesWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return []string{strings.Join(parts, "  ")}, nil
 }
 
+// tableColumns is the block's own columns, or every parsed field in
+// source order when it names none — which is what lets one table spec
+// serve output whose columns aren't known until it is parsed.
+func tableColumns(b Block, d Data) []Column {
+	if len(b.Columns) > 0 {
+		return b.Columns
+	}
+	return d.Columns
+}
+
 // rawWidget draws bytes: a log verbatim, a diff classified, code with
 // a line gutter. It reads no fields, so it works under any parse.
 type rawWidget struct{ mode string }
@@ -237,7 +252,13 @@ type rawWidget struct{ mode string }
 func (rawWidget) Validate(Block, []string) error { return nil }
 
 func (w rawWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
-	src := splitLines(d.Raw)
+	body := d.Raw
+	if w.mode == "json" {
+		if pretty, ok := indentJSON(body); ok {
+			body = pretty
+		}
+	}
+	src := splitLines(body)
 	if f.Height > 0 && len(src) > f.Height {
 		src = src[len(src)-f.Height:]
 	}
@@ -246,6 +267,8 @@ func (w rawWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		switch w.mode {
 		case "diff":
 			out = append(out, f.Paint.Paint(diffRole(l), f.Paint.Truncate(l, f.Width)))
+		case "errors":
+			out = append(out, f.Paint.Paint(severityRole(l), f.Paint.Truncate(l, f.Width)))
 		case "code":
 			gutter := f.Paint.Paint(RoleFaint, fmt.Sprintf("%4d ", i+1))
 			out = append(out, gutter+f.Paint.Truncate(l, max(1, f.Width-5)))
@@ -272,6 +295,40 @@ func diffRole(l string) Role {
 		return RoleMuted
 	}
 	return RoleDefault
+}
+
+var (
+	errorLine   = regexp.MustCompile(`(?i)\b(error|fail|panic|traceback|exception)\b`)
+	warningLine = regexp.MustCompile(`(?i)\b(warn(ing)?|deprecat|retry)\b`)
+)
+
+// severityRole colours whole lines, not matches: a traceback reads as
+// a unit, and half-painted lines read as noise.
+func severityRole(l string) Role {
+	switch {
+	case errorLine.MatchString(l):
+		return RoleDanger
+	case warningLine.MatchString(l):
+		return RoleCaution
+	}
+	return RoleDefault
+}
+
+// indentJSON pretty-prints valid JSON; anything else passes through.
+func indentJSON(s string) (string, bool) {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return "", false
+	}
+	var v any
+	if err := json.Unmarshal([]byte(trimmed), &v); err != nil {
+		return "", false
+	}
+	out, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return "", false
+	}
+	return string(out), true
 }
 
 // checkShared validates the bindings any row widget may carry.

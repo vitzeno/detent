@@ -22,13 +22,17 @@ ok  	github.com/x/c	9.500s
 // rowFor builds a finished command row focused in the output pane,
 // which is the only state a view is ever drawn in.
 func rowFor(command, stdout string) Model {
+	return rowForKind(command, stdout, KindLog)
+}
+
+func rowForKind(command, stdout string, kind RenderKind) Model {
 	m := testUIModel()
 	m.blocks = []*goalBlock{{goal: "g", steps: []*stepRow{{
 		command: command,
 		cmd: cmdState{ec: &ExecutedCommand{
 			Command: command,
 			Result:  Result{Stdout: stdout},
-			Post:    &PostJudgment{RenderKind: KindLog},
+			Post:    &PostJudgment{RenderKind: kind},
 		}},
 	}}}}
 	m.nav.focus = focusOutput
@@ -83,26 +87,42 @@ func TestViews_PsRendersThroughViewspec(t *testing.T) {
 	assert.Contains(t, got[2], "vim")
 }
 
-// A view is a lens, never a replacement: anything that doesn't resolve
-// leaves the render_kind path exactly as it was.
+// A view is a lens, never a replacement. There is one render path
+// now, so "falling back" means landing on a plainer spec — never an
+// empty pane, and never a view that outran its data.
 func TestViews_FallBackRatherThanRenderWrong(t *testing.T) {
 	tests := []struct {
 		name    string
 		command string
 		stdout  string
+		want    []string
 	}{
-		{"no spec for this command", "curl https://example.com", "hello\n"},
-		{"spec exists but the output does not match", "go test ./...", "no packages found\n"},
-		{"a multiplexer subcommand with no spec", "go build ./...", "some output\n"},
+		{"no spec for this command", "curl https://example.com", "hello\n",
+			[]string{"hello"}},
+		{"spec exists but the output does not match", "go test ./...",
+			"no packages found\n", []string{"no packages found"}},
+		{"a multiplexer subcommand with no spec", "go build ./...",
+			"some output\n", []string{"some output"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			m := rowFor(tc.command, tc.stdout)
-			_, ok := m.viewBody(m.blocks[0].steps[0])
-			assert.False(t, ok, "must fall through to render_kind")
-			assert.NotEmpty(t, plainLines(m), "the pane still draws")
+			assert.Equal(t, tc.want, plainLines(rowFor(tc.command, tc.stdout)))
 		})
 	}
+}
+
+// A command-keyed spec that doesn't fit this output drops to the
+// judged kind, not all the way to raw bytes.
+func TestViews_MismatchedSpecFallsToTheJudgedKind(t *testing.T) {
+	m := rowForKind("ps aux", "USER PID COMMAND\nroot 1 init\nmo 4821 node server.js\n", KindTable)
+	got := plainLines(m)
+	require.Len(t, got, 3)
+	assert.Equal(t, "USER PID COMMAND", strings.Join(strings.Fields(got[0]), " "),
+		"the generic table spec, since ps's own wanted a tty column")
+
+	n, ok := m.blocks[0].steps[0].cmd.view.SelectableRows()
+	require.True(t, ok, "and it is still navigable")
+	assert.Equal(t, 2, n)
 }
 
 func TestViews_BindIsAttemptedOnce(t *testing.T) {

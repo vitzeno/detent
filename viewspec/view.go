@@ -156,6 +156,7 @@ func (c *Compiled) Bind(output string) (*Bound, error) {
 		return nil, fmt.Errorf("viewspec: parse %q: %w", c.spec.Parse.Kind, err)
 	}
 	fields := fieldsOf(rows)
+	ordered := orderedColumns(c.ext, fields)
 	out := &Bound{c: c, raw: output, fields: fields}
 	for i, b := range c.spec.Blocks {
 		w, _ := c.reg.widget(b.Kind)
@@ -173,7 +174,8 @@ func (c *Compiled) Bind(output string) (*Bound, error) {
 		if err != nil {
 			return nil, &BindError{Block: i, Kind: b.Kind, Err: err}
 		}
-		out.blocks = append(out.blocks, boundBlock{block: b, w: w, data: Data{Rows: sel, Raw: output}})
+		out.blocks = append(out.blocks, boundBlock{block: b, w: w,
+			data: Data{Rows: sel, Raw: output, Columns: ordered}})
 	}
 	return out, nil
 }
@@ -204,7 +206,7 @@ func (b *Bound) Draw(f Frame) (Render, error) {
 		if err != nil {
 			return Render{}, &BindError{Block: i, Kind: bb.block.Kind, Err: err}
 		}
-		if bb.block.OnEnter != "" && out.CursorLine < 0 {
+		if out.CursorLine < 0 {
 			if s, ok := bb.w.(Selector); ok {
 				if n := s.CursorLine(bb.block, bb.data, f); n >= 0 {
 					out.CursorLine = len(out.Lines) + n
@@ -224,7 +226,7 @@ func (b *Bound) Draw(f Frame) (Render, error) {
 // is.
 func (b *Bound) Action(f Frame) (string, bool) {
 	bb, ok := b.selectable()
-	if !ok || f.Cursor < 0 || f.Cursor >= len(bb.data.Rows) {
+	if !ok || bb.block.OnEnter == "" || f.Cursor < 0 || f.Cursor >= len(bb.data.Rows) {
 		return "", false
 	}
 	out, err := substitute(bb.block.OnEnter, bb.data.Rows[f.Cursor])
@@ -244,16 +246,30 @@ func (b *Bound) SelectableRows() (int, bool) {
 	return len(bb.data.Rows), true
 }
 
-// selectable is the block the cursor addresses. v1 takes the first one
-// carrying on_enter; a view wanting two interactive blocks needs
-// Frame.Cursor to become a (block, row) pair.
+// selectable is the block the cursor addresses: the first whose widget
+// draws one. Having a cursor and having an action are separate things
+// — a table is worth navigating even when nothing can be run from it,
+// which is why this asks the widget rather than looking at on_enter.
+//
+// v1 takes the first such block; a view wanting two navigable blocks
+// needs Frame.Cursor to become a (block, row) pair.
 func (b *Bound) selectable() (boundBlock, bool) {
+	var first boundBlock
+	found := false
 	for _, bb := range b.blocks {
+		if _, ok := bb.w.(Selector); !ok {
+			continue
+		}
+		// One that can be acted on wins over one that can only be
+		// read, however they are ordered.
 		if bb.block.OnEnter != "" {
 			return bb, true
 		}
+		if !found {
+			first, found = bb, true
+		}
 	}
-	return boundBlock{}, false
+	return first, found
 }
 
 // selectRows applies a block's Where filter then its Sort. Both are
@@ -306,6 +322,36 @@ func cmpFloat(a, b float64) int {
 		return 1
 	}
 	return 0
+}
+
+// orderedColumns prefers the extractor's own order and spelling,
+// keeping only what the rows actually produced. Alphabetical by key is
+// the fallback: defined, but rarely the order the output meant.
+func orderedColumns(ext Extractor, present []string) []Column {
+	plain := func(fields []string) []Column {
+		out := make([]Column, len(fields))
+		for i, f := range fields {
+			out[i] = Column{Field: f}
+		}
+		return out
+	}
+	co, ok := ext.(ColumnOrder)
+	if !ok {
+		return plain(present)
+	}
+	var out []Column
+	seen := map[string]bool{}
+	for _, c := range co.Columns() {
+		if slices.Contains(present, c.Field) && !seen[c.Field] {
+			out, seen[c.Field] = append(out, c), true
+		}
+	}
+	for _, f := range present {
+		if !seen[f] {
+			out = append(out, Column{Field: f})
+		}
+	}
+	return out
 }
 
 func fieldsOf(rows []Row) []string {

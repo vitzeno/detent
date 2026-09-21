@@ -7,9 +7,6 @@ import (
 
 	"github.com/vitzeno/detent/ui/editor"
 	"github.com/vitzeno/detent/ui/layout"
-	"github.com/vitzeno/detent/ui/markdown"
-	"github.com/vitzeno/detent/ui/render"
-	"github.com/vitzeno/detent/ui/tabular"
 	"github.com/vitzeno/detent/ui/welcome"
 	"github.com/vitzeno/detent/viewspec"
 )
@@ -42,9 +39,6 @@ func (m Model) detailLines() []string {
 		case "help":
 			return helpLines()
 		}
-	}
-	if t, ok := m.focusedTable(); ok {
-		return strings.Split(t, "\n")
 	}
 	return strings.Split(m.output.View(), "\n")
 }
@@ -112,23 +106,6 @@ func (m Model) editorLines(e *editor.Model) []string {
 	return lines
 }
 
-// focusedTable falls back (ok=false) when the output won't parse — a
-// wrong component is worse than a plain viewport.
-func (m Model) focusedTable() (string, bool) {
-	r := m.focused()
-	src, ok := r.tableText()
-	if !ok {
-		return "", false
-	}
-	cols, rows, ok := tabular.Parse(src, m.output.Width())
-	if !ok || len(rows) == 0 {
-		return "", false
-	}
-	cursor := min(r.cmd.tableCursor, len(rows)-1)
-	t := tabular.Build(cols, rows, cursor, m.output.Height(), m.output.Width(), m.nav.focus == focusOutput)
-	return t.View(), true
-}
-
 func (m *Model) refreshViewport() {
 	t0 := time.Now()
 	defer func() {
@@ -151,11 +128,11 @@ func (m *Model) refreshViewport() {
 	case r.cmd.running:
 		body = strings.Join(r.cmd.live, "\n")
 	case r.cmd.ec != nil:
-		if rendered, ok := m.viewBody(r); ok {
-			body, cursor = strings.Join(rendered.Lines, "\n"), rendered.CursorLine
-		} else {
-			body = m.styledBody(r)
+		rendered, ok := m.viewBody(r)
+		if !ok {
+			break
 		}
+		body, cursor = strings.Join(rendered.Lines, "\n"), rendered.CursorLine
 	}
 	if body == "" {
 		m.setViewContent(styleFaint.Render("(no output)"))
@@ -168,57 +145,6 @@ func (m *Model) refreshViewport() {
 	if cursor >= 0 {
 		m.scrollToLine(cursor)
 	}
-}
-
-// styledBody renders per judged kind, capped to maxViewportLines.
-// Unknown kinds render raw.
-func (m *Model) styledBody(r *stepRow) string {
-	combined := r.cmd.ec.Result.Stdout
-	if r.cmd.ec.Result.Stderr != "" {
-		if combined != "" && !strings.HasSuffix(combined, "\n") {
-			combined += "\n"
-		}
-		combined += r.cmd.ec.Result.Stderr
-	}
-	lines := strings.Split(strings.TrimSuffix(combined, "\n"), "\n")
-	switch rowKind(r) {
-	case KindError:
-		for i, l := range lines {
-			lines[i] = render.ErrorLine(l)
-		}
-	case KindDiff:
-		for i, l := range lines {
-			lines[i] = render.DiffLine(l)
-		}
-	case KindJSON:
-		if pretty, ok := render.JSON(combined); ok {
-			lines = strings.Split(pretty, "\n")
-		}
-	case KindContent:
-		if markdown.Wants(r.command, combined) {
-			lines = strings.Split(m.markdownBody(r, combined), "\n")
-		} else {
-			lines = render.NumberLines(lines)
-		}
-	}
-	if len(lines) > maxViewportLines {
-		lines = append([]string{fmt.Sprintf("… +%d earlier lines", len(lines)-maxViewportLines)}, lines[len(lines)-maxViewportLines:]...)
-	}
-	return strings.Join(lines, "\n")
-}
-
-// markdownBody caches by width — a re-render per frame would churn on
-// every scroll tick.
-func (m *Model) markdownBody(r *stepRow, combined string) string {
-	if r.cmd.styled == "" || r.cmd.styledWidth != m.output.Width() {
-		rendered, err := markdown.Render(combined, m.output.Width())
-		if err != nil {
-			rendered = combined
-		}
-		r.cmd.styled = strings.TrimSuffix(rendered, "\n")
-		r.cmd.styledWidth = m.output.Width()
-	}
-	return r.cmd.styled
 }
 
 // welcomePane hands the boot pane the facts it reports, so nothing in

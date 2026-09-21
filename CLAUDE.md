@@ -68,7 +68,7 @@ Package dependency flow — `ui` and `agent` never import each other;
 cmd/detent  →  ui, resolver, agent, classify, config, routing, propose (Ping only)
 resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio
 ui          →  its own subpackages (editor, welcome, render, status,
-                tabular, markdown, theme, island, tree, layout) + viewspec
+                markdown, theme, island, tree, layout) + viewspec
 viewspec    →  the standard library, nothing else
 agent       →  propose, host, classify, usage
 config      →  agent, classify, propose, sandbox (for their defaults only)
@@ -327,7 +327,7 @@ routing     →  agent, sandbox
   numbers), `status` (usage/timing formatting — switches on the same
   Status*/RenderKind string values `ui.PostJudgment` carries,
   duplicated as literals rather than importing anything to get them),
-  `tabular` (ps/df/ls-shaped output), `markdown` (glamour wrapper),
+  `markdown` (glamour wrapper),
   `layout` (`Split` and `Truncate`), `theme`, `tree`, and `island`.
   Each owns its own styles off `theme` and is rebuilt by
   `ui.RefreshStyles`; `editor` wraps a `textarea` around content the
@@ -347,11 +347,22 @@ routing     →  agent, sandbox
   register them. `Registry.Schema()` describes the registered vocabulary
   as JSON Schema, so generation can't drift from what will actually
   draw. Any unresolved binding fails the **whole** view (`BindError`)
-  and the caller falls back to the `render_kind` switch — a table with
-  one silently empty column is worse than plain text. It runs nothing:
+  and the caller falls down its spec chain — a table with one silently
+  empty column is worse than plain text. It runs nothing:
   `Bound.Action` returns an `on_enter` template with `{field}`
-  substituted, and `ui` seeds the prompt with it. See
+  substituted, and `ui`'s `enter` seeds the prompt with it. See
   `docs/design/viewspec.md`.
+
+  **There is one render path.** `ui/views.go`'s `specChain` tries, in
+  order: a spec keyed to the command (`normaliseCommand`), the built-in
+  `fallbackSpecs` entry for whatever `render_kind` judged the output to
+  be, then plain bytes. So `render_kind` no longer renders anything — it
+  *chooses a prebuilt spec*, which is why `styledBody`'s switch and
+  `focusedTable` are gone. `Draw` returns a `Render` carrying
+  `CursorLine`, which `refreshViewport` uses to scroll the viewport to
+  the selection, so generated views scroll like any other output.
+  `ui/tabular` is currently unimported — it was `focusedTable`'s engine
+  and is the obvious basis for a richer registered table widget.
 
 - **`internal/usage`** — timing and token accounting (`Tracker` → `Goal` →
   `Step`), independent of everything else; `agent` attaches measurements

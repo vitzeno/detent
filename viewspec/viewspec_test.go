@@ -410,8 +410,13 @@ func TestSelectableRows_ClampsWithoutKnowingTheShape(t *testing.T) {
 	assert.Equal(t, 3, n, "counts the on_enter block's rows, not every parsed row")
 
 	spec.Blocks[1].OnEnter = ""
+	n, ok = bind(t, spec, goTest).SelectableRows()
+	assert.True(t, ok, "a list is navigable with or without an action")
+	assert.Equal(t, 3, n)
+
+	spec.Blocks = spec.Blocks[:1]
 	_, ok = bind(t, spec, goTest).SelectableRows()
-	assert.False(t, ok, "nothing takes a selection")
+	assert.False(t, ok, "a meter draws no cursor")
 }
 
 // A caller windowing a tall view has to scroll to the selection
@@ -429,15 +434,14 @@ func TestRender_ReportsWhereTheCursorLanded(t *testing.T) {
 	assert.Equal(t, 4, r.CursorLine, "one meter line, one header, then row 2")
 	assert.Contains(t, r.Lines[r.CursorLine], "github.com/x/c")
 
-	spec.Blocks[1].OnEnter = ""
-	r, err = bind(t, spec, goTest).Draw(viewspec.Frame{Width: 40, Paint: viewspec.Plain()})
-	require.NoError(t, err)
-	assert.Equal(t, -1, r.CursorLine, "nothing takes a selection")
-
-	spec.Blocks[1].OnEnter = "go test -v {pkg}"
 	r, err = bind(t, spec, goTest).Draw(viewspec.Frame{Width: 40, Cursor: 99, Paint: viewspec.Plain()})
 	require.NoError(t, err)
 	assert.Equal(t, -1, r.CursorLine, "a cursor past the rows lands nowhere")
+
+	spec.Blocks = spec.Blocks[:1]
+	r, err = bind(t, spec, goTest).Draw(viewspec.Frame{Width: 40, Paint: viewspec.Plain()})
+	require.NoError(t, err)
+	assert.Equal(t, -1, r.CursorLine, "a meter alone draws no cursor")
 }
 
 // Height 0 draws the view whole, which is what a caller scrolling it
@@ -454,4 +458,112 @@ func TestDraw_HeightZeroDrawsEverything(t *testing.T) {
 	r, err = bind(t, spec, long).Draw(viewspec.Frame{Width: 40, Height: 10, Paint: viewspec.Plain()})
 	require.NoError(t, err)
 	assert.Len(t, r.Lines, 10, "a height still bounds it")
+}
+
+// rolePainter makes roles visible to assertions, which Plain cannot —
+// it paints nothing, on purpose, so golden files stay readable.
+type rolePainter struct{ viewspec.Painter }
+
+func (p rolePainter) Paint(r viewspec.Role, s string) string { return r.String() + ":" + s }
+
+func TestErrors_ColoursWholeLinesBySeverity(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "none"},
+		Blocks: []viewspec.Block{{Kind: "errors"}}}
+	r, err := bind(t, spec, "starting up\nWARNING: deprecated flag\npanic: nil map\n").
+		Draw(viewspec.Frame{Width: 60, Paint: rolePainter{viewspec.Plain()}})
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"default:starting up",
+		"caution:WARNING: deprecated flag",
+		"danger:panic: nil map",
+	}, r.Lines, "whole lines, not matches — a traceback reads as a unit")
+}
+
+func TestJSON_IndentsWhatItCanAndPassesTheRestThrough(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "none"},
+		Blocks: []viewspec.Block{{Kind: "json"}}}
+	assert.Equal(t, []string{`{`, `  "b": 2`, `}`},
+		draw(t, spec, `{"b":2}`, 40))
+	assert.Equal(t, []string{"not json at all"},
+		draw(t, spec, "not json at all\n", 40), "invalid JSON is still shown")
+}
+
+// A table naming no columns draws every parsed field, which is what
+// lets one spec serve output whose columns are unknown until parsed.
+func TestTable_WithoutColumnsUsesTheParseOrder(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "columns", Header: true},
+		Blocks: []viewspec.Block{{Kind: "table"}}}
+	got := draw(t, spec, "ZEBRA  ALPHA  MIDDLE\n1      2      3\n", 40)
+	require.Len(t, got, 2)
+	assert.Equal(t, "ZEBRA ALPHA MIDDLE", strings.Join(strings.Fields(got[0]), " "),
+		"source order and the output's own spelling, not alphabetical keys")
+}
+
+func TestColumnOrder_SurvivesSkip(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "columns", Header: true, Skip: 1},
+		Blocks: []viewspec.Block{{Kind: "table"}}}
+	got := draw(t, spec, "banner line\nZEBRA  ALPHA\n1      2\n", 40)
+	require.Len(t, got, 2)
+	assert.Equal(t, "ZEBRA ALPHA", strings.Join(strings.Fields(got[0]), " "),
+		"the skip wrapper forwards ColumnOrder rather than swallowing it")
+}
+
+func TestLinesParse_OrdersFieldsByCapture(t *testing.T) {
+	spec := viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{{Kind: "table"}}}
+	got := draw(t, spec, goTest, 60)
+	require.NotEmpty(t, got)
+	assert.Equal(t, "status pkg secs", strings.Join(strings.Fields(got[0]), " "),
+		"left to right through the pattern")
+}
+
+// Navigable and actionable are different: the cursor moves through any
+// row widget, but enter only resolves where on_enter says what to run.
+func TestAction_NeedsOnEnterEvenWhenNavigable(t *testing.T) {
+	spec := viewspec.Spec{Parse: linesParse(),
+		Blocks: []viewspec.Block{{Kind: "list", Field: "pkg"}}}
+	b := bind(t, spec, goTest)
+
+	n, ok := b.SelectableRows()
+	require.True(t, ok)
+	assert.Equal(t, 4, n)
+
+	_, ok = b.Action(viewspec.Frame{Cursor: 0})
+	assert.False(t, ok, "nothing to activate")
+}
+
+// Row keys are lowercased so a spec can name them predictably; the
+// header a human reads keeps whatever the output called it.
+func TestColumns_KeysAreLowerAndTitlesAreNot(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "columns", Header: true},
+		Blocks: []viewspec.Block{
+			{Kind: "table"},
+			{Kind: "list", Field: "user", OnEnter: "id {user}"},
+		}}
+	b := bind(t, spec, "USER PID\nroot 1\n")
+
+	r, err := b.Draw(viewspec.Frame{Width: 40, Paint: viewspec.Plain()})
+	require.NoError(t, err)
+	assert.Contains(t, r.Lines[0], "USER", "the header is the output's")
+
+	got, ok := b.Action(viewspec.Frame{Cursor: 0})
+	require.True(t, ok, "while the spec addresses the lowercased key")
+	assert.Equal(t, "id root", got)
+}
+
+// With one cursor for the whole view, the block that can be acted on
+// gets it — however the blocks are ordered.
+func TestSelectable_PrefersTheActionableBlock(t *testing.T) {
+	spec := viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{
+		{Kind: "table", Columns: []viewspec.Column{{Field: "pkg"}}},
+		{Kind: "list", Field: "pkg", Where: "status=FAIL", OnEnter: "go test -v {pkg}"},
+	}}
+	b := bind(t, spec, goTest)
+
+	n, ok := b.SelectableRows()
+	require.True(t, ok)
+	assert.Equal(t, 1, n, "the list's one failing row, not the table's four")
+
+	got, ok := b.Action(viewspec.Frame{Cursor: 0})
+	require.True(t, ok)
+	assert.Equal(t, "go test -v github.com/x/b", got)
 }

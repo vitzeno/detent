@@ -55,9 +55,7 @@ type cmdState struct {
 	expanded  bool
 	step      StepHandle // correlates with Driver.RecordStep/JudgeResult
 
-	tableCursor int    // selected table row
-	styled      string // cached transformed output
-	styledWidth int    // viewport width the cache was built for
+	tableCursor int // the view's selected row
 
 	// view is the row's bound viewspec, resolved once; viewTried marks
 	// the attempt so a spec that doesn't fit is not retried per frame.
@@ -87,16 +85,4 @@ func rowKind(r *stepRow) RenderKind {
 		return ""
 	}
 	return r.cmd.ec.Post.RenderKind
-}
-
-// tableText is the output to render as a table, when the judge said
-// this row is one.
-func (r *stepRow) tableText() (string, bool) {
-	if rowKind(r) != KindTable {
-		return "", false
-	}
-	if r.cmd.ec.Result.Stdout != "" {
-		return r.cmd.ec.Result.Stdout, true
-	}
-	return r.cmd.ec.Result.Stderr, true
 }

@@ -17,24 +17,71 @@ import (
 // asks the registry rather than a hand-written list.
 var viewRegistry = func() *viewspec.Registry {
 	r := viewspec.Standard()
-	must(r.Widget("markdown", viewspec.WidgetFunc(drawMarkdown)))
+	must(r.Widget("markdown", &markdownWidget{}))
 	return r
 }()
 
-// drawMarkdown renders prose through glamour, which viewspec can never
-// do itself — it is a heavy dependency, and the package imports only
-// the standard library.
-func drawMarkdown(_ viewspec.Block, d viewspec.Data, f viewspec.Frame) ([]string, error) {
-	out, err := markdown.Render(d.Raw, f.Width)
-	if err != nil {
-		return strings.Split(d.Raw, "\n"), nil
+// markdownWidget renders prose through glamour, which viewspec can
+// never do itself — it is a heavy dependency, and the package imports
+// only the standard library.
+//
+// It caches its last render because Draw runs on every frame and
+// glamour is nowhere near fast enough for that. One entry is enough:
+// only the focused row is ever drawn. No lock, because Bubble Tea
+// drives Update and View from a single goroutine.
+type markdownWidget struct {
+	raw   string
+	width int
+	out   []string
+}
+
+func (w *markdownWidget) Draw(_ viewspec.Block, d viewspec.Data, f viewspec.Frame) ([]string, error) {
+	if w.out != nil && w.raw == d.Raw && w.width == f.Width {
+		return w.out, nil
 	}
-	return strings.Split(strings.TrimSuffix(out, "\n"), "\n"), nil
+	rendered, err := markdown.Render(d.Raw, f.Width)
+	if err != nil {
+		rendered = d.Raw
+	}
+	w.raw, w.width = d.Raw, f.Width
+	w.out = strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")
+	return w.out, nil
 }
 
 func must(err error) {
 	if err != nil {
 		panic(err)
+	}
+}
+
+// fallbackSpecs is what render_kind chooses from when no view is keyed
+// to the command. One block each: the nine kinds were always specs,
+// they just used to be a switch.
+var fallbackSpecs = map[RenderKind]viewspec.Spec{
+	KindInline:  rawSpec("log"),
+	KindQuiet:   rawSpec("log"),
+	KindLog:     rawSpec("log"),
+	KindError:   rawSpec("errors"),
+	KindDiff:    rawSpec("diff"),
+	KindJSON:    rawSpec("json"),
+	KindContent: rawSpec("code"),
+	KindTable: {
+		Version: viewspec.Version,
+		Parse:   viewspec.Parse{Kind: "columns", Header: true},
+		Blocks:  []viewspec.Block{{Kind: "table"}},
+	},
+	KindFiles: {
+		Version: viewspec.Version,
+		Parse:   viewspec.Parse{Kind: "lines", Pattern: `^(?P<path>\S.*)$`},
+		Blocks:  []viewspec.Block{{Kind: "list", Field: "path"}},
+	},
+}
+
+func rawSpec(kind string) viewspec.Spec {
+	return viewspec.Spec{
+		Version: viewspec.Version,
+		Parse:   viewspec.Parse{Kind: "none"},
+		Blocks:  []viewspec.Block{{Kind: kind}},
 	}
 }
 
@@ -97,18 +144,26 @@ func accentOn(field string, m map[string]viewspec.Role) *viewspec.Accent {
 	return &viewspec.Accent{Field: field, Map: m}
 }
 
-// compiled holds every hand-written spec that compiles. A spec that
-// doesn't is a programming error, but one bad entry must not take the
-// whole map with it.
-var compiled = func() map[string]*viewspec.Compiled {
-	out := map[string]*viewspec.Compiled{}
-	for key, spec := range handWritten {
+var (
+	compiled         = compileAll(handWritten)
+	compiledFallback = compileAll(fallbackSpecs)
+	compiledMarkdown = compileAll(map[string]viewspec.Spec{"m": rawSpec("markdown")})["m"]
+	// compiledPlain is the floor: raw bytes, no interpretation. Used
+	// before anything is judged, and when a fitted spec doesn't fit.
+	compiledPlain = compileAll(map[string]viewspec.Spec{"p": rawSpec("log")})["p"]
+)
+
+// compileAll drops what doesn't compile. A bad spec here is a
+// programming error, but one must not take the whole map with it.
+func compileAll[K comparable](in map[K]viewspec.Spec) map[K]*viewspec.Compiled {
+	out := make(map[K]*viewspec.Compiled, len(in))
+	for key, spec := range in {
 		if c, err := viewspec.Compile(spec, viewspec.WithRegistry(viewRegistry)); err == nil {
 			out[key] = c
 		}
 	}
 	return out
-}()
+}
 
 // multiplexers are the programs whose second word names a real
 // subcommand. Everything else keys on the program alone — "ps -U me"
@@ -142,9 +197,29 @@ func normaliseCommand(command string) string {
 	return key
 }
 
+// specChain is what a row's view is tried against, in order: a spec
+// keyed to the command, then the built-in for whatever the output was
+// judged to be, then the raw bytes. A command-keyed spec that doesn't
+// fit this particular output must fall to the judged kind, not all
+// the way to plain — "ps aux" is still a table even when the spec
+// written for "ps" wanted columns it doesn't have.
+func specChain(r *stepRow, output string) []*viewspec.Compiled {
+	var chain []*viewspec.Compiled
+	if c, ok := compiled[normaliseCommand(r.command)]; ok {
+		chain = append(chain, c)
+	}
+	kind := rowKind(r)
+	if kind == KindContent && markdown.Wants(r.command, output) {
+		chain = append(chain, compiledMarkdown)
+	}
+	if c, ok := compiledFallback[kind]; ok {
+		chain = append(chain, c)
+	}
+	return append(chain, compiledPlain)
+}
+
 // boundView resolves a row's view, binding once and caching on the row
-// — Draw runs per frame, Bind must not. A failure is remembered as a
-// miss so a spec that doesn't fit this output is tried only once.
+// — Draw runs per frame, Bind must not.
 func boundView(r *stepRow) (*viewspec.Bound, bool) {
 	if r == nil || r.cmd.running || r.cmd.ec == nil {
 		return nil, false
@@ -153,16 +228,16 @@ func boundView(r *stepRow) (*viewspec.Bound, bool) {
 		return r.cmd.view, r.cmd.view != nil
 	}
 	r.cmd.viewTried = true
-	c, ok := compiled[normaliseCommand(r.command)]
-	if !ok {
-		return nil, false
+	output := commandOutput(r.cmd.ec)
+	for _, c := range specChain(r, output) {
+		b, err := c.Bind(output)
+		if err != nil {
+			continue
+		}
+		r.cmd.view = b
+		return b, true
 	}
-	b, err := c.Bind(commandOutput(r.cmd.ec))
-	if err != nil {
-		return nil, false
-	}
-	r.cmd.view = b
-	return b, true
+	return nil, false
 }
 
 func commandOutput(ec *ExecutedCommand) string {

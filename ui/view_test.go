@@ -69,20 +69,31 @@ func TestUI_TableRendersInDetailZone(t *testing.T) {
 	assert.Contains(t, v, "table")
 }
 
-func TestUI_StyledBodyKinds(t *testing.T) {
-	m := testUIModel()
-	mk := func(kind RenderKind, out string) *stepRow {
-		return &stepRow{command: "cmd", cmd: cmdState{ec: &ExecutedCommand{
-			Result: Result{Stdout: out},
-			Post:   &PostJudgment{RenderKind: kind},
-		}}}
+// The nine kinds were always specs; they used to be a switch. Each one
+// now picks a built-in spec, so the pane has one render path.
+func TestUI_RenderKindChoosesAFallbackSpec(t *testing.T) {
+	tests := []struct {
+		name   string
+		kind   RenderKind
+		stdout string
+		want   []string
+	}{
+		{"json indents", KindJSON, `{"b":2,"a":1}`,
+			[]string{"{", `  "a": 1,`, `  "b": 2`, "}"}},
+		{"content is numbered", KindContent, "package main\n",
+			[]string{"   1 package main"}},
+		{"diff keeps its markers", KindDiff, "+a\n-b\n ctx\n",
+			[]string{"+a", "-b", " ctx"}},
+		{"an unknown kind shows the bytes", "unknown-kind", "plain\n",
+			[]string{"plain"}},
+		{"nothing judged yet shows the bytes", "", "plain\n",
+			[]string{"plain"}},
 	}
-	assert.Contains(t, m.styledBody(mk(KindJSON, `{"b":2,"a":1}`)), "\n")
-	assert.Contains(t, m.styledBody(mk(KindContent, "package main\n")), "1")
-	got := m.styledBody(mk(KindDiff, "+a\n-b\n ctx\n"))
-	assert.Contains(t, got, "+a")
-	raw := m.styledBody(mk("unknown-kind", "plain\n"))
-	assert.Equal(t, "plain", raw)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, plainLines(rowForKind("cmd", tc.stdout, tc.kind)))
+		})
+	}
 }
 
 func TestUI_SessionBarShowsRunMode(t *testing.T) {

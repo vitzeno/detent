@@ -10,7 +10,13 @@ import (
 // linesExtractor makes a row per line matching a named-capture
 // regexp. The model writes the pattern but never evaluates it, so a
 // field can be in the wrong place, never invented.
-type linesExtractor struct{ re *regexp.Regexp }
+type linesExtractor struct {
+	re    *regexp.Regexp
+	order []Column
+}
+
+// Columns is the pattern's named captures, left to right.
+func (e linesExtractor) Columns() []Column { return e.order }
 
 func newLinesExtractor(p Parse) (Extractor, error) {
 	if p.Pattern == "" {
@@ -20,16 +26,16 @@ func newLinesExtractor(p Parse) (Extractor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pattern does not compile: %w", err)
 	}
-	named := 0
+	var order []Column
 	for _, n := range re.SubexpNames() {
 		if n != "" {
-			named++
+			order = append(order, Column{Field: n})
 		}
 	}
-	if named == 0 {
+	if len(order) == 0 {
 		return nil, fmt.Errorf("pattern has no named captures")
 	}
-	return skipping(p, linesExtractor{re: re}), nil
+	return skipping(p, linesExtractor{re: re, order: order}), nil
 }
 
 func (e linesExtractor) Extract(output string) ([]Row, error) {
@@ -56,13 +62,25 @@ func (e linesExtractor) Extract(output string) ([]Row, error) {
 type columnsExtractor struct {
 	header bool
 	fields []string
+	order  *[]Column // filled by Extract, which is where a header is read
+}
+
+func (e columnsExtractor) Columns() []Column {
+	if e.order != nil && len(*e.order) > 0 {
+		return *e.order
+	}
+	out := make([]Column, len(e.fields))
+	for i, f := range e.fields {
+		out[i] = Column{Field: f}
+	}
+	return out
 }
 
 func newColumnsExtractor(p Parse) (Extractor, error) {
 	if !p.Header && len(p.Fields) == 0 {
 		return nil, fmt.Errorf("parse kind %q needs header or fields", p.Kind)
 	}
-	return skipping(p, columnsExtractor{header: p.Header, fields: p.Fields}), nil
+	return skipping(p, columnsExtractor{header: p.Header, fields: p.Fields, order: new([]Column)}), nil
 }
 
 func (e columnsExtractor) Extract(output string) ([]Row, error) {
@@ -77,9 +95,20 @@ func (e columnsExtractor) Extract(output string) ([]Row, error) {
 		return nil, nil
 	}
 	names := e.fields
+	titles := names
 	if e.header {
-		names = lower(grid[0])
+		titles = grid[0]
+		names = lower(titles)
 		grid = grid[1:]
+	}
+	// Keys lowercase so a spec can name them predictably; titles keep
+	// the output's own spelling, because that is what a header is.
+	if e.order != nil {
+		cols := make([]Column, len(names))
+		for i, n := range names {
+			cols[i] = Column{Field: n, Title: titles[i]}
+		}
+		*e.order = cols
 	}
 	if len(names) < 1 {
 		return nil, fmt.Errorf("no column names")
@@ -167,19 +196,34 @@ func newNoneExtractor(Parse) (Extractor, error) { return noneExtractor{}, nil }
 func (noneExtractor) Extract(string) ([]Row, error) { return nil, nil }
 
 // skipping drops Parse.Skip leading lines before the real extractor
-// sees them, so every parse kind gets banner-skipping for free.
+// sees them, so every parse kind gets banner-skipping for free. It is
+// a struct rather than an ExtractorFunc so it can forward ColumnOrder
+// — a closure would silently swallow the wrapped extractor's order.
+type skipExtractor struct {
+	inner Extractor
+	n     int
+}
+
+func (e skipExtractor) Extract(output string) ([]Row, error) {
+	lines := splitLines(output)
+	if e.n >= len(lines) {
+		return nil, nil
+	}
+	return e.inner.Extract(strings.Join(lines[e.n:], "\n"))
+}
+
+func (e skipExtractor) Columns() []Column {
+	if c, ok := e.inner.(ColumnOrder); ok {
+		return c.Columns()
+	}
+	return nil
+}
+
 func skipping(p Parse, e Extractor) Extractor {
 	if p.Skip <= 0 {
 		return e
 	}
-	n := p.Skip
-	return ExtractorFunc(func(output string) ([]Row, error) {
-		lines := splitLines(output)
-		if n >= len(lines) {
-			return nil, nil
-		}
-		return e.Extract(strings.Join(lines[n:], "\n"))
-	})
+	return skipExtractor{inner: e, n: p.Skip}
 }
 
 func splitLines(s string) []string {
