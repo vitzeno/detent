@@ -20,15 +20,16 @@ So:
 2. Write the parse against the lines you were shown, but for the command in general. The next run prints different values in the same shape.
 3. A lines pattern needs named captures. Go's regexp, no lookahead.
 4. Prefer the parse that matches the shape exactly over one that matches everything. A pattern that captures whole lines tells the drawing nothing.
-5. Use ONLY the keys and the block kinds the schema names. Read each kind's not_for in widget_guide: it names the one it is most often confused with. There are no other fields. Anything you invent is discarded and the view is thrown away.
-6. Two or three blocks is usually right. A summary above the detail, or a row putting them side by side.
-7. Set on_enter only where a row names something worth acting on, as a read-only command using {field}. It is offered to the human to edit, never run.
+5. Use ONLY the keys and the block kinds the schema names. There are no other fields; anything you invent is discarded and the view is thrown away. In widget_guide, read each kind's not_for, which names the one it is most often confused with, and its needs, which lists the keys that kind cannot be drawn without.
+6. where, count_where and of are exact matches on one field, written field=value, and nothing else. There is no regex, no comparison, no >= and no =~ here: the pattern is where matching belongs. If a count cannot be expressed as one exact value, do not use a meter.
+7. Two or three blocks is usually right. A summary above the detail, or a row putting them side by side.
+8. Set on_enter only where a row names something worth acting on, as a read-only command using {field}. It is offered to the human to edit, never run.
 
 This is the exact shape of a reply, for "ps aux" output. Copy its structure, not its fields:
 
 {"version":1,"match":"ps","parse":{"kind":"columns","header":true,"pattern":"","skip":0,"fields":[],"sep":""},"blocks":[{"kind":"meter","title":"running","field":"","depth":"","columns":[],"where":"","sort":null,"accent":null,"count_where":"stat=R","of":"*","on_enter":"","panes":[]},{"kind":"table","title":"","field":"","depth":"","columns":[{"field":"pid","title":"PID","width":0},{"field":"command","title":"","width":0}],"where":"","sort":{"field":"pid","numeric":true,"desc":true},"accent":{"field":"stat","map":{"R":"safe","Z":"danger"}},"count_where":"","of":"","on_enter":"lsof -p {pid}","panes":[]}]}
 
-Every key must be present on every object, even when empty: "" for unused strings, [] for unused lists, null for unused sort and accent, 0 for unused numbers.
+Every key must be present on every object, even when empty: "" for unused strings, [] for unused lists, null for unused sort and accent, 0 for unused numbers. Empty means unused, so never empty a key the kind's needs list: a meter without count_where, or a list without field, cannot be drawn and the whole view is thrown away.
 
 Reply with the JSON object only.`
 

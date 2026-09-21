@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/vitzeno/detent/internal/worktree"
+	"github.com/vitzeno/detent/logging"
 )
 
 // Snapshot checkpoints the sandbox environment. ok is false when no
@@ -111,6 +112,8 @@ func markUnseen(ctx context.Context, dir string, res *GoalResult, files []worktr
 // rolls back either way, but files under the workspace are only
 // touched when asked, since they may hold edits detent never made.
 func (s *Session) Rollback(ctx context.Context, res *GoalResult, step int, revertFiles bool) (bool, error) {
+	logging.For(logging.Agent).InfoContext(ctx, "rolling back", logging.KeyEvent, logging.Rollback,
+		"step", step, "revert_files", revertFiles, "steps_before", len(res.Commands))
 	if s.Runners == nil {
 		return false, nil
 	}

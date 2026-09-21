@@ -11,6 +11,7 @@ import (
 	"github.com/vitzeno/detent/internal/probe"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/logging"
 )
 
 // probeRunner adapts a Runner to probe.Runner; probes never stream.
@@ -37,10 +38,21 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 	// A goal boundary is the only safe place to compact: mid-goal the
 	// model needs its own steps intact, and this runs before the new
 	// goal is appended so the fresh ask is never what gets dropped.
+	log := logging.For(logging.Agent)
+	ctx = logging.WithGoal(ctx, s.GoalsDone+1)
+	log.InfoContext(ctx, "goal opened", logging.KeyEvent, logging.GoalBegin,
+		"goal_text", goal, "transcript", len(s.Transcript))
+
 	s.compact(ctx)
 	s.append(propose.Message{Role: propose.RoleUser, Content: goal})
 	prober := probe.New(probeRunner{runner: s.Runners.Probe()})
-	if out := prober.Run(ctx, probe.Select(ctx, s.Judge, goal)); out != "" {
+	chosen := probe.Select(ctx, s.Judge, goal)
+	names := make([]string, 0, len(chosen))
+	for _, pr := range chosen {
+		names = append(names, pr.Name)
+	}
+	log.InfoContext(ctx, "probes chosen", logging.KeyEvent, logging.ProbeRun, "probes", names)
+	if out := prober.Run(ctx, chosen); out != "" {
 		s.append(propose.Message{Role: propose.RoleTool, Content: out})
 	}
 	// An abort during probe collection must close the goal here, not
@@ -88,10 +100,20 @@ func (s *Session) ProposeNext(ctx context.Context, goal string) (propose.Proposa
 			return propose.Proposal{}, PreJudgment{}, used, err
 		}
 	}
+	log := logging.For(logging.Agent)
 	if p.Done {
+		log.InfoContext(ctx, "the model says the goal is met", logging.KeyEvent, logging.CmdPropose,
+			"done", true, logging.KeyMS, used.Latency.Milliseconds())
 		return p, PreJudgment{}, used, nil
 	}
-	return p, s.judgePre(ctx, goal, p.Command), used, nil
+	pre := s.judgePre(ctx, goal, p.Command)
+	log.InfoContext(ctx, "a command was proposed", logging.KeyEvent, logging.CmdPropose,
+		"command", p.Command, "dangerous", pre.Dangerous,
+		"mutability", pre.Mutability, "scope_risk", pre.ScopeRisk,
+		"run_mode", pre.RunMode, logging.KeyReason, pre.RiskNote,
+		"tokens", used.PromptTokens+used.CompletionTokens,
+		logging.KeyMS, used.Latency.Milliseconds())
+	return p, pre, used, nil
 }
 
 // reask puts one steer to the model and takes what comes back. The
@@ -130,11 +152,19 @@ func (s *Session) RecordStep(res *GoalResult, p propose.Proposal, pre PreJudgmen
 // Execute runs an approved proposal, times it, and records the outcome.
 // Post stays nil until the caller attaches JudgeResult. events may be nil.
 func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Step, p propose.Proposal, pre PreJudgment, events chan<- host.StreamEvent) (*ExecutedCommand, error) {
+	s.steps++
+	ctx = logging.WithStep(ctx, s.steps)
+	log := logging.For(logging.Agent)
+	log.InfoContext(ctx, "running", logging.KeyEvent, logging.CmdRun,
+		"command", p.Command, "run_mode", pre.RunMode)
+
 	t0 := time.Now()
 	runner, _ := s.Runners.Select(pre)
 	outcome, err := runSafely(ctx, runner, p.Command, events)
 	elapsed := time.Since(t0)
 	if err != nil {
+		log.ErrorContext(ctx, "the command could not run", logging.KeyEvent, logging.CmdDone,
+			"command", p.Command, logging.KeyReason, err.Error())
 		s.append(propose.Message{Role: propose.RoleAssistant,
 			Content: propose.EncodeAssistantTurn(p)})
 		s.append(propose.Message{Role: propose.RoleTool,
@@ -150,9 +180,14 @@ func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Ste
 	}
 	ec := &ExecutedCommand{Command: p.Command, Result: outcome, Pre: pre, Usage: ustep}
 	ustep.SetExec(elapsed, outcome.ExitCode, len(outcome.Stdout)+len(outcome.Stderr))
+	log.InfoContext(ctx, "the command finished", logging.KeyEvent, logging.CmdDone,
+		"exit", outcome.ExitCode, logging.KeyMS, elapsed.Milliseconds(),
+		"bytes", len(outcome.Stdout)+len(outcome.Stderr),
+		"stdout", logging.Body(outcome.Stdout), "stderr", logging.Body(outcome.Stderr))
 	if pre.RunMode == RunModeSandbox {
 		if id, ok, snapErr := s.Snapshot(ctx); ok && snapErr == nil {
 			ec.SnapshotID = id
+			log.InfoContext(ctx, "checkpointed", logging.KeyEvent, logging.Snapshot, "id", string(id))
 		}
 		ec.Worktree = s.SnapshotWorktree(ctx)
 	}
@@ -192,6 +227,8 @@ func (s *Session) JudgeResult(ctx context.Context, goal, command string, result 
 	if len(out) > MaxTranscriptOutputBytes {
 		out = out[:MaxTranscriptOutputBytes] + "\n…[truncated]"
 	}
+	logging.For(logging.Agent).DebugContext(ctx, "judging the result",
+		logging.KeyEvent, logging.JudgePost, "command", command, "exit", result.ExitCode)
 	post := s.judgePost(ctx, goal, command, resultView{
 		ExitCode: result.ExitCode,
 		Output:   out,

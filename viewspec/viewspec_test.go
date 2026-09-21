@@ -897,3 +897,27 @@ func TestSubset_NarrowsWidgetsAndValidatesAgainstTheSame(t *testing.T) {
 	assert.Len(t, guide["const"].(map[string]viewspec.Description), 2,
 		"and the model is only told about what it may use")
 }
+
+// A kind that cannot be drawn without a field says so, because a
+// model told to fill every key and leave unused ones empty will
+// otherwise empty a required one and the block fails to bind.
+func TestSchema_KindsStateWhatTheyCannotBeDrawnWithout(t *testing.T) {
+	needs := map[string]string{
+		"meter": "count_where", "list": "field", "tree": "field",
+		"badges": "field", "sparkline": "field", "text": "title",
+		"keyvalue": "columns", "bar": "columns", viewspec.RowKind: "panes",
+	}
+	guide := viewspec.Standard().Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)
+	got := guide["const"].(map[string]viewspec.Description)
+
+	for kind, want := range needs {
+		d, ok := got[kind]
+		require.True(t, ok, kind)
+		require.NotEmpty(t, d.Needs, "%s states what it needs", kind)
+		assert.Contains(t, strings.Join(d.Needs, " "), want, kind)
+	}
+	// Widgets that draw raw bytes need nothing named.
+	for _, kind := range []string{"log", "errors", "json", "diff", "code", "table"} {
+		assert.Empty(t, got[kind].Needs, "%s draws without a named field", kind)
+	}
+}

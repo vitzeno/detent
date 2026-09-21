@@ -12,6 +12,7 @@ import (
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/usage"
 	"github.com/vitzeno/detent/internal/worktree"
+	"github.com/vitzeno/detent/logging"
 )
 
 // MaxTranscriptOutputBytes caps each recorded output stream.
@@ -116,6 +117,11 @@ type Session struct {
 	Transcript []propose.Message
 	GoalsDone  int
 
+	// steps counts executed commands across the session, so a log
+	// record carries the same number the UI shows against a row and
+	// /rollback takes.
+	steps int
+
 	// goalMark is the transcript mark when the open goal began, so
 	// ProposeNext can tell "nothing has run for this goal" from
 	// "nothing has run at all". One goal is open at a time.
@@ -174,6 +180,9 @@ func (s *Session) finish(res *GoalResult, reason EndReason, summary string) {
 	res.End = reason
 	res.Stats.Finish(string(reason), summary, reason == EndDeclined)
 	s.GoalsDone++
+	logging.For(logging.Agent).Info("goal closed", logging.KeyEvent, logging.GoalEnd,
+		logging.KeyGoal, s.GoalsDone, logging.KeyReason, string(reason),
+		"steps", len(res.Commands))
 }
 
 func formatToolResult(command string, r host.Result) string {

@@ -672,6 +672,7 @@ func accentOr(b Block, r Row, fallback Role) Role {
 func (textWidget) Describe() Description {
 	return Description{
 		What:     "one short label, drawn dim because it is your prose rather than output",
+		Needs:    []string{"title"},
 		NotFor:   "anything counted or measured — a meter computes its numbers, a title cannot",
 		Examples: []string{"a heading above a table"},
 	}
@@ -688,6 +689,7 @@ func (tableWidget) Describe() Description {
 func (listWidget) Describe() Description {
 	return Description{
 		What:     "one field per line, for a set of names or paths",
+		Needs:    []string{"field"},
 		NotFor:   "paths whose nesting matters — tree draws that",
 		Examples: []string{"changed files", "branch names"},
 	}
@@ -696,6 +698,7 @@ func (listWidget) Describe() Description {
 func (keyvalueWidget) Describe() Description {
 	return Description{
 		What:     "label and value per row, aligned on the label",
+		Needs:    []string{"columns (exactly two: label, then value)"},
 		NotFor:   "many records of the same shape, which is a table",
 		Examples: []string{"env", "git config -l", "one object's fields"},
 	}
@@ -704,6 +707,7 @@ func (keyvalueWidget) Describe() Description {
 func (treeWidget) Describe() Description {
 	return Description{
 		What:     "a hierarchy, from a depth field or from a path's slashes",
+		Needs:    []string{"field"},
 		NotFor:   "a flat set of names with no nesting, which is a list",
 		Examples: []string{"tree", "find . -name '*.go'", "an indented outline"},
 	}
@@ -712,6 +716,7 @@ func (treeWidget) Describe() Description {
 func (meterWidget) Describe() Description {
 	return Description{
 		What:     "one proportion counted from the rows, as a bar and a fraction",
+		Needs:    []string{"count_where as field=value, an exact match", "of"},
 		NotFor:   "a value per row — that is bar",
 		Examples: []string{"how many tests passed", "how many files are staged"},
 	}
@@ -720,6 +725,7 @@ func (meterWidget) Describe() Description {
 func (barWidget) Describe() Description {
 	return Description{
 		What:     "one bar per row, scaled to the largest, for comparing a number across rows",
+		Needs:    []string{"columns (exactly two: label, then the number)"},
 		NotFor:   "a single proportion of a whole, which is a meter",
 		Examples: []string{"time per package", "size per directory"},
 	}
@@ -728,6 +734,7 @@ func (barWidget) Describe() Description {
 func (sparklineWidget) Describe() Description {
 	return Description{
 		What:     "one compact strip showing the shape of a numeric field across rows",
+		Needs:    []string{"field"},
 		NotFor:   "comparing individual rows, where bar is readable and this is not",
 		Examples: []string{"a latency series", "sizes over time"},
 	}
@@ -736,6 +743,7 @@ func (sparklineWidget) Describe() Description {
 func (badgesWidget) Describe() Description {
 	return Description{
 		What:     "each distinct value of one field with how many rows have it",
+		Needs:    []string{"field"},
 		NotFor:   "showing the rows themselves — this only summarises them",
 		Examples: []string{"git status codes", "container states"},
 	}
@@ -787,6 +795,7 @@ func (rowWidget) Draw(Block, Data, Frame) ([]string, error) {
 func (rowWidget) Describe() Description {
 	return Description{
 		What:     "lays its panes side by side, for putting a summary next to the thing it summarises",
+		Needs:    []string{"panes (at least two)"},
 		NotFor:   "blocks that simply follow one another — those stack without a row",
 		Examples: []string{"a meter beside the table it counts", "a chart beside its legend"},
 	}

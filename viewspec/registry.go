@@ -108,8 +108,14 @@ type Selector interface {
 // choice needs: structured, with a counter-case. Flat one-liners lose
 // a model's calibration once there are more than a handful of options.
 type Description struct {
-	What     string   `json:"what"`
-	NotFor   string   `json:"not_for,omitempty"`
+	What   string `json:"what"`
+	NotFor string `json:"not_for,omitempty"`
+	// Needs lists the fields this kind cannot draw without. A model
+	// told to fill every key and leave unused ones empty will
+	// otherwise empty a required one and the block fails to bind.
+	// Name the shape a field takes where it is not obvious: a filter
+	// that silently matches nothing draws a plausible, wrong view.
+	Needs    []string `json:"needs,omitempty"`
 	Examples []string `json:"examples,omitempty"`
 }
 
