@@ -47,7 +47,10 @@ func (m Model) onExecDone(msg execDoneMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	row.cmd.ec = msg.ec
-	if row.editPath != "" {
+	// Only for a command that worked. A failed one often never wrote
+	// the file, and the editor takes the whole output pane — so the
+	// stderr explaining the failure got replaced by "could not open".
+	if row.editPath != "" && msg.ec.Result.ExitCode == 0 {
 		// Read from disk, not msg.ec.Result.Stdout: a heredoc or
 		// redirect usually prints nothing.
 		content, truncated, maxBytes, err := m.sess.ReadFile(row.editPath)

@@ -280,3 +280,46 @@ func TestContainer_NetworkPosture(t *testing.T) {
 		})
 	}
 }
+
+// A heredoc is how a model writes a file, and its terminator has to be
+// alone on its line. Wrapping the command as "( cmd ) >out 2>err"
+// appended that tail to the terminator's line, so the shell read to
+// end-of-input looking for one it would never find: exit 2, before
+// running anything. Every multi-line command broke the same way.
+func TestContainer_RunHandlesMultilineCommands(t *testing.T) {
+	c := newTestContainer(t)
+	ctx := context.Background()
+
+	for _, tc := range []struct{ name, command string }{
+		{"heredoc", "cat > /tmp/a.py <<'EOF'\nimport random\n\ndef f():\n    return 1\nEOF"},
+		{"space before the quote", "cat > /tmp/a.py << 'EOF'\nimport random\n\ndef f():\n    return 1\nEOF"},
+		{"trailing newline", "cat > /tmp/a.py <<'EOF'\nimport random\n\ndef f():\n    return 1\nEOF\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := c.Run(ctx, "rm -f /tmp/a.py", nil)
+			require.NoError(t, err)
+
+			res, err := c.Run(ctx, tc.command, nil)
+			require.NoError(t, err)
+			require.Equal(t, 0, res.ExitCode, "stderr was %q", res.Stderr)
+
+			back, err := c.Run(ctx, "cat /tmp/a.py", nil)
+			require.NoError(t, err)
+			assert.Equal(t, "import random\n\ndef f():\n    return 1\n", back.Stdout,
+				"the file's blank lines and indentation must survive verbatim")
+		})
+	}
+
+	// A plain multi-line script, and the exit code still belongs to the
+	// command rather than the wrapper.
+	res, err := c.Run(ctx, "x=1\ny=2\necho $((x + y))", nil)
+	require.NoError(t, err)
+	require.Equal(t, 0, res.ExitCode, "stderr was %q", res.Stderr)
+	assert.Equal(t, "3\n", res.Stdout)
+
+	res, err = c.Run(ctx, "echo out\necho err >&2\nexit 7", nil)
+	require.NoError(t, err)
+	assert.Equal(t, 7, res.ExitCode)
+	assert.Equal(t, "out\n", res.Stdout)
+	assert.Equal(t, "err\n", res.Stderr)
+}

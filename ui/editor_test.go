@@ -168,3 +168,46 @@ func TestUI_CancelSaveKeepsBufferAndDoesNotWrite(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "old\n", string(got), "declining a save must not write to disk")
 }
+
+// A command that failed usually never wrote the file it named, and
+// the editor takes the whole output pane — so "could not open x" used
+// to replace the stderr that explained what went wrong.
+func TestUI_FailedCommandShowsOutputNotAFileError(t *testing.T) {
+	m := testUIModel()
+	m.blocks = []*goalBlock{{goal: "g", res: &GoalResult{Goal: "g"}}}
+	m.cur = m.blocks[0]
+	row := &stepRow{command: "cat > test.py <<'EOF'", editPath: "test.py",
+		cmd: cmdState{running: true}}
+	m.cur.steps = []*stepRow{row}
+	m.sizeViewport()
+
+	failed := &ExecutedCommand{
+		Command: "cat > test.py <<'EOF'",
+		Result:  Result{ExitCode: 2, Stderr: "sh: syntax error: unexpected end of file\n"},
+	}
+	nm, _ := m.Update(execDoneMsg{ec: failed})
+	m = nm.(Model)
+
+	assert.Nil(t, row.editor, "no editor for a file the command never wrote")
+	out := plain(m.View().Content)
+	assert.Contains(t, out, "syntax error", "the failure itself is what a human needs")
+	assert.NotContains(t, out, "could not open")
+}
+
+// A command that worked still opens its file.
+func TestUI_SucceededCommandOpensItsFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile("made.py", []byte("print(1)\n"), 0o644))
+
+	m := testUIModel()
+	m.blocks = []*goalBlock{{goal: "g", res: &GoalResult{Goal: "g"}}}
+	m.cur = m.blocks[0]
+	row := &stepRow{command: "cat > made.py", editPath: "made.py", cmd: cmdState{running: true}}
+	m.cur.steps = []*stepRow{row}
+
+	nm, _ := m.Update(execDoneMsg{ec: &ExecutedCommand{Command: "cat > made.py", Result: Result{ExitCode: 0}}})
+	_ = nm
+	require.NotNil(t, row.editor)
+	assert.Equal(t, "print(1)\n", row.editor.Value())
+}

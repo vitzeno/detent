@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -61,11 +62,24 @@ func (s *Session) ProposeNext(ctx context.Context, goal string) (propose.Proposa
 		return propose.Proposal{}, PreJudgment{}, usage.Usage{}, err
 	}
 	p, used, err := s.Proposer.Propose(ctx, s.Transcript)
-	if err != nil {
+	switch {
+	case errors.Is(err, propose.ErrNotAProposal):
+		// A model thrown by a failed command tends to answer in prose
+		// about it. Ask once for the shape back rather than ending the
+		// goal over one reply.
+		p, used, err = s.reask(ctx, used,
+			"That reply was prose, not a proposal. Reply with the JSON object only: "+
+				"the one command to run next, or done with a summary.")
+		if err != nil {
+			return propose.Proposal{}, PreJudgment{}, used, fmt.Errorf("agent: %w", err)
+		}
+	case err != nil:
 		return propose.Proposal{}, PreJudgment{}, used, fmt.Errorf("agent: %w", err)
 	}
 	if p.Done && len(s.Transcript) == s.goalMark {
-		p, used, err = s.reaskAfterEmptyDone(ctx, used)
+		p, used, err = s.reask(ctx, used,
+			"Nothing has run for this goal yet, so there is no output of its own to conclude from. "+
+				"Earlier goals' output describes the past. Propose the command that answers this goal now.")
 		if err != nil {
 			return propose.Proposal{}, PreJudgment{}, used, err
 		}
@@ -76,15 +90,13 @@ func (s *Session) ProposeNext(ctx context.Context, goal string) (propose.Proposa
 	return p, s.judgePre(ctx, goal, p.Command), used, nil
 }
 
-// reaskAfterEmptyDone pushes back on a goal declared finished before
-// anything ran for it — almost always an older goal's output being
-// mistaken for this one's. The nudge is passed for this call only and
-// asked once, so a model that insists isn't looped.
-func (s *Session) reaskAfterEmptyDone(ctx context.Context, first usage.Usage) (propose.Proposal, usage.Usage, error) {
+// reask puts one steer to the model and takes what comes back. The
+// nudge is passed for this call only, never appended to the
+// transcript, and asked once — a model that repeats itself is taken at
+// its word rather than looped.
+func (s *Session) reask(ctx context.Context, first usage.Usage, nudge string) (propose.Proposal, usage.Usage, error) {
 	nudged := append(append([]propose.Message{}, s.Transcript...), propose.Message{
-		Role: propose.RoleUser,
-		Content: "Nothing has run for this goal yet, so there is no output of its own to conclude from. " +
-			"Earlier goals' output describes the past. Propose the command that answers this goal now.",
+		Role: propose.RoleUser, Content: nudge,
 	})
 	p, again, err := s.Proposer.Propose(ctx, nudged)
 	total := usage.Usage{

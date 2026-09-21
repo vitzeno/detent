@@ -204,8 +204,14 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 	if err != nil {
 		return capture.Result{}, fmt.Errorf("sandbox: read spec: %w", err)
 	}
+	// exec redirects this shell and then gets out of the way, so the
+	// command keeps its own line structure. Wrapping it as
+	// "( cmd ) >out 2>err" glued that tail onto the command's last
+	// line, which broke every heredoc — a terminator has to be alone
+	// on its line — and any other multi-line script with it.
 	spec.Process.Args = []string{"sh", "-c",
-		fmt.Sprintf("( %s ) >%s 2>%s", command, shellQuote(containerOutPath), shellQuote(containerErrPath))}
+		fmt.Sprintf("exec >%s 2>%s\n%s\n",
+			shellQuote(containerOutPath), shellQuote(containerErrPath), command)}
 	if err := c.container.Update(ctx, containerd.UpdateContainerOpts(containerd.WithSpec(spec))); err != nil {
 		return capture.Result{}, fmt.Errorf("sandbox: update spec: %w", err)
 	}

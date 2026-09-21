@@ -2,6 +2,7 @@ package propose
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -29,17 +30,22 @@ func EncodeAssistantTurn(p Proposal) string {
 	return string(raw)
 }
 
+// ErrNotAProposal marks a reply that wasn't a usable proposal — prose
+// instead of JSON, or JSON that doesn't decode. Kept distinct from a
+// transport failure because asking again can fix it.
+var ErrNotAProposal = errors.New("propose: reply was not a proposal")
+
 // parseProposal validates the done/command invariant: Command is empty iff Done.
 func parseProposal(content string) (Proposal, error) {
 	extracted := extractJSONObject(strings.TrimSpace(content))
 	if extracted == "" {
-		return Proposal{}, fmt.Errorf("propose: model returned no JSON object in %q", truncateStr(content, 500))
+		return Proposal{}, fmt.Errorf("%w: no JSON object in %q", ErrNotAProposal, truncateStr(content, 500))
 	}
 
 	var w proposalWire
 	dec := json.NewDecoder(strings.NewReader(extracted))
 	if err := dec.Decode(&w); err != nil {
-		return Proposal{}, fmt.Errorf("propose: decoding proposal JSON: %w", err)
+		return Proposal{}, fmt.Errorf("%w: decoding JSON: %w", ErrNotAProposal, err)
 	}
 
 	w.Command = strings.TrimSpace(w.Command)

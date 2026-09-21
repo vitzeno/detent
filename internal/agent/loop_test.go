@@ -626,3 +626,67 @@ func TestProposeNext_DoneAfterACommandIsAccepted(t *testing.T) {
 	assert.Equal(t, "saw the files", res.Summary)
 	assert.Equal(t, 2, stub.calls, "no extra propose call once a command has run")
 }
+
+// A model thrown by a failed command often answers in prose about it
+// rather than proposing the next step. That used to end the goal with
+// a proposer error; now the shape is asked for once before giving up.
+func TestProposeNext_ProseIsAskedToTryAgain(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		second  propose.Proposal
+		secErr  error
+		wantCmd string
+		wantErr bool
+	}{
+		{
+			name:    "recovers",
+			second:  propose.Proposal{Command: "ls -la", Rationale: "look"},
+			wantCmd: "ls -la",
+		},
+		{
+			name:    "still prose, so the goal ends",
+			secErr:  fmt.Errorf("%w: no JSON object in %q", propose.ErrNotAProposal, "still talking"),
+			wantErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := &proseProposer{
+				first:  fmt.Errorf("%w: no JSON object in %q", propose.ErrNotAProposal, "The command failed."),
+				second: tc.second, secondErr: tc.secErr,
+			}
+			s := &Session{Proposer: stub, Runners: SingleRunner{Runner: okRun(host.Result{})}}
+			_, err := s.BeginGoal(context.Background(), "fix it")
+			require.NoError(t, err)
+
+			p, _, _, err := s.ProposeNext(context.Background(), "fix it")
+			require.Equal(t, 2, stub.calls, "asked exactly once more")
+			if tc.wantErr {
+				require.Error(t, err, "a model that keeps talking ends the goal")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantCmd, p.Command)
+			for _, m := range s.Transcript {
+				assert.NotContains(t, m.Content, "prose, not a proposal",
+					"the nudge must not become history")
+			}
+		})
+	}
+}
+
+// proseProposer fails the first call the way a chatty model does, then
+// answers however the case wants.
+type proseProposer struct {
+	first     error
+	second    propose.Proposal
+	secondErr error
+	calls     int
+}
+
+func (p *proseProposer) Propose(context.Context, []propose.Message) (propose.Proposal, usage.Usage, error) {
+	p.calls++
+	if p.calls == 1 {
+		return propose.Proposal{}, usage.Usage{}, p.first
+	}
+	return p.second, usage.Usage{}, p.secondErr
+}

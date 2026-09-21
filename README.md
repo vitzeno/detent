@@ -9,6 +9,7 @@ Works with any OpenAI-compatible `/chat/completions` endpoint — LM Studio by d
 ![detent TUI](screenshots/tui-0-dark.png)
 ![detent TUI](screenshots/tui-1-dark.png)
 ![detent TUI](screenshots/tui-2-dark.png)
+![detent TUI](screenshots/rollback/tui-1-dark-rollback.png)
 
 ## Quick start
 
@@ -87,19 +88,12 @@ containerd over TCP and pass `-sandbox-socket`.
 - **The default image is `buildpack-deps:24.04-scm`**: Ubuntu plus git, curl and
   ca-certificates, so goals have them even with `sandbox_network: none`. Point
   `sandbox_image` at something else if you need more.
-- **A rollback offers to revert your own files, and asks first.** Each sandboxed
-  step also records the working directory as a git tree (plumbing against a
-  scratch index, so your own index, branch and stash are untouched, and whatever
-  `.gitignore` covers is skipped). `/rollback N` lists exactly which files it
-  would restore or delete and waits: `y` reverts them, `n` rolls back the
-  container only, `esc` does nothing. Outside a git repo it stays container-only.
 - **`/new` forgets the conversation, not the container.** It clears the transcript,
   the history pane and the usage counters, so the next goal starts fresh. A
   sandbox container and anything already written inside it carry on.
-- **The container snapshot stops at `/workspace`.** That's a bind mount to your
-  real directory, so container state and your files are checkpointed by two
-  different mechanisms — the snapshot for one, a git tree for the other. Without
-  a git repo only the first applies.
+- **A rollback does not revert `/workspace`.** That's a bind mount to your real
+  directory, deliberately outside the snapshot, so your own files survive. Only
+  container state outside the mount is restored.
 
 ## How safety works
 
