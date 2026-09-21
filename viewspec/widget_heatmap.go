@@ -12,6 +12,11 @@ import (
 // column is the value; without one it counts the rows in each cell.
 type heatmapWidget struct{}
 
+var (
+	_ Validator = heatmapWidget{}
+	_ Described = heatmapWidget{}
+)
+
 func (heatmapWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 && len(b.Columns) != 3 {
 		return fmt.Errorf("heatmap needs a row column, a column column, and optionally a value")

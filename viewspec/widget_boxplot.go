@@ -10,6 +10,11 @@ import (
 // column of numbers hides the outlier a box shows at once.
 type boxplotWidget struct{}
 
+var (
+	_ Validator = boxplotWidget{}
+	_ Described = boxplotWidget{}
+)
+
 func (boxplotWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
 		return fmt.Errorf("boxplot needs a group column and a value column")

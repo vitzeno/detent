@@ -7,6 +7,12 @@ import "fmt"
 // gives the state its own column, so the left edge answers it.
 type dotsWidget struct{}
 
+var (
+	_ Validator = dotsWidget{}
+	_ Selector  = dotsWidget{}
+	_ Described = dotsWidget{}
+)
+
 func (dotsWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows

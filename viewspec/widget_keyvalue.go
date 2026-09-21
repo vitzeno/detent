@@ -6,6 +6,12 @@ import "fmt"
 // per row, aligned on the widest label.
 type keyvalueWidget struct{}
 
+var (
+	_ Validator = keyvalueWidget{}
+	_ Selector  = keyvalueWidget{}
+	_ Described = keyvalueWidget{}
+)
+
 func (keyvalueWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
 		return fmt.Errorf("keyvalue needs exactly two columns")

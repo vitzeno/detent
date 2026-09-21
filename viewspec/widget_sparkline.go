@@ -9,6 +9,11 @@ import (
 // the values present rather than to zero. The shape is the point.
 type sparklineWidget struct{}
 
+var (
+	_ Validator = sparklineWidget{}
+	_ Described = sparklineWidget{}
+)
+
 func (sparklineWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows

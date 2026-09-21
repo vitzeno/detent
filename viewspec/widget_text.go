@@ -6,6 +6,11 @@ import "fmt"
 // heading must not be able to read as a finding.
 type textWidget struct{}
 
+var (
+	_ Validator = textWidget{}
+	_ Described = textWidget{}
+)
+
 func (textWidget) Validate(b Block, _ []string) error {
 	if b.Title == "" {
 		return fmt.Errorf("text needs a title")

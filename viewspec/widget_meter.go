@@ -10,6 +10,11 @@ import (
 // change what the bar says.
 type meterWidget struct{}
 
+var (
+	_ Validator = meterWidget{}
+	_ Described = meterWidget{}
+)
+
 func (meterWidget) Validate(b Block, fields []string) error {
 	if b.CountWhere == "" {
 		return fmt.Errorf("meter needs count_where")

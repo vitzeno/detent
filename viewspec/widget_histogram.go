@@ -11,6 +11,11 @@ import (
 // for itself, since it writes no data and a count is data.
 type histogramWidget struct{}
 
+var (
+	_ Validator = histogramWidget{}
+	_ Described = histogramWidget{}
+)
+
 func (histogramWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows

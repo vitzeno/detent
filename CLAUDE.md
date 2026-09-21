@@ -530,6 +530,13 @@ needs:
 - Tests use `testify` (`require`/`assert`) with table-driven cases — follow
   the existing pattern in `internal/propose/openai_test.go` (`httptest`-backed)
   and `internal/agent/*_test.go` for new tests in those packages.
+- An interface found by type assertion gets a compile-time assertion
+  beside the implementation (`var _ Selector = gaugeWidget{}`), because
+  a renamed method otherwise degrades silently instead of failing the
+  build: `agent.Snapshotter` losing its name removes rollback entirely,
+  and a widget losing `Validate` simply stops validating. One proved by
+  an argument, a struct field or a return type needs no assertion and
+  should not get one.
 - Commit messages: short and concise, no body, no references to plan
   documents or section numbers.
 - `docs/` is gitignored — planning documents live there but are never

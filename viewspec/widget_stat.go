@@ -7,6 +7,11 @@ import "fmt"
 // one cell size, so size has to come out of the glyphs themselves.
 type statWidget struct{}
 
+var (
+	_ Validator = statWidget{}
+	_ Described = statWidget{}
+)
+
 func (statWidget) Validate(b Block, fields []string) error {
 	if b.Title == "" {
 		return fmt.Errorf("stat needs a title to label the number")

@@ -10,6 +10,12 @@ import (
 // removed, read in one glance rather than two columns.
 type divergeWidget struct{}
 
+var (
+	_ Validator = divergeWidget{}
+	_ Selector  = divergeWidget{}
+	_ Described = divergeWidget{}
+)
+
 func (divergeWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 3 {
 		return fmt.Errorf("diverge needs a label column and two value columns")

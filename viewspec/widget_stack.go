@@ -10,6 +10,11 @@ import (
 // colour with nothing naming the bands says nothing at all.
 type stackWidget struct{}
 
+var (
+	_ Validator = stackWidget{}
+	_ Described = stackWidget{}
+)
+
 func (stackWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
 		return fmt.Errorf("stack needs a label column and a value column")

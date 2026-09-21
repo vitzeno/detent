@@ -10,6 +10,11 @@ import (
 // reason rowWidget states.
 type panelWidget struct{}
 
+var (
+	_ Container = panelWidget{}
+	_ Described = panelWidget{}
+)
+
 func (panelWidget) Draw(Block, Data, Frame) ([]string, error) {
 	return nil, fmt.Errorf("a panel is arranged by the interpreter, not drawn")
 }

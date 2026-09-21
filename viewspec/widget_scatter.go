@@ -10,6 +10,11 @@ import (
 // and twenty plot columns and reads as a curve, not a row of bars.
 type scatterWidget struct{}
 
+var (
+	_ Validator = scatterWidget{}
+	_ Described = scatterWidget{}
+)
+
 func (scatterWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
 		return fmt.Errorf("scatter needs an x column and a y column")

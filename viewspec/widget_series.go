@@ -10,6 +10,11 @@ import (
 // its own the way a single sparkline is.
 type seriesWidget struct{}
 
+var (
+	_ Validator = seriesWidget{}
+	_ Described = seriesWidget{}
+)
+
 func (seriesWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
 		return fmt.Errorf("series needs a group column and a value column")

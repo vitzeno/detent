@@ -36,6 +36,14 @@ func WrapSandbox(c *sandbox.Container) agent.Runner {
 
 type sandboxRunner struct{ *sandbox.Container }
 
+// agent finds Snapshotter by type assertion, so a rename here would
+// not fail the build: rollback would simply report that no snapshotter
+// is wired and the feature would vanish.
+var (
+	_ agent.Runner      = sandboxRunner{}
+	_ agent.Snapshotter = sandboxRunner{}
+)
+
 func (r sandboxRunner) Snapshot(ctx context.Context) (agent.SnapshotID, error) {
 	id, err := r.Container.Snapshot(ctx)
 	return agent.SnapshotID(id), err

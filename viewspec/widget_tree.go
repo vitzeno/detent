@@ -10,6 +10,12 @@ import (
 // come from its slashes.
 type treeWidget struct{}
 
+var (
+	_ Validator = treeWidget{}
+	_ Selector  = treeWidget{}
+	_ Described = treeWidget{}
+)
+
 func (treeWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows

@@ -10,6 +10,11 @@ import (
 // badges summarises one field as its distinct values with counts.
 type badgesWidget struct{}
 
+var (
+	_ Validator = badgesWidget{}
+	_ Described = badgesWidget{}
+)
+
 func (badgesWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows

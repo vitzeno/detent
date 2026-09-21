@@ -10,6 +10,12 @@ import (
 // a test run. bar would draw the lengths and lose when they happened.
 type ganttWidget struct{}
 
+var (
+	_ Validator = ganttWidget{}
+	_ Selector  = ganttWidget{}
+	_ Described = ganttWidget{}
+)
+
 func (ganttWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 3 {
 		return fmt.Errorf("gantt needs a label column, a start column and a length column")

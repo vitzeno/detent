@@ -11,6 +11,11 @@ import (
 // resolved against the registry and a Widget never sees one.
 type rowWidget struct{}
 
+var (
+	_ Container = rowWidget{}
+	_ Described = rowWidget{}
+)
+
 func (rowWidget) Draw(Block, Data, Frame) ([]string, error) {
 	return nil, fmt.Errorf("a row is arranged by the interpreter, not drawn")
 }

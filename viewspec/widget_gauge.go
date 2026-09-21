@@ -10,6 +10,12 @@ import (
 // the wrong picture for a disk at 90% beside one at 95%.
 type gaugeWidget struct{}
 
+var (
+	_ Validator = gaugeWidget{}
+	_ Selector  = gaugeWidget{}
+	_ Described = gaugeWidget{}
+)
+
 func (gaugeWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
 		return fmt.Errorf("gauge needs a label column and a percentage column")

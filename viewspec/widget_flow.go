@@ -7,6 +7,12 @@ import "strings"
 // fifths of the width and scroll for no reason.
 type flowWidget struct{}
 
+var (
+	_ Validator = flowWidget{}
+	_ Selector  = flowWidget{}
+	_ Described = flowWidget{}
+)
+
 func (flowWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows

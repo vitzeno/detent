@@ -10,6 +10,12 @@ import (
 // comparison survives a narrow pane.
 type barWidget struct{}
 
+var (
+	_ Validator = barWidget{}
+	_ Selector  = barWidget{}
+	_ Described = barWidget{}
+)
+
 func (barWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
 		return fmt.Errorf("bar needs a label column and a value column")

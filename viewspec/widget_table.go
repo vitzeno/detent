@@ -7,6 +7,12 @@ import (
 
 type tableWidget struct{}
 
+var (
+	_ Validator = tableWidget{}
+	_ Selector  = tableWidget{}
+	_ Described = tableWidget{}
+)
+
 func (tableWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows

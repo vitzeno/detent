@@ -8,6 +8,12 @@ import "fmt"
 // only the spec's accent knows which this is.
 type deltaWidget struct{}
 
+var (
+	_ Validator = deltaWidget{}
+	_ Selector  = deltaWidget{}
+	_ Described = deltaWidget{}
+)
+
 func (deltaWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 3 {
 		return fmt.Errorf("delta needs a label column, a from column and a to column")

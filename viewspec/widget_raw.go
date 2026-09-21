@@ -11,6 +11,11 @@ import (
 // a line gutter. It reads no fields, so it works under any parse.
 type rawWidget struct{ mode string }
 
+var (
+	_ Validator = rawWidget{}
+	_ Described = rawWidget{}
+)
+
 func (rawWidget) Validate(Block, []string) error { return nil }
 
 func (w rawWidget) Draw(b Block, d Data, f Frame) ([]string, error) {

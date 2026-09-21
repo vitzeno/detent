@@ -2,6 +2,12 @@ package viewspec
 
 type listWidget struct{}
 
+var (
+	_ Validator = listWidget{}
+	_ Selector  = listWidget{}
+	_ Described = listWidget{}
+)
+
 func (listWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows

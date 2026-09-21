@@ -19,6 +19,19 @@ type linesExtractor struct {
 }
 
 // Columns is the pattern's named captures, left to right.
+// Column order is an optional extension found by assertion, so a
+// renamed method here would quietly fall back to alphabetical keys
+// and lose the output's own spelling. That has happened once.
+var (
+	_ ColumnOrder = linesExtractor{}
+	_ ColumnOrder = columnsExtractor{}
+	_ ColumnOrder = skipExtractor{}
+	_ ColumnOrder = fixedExtractor{}
+	_ ColumnOrder = pairsExtractor{}
+	_ ColumnOrder = delimitedExtractor{}
+	_ ColumnOrder = indentExtractor{}
+)
+
 func (e linesExtractor) Columns() []Column { return e.order }
 
 func newLinesExtractor(p Parse) (Extractor, error) {

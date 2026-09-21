@@ -12,6 +12,12 @@ import (
 // only have a when.
 type timelineWidget struct{}
 
+var (
+	_ Validator = timelineWidget{}
+	_ Selector  = timelineWidget{}
+	_ Described = timelineWidget{}
+)
+
 func (timelineWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
 		return fmt.Errorf("timeline needs a label column and a time column")
