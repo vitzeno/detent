@@ -158,7 +158,10 @@ routing     →  agent, sandbox
   that changed after the last checkpoint: nothing detent ran accounts
   for those, so reverting them destroys work it never made, and the
   confirm says so in as many words. Its default answer is the
-  non-destructive one.
+  non-destructive one, and the file list takes the output pane rather
+  than the modal — a wide-reaching goal touches more paths than a box
+  can hold, and a list you can't read to the end isn't one you can
+  approve.
 
 - **`internal/routing`** — `Selector`, the `agent.RunnerSelector`
   `cmd/detent` wires: host vs. sandbox per command, deliberately dumb

@@ -76,10 +76,9 @@ func (m Model) saveConfirmBox() string {
 	return lipgloss.PlaceHorizontal(m.layout.width, lipgloss.Center, styleConfirmAccent.Width(w).Render(b.String()))
 }
 
-// rollbackConfirmBox asks before writing to the human's own files. It
-// names every path, and marks the ones nothing detent ran can account
-// for — reverting those destroys work it never made, which is the
-// only irreversible thing here.
+// rollbackConfirmBox asks the question; the output pane above lists
+// every path, scrollable, because a wide-reaching goal can touch far
+// more files than a modal can hold.
 func (m Model) rollbackConfirmBox() string {
 	r := m.rollback
 	if r.target == nil {
@@ -98,34 +97,15 @@ func (m Model) rollbackConfirmBox() string {
 	fmt.Fprintf(&b, "%s  %s\n\n", styleMuted.Render("undo to before"),
 		styleGoal.Render(fmt.Sprintf("#%d  %s", r.step, layout.Truncate(r.target.goal, w-24))))
 	fmt.Fprintf(&b, "%s\n", styleMuted.Render(fmt.Sprintf(
-		"reverting the workspace would change %s:", plural(len(r.files), "file"))))
-
-	files, more := r.files, 0
-	if len(files) > maxRollbackFiles {
-		more, files = len(files)-maxRollbackFiles, files[:maxRollbackFiles]
-	}
-	for _, f := range files {
-		mark, style := "restore", styleDiffAdd
-		if f.Removed {
-			mark, style = "delete ", styleDiffDel
-		}
-		note := ""
-		if f.Unseen {
-			note = styleDanger.Render("  ⚠ not detent's")
-		}
-		fmt.Fprintf(&b, "  %s %s%s\n", style.Render(mark),
-			styleGoal.Render(layout.Truncate(f.Path, w-28)), note)
-	}
-	if more > 0 {
-		fmt.Fprintf(&b, "%s\n", styleFaint.Render(fmt.Sprintf("  … +%d more", more)))
-	}
+		"reverting the workspace would change %s — listed above", plural(len(r.files), "file"))))
 	if unseen > 0 {
-		fmt.Fprintf(&b, "\n%s %s\n", styleDanger.Render("⚠"), styleCaution.Render(fmt.Sprintf(
+		fmt.Fprintf(&b, "%s %s\n", styleDanger.Render("⚠"), styleCaution.Render(fmt.Sprintf(
 			"%s changed after detent's last step — reverting throws that away",
 			plural(unseen, "file"))))
 	}
-	fmt.Fprintf(&b, "\n%s container only   %s revert the files too   %s cancel",
-		styleKey.Render("[n/enter]"), styleKey.Render("[y]"), styleKey.Render("[esc]"))
+	fmt.Fprintf(&b, "\n%s container only   %s revert the files too   %s cancel   %s scroll",
+		styleKey.Render("[n/enter]"), styleKey.Render("[y]"), styleKey.Render("[esc]"),
+		styleKey.Render("[↑/↓]"))
 	return lipgloss.PlaceHorizontal(m.layout.width, lipgloss.Center, styleConfirmDanger.Width(w).Render(b.String()))
 }
 

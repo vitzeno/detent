@@ -105,6 +105,18 @@ func (m Model) rollbackConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.declineRollback()
 	case "esc":
 		return m.cancelRollback()
+	case "up":
+		m.output.ScrollUp(1)
+		return m, nil
+	case "down":
+		m.output.ScrollDown(1)
+		return m, nil
+	case "pgup":
+		m.output.HalfPageUp()
+		return m, nil
+	case "pgdown":
+		m.output.HalfPageDown()
+		return m, nil
 	}
 	return m, nil
 }

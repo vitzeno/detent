@@ -37,6 +37,10 @@ func (m Model) sessionBar() string {
 // file being edited, a tool, or a command's output by judged kind.
 func (m Model) viewportHeader() string {
 	active := m.nav.focus == focusOutput
+	if m.mode == modeRollbackConfirm {
+		return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel("reverting", active),
+			styleGoal.Render(plural(len(m.rollback.files), "file")))
+	}
 	r := m.focused()
 	if r == nil {
 		return fmt.Sprintf("%s %s", paneMark(active), paneLabel("detent", active))
@@ -92,7 +96,7 @@ func (m Model) statusHint() string {
 		return "[y/enter] save · [n] keep editing"
 	}
 	if m.mode == modeRollbackConfirm {
-		return "[n/enter] container only · [y] revert your files too · [esc] cancel"
+		return "[n/enter] container only · [y] revert your files too · [↑/↓] scroll · [esc] cancel"
 	}
 	if m.save.editing {
 		return "[ctrl+s] save · [esc] done editing"

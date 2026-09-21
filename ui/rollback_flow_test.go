@@ -213,16 +213,17 @@ func TestUI_Rollback_AsksBeforeTouchingTheHumansFiles(t *testing.T) {
 		m, drv, _ := setup()
 		nm, cmd := m.runSlash("/rollback 1")
 		m = nm.(Model)
+		m.sizeViewport() // runSlash is called directly here; Update does this
 
 		require.Equal(t, modeRollbackConfirm, m.mode, "it must ask, not act")
 		assert.Nil(t, cmd, "and dispatch nothing until it has an answer")
 		assert.Zero(t, drv.rolledBackN, "the harness has not been called")
 
-		box := plain(m.View().Content)
-		assert.Contains(t, box, "test.py")
-		assert.Contains(t, box, "notes.md")
-		assert.Contains(t, box, "delete", "a file created since the checkpoint is deleted")
-		assert.Contains(t, box, "restore", "one that changed comes back")
+		view := plain(m.View().Content)
+		assert.Contains(t, view, "test.py")
+		assert.Contains(t, view, "notes.md")
+		assert.Contains(t, view, "delete", "a file created since the checkpoint is deleted")
+		assert.Contains(t, view, "restore", "one that changed comes back")
 	})
 
 	t.Run("y reverts the files too", func(t *testing.T) {
@@ -304,13 +305,14 @@ func TestUI_Rollback_FlagsWorkDetentDidNotMake(t *testing.T) {
 
 	nm, _ := m.runSlash("/rollback 1")
 	m = nm.(Model)
+	m.sizeViewport()
 	require.Equal(t, modeRollbackConfirm, m.mode)
 
-	box := plain(m.View().Content)
-	assert.Contains(t, box, "not detent's", "the file it never touched is marked")
-	assert.Contains(t, box, "1 file changed after detent's last step",
+	view := plain(m.View().Content)
+	assert.Contains(t, view, "not detent's", "the file it never touched is marked")
+	assert.Contains(t, view, "1 file changed after detent's last step",
 		"and counted, so the risk is stated once in plain words")
-	assert.Contains(t, box, "would change 2 files")
+	assert.Contains(t, view, "would change 2 files")
 
 	// enter is the safe answer: destroying work has to be typed.
 	drv := m.sess.(*fakeDriver)
@@ -319,4 +321,42 @@ func TestUI_Rollback_FlagsWorkDetentDidNotMake(t *testing.T) {
 	assert.Equal(t, modeInput, nm.(Model).mode)
 	_ = rollbackCmd(m.ctx, m.sess, m.blocks[0], 1, 1, false)()
 	assert.False(t, drv.rolledBackFiles, "enter rolls back the container only")
+}
+
+// A wide-reaching goal touches far more files than a modal can hold,
+// and a list you can't read to the end isn't a list you can approve.
+// The output pane takes it, so the existing viewport scrolls it.
+func TestUI_Rollback_FileListTakesThePaneAndScrolls(t *testing.T) {
+	m := testUIModel()
+	var files []FileChange
+	for i := range 120 {
+		files = append(files, FileChange{Path: fmt.Sprintf("internal/pkg%03d/file.go", i)})
+	}
+	m.sess.(*fakeDriver).planFiles = files
+	m.blocks = []*goalBlock{{goal: "rewrite the layout", res: &GoalResult{Goal: "g"}, ended: true,
+		end: EndDone, steps: []*stepRow{{command: "mv"}}}}
+	m.sizeViewport()
+
+	m.prompt.SetValue("/rollback 1")
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = nm.(Model)
+	require.Equal(t, modeRollbackConfirm, m.mode)
+
+	assert.Contains(t, plain(m.View().Content), "reverting — 120 files",
+		"the pane header says what it is showing")
+	assert.Contains(t, plain(m.View().Content), "pkg000/file.go", "starting at the top")
+	assert.NotContains(t, plain(m.View().Content), "+", "nothing is elided into a '+N more'")
+
+	// Paging reaches entries a fixed-height box could never have shown.
+	for range 6 {
+		nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgDown})
+		m = nm.(Model)
+	}
+	deep := plain(m.View().Content)
+	assert.Contains(t, deep, "pkg07", "paging reaches the far end of the list")
+	assert.NotContains(t, deep, "pkg000/file.go", "and leaves the top behind")
+
+	// Scrolling must not be mistaken for answering.
+	assert.Equal(t, modeRollbackConfirm, m.mode)
+	assert.Zero(t, m.sess.(*fakeDriver).rolledBackN)
 }

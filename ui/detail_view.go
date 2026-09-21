@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/vitzeno/detent/ui/editor"
+	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/markdown"
 	"github.com/vitzeno/detent/ui/render"
 	"github.com/vitzeno/detent/ui/tabular"
@@ -19,6 +20,12 @@ import (
 // priority when present, then a table for tabular output, else the
 // scrolling viewport.
 func (m Model) detailLines() []string {
+	// A pending rollback takes the pane: its file list is the thing
+	// being reviewed, and it can run to hundreds of paths. The confirm
+	// box below stays small and asks the question.
+	if m.mode == modeRollbackConfirm {
+		return strings.Split(m.output.View(), "\n")
+	}
 	if m.showWelcome() {
 		return m.welcomePane()
 	}
@@ -87,6 +94,10 @@ func (m *Model) refreshViewport() {
 		m.perf.uiPreps++
 	}()
 	_, m.nav.histOffset = m.historyWindow()
+	if m.mode == modeRollbackConfirm {
+		m.setViewContent(m.rollbackFileLines())
+		return
+	}
 	r := m.focused()
 	if r == nil {
 		m.setViewContent(styleFaint.Render("(no output yet)"))
@@ -170,6 +181,30 @@ func (m Model) welcomePane() []string {
 		Runtime: m.info.Runtime, Network: m.info.Network,
 		Goals: snap.Goals, Commands: snap.Commands, MachineTime: snap.MachineTime(),
 	}, paneInner(m.layout.outputColW), m.output.Height(), m.welcomeFrame)
+}
+
+// rollbackFileLines is every path a revert would touch, in full. The
+// viewport scrolls it, so a goal that rewrote a whole tree is still
+// reviewable rather than cut off at an arbitrary count.
+func (m Model) rollbackFileLines() string {
+	width := paneInner(m.layout.outputColW)
+	var b strings.Builder
+	for i, f := range m.rollback.files {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		mark, style := "restore", styleDiffAdd
+		if f.Removed {
+			mark, style = "delete ", styleDiffDel
+		}
+		note := ""
+		if f.Unseen {
+			note = styleDanger.Render("  ⚠ not detent's")
+		}
+		b.WriteString(" " + style.Render(mark) + " " +
+			styleGoal.Render(layout.Truncate(f.Path, width-24)) + note)
+	}
+	return b.String()
 }
 
 // showWelcome reports whether the output pane has nothing of its own
