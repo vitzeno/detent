@@ -8,8 +8,7 @@ Works with any OpenAI-compatible `/chat/completions` endpoint — LM Studio by d
 
 ![detent TUI](screenshots/tui-0-dark.png)
 ![detent TUI](screenshots/tui-1-dark.png)
-![detent TUI](screenshots/tui-2-dark.png)
-![detent TUI](screenshots/rollback/tui-1-dark-rollback.png)
+![detent TUI](screenshots/tui-0-dark-gen.png)
 
 ## Quick start
 
@@ -130,7 +129,7 @@ first — the file list takes the output pane, since a wide-reaching goal touche
 more paths than a dialog can hold. The default answer is the non-destructive one:
 roll the container back, leave your files alone.
 
-Paths that changed *after* detent's last checkpoint are marked `⚠ not detent's`.
+Paths that changed _after_ detent's last checkpoint are marked `⚠ not detent's`.
 Nothing it ran accounts for those, so reverting them throws away work it never
 made. Its one blind spot is an edit made between two steps — the next checkpoint
 absorbs it, and it won't be flagged.
