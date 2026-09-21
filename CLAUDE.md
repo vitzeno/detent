@@ -339,7 +339,12 @@ routing     →  agent, sandbox
   `TestPackage_DependsOnStdlibOnly`. A `Spec` says how to read a
   command's output (`Parse`, a named-capture regexp or column map) and
   how to draw what was read (`Blocks`, a flat list over a closed widget
-  vocabulary). Three calls priced by frequency: `Compile` once per spec,
+  vocabulary). Eight parse kinds — `lines`, `columns`, `fixed` (slices
+  at the header's own offsets, for multi-word headings like
+  `CONTAINER ID`), `delimited`, `pairs`, `indent` (leading whitespace
+  becomes a depth), `json`, `none` — and thirteen widgets: `text`,
+  `table`, `list`, `keyvalue`, `tree`, `meter`, `sparkline`, `badges`,
+  `log`, `errors`, `json`, `diff`, `code`. Three calls priced by frequency: `Compile` once per spec,
   `Bind` once per output, `Draw` per frame — `Painter` is on `Frame`,
   not `Compiled`, so the first two are pure data and test with no
   styling at all. It declares `Painter`, `Widget` and `Extractor`

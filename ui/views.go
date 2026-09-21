@@ -109,6 +109,47 @@ var handWritten = map[string]viewspec.Spec{
 				OnEnter: "git diff -- {path}"},
 		},
 	},
+	// fixed slices at the header's own offsets, which is what reads
+	// "CONTAINER ID" as one column where whitespace fields see two.
+	"docker ps": {
+		Version: viewspec.Version,
+		Match:   "docker ps",
+		Parse:   viewspec.Parse{Kind: "fixed"},
+		Blocks: []viewspec.Block{
+			{Kind: "table",
+				Columns: []viewspec.Column{
+					{Field: "names"}, {Field: "image"}, {Field: "status"}},
+				OnEnter: "docker logs --tail 50 {names}"},
+		},
+	},
+	"env": {
+		Version: viewspec.Version,
+		Match:   "env",
+		Parse:   viewspec.Parse{Kind: "pairs", Sep: "="},
+		Blocks: []viewspec.Block{
+			{Kind: "keyvalue",
+				Columns: []viewspec.Column{{Field: "key"}, {Field: "value"}},
+				Sort:    &viewspec.Sort{Field: "key"}},
+		},
+	},
+	"find": {
+		Version: viewspec.Version,
+		Match:   "find",
+		Parse:   viewspec.Parse{Kind: "lines", Pattern: `^(?P<path>\S.*)$`},
+		Blocks: []viewspec.Block{
+			{Kind: "tree", Field: "path",
+				Sort:    &viewspec.Sort{Field: "path"},
+				OnEnter: "cat {path}"},
+		},
+	},
+	"tree": {
+		Version: viewspec.Version,
+		Match:   "tree",
+		Parse:   viewspec.Parse{Kind: "indent"},
+		Blocks: []viewspec.Block{
+			{Kind: "tree", Field: "text", Depth: "depth"},
+		},
+	},
 	"ps": {
 		Version: viewspec.Version,
 		Match:   "ps",

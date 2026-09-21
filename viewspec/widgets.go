@@ -6,6 +6,7 @@ import (
 	"maps"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -19,6 +20,10 @@ var standard = func() *Registry {
 	must(r.Extractor("lines", newLinesExtractor))
 	must(r.Extractor("columns", newColumnsExtractor))
 	must(r.Extractor("json", newJSONExtractor))
+	must(r.Extractor("fixed", newFixedExtractor))
+	must(r.Extractor("pairs", newPairsExtractor))
+	must(r.Extractor("delimited", newDelimitedExtractor))
+	must(r.Extractor("indent", newIndentExtractor))
 	must(r.Extractor("none", newNoneExtractor))
 	must(r.Widget("text", textWidget{}))
 	must(r.Widget("table", tableWidget{}))
@@ -26,6 +31,8 @@ var standard = func() *Registry {
 	must(r.Widget("keyvalue", keyvalueWidget{}))
 	must(r.Widget("meter", meterWidget{}))
 	must(r.Widget("badges", badgesWidget{}))
+	must(r.Widget("tree", treeWidget{}))
+	must(r.Widget("sparkline", sparklineWidget{}))
 	must(r.Widget("log", rawWidget{mode: "log"}))
 	must(r.Widget("errors", rawWidget{mode: "errors"}))
 	must(r.Widget("json", rawWidget{mode: "json"}))
@@ -237,12 +244,27 @@ func (badgesWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 
 // tableColumns is the block's own columns, or every parsed field in
 // source order when it names none — which is what lets one table spec
-// serve output whose columns aren't known until it is parsed.
+// serve output whose columns aren't known until it is parsed. A block
+// column with no title of its own takes the parse's, so naming a
+// column does not cost you the heading the output printed.
 func tableColumns(b Block, d Data) []Column {
-	if len(b.Columns) > 0 {
-		return b.Columns
+	if len(b.Columns) == 0 {
+		return d.Columns
 	}
-	return d.Columns
+	titles := make(map[string]string, len(d.Columns))
+	for _, c := range d.Columns {
+		if c.Title != "" {
+			titles[c.Field] = c.Title
+		}
+	}
+	out := make([]Column, len(b.Columns))
+	for i, c := range b.Columns {
+		if c.Title == "" {
+			c.Title = titles[c.Field]
+		}
+		out[i] = c
+	}
+	return out
 }
 
 // rawWidget draws bytes: a log verbatim, a diff classified, code with
@@ -438,4 +460,148 @@ func (listWidget) CursorLine(_ Block, d Data, f Frame) int {
 		return -1
 	}
 	return f.Cursor
+}
+
+// treeWidget draws a hierarchy. Depth names the field holding each
+// row's level; without one, Field is read as a path and the levels
+// come from its slashes.
+type treeWidget struct{}
+
+func (treeWidget) Validate(b Block, fields []string) error {
+	if len(fields) == 0 {
+		return ErrNoRows
+	}
+	if err := needField(b.Field, fields); err != nil {
+		return err
+	}
+	if b.Depth != "" {
+		if err := needField(b.Depth, fields); err != nil {
+			return err
+		}
+	}
+	return checkShared(b, fields)
+}
+
+func (treeWidget) CursorLine(_ Block, d Data, f Frame) int {
+	if f.Cursor < 0 || f.Cursor >= len(d.Rows) {
+		return -1
+	}
+	return f.Cursor
+}
+
+func (treeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
+	depths := treeDepths(b, d.Rows)
+	lines := make([]string, 0, len(d.Rows))
+	for i, r := range d.Rows {
+		role := accentRole(b, r)
+		if f.Focused && i == f.Cursor {
+			role = RoleAccent
+		}
+		label := r[b.Field]
+		if b.Depth == "" {
+			label = leaf(label)
+		}
+		stem := f.Paint.Paint(RoleFaint, treeStem(depths, i))
+		lines = append(lines, stem+f.Paint.Paint(role,
+			f.Paint.Truncate(label, max(1, f.Width-2*depths[i]-2))))
+	}
+	return lines, nil
+}
+
+func treeDepths(b Block, rows []Row) []int {
+	out := make([]int, len(rows))
+	for i, r := range rows {
+		if b.Depth != "" {
+			n, _ := strconv.Atoi(r[b.Depth])
+			out[i] = max(0, n)
+			continue
+		}
+		out[i] = strings.Count(strings.Trim(r[b.Field], "/"), "/")
+	}
+	return out
+}
+
+// treeStem is row i's connector: a branch for its own level, and for
+// each ancestor a bar only where that ancestor still has rows to come.
+// Without that check a closed branch keeps trailing a line down the page.
+func treeStem(depths []int, i int) string {
+	d := depths[i]
+	if d == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for level := 1; level < d; level++ {
+		if hasLaterSibling(depths, i, level) {
+			b.WriteString("│  ")
+			continue
+		}
+		b.WriteString("   ")
+	}
+	if hasLaterSibling(depths, i, d) {
+		return b.String() + "├─ "
+	}
+	return b.String() + "└─ "
+}
+
+// hasLaterSibling reports whether another row at level appears before
+// the tree returns to something shallower.
+func hasLaterSibling(depths []int, i, level int) bool {
+	for j := i + 1; j < len(depths); j++ {
+		if depths[j] < level {
+			return false
+		}
+		if depths[j] == level {
+			return true
+		}
+	}
+	return false
+}
+
+func leaf(path string) string {
+	trimmed := strings.Trim(path, "/")
+	if i := strings.LastIndex(trimmed, "/"); i >= 0 {
+		return trimmed[i+1:]
+	}
+	return trimmed
+}
+
+// sparklineWidget draws one numeric field as a bar strip, scaled to
+// the values present rather than to zero — the shape is the point.
+type sparklineWidget struct{}
+
+func (sparklineWidget) Validate(b Block, fields []string) error {
+	if len(fields) == 0 {
+		return ErrNoRows
+	}
+	return needField(b.Field, fields)
+}
+
+var sparkCells = []rune("▁▂▃▄▅▆▇█")
+
+func (sparklineWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
+	values := make([]float64, 0, len(d.Rows))
+	for _, r := range d.Rows {
+		values = append(values, parseFloat(r[b.Field]))
+	}
+	if len(values) == 0 {
+		return nil, fmt.Errorf("no values to plot")
+	}
+	lo, hi := values[0], values[0]
+	for _, v := range values {
+		lo, hi = min(lo, v), max(hi, v)
+	}
+	var strip strings.Builder
+	for _, v := range values {
+		i := 0
+		if hi > lo {
+			i = int((v - lo) / (hi - lo) * float64(len(sparkCells)-1))
+		}
+		strip.WriteRune(sparkCells[i])
+	}
+	line := f.Paint.Paint(RoleAccent, strip.String())
+	if b.Title != "" {
+		line = f.Paint.Paint(RoleFaint, b.Title+" ") + line
+	}
+	return []string{line + f.Paint.Paint(RoleFaint,
+		fmt.Sprintf("  %g–%g", lo, hi))}, nil
 }

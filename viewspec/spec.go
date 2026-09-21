@@ -22,6 +22,8 @@ type Parse struct {
 	Skip    int      `json:"skip,omitempty"`
 	Header  bool     `json:"header,omitempty"`
 	Fields  []string `json:"fields,omitempty"`
+	// Sep is what pairs and delimited split on.
+	Sep string `json:"sep,omitempty"`
 }
 
 // Row is one extracted record: field name to the literal bytes that
@@ -46,6 +48,9 @@ type Block struct {
 
 	Title string `json:"title,omitempty"`
 	Field string `json:"field,omitempty"`
+	// Depth is the field holding a tree row's nesting level. Empty
+	// means Field is a path and the hierarchy comes from its slashes.
+	Depth string `json:"depth,omitempty"`
 
 	Columns []Column `json:"columns,omitempty"`
 	Where   string   `json:"where,omitempty"`

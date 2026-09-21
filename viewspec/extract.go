@@ -3,7 +3,10 @@ package viewspec
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -233,6 +236,261 @@ func lower(in []string) []string {
 	out := make([]string, len(in))
 	for i, s := range in {
 		out[i] = strings.ToLower(s)
+	}
+	return out
+}
+
+// fixedExtractor slices rows at the header's own column offsets,
+// found by splitting it on runs of two or more spaces. That is what
+// reads "CONTAINER ID" as one column where whitespace fields see two.
+type fixedExtractor struct{ order *[]Column }
+
+func newFixedExtractor(p Parse) (Extractor, error) {
+	return skipping(p, fixedExtractor{order: new([]Column)}), nil
+}
+
+type span struct {
+	title string
+	start int
+	end   int // -1 runs to the end of the line
+}
+
+// headerSpans finds each column's title and where it starts. Two
+// spaces separate columns; one space is inside a title.
+func headerSpans(header string) []span {
+	var out []span
+	runes := []rune(header)
+	i := 0
+	for i < len(runes) {
+		for i < len(runes) && runes[i] == ' ' {
+			i++
+		}
+		if i >= len(runes) {
+			break
+		}
+		start, last := i, i
+		for i < len(runes) {
+			if runes[i] == ' ' {
+				if i+1 < len(runes) && runes[i+1] == ' ' {
+					break
+				}
+				i++
+				continue
+			}
+			last = i
+			i++
+		}
+		out = append(out, span{title: string(runes[start : last+1]), start: start})
+	}
+	for i := range out {
+		out[i].end = -1
+		if i+1 < len(out) {
+			out[i].end = out[i+1].start
+		}
+	}
+	return out
+}
+
+func (e fixedExtractor) Columns() []Column {
+	if e.order == nil {
+		return nil
+	}
+	return *e.order
+}
+
+func (e fixedExtractor) Extract(output string) ([]Row, error) {
+	lines := splitLines(output)
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+		return nil, nil
+	}
+	spans := headerSpans(lines[0])
+	if len(spans) < 2 {
+		return nil, fmt.Errorf("header has fewer than two columns")
+	}
+	if e.order != nil {
+		cols := make([]Column, len(spans))
+		for i, s := range spans {
+			cols[i] = Column{Field: strings.ToLower(s.title), Title: s.title}
+		}
+		*e.order = cols
+	}
+	var rows []Row
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		runes := []rune(line)
+		row := Row{}
+		for _, s := range spans {
+			row[strings.ToLower(s.title)] = strings.TrimSpace(slice(runes, s.start, s.end))
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+func slice(r []rune, start, end int) string {
+	if start >= len(r) {
+		return ""
+	}
+	if end < 0 || end > len(r) {
+		end = len(r)
+	}
+	return string(r[start:end])
+}
+
+// pairsExtractor reads "key<sep>value" lines: env, git config, any
+// describe-shaped output. One row per line, keyed key and value.
+type pairsExtractor struct{ sep string }
+
+func newPairsExtractor(p Parse) (Extractor, error) {
+	if p.Sep == "" {
+		return nil, fmt.Errorf("parse kind %q needs a sep", p.Kind)
+	}
+	return skipping(p, pairsExtractor{sep: p.Sep}), nil
+}
+
+func (pairsExtractor) Columns() []Column {
+	return []Column{{Field: "key"}, {Field: "value"}}
+}
+
+func (e pairsExtractor) Extract(output string) ([]Row, error) {
+	var rows []Row
+	for _, line := range splitLines(output) {
+		key, value, ok := strings.Cut(line, e.sep)
+		if !ok || strings.TrimSpace(key) == "" {
+			continue
+		}
+		rows = append(rows, Row{"key": strings.TrimSpace(key), "value": strings.TrimSpace(value)})
+	}
+	return rows, nil
+}
+
+// delimitedExtractor splits on a separator rather than whitespace:
+// CSV, TSV, /etc/passwd.
+type delimitedExtractor struct {
+	sep    string
+	header bool
+	fields []string
+	order  *[]Column
+}
+
+func newDelimitedExtractor(p Parse) (Extractor, error) {
+	if p.Sep == "" {
+		return nil, fmt.Errorf("parse kind %q needs a sep", p.Kind)
+	}
+	if !p.Header && len(p.Fields) == 0 {
+		return nil, fmt.Errorf("parse kind %q needs header or fields", p.Kind)
+	}
+	return skipping(p, delimitedExtractor{sep: p.Sep, header: p.Header,
+		fields: p.Fields, order: new([]Column)}), nil
+}
+
+func (e delimitedExtractor) Columns() []Column {
+	if e.order != nil && len(*e.order) > 0 {
+		return *e.order
+	}
+	return plainColumns(e.fields)
+}
+
+func (e delimitedExtractor) Extract(output string) ([]Row, error) {
+	var grid [][]string
+	for _, line := range splitLines(output) {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		parts := strings.Split(line, e.sep)
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
+		grid = append(grid, parts)
+	}
+	if len(grid) == 0 {
+		return nil, nil
+	}
+	names, titles := e.fields, e.fields
+	if e.header {
+		titles = grid[0]
+		names = lower(titles)
+		grid = grid[1:]
+	}
+	if e.order != nil {
+		cols := make([]Column, len(names))
+		for i, n := range names {
+			cols[i] = Column{Field: n, Title: titles[i]}
+		}
+		*e.order = cols
+	}
+	var rows []Row
+	for _, parts := range grid {
+		row := Row{}
+		for i, n := range names {
+			if i < len(parts) {
+				row[n] = parts[i]
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+// indentExtractor turns leading whitespace into a depth, so anything
+// that prints a hierarchy by indenting it can be drawn as one. Levels
+// come from the distinct indents actually present, which is what makes
+// it work for two-space, four-space and tab output alike.
+type indentExtractor struct{}
+
+func newIndentExtractor(p Parse) (Extractor, error) {
+	return skipping(p, indentExtractor{}), nil
+}
+
+func (indentExtractor) Columns() []Column {
+	return []Column{{Field: "depth"}, {Field: "text"}}
+}
+
+func (indentExtractor) Extract(output string) ([]Row, error) {
+	type entry struct {
+		indent int
+		text   string
+	}
+	var entries []entry
+	seen := map[int]bool{}
+	for _, line := range splitLines(output) {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		n := 0
+		for _, r := range line {
+			switch r {
+			case ' ':
+				n++
+			case '\t':
+				n += 4
+			default:
+			}
+			if r != ' ' && r != '\t' {
+				break
+			}
+		}
+		entries = append(entries, entry{indent: n, text: strings.TrimSpace(line)})
+		seen[n] = true
+	}
+	levels := slices.Sorted(maps.Keys(seen))
+	depthOf := make(map[int]int, len(levels))
+	for i, l := range levels {
+		depthOf[l] = i
+	}
+	rows := make([]Row, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, Row{"depth": strconv.Itoa(depthOf[e.indent]), "text": e.text})
+	}
+	return rows, nil
+}
+
+func plainColumns(fields []string) []Column {
+	out := make([]Column, len(fields))
+	for i, f := range fields {
+		out[i] = Column{Field: f}
 	}
 	return out
 }

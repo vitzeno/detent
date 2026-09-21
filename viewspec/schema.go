@@ -26,14 +26,18 @@ func (r *Registry) parseSchema() map[string]any {
 		"type":        "object",
 		"description": "how to read the output into rows; describe where fields are, never what they contain",
 		"properties": map[string]any{
-			"kind":    enum(r.ParseKinds(), "lines applies pattern per line; columns splits whitespace; json reads objects; none skips extraction"),
+			"kind": enum(r.ParseKinds(), "lines applies pattern per line; columns splits on whitespace; "+
+				"fixed slices at the header's own offsets, for multi-word headings; delimited splits on sep; "+
+				"pairs reads key<sep>value lines; indent turns leading whitespace into a depth; "+
+				"json reads objects; none skips extraction"),
 			"pattern": str("lines only: a regexp with named captures, one row per matching line"),
 			"skip":    map[string]any{"type": "integer", "description": "leading lines to drop before parsing"},
 			"header":  map[string]any{"type": "boolean", "description": "columns only: first surviving line names the fields"},
 			"fields": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
-				"description": "columns only: field names when header is false"},
+				"description": "columns and delimited: field names when header is false"},
+			"sep": str("pairs and delimited: what to split each line on"),
 		},
-		"required":             []string{"kind", "pattern", "skip", "header", "fields"},
+		"required":             []string{"kind", "pattern", "skip", "header", "fields", "sep"},
 		"additionalProperties": false,
 	}
 }
@@ -45,6 +49,7 @@ func (r *Registry) blockSchema() map[string]any {
 			"kind":  enum(r.Kinds(), "which widget draws this block"),
 			"title": str("a short label; renders dimmed because it is your prose, not output"),
 			"field": str("the field this widget reads, for single-field widgets"),
+			"depth": str("tree only: the field holding each row's level; empty reads field as a path"),
 			"columns": map[string]any{"type": "array", "items": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -82,7 +87,7 @@ func (r *Registry) blockSchema() map[string]any {
 			"of":          str(`meter only: the denominator, as "field=value" or "*" for every row`),
 			"on_enter":    str("a command template using {field}; it seeds the human's prompt and never runs"),
 		},
-		"required": []string{"kind", "title", "field", "columns", "where", "sort",
+		"required": []string{"kind", "title", "field", "depth", "columns", "where", "sort",
 			"accent", "count_where", "of", "on_enter"},
 		"additionalProperties": false,
 	}

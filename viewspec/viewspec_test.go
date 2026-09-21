@@ -336,13 +336,13 @@ func TestRegistry_IsTheExtensionPoint(t *testing.T) {
 		func(viewspec.Block, viewspec.Data, viewspec.Frame) ([]string, error) {
 			return []string{"a better table"}, nil
 		})))
-	require.NoError(t, reg.Widget("sparkline", viewspec.WidgetFunc(
+	require.NoError(t, reg.Widget("hologram", viewspec.WidgetFunc(
 		func(viewspec.Block, viewspec.Data, viewspec.Frame) ([]string, error) {
 			return []string{"▁▂▃"}, nil
 		})))
 
 	spec := viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{
-		{Kind: "table", Columns: []viewspec.Column{{Field: "pkg"}}}, {Kind: "sparkline"}}}
+		{Kind: "table", Columns: []viewspec.Column{{Field: "pkg"}}}, {Kind: "hologram"}}}
 	c, err := viewspec.Compile(spec, viewspec.WithRegistry(reg))
 	require.NoError(t, err)
 	b, err := c.Bind(goTest)
@@ -361,7 +361,7 @@ func TestRegistry_IsTheExtensionPoint(t *testing.T) {
 // interpreter.
 func TestSchema_DescribesTheRegisteredVocabulary(t *testing.T) {
 	reg := viewspec.Standard()
-	require.NoError(t, reg.Widget("sparkline", viewspec.WidgetFunc(
+	require.NoError(t, reg.Widget("hologram", viewspec.WidgetFunc(
 		func(viewspec.Block, viewspec.Data, viewspec.Frame) ([]string, error) { return nil, nil })))
 
 	raw, err := json.Marshal(reg.Schema())
@@ -372,7 +372,7 @@ func TestSchema_DescribesTheRegisteredVocabulary(t *testing.T) {
 	blocks := s["properties"].(map[string]any)["blocks"].(map[string]any)
 	kinds := blocks["items"].(map[string]any)["properties"].(map[string]any)["kind"].(map[string]any)["enum"]
 	assert.ElementsMatch(t, toStrings(reg.Kinds()), kinds)
-	assert.Contains(t, toStrings(reg.Kinds()), "sparkline")
+	assert.Contains(t, toStrings(reg.Kinds()), "hologram")
 
 	parse := s["properties"].(map[string]any)["parse"].(map[string]any)
 	assert.ElementsMatch(t, toStrings(reg.ParseKinds()),
@@ -566,4 +566,130 @@ func TestSelectable_PrefersTheActionableBlock(t *testing.T) {
 	got, ok := b.Action(viewspec.Frame{Cursor: 0})
 	require.True(t, ok)
 	assert.Equal(t, "go test -v github.com/x/b", got)
+}
+
+func TestExtract_ShapesBeyondWhitespaceColumns(t *testing.T) {
+	tests := []struct {
+		name   string
+		parse  viewspec.Parse
+		output string
+		want   []viewspec.Row
+	}{
+		{
+			name:  "fixed reads multi-word headings",
+			parse: viewspec.Parse{Kind: "fixed"},
+			output: "CONTAINER ID   IMAGE     STATUS\n" +
+				"a1b2c3d4e5f6   nginx     Up 3 hours\n",
+			want: []viewspec.Row{
+				{"container id": "a1b2c3d4e5f6", "image": "nginx", "status": "Up 3 hours"},
+			},
+		},
+		{
+			name:   "pairs splits on a separator",
+			parse:  viewspec.Parse{Kind: "pairs", Sep: "="},
+			output: "HOME=/Users/mo\nSHELL=/bin/zsh\n",
+			want: []viewspec.Row{
+				{"key": "HOME", "value": "/Users/mo"},
+				{"key": "SHELL", "value": "/bin/zsh"},
+			},
+		},
+		{
+			name:   "delimited reads a colon-separated file",
+			parse:  viewspec.Parse{Kind: "delimited", Sep: ":", Fields: []string{"user", "x", "uid"}},
+			output: "root:*:0\ndaemon:*:1\n",
+			want: []viewspec.Row{
+				{"user": "root", "x": "*", "uid": "0"},
+				{"user": "daemon", "x": "*", "uid": "1"},
+			},
+		},
+		{
+			name:   "indent turns whitespace into levels",
+			parse:  viewspec.Parse{Kind: "indent"},
+			output: "src\n  main.go\n  ui\n    view.go\n",
+			want: []viewspec.Row{
+				{"depth": "0", "text": "src"},
+				{"depth": "1", "text": "main.go"},
+				{"depth": "1", "text": "ui"},
+				{"depth": "2", "text": "view.go"},
+			},
+		},
+		{
+			name:   "indent normalises tabs to the same levels",
+			parse:  viewspec.Parse{Kind: "indent"},
+			output: "src\n\tmain.go\n\t\tdeep.go\n",
+			want: []viewspec.Row{
+				{"depth": "0", "text": "src"},
+				{"depth": "1", "text": "main.go"},
+				{"depth": "2", "text": "deep.go"},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := viewspec.Spec{Parse: tc.parse, Blocks: []viewspec.Block{{Kind: "log"}}}
+			got, err := rowsOf(spec, tc.output)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestParse_SepIsRequiredWhereItIsTheWholePoint(t *testing.T) {
+	for _, kind := range []string{"pairs", "delimited"} {
+		_, err := viewspec.Compile(viewspec.Spec{
+			Parse:  viewspec.Parse{Kind: kind, Header: true},
+			Blocks: []viewspec.Block{{Kind: "log"}}})
+		assert.Error(t, err, kind)
+	}
+}
+
+func TestTree_DrawsFromADepthFieldOrFromPaths(t *testing.T) {
+	byDepth := viewspec.Spec{Parse: viewspec.Parse{Kind: "indent"},
+		Blocks: []viewspec.Block{{Kind: "tree", Field: "text", Depth: "depth"}}}
+	assert.Equal(t, []string{
+		"src",
+		"├─ main.go",
+		"└─ ui",
+		"   └─ view.go",
+	}, draw(t, byDepth, "src\n  main.go\n  ui\n    view.go\n", 40),
+		"no bar under a branch that already closed")
+
+	assert.Equal(t, []string{
+		"src",
+		"├─ ui",
+		"│  └─ view.go",
+		"└─ main.go",
+	}, draw(t, byDepth, "src\n  ui\n    view.go\n  main.go\n", 40),
+		"but a bar where the ancestor still has rows to come")
+
+	byPath := viewspec.Spec{
+		Parse:  viewspec.Parse{Kind: "lines", Pattern: `^(?P<path>\S.*)$`},
+		Blocks: []viewspec.Block{{Kind: "tree", Field: "path"}}}
+	assert.Equal(t, []string{
+		"cmd",
+		"└─ main.go",
+		"ui",
+		"└─ view.go",
+	}, draw(t, byPath, "cmd\ncmd/main.go\nui\nui/view.go\n", 40),
+		"depth from slashes, and only the leaf is drawn")
+}
+
+func TestSparkline_ScalesToTheValuesPresent(t *testing.T) {
+	spec := viewspec.Spec{Parse: linesParse(),
+		Blocks: []viewspec.Block{{Kind: "sparkline", Field: "secs", Title: "took"}}}
+	got := draw(t, spec, goTest, 60)
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "took ")
+	assert.Contains(t, got[0], "0.412–10.2", "the range it scaled against")
+}
+
+// Naming a column must not cost you the heading the output printed.
+func TestTable_NamedColumnsKeepTheParseTitle(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "fixed"},
+		Blocks: []viewspec.Block{{Kind: "table", Columns: []viewspec.Column{
+			{Field: "names"}, {Field: "container id", Title: "id"}}}}}
+	got := draw(t, spec, "CONTAINER ID   NAMES\na1b2c3         web\n", 40)
+	require.Len(t, got, 2)
+	assert.Equal(t, "NAMES id", strings.Join(strings.Fields(got[0]), " "),
+		"the parse's title where the block gave none, the block's where it did")
 }
