@@ -67,6 +67,10 @@ type cmdState struct {
 	// viewSource is where the drawn view's framing came from; empty
 	// means the built-in fallback for its judged kind.
 	viewSource ViewSource
+	// viewDeclined records that a model was asked and nothing it
+	// returned survived, so the pane can say so rather than look
+	// identical to a view never attempted.
+	viewDeclined bool
 }
 
 // toolState holds a stepRow's fields for a slash-command row (/tree,

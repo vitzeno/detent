@@ -161,3 +161,25 @@ func TestEndToEnd_NoGeneratorLeavesTheBuiltinRendering(t *testing.T) {
 	_, ok := drv.GenerateView(context.Background(), "ps", psOutput, 0, ui.KindText)
 	assert.False(t, ok, "ui draws its built-in spec for the judged kind")
 }
+
+// Asked and refused reaches ui as a distinct outcome; never asked does
+// not, because there is nothing to tell the human about.
+func TestEndToEnd_ARefusedGenerationIsReportedAsDeclined(t *testing.T) {
+	srv := fakeEndpoint(t, []string{`{"command":"df -h","rationale":"r",` +
+		`"done":false,"summary":"","file":""}`}, `not a spec at all`)
+	defer srv.Close()
+
+	proposer := propose.New(propose.WithBaseURL(srv.URL), propose.WithModel("fake"))
+	drv := New(agent.New(proposer, nil))
+	drv.Views = &viewgen.Generator{Model: proposer, Candidates: 1,
+		Store: &viewgen.Store{Dir: t.TempDir()}}
+
+	got, ok := drv.GenerateView(context.Background(), "df -h", psOutput, 0, ui.KindTable)
+	assert.False(t, ok)
+	assert.Equal(t, ui.ViewDeclined, got.Source, "the human is told it was tried")
+
+	// Too short to be worth asking: nothing was attempted, nothing said.
+	got, ok = drv.GenerateView(context.Background(), "df -h", "one\ntwo\n", 0, ui.KindTable)
+	assert.False(t, ok)
+	assert.Empty(t, got.Source)
+}

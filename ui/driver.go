@@ -82,6 +82,11 @@ const (
 	ViewSaved ViewSource = "saved"
 	// ViewGenerated is framing a model wrote this session.
 	ViewGenerated ViewSource = "generated"
+	// ViewDeclined is not a source but an outcome: a model was asked
+	// and nothing it returned survived. The pane keeps its built-in
+	// rendering and says so, because a view that was tried and refused
+	// looks identical to one never attempted.
+	ViewDeclined ViewSource = "declined"
 )
 
 // FileChange is one path a rollback would touch in the human's own

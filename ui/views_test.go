@@ -330,3 +330,19 @@ func TestViews_ThePaneAlwaysSaysWhereItsFramingCameFrom(t *testing.T) {
 	assert.Contains(t, header, viewSourceMark)
 	assert.Contains(t, header, string(ViewBuiltin))
 }
+
+// A model that was asked and came back with nothing usable looks
+// identical to one never asked, unless the pane says so.
+func TestViews_ADeclinedGenerationSaysSo(t *testing.T) {
+	m := rowFor("df -h", "a\nb\nc\n")
+	row := m.blocks[0].steps[0]
+	m.refreshViewport()
+	require.NotContains(t, ansi.Strip(m.viewportHeader()), "declined")
+
+	nm, _ := m.Update(viewMsg{row: row, view: GeneratedView{Source: ViewDeclined}})
+	m = nm.(Model)
+	assert.True(t, row.cmd.viewDeclined)
+	assert.Contains(t, ansi.Strip(m.viewportHeader()), "generated declined")
+	assert.Contains(t, ansi.Strip(m.viewportHeader()), string(ViewBuiltin),
+		"and the built-in rendering still stands")
+}

@@ -70,8 +70,12 @@ func (m Model) viewportHeader() string {
 	// because a spec is not a result.
 	mark, width := "", m.layout.outputColW-24
 	if src := r.cmd.viewSource; src != "" {
-		mark = styleFaint.Render(" " + viewSourceMark + " " + string(src))
-		width -= len(src) + 3
+		note := string(src)
+		if r.cmd.viewDeclined {
+			note += ", generated " + string(ViewDeclined)
+		}
+		mark = styleFaint.Render(" " + viewSourceMark + " " + note)
+		width -= len(note) + 3
 	}
 	return fmt.Sprintf("%s %s%s — %s", paneMark(active), paneLabel(label, active), mark,
 		styleGoal.Render(layout.Truncate(r.command, width)))

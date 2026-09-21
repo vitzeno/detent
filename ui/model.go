@@ -158,7 +158,9 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.generateView(msg.row)
 
 	case viewMsg:
-		applyView(msg.row, msg.view)
+		if !applyView(msg.row, msg.view) && msg.view.Source == ViewDeclined {
+			msg.row.cmd.viewDeclined = true
+		}
 		return m, nil
 
 	case saveDoneMsg:

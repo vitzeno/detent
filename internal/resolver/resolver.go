@@ -6,6 +6,7 @@ package resolver
 
 import (
 	"context"
+	"errors"
 
 	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/viewgen"
@@ -43,6 +44,10 @@ func (r *Resolver) GenerateView(ctx context.Context, command, output string, exi
 	if !ok {
 		var err error
 		if got, err = r.Views.Generate(ctx, req); err != nil {
+			// Asked and refused is worth saying; never asked is not.
+			if errors.Is(err, viewgen.ErrNoneFit) {
+				return ui.GeneratedView{Source: ui.ViewDeclined}, false
+			}
 			return ui.GeneratedView{}, false
 		}
 	}

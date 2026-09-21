@@ -27,7 +27,7 @@ func (m Model) generateView(r *stepRow) tea.Cmd {
 	exit := r.cmd.ec.Result.ExitCode
 	return func() tea.Msg {
 		got, ok := sess.GenerateView(ctx, command, output, exit, kind)
-		if !ok {
+		if !ok && got.Source != ViewDeclined {
 			return nil
 		}
 		return viewMsg{row: r, view: got}
