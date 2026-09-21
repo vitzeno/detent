@@ -45,7 +45,8 @@ var kinds = []Kind{
 		What:     "unstructured text, read top to bottom: logs, build output, a few lines of status",
 		NotFor:   "text with a shape worth drawing: aligned columns, a listing, a diff, JSON, or a failure",
 		Examples: []string{"go test ./... output", "a docker build log", "pwd", "npm install"},
-		Widgets:  []string{"log", "errors", "table", "meter", "badges", "text", viewspec.RowKind},
+		Widgets: []string{"log", "errors", "text", "table", "meter", "stat", "histogram",
+			"gantt", "badges", viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
 	},
 	{
@@ -53,7 +54,9 @@ var kinds = []Kind{
 		What:     "aligned columns with a header row, one record per row",
 		NotFor:   "a bare list of paths or names with no header or columns, which is file_listing",
 		Examples: []string{"ps aux", "df -h", "ls -la", "docker ps"},
-		Widgets:  []string{"table", "bar", "keyvalue", "meter", "badges", "text", viewspec.RowKind},
+		Widgets: []string{"table", "bar", "gauge", "stack", "diverge", "delta", "histogram",
+			"boxplot", "series", "heatmap", "scatter", "gantt", "timeline", "dots",
+			"stat", "keyvalue", "badges", "text", viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
 	},
 	{
@@ -61,7 +64,8 @@ var kinds = []Kind{
 		What:     "a list of paths or items to pick from, one per line, with no header or aligned columns",
 		NotFor:   "the same listing with a header row and aligned columns, which is table",
 		Examples: []string{"find . -name '*.go'", "git diff --name-only", "plain ls"},
-		Widgets:  []string{"list", "tree", "badges", "meter", "text", viewspec.RowKind},
+		Widgets: []string{"list", "tree", "flow", "badges", "stat", "histogram", "text",
+			viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
 	},
 	{
@@ -92,7 +96,8 @@ var kinds = []Kind{
 		What:     "JSON or other structured data, read as data",
 		NotFor:   "a file's prose or code body that merely happens not to be JSON",
 		Examples: []string{"curl returning a JSON body", "kubectl get pod -o json"},
-		Widgets:  []string{"keyvalue", "table", "json", "text", viewspec.RowKind},
+		Widgets: []string{"keyvalue", "table", "json", "stat", "histogram", "delta", "badges",
+			"text", viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
 	},
 }
