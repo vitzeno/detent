@@ -120,7 +120,12 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
 			"tokens", total.PromptTokens+total.CompletionTokens)
 		return Result{Spec: best, Key: key, Source: SourceGenerated, Fit: bestFit, Usage: total}, nil
 	}
-	if spec, ok := seed(req.Command); ok && g.usable(ctx, req, spec, SourceShipped) {
+	// Silent: a caller reaches Generate through Existing, which has
+	// already logged what it made of this seed. Saying so twice reads
+	// like two different rejections.
+	if spec, ok := seed(req.Command); ok && draws(spec, g.registry(), req.Output) == nil {
+		log.InfoContext(ctx, "falling back to a shipped view", logging.KeyEvent, logging.ViewLookup,
+			"key", key, "source", SourceShipped)
 		return Result{Spec: spec, Key: key, Source: SourceShipped, Usage: total}, nil
 	}
 	if !g.worthAsking(req) {

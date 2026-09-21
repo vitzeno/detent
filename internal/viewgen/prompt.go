@@ -30,6 +30,8 @@ This is the exact shape of a reply, for "ps aux" output. Copy its structure, not
 
 {"version":1,"match":"ps","parse":{"kind":"columns","header":true,"pattern":"","skip":0,"fields":[],"sep":""},"blocks":[{"kind":"meter","title":"running","field":"","depth":"","columns":[],"where":"","sort":null,"accent":null,"count_where":"stat=R","of":"*","on_enter":"","panes":[]},{"kind":"table","title":"","field":"","depth":"","columns":[{"field":"pid","title":"PID","width":0},{"field":"command","title":"","width":0}],"where":"","sort":{"field":"pid","numeric":true,"desc":true},"accent":{"field":"stat","map":{"R":"safe","Z":"danger"}},"count_where":"","of":"","on_enter":"lsof -p {pid}","panes":[]}]}
 
+That example was written for a table, so it reaches for meter and table. Your list may contain neither. Copy its shape, never its kinds: the kind enum in the schema is the only place a block kind may come from, and a block naming anything else throws the whole view away.
+
 Every key must be present on every object, even when empty: "" for unused strings, [] for unused lists, null for unused sort and accent, 0 for unused numbers. Empty means unused, so never empty a key the kind's needs list: a meter without count_where, or a list without field, cannot be drawn and the whole view is thrown away.
 
 Reply with the JSON object only.`
