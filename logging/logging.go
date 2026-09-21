@@ -1,14 +1,9 @@
-// Package logging configures detent's structured log and names the
-// vocabulary it is written in.
+// Package logging writes one JSONL stream per session and names the
+// vocabulary it is written in. One stream, not one file per
+// component: the thing anyone investigates is a step, and a step
+// crosses several components.
 //
-// One stream per session, not one per component. The unit anyone
-// actually investigates is a step, and a step crosses four or five
-// components: splitting by component would make filtering easy and
-// correlating impossible. A component field gives the split for free
-// and keeps the join.
-//
-// It imports the standard library only, so ui and any other package
-// outside internal/ can use it without breaking its own import rules.
+// Standard library only, so ui may import it.
 package logging
 
 import (
@@ -19,24 +14,9 @@ import (
 	"strings"
 )
 
-// Options configures Setup.
-type Options struct {
-	// Dir holds one file per session. Empty means DefaultDir.
-	Dir string
-	// Session identifies this run and names its file.
-	Session string
-	// Level is "debug", "info", "warn" or "error".
-	Level string
-	// Bodies allows prompts, replies and command output into the log.
-	// Off by default: the shape of a reply answers most questions, and
-	// bodies carry secrets and bulk.
-	Bodies bool
-}
-
 // Setup opens this session's log and makes it the default logger.
-// The returned closer flushes it. A path that cannot be opened is not
-// fatal: logging is never worth failing a session over, so it falls
-// back to discarding and says so on stderr.
+// A path it cannot open is reported but not fatal: it discards
+// instead, since no session is worth failing over its log.
 func Setup(o Options) (func() error, error) {
 	dir := o.Dir
 	if dir == "" {
@@ -60,6 +40,33 @@ func Setup(o Options) (func() error, error) {
 	return f.Close, nil
 }
 
+// For returns the logger a component writes with.
+func For(component string) *slog.Logger {
+	return slog.Default().With(KeyComponent, component)
+}
+
+// Body returns text only when bodies are allowed, a length
+// otherwise. Use it for anything unbounded.
+func Body(text string) string {
+	if bodies {
+		return text
+	}
+	return fmt.Sprintf("(%d bytes, set log_bodies to record)", len(text))
+}
+
+// Options configures Setup.
+type Options struct {
+	// Dir holds one file per session. Empty means DefaultDir.
+	Dir string
+	// Session identifies this run and names its file.
+	Session string
+	// Level is "debug", "info", "warn" or "error".
+	Level string
+	// Bodies allows prompts, replies and command output into the log.
+	// Off by default: they carry secrets and bulk.
+	Bodies bool
+}
+
 // DefaultDir is where session logs live, beside the saved views.
 func DefaultDir() string {
 	home, err := os.UserHomeDir()
@@ -69,24 +76,8 @@ func DefaultDir() string {
 	return filepath.Join(home, ".local", "state", "detent", "logs")
 }
 
-// For returns the logger a component writes with.
-func For(component string) *slog.Logger {
-	return slog.Default().With(KeyComponent, component)
-}
-
-// bodies is read by Body; a package-level flag rather than a
-// parameter so no call site has to thread it.
+// bodies is package-level so no call site has to thread it.
 var bodies bool
-
-// Body returns text only when bodies are allowed, and a length
-// otherwise. Use it for anything unbounded: prompts, model replies,
-// command output.
-func Body(text string) string {
-	if bodies {
-		return text
-	}
-	return fmt.Sprintf("(%d bytes, set log_bodies to record)", len(text))
-}
 
 func parseLevel(s string) slog.Level {
 	switch strings.ToLower(s) {

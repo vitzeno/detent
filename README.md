@@ -1,197 +1,136 @@
 # detent
 
-A terminal UI harness that pairs a small or local LLM with a human to drive a shell. Give it a goal; the model proposes one `sh -c` command at a time, the harness runs it, feeds the output back, and the loop repeats until the goal is done.
+A TUI that pairs a small or local LLM with a human to drive a shell.
 
-Works with any OpenAI-compatible `/chat/completions` endpoint — LM Studio by default, OpenRouter or OpenAI also work.
+You give it a goal. The model proposes one `sh -c` command at a time, the
+harness runs it, feeds the output back, and repeats until it's done. Risky
+commands stop and ask you. Everything is checkpointed, so you can undo.
 
-## Screenshots
+Works with any OpenAI-compatible `/chat/completions` endpoint: LM Studio by
+default, OpenRouter or OpenAI too.
 
-![detent TUI](screenshots/tui-0-dark.png)
-![detent TUI](screenshots/tui-1-dark.png)
-![detent TUI](screenshots/tui-0-dark-gen.png)
-
-## Quick start
-
-```sh
-make build         # build to bin/detent
-make run           # launch the TUI
-make run-headless GOAL="list go files larger than 1MB"   # one goal, no UI
-make test          # go test ./...
-```
-
-By default detent runs every command **sandboxed** in a container, which needs a
-containerd daemon (see below). To skip that and run straight on your machine:
+![detent](screenshots/tui-0-dark.png)
 
 ```sh
-./bin/detent -sandbox host
+make build && ./bin/detent          # sandboxed (needs containerd, see below)
+./bin/detent -sandbox host          # straight on your machine
+make run-headless GOAL="find go files over 1MB"
 ```
 
-## Sandboxing
+---
 
-Commands run in a containerd-backed container, one per session, so filesystem
-state builds up across steps and can be rolled back. Your working directory is
-bind-mounted at `/workspace`, so edits are visible on both sides.
+## What it does
 
-### macOS — colima with the containerd runtime
+| | |
+| --- | --- |
+| **One command at a time** | No batches. Every step is reviewable and separately undoable. |
+| **Confirm only when it matters** | A second model (TypeSafe Jev) plus a regex backstop flags the dangerous ones. Everything else runs through. |
+| **Undo** | `/rollback 7` restores the container to before step 7 and trims the transcript to match. |
+| **Sandboxed by default** | One containerd container per session. Your working dir is bind-mounted at `/workspace`. |
+| **Output that reads** | The pane picks a rendering per output shape, and can ask a model to design one. |
+| **One transcript** | Every goal shares it, compacted at goal boundaries once it outgrows its budget. |
+| **A log you can query** | One JSONL file per session, every record tagged with the step it belongs to. |
 
-```sh
-brew install colima
-colima start --runtime containerd
-```
+## Reading the output
 
-detent looks for `~/.colima/default/containerd.sock` automatically. Check what
-your VM actually exposes with:
+The pane draws from a *view spec*: a parse saying how to read the bytes into
+rows, and blocks saying how to draw them. Fifteen widgets, eight parse kinds.
+Detent ships specs for common commands and picks a sensible default otherwise.
 
-```sh
-colima status     # prints the "containerd socket:" line
-```
+Set `views: generate` and it will ask the model to design one for output
+nothing covers, check it actually binds against the real bytes, have Jev score
+it, and save the winner. The second run of that command is free.
 
-A colima VM started with the **docker** runtime also exposes a working
-containerd socket (dockerd runs on containerd underneath), so an existing
-`colima start` will usually work as-is. If you use a named profile, the socket
-moves to `~/.colima/<profile>/containerd.sock` and you'll need to point at it:
+![generated view](screenshots/tui-0-dark-gen.png)
 
-```sh
-colima start --profile detent --runtime containerd
-./bin/detent -sandbox-socket ~/.colima/detent/containerd.sock
-```
+The header says where the framing came from, and only when a model had a hand
+in it: `✦ generated`, `✦ saved`, or `✦ generate declined` when it tried and
+nothing survived. Detent's own renderings say nothing.
 
-### Linux
-
-containerd runs natively; detent uses `/run/containerd/containerd.sock`. You may
-need to be in a group that can read that socket, or run with sudo.
-
-### Windows
-
-No safe default. Run detent inside WSL2 (then it's the Linux case), or expose
-containerd over TCP and pass `-sandbox-socket`.
-
-### Known limits
-
-- **The container shares the containerd daemon's network.** That's
-  `sandbox_network: host`, the default, so goals can clone, curl and install.
-  What "host" means depends on where the daemon runs:
-
-    | Platform | Container gets          | Your machine                |
-    | -------- | ----------------------- | --------------------------- |
-    | macOS    | the colima VM's network | behind the VM boundary      |
-    | Linux    | this machine's network  | localhost and LAN reachable |
-
-    Set `sandbox_network: none` for loopback only: isolated, but no DNS and
-    nothing fetchable. The welcome pane says which one is live.
-
-    An isolated bridge network with real connectivity would need CNI. `go-cni`
-    shells out to plugin binaries and needs a netns on the daemon's kernel, which
-    doesn't hold with the daemon in a VM, so it isn't wired up.
-
-- **The default image is `buildpack-deps:24.04-scm`**: Ubuntu plus git, curl and
-  ca-certificates, so goals have them even with `sandbox_network: none`. Point
-  `sandbox_image` at something else if you need more.
-- **`/new` forgets the conversation, not the container.** It clears the transcript,
-  the history pane and the usage counters, so the next goal starts fresh. A
-  sandbox container and anything already written inside it carry on.
-- **The container snapshot stops at `/workspace`.** That's a bind mount to your
-  real directory, outside the snapshot, so reverting your files is a separate
-  step that detent asks about rather than doing for you — see below.
-
-## How safety works
-
-- Commands run straight through, no confirm per step.
-- A second model (TypeSafe Jev) plus a regex backstop flags **Dangerous**
-  commands — those are shown verbatim and require explicit human approval.
-- Without a Jev key configured, only the regex backstop applies.
-- The session bar always says where commands run: `sandbox ●` or
-  `host ⚠ unsandboxed`.
-- Each goal is its own block in the history pane, drawn against a rail whose
-  colour is the outcome: green done, amber aborted or only partly met, red
-  error, accent while it is still running. The rail spans every row of the
-  block, so both the grouping and how it went read from anywhere inside it.
-- Colour carries status, not prose: a `✓`/`⚠`/`✗` marks how a step went, while
-  anything the model wrote — a summary, a rationale — renders dimmed, so a
-  generated sentence never reads as a success signal.
-- Every finished goal carries Jev's own verdict on it — `jev · goal met (0.98)`,
-  `~ only partly met`, or `⚠ looks unmet` — rather than only speaking up to
-  disagree. Only the two worth acting on are marked; agreement is the expected
-  case. Nothing is shown when no judge is wired, which is a different thing from
-  a low score.
+**The model never writes your data.** It writes a regexp and picks widgets;
+the interpreter runs that regexp over real output. A spec can point at the
+wrong field, which drops the view. It cannot put a value on screen that the
+command never printed.
 
 ## Undoing a step
 
-Every sandboxed step is checkpointed, and each one shows a dim `#N` marker in the
-history pane, numbered across the whole session. `/rollback N` undoes step N
-**and everything after it**, restoring the container to how it was before that
-step ran and trimming the transcript to match, so the model doesn't keep
-reasoning from undone work.
+![rollback confirm](screenshots/rollback/tui-1-dark-rollback.png)
 
-Your own files are a separate question. `/workspace` is a bind mount, not part of
-the container snapshot, so detent shows what reverting it would change and asks
-first — the file list takes the output pane, since a wide-reaching goal touches
-more paths than a dialog can hold. The default answer is the non-destructive one:
-roll the container back, leave your files alone.
+Each sandboxed step carries a dim `#N`, numbered across the session.
+`/rollback N` undoes step N **and everything after it**.
 
-Paths that changed _after_ detent's last checkpoint are marked `⚠ not detent's`.
-Nothing it ran accounts for those, so reverting them throws away work it never
-made. Its one blind spot is an edit made between two steps — the next checkpoint
-absorbs it, and it won't be flagged.
+Your own files are a separate question. `/workspace` is a bind mount, not part
+of the snapshot, so detent shows what reverting would change and asks first.
+The default answer is the safe one: roll the container back, leave your files.
+Paths that changed *after* the last checkpoint are marked `⚠ not detent's`,
+because nothing detent ran accounts for those.
 
-## Long sessions
+## Safety, stated plainly
 
-One transcript spans every goal, and all of it is resent on each proposal — so
-without a ceiling a long session gets steadily more expensive and eventually
-overruns the model's context window.
+- Commands run straight through unless flagged **Dangerous**, which shows the
+  literal text and waits for you.
+- Without a Jev key, only the regex backstop applies.
+- The session bar always says where commands run: `sandbox ●` or
+  `host ⚠ unsandboxed`.
+- Colour carries status; prose never does. Anything the model wrote renders
+  dimmed, so a confident sentence can't look like a result.
 
-`context_tokens` (default 24000, sized for a 32k model) is that ceiling. Past it,
-at the next goal boundary, the oldest turns are replaced by a summary the same
-model writes; what survives is the recent half plus that summary. With no
-summariser reachable it says plainly that the turns are gone rather than
-pretending the session started there.
-
-Compaction and rollback have to agree on what a step points at, so a step whose
-turns have been summarised away can't be rolled back to — `/rollback` says so
-instead of restoring a container the transcript can no longer describe.
+![history and usage](screenshots/tui-2-dark.png)
 
 ## Keys
 
-| Key                    | Does                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------ |
-| `enter`                | run the goal in the input box                                                              |
-| `shift+enter`          | insert a newline (needs a Kitty-protocol terminal; the status line says which)             |
-| `alt+enter` / `ctrl+j` | insert a newline anywhere                                                                  |
-| `/`                    | open the command list (`/rollback`, `/tree`, `/usage`, `/new`, `/abort`, `/help`, `/quit`) |
-| `esc`                  | abort the running goal — so does `/abort`, which stays typeable mid-run                    |
-| `tab`                  | cycle input → history → output                                                             |
-| `↑` / `↓`              | move through history, or scroll the focused pane                                           |
-| `space`                | expand the focused row's output                                                            |
-| `ctrl+s`               | save the file open in the editor pane                                                      |
-| `ctrl+c`               | quit from anywhere — or `/quit`                                                            |
+| Key | Does |
+| --- | --- |
+| `enter` | run the goal in the input box |
+| `/` | command list: `/rollback`, `/tree`, `/usage`, `/new`, `/abort`, `/quit` |
+| `esc` | abort the running goal |
+| `tab` | cycle input → history → output |
+| `↑` `↓` | move through history, or scroll the focused pane |
+| `enter` *(output pane)* | act on the selected row, into the prompt |
+| `space` | expand the focused row |
+| `ctrl+s` | save the file open in the editor |
+| `ctrl+c` | quit |
 
-**Want `shift+enter` for newlines?** Terminals send the same byte for `enter` and
-`shift+enter`, so no program can tell them apart by default. Bind it in your
-terminal to send `\x1b\r` (escape + carriage return) and detent will read it as
-`alt+enter`:
+`alt+enter` or `ctrl+j` inserts a newline. For `shift+enter`, bind it in your
+terminal to send `\x1b\r`; terminals send the same byte for both otherwise.
 
-- **iTerm2** — Settings → Keys → Key Bindings → `+`, press shift+enter, action
-  "Send Escape Sequence", value `\r`.
-- **VS Code** — add to `keybindings.json`:
-    ```json
-    {
-    	"key": "shift+enter",
-    	"command": "workbench.action.terminal.sendSequence",
-    	"args": { "text": "\r" },
-    	"when": "terminalFocus"
-    }
-    ```
+## Themes
+
+`dark`, `light`, `solarized`, `dracula` via `theme:` or `DETENT_THEME`.
+
+![dracula](screenshots/tui-0-dracula.png)
+
+## Sandboxing
+
+```sh
+brew install colima                        # macOS
+colima start --runtime containerd
+```
+
+On Linux, run containerd and point `sandbox_socket` at it. Rollback restores
+container state only: the workspace bind mount is deliberately outside the
+snapshot.
 
 ## Configuration
 
-Config file at `./.detent.yaml` or `~/.config/detent/config.yaml` (see
-`detent.example.yaml` for every key). Precedence is flags > environment > file >
+`./.detent.yaml` or `~/.config/detent/config.yaml`. Every key is documented in
+[`detent.example.yaml`](detent.example.yaml). Precedence: flags > env > file >
 built-ins.
 
-Key env vars: `DETENT_BASE_URL`, `DETENT_MODEL`, `DETENT_API_KEY`,
-`TYPESAFE_API_KEY` (enables the Jev judge), `DETENT_CONTEXT_TOKENS`,
-`DETENT_SANDBOX_MODE`, `DETENT_SANDBOX_SOCKET`. A repo-local `.env` is also
-loaded.
+Common env vars: `DETENT_BASE_URL`, `DETENT_MODEL`, `DETENT_API_KEY`,
+`TYPESAFE_API_KEY`, `DETENT_VIEWS`, `DETENT_SANDBOX_MODE`, `DETENT_LOG_LEVEL`.
+A repo-local `.env` is loaded too.
+
+## Logs
+
+One JSONL stream per session at `~/.local/state/detent/logs/`. One file, not
+one per component, because the thing you investigate is a step and a step
+crosses several of them:
+
+```sh
+jq 'select(.step == 7)'                    everything about step 7
+jq 'select(.event | startswith("view."))'  why the output looked like that
+```
 
 ## Architecture
 
@@ -200,13 +139,11 @@ cmd/detent  →  ui  ⇄  resolver  ⇄  agent  →  propose, classify, usage, w
                                       ↑
                                    routing  →  host     (unsandboxed)
                                             →  sandbox  (containerd)
+
+viewspec, logging  →  stdlib only, importable by anything
 ```
 
-`ui` and `agent` never import each other; `resolver` translates between them, so
-the TUI's vocabulary and the harness's domain stay independent. `ui` depends on
-nothing under `internal/`, which is why it lives outside it.
+`ui` and `agent` never import each other; `resolver` translates. `ui` depends
+on nothing under `internal/`, which is why it lives outside it.
 
-One transcript per session, not disconnected per-goal requests, compacted at goal
-boundaries once it outgrows its budget. The model's proposal is strict JSON
-(command or done), executed via a single `sh -c` boundary with timeouts and
-output caps, then judged for status before the next proposal.
+[CLAUDE.md](CLAUDE.md) has how the code is arranged and why.

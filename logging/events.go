@@ -1,12 +1,8 @@
 package logging
 
-// The event vocabulary. An event name is the primary key of a log
-// record: queries match on it, so it is a closed set rather than
-// free text. The message field is decoration for humans.
-//
-// Names are dotted so a whole subsystem filters by prefix:
-//
-//	jq 'select(.event | startswith("view."))' session.jsonl
+// The event vocabulary. An event is a record's primary key, so it is
+// a closed set rather than free text; msg is decoration. Names are
+// dotted so a subsystem filters by prefix.
 const (
 	// Goal lifecycle.
 	GoalBegin  = "goal.begin"
@@ -33,9 +29,8 @@ const (
 	Snapshot = "snapshot.take"
 	Rollback = "snapshot.rollback"
 
-	// How the output pane got drawn. Every branch that silently
-	// chooses something says which, because "it looked plain" is
-	// otherwise unanswerable.
+	// How the output pane got drawn. Every silent branch says which,
+	// because "it looked plain" is otherwise unanswerable.
 	ViewLookup   = "view.lookup"
 	ViewSkipped  = "view.skipped"
 	ViewInvalid  = "view.invalid"
@@ -45,8 +40,7 @@ const (
 	ViewDrawn    = "view.drawn"
 )
 
-// Field names every record may carry. Queries filter on these, so
-// they are spelled once here rather than at each call site.
+// Field names records carry. Spelled once so queries can rely on them.
 const (
 	KeyComponent = "component"
 	KeySession   = "session"
@@ -57,7 +51,7 @@ const (
 	KeyMS        = "ms"
 )
 
-// Component names. One per subsystem worth filtering to on its own.
+// Components worth filtering to on their own.
 const (
 	UI       = "ui"
 	Agent    = "agent"

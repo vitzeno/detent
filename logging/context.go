@@ -5,18 +5,6 @@ import (
 	"log/slog"
 )
 
-// Correlation travels in the context rather than through every
-// signature. A goal or step set once upstream reaches every record
-// written beneath it, which is what makes "show me step 7" a single
-// filter across every component that touched it.
-
-type marksKey struct{}
-
-type marks struct {
-	goal int
-	step int
-}
-
 // WithGoal marks ctx as belonging to goal n.
 func WithGoal(ctx context.Context, n int) context.Context {
 	m, _ := ctx.Value(marksKey{}).(marks)
@@ -24,16 +12,23 @@ func WithGoal(ctx context.Context, n int) context.Context {
 	return context.WithValue(ctx, marksKey{}, m)
 }
 
-// WithStep marks ctx as belonging to step n, the same number the UI
-// shows against a row and /rollback takes.
+// WithStep marks ctx as step n, the number the UI shows on a row.
 func WithStep(ctx context.Context, n int) context.Context {
 	m, _ := ctx.Value(marksKey{}).(marks)
 	m.step = n
 	return context.WithValue(ctx, marksKey{}, m)
 }
 
-// contextHandler copies whatever marks the context carries onto every
-// record, so a call site never repeats them.
+// Correlation travels in the context, not in signatures: a mark set
+// once upstream reaches every record written beneath it.
+type marksKey struct{}
+
+type marks struct {
+	goal int
+	step int
+}
+
+// contextHandler copies the context's marks onto every record.
 type contextHandler struct{ slog.Handler }
 
 func (h contextHandler) Handle(ctx context.Context, r slog.Record) error {

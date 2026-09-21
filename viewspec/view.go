@@ -142,7 +142,7 @@ type Render struct {
 
 // Frame is everything Draw needs that Bind could not know. Painter is
 // here, not on Compiled, so Compile and Bind stay pure data and test
-// with no styling at all. See docs/design/viewspec.md.
+// with no styling at all.
 type Frame struct {
 	Width, Height int
 	Focused       bool

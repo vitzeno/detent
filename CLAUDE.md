@@ -377,8 +377,7 @@ routing     →  agent, sandbox
   when nothing covers the output. Only `generate` ever writes a spec,
   which is why `saved` alone never grows the set. `Generate` asks the
   model before falling back to a shipped spec, so shipping one is a
-  floor rather than a ceiling. See
-  `docs/design/viewspec.md`.
+  floor rather than a ceiling.
 
   **There is one render path.** `ui/views.go`'s `specChain` tries, in
   order: a spec keyed to the command (`normaliseCommand`), the built-in
