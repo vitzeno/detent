@@ -342,9 +342,11 @@ routing     →  agent, sandbox
   vocabulary). Eight parse kinds — `lines`, `columns`, `fixed` (slices
   at the header's own offsets, for multi-word headings like
   `CONTAINER ID`), `delimited`, `pairs`, `indent` (leading whitespace
-  becomes a depth), `json`, `none` — and thirteen widgets: `text`,
-  `table`, `list`, `keyvalue`, `tree`, `meter`, `sparkline`, `badges`,
-  `log`, `errors`, `json`, `diff`, `code`. Three calls priced by frequency: `Compile` once per spec,
+  becomes a depth), `json`, `none` — and fourteen widgets: `text`,
+  `table`, `list`, `keyvalue`, `tree`, `meter`, `bar`, `sparkline`,
+  `badges`, `log`, `errors`, `json`, `diff`, `code`. Blocks stack
+  vertically: there is no 2D layout, so a chart beside its legend
+  needs a container block that v1 deliberately does not have. Three calls priced by frequency: `Compile` once per spec,
   `Bind` once per output, `Draw` per frame — `Painter` is on `Frame`,
   not `Compiled`, so the first two are pure data and test with no
   styling at all. It declares `Painter`, `Widget` and `Extractor`

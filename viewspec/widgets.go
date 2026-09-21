@@ -33,6 +33,7 @@ var standard = func() *Registry {
 	must(r.Widget("badges", badgesWidget{}))
 	must(r.Widget("tree", treeWidget{}))
 	must(r.Widget("sparkline", sparklineWidget{}))
+	must(r.Widget("bar", barWidget{}))
 	must(r.Widget("log", rawWidget{mode: "log"}))
 	must(r.Widget("errors", rawWidget{mode: "errors"}))
 	must(r.Widget("json", rawWidget{mode: "json"}))
@@ -604,4 +605,64 @@ func (sparklineWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	}
 	return []string{line + f.Paint.Paint(RoleFaint,
 		fmt.Sprintf("  %g–%g", lo, hi))}, nil
+}
+
+// barWidget charts one row per bar: Columns[0] labels, Columns[1] is
+// the number. Bars scale to the largest value and to the frame, so the
+// comparison survives a narrow pane.
+type barWidget struct{}
+
+func (barWidget) Validate(b Block, fields []string) error {
+	if len(b.Columns) != 2 {
+		return fmt.Errorf("bar needs a label column and a value column")
+	}
+	if len(fields) == 0 {
+		return ErrNoRows
+	}
+	for _, c := range b.Columns {
+		if err := needField(c.Field, fields); err != nil {
+			return err
+		}
+	}
+	return checkShared(b, fields)
+}
+
+func (barWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
+	label, value := b.Columns[0].Field, b.Columns[1].Field
+	labelW, hi := 0, 0.0
+	for _, r := range d.Rows {
+		labelW = max(labelW, f.Paint.Width(r[label]))
+		hi = max(hi, parseFloat(r[value]))
+	}
+	labelW = min(labelW, f.Width/3)
+	numW := 0
+	for _, r := range d.Rows {
+		numW = max(numW, f.Paint.Width(r[value]))
+	}
+	barW := f.Width - labelW - numW - 3
+	if barW < 1 {
+		return nil, fmt.Errorf("no width to chart in")
+	}
+	lines := make([]string, 0, len(d.Rows))
+	for _, r := range d.Rows {
+		n := 0
+		if hi > 0 {
+			n = int(parseFloat(r[value]) / hi * float64(barW))
+		}
+		lines = append(lines,
+			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(r[label], labelW), labelW, f.Paint))+" "+
+				f.Paint.Paint(accentOr(b, r, RoleAccent), strings.Repeat("█", n))+
+				strings.Repeat(" ", barW-n)+" "+
+				f.Paint.Paint(RoleFaint, r[value]))
+	}
+	return lines, nil
+}
+
+// accentOr is accentRole with a fallback for widgets whose resting
+// colour is not RoleDefault.
+func accentOr(b Block, r Row, fallback Role) Role {
+	if b.Accent == nil {
+		return fallback
+	}
+	return accentRole(b, r)
 }

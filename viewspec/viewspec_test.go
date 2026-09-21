@@ -693,3 +693,23 @@ func TestTable_NamedColumnsKeepTheParseTitle(t *testing.T) {
 	assert.Equal(t, "NAMES id", strings.Join(strings.Fields(got[0]), " "),
 		"the parse's title where the block gave none, the block's where it did")
 }
+
+func TestBar_ScalesToTheLargestValue(t *testing.T) {
+	spec := viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{{
+		Kind: "bar", Columns: []viewspec.Column{{Field: "pkg"}, {Field: "secs"}},
+		Sort: &viewspec.Sort{Field: "secs", Numeric: true, Desc: true}}}}
+	got := draw(t, spec, goTest, 46)
+	require.Len(t, got, 4)
+
+	bars := make([]int, len(got))
+	for i, l := range got {
+		bars[i] = strings.Count(l, "█")
+		assert.LessOrEqual(t, len([]rune(l)), 46, "never wider than the frame")
+	}
+	// 10.200, 9.500, 1.203, 0.412 — descending, and the largest fills.
+	assert.Greater(t, bars[0], bars[1])
+	assert.Greater(t, bars[1], bars[2])
+	assert.Greater(t, bars[2], bars[3])
+	assert.InDelta(t, 9.5/10.2, float64(bars[1])/float64(bars[0]), 0.05,
+		"bar length tracks the value")
+}
