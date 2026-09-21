@@ -3,12 +3,11 @@ package ui
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/vitzeno/detent/ui/markdown"
 	"github.com/vitzeno/detent/viewspec"
 )
-
-// Hand-written views, one per command shape, compiled once at init.
-// Phase 4 replaces this map with generated specs on disk.
 
 // viewRegistry is Standard plus what only detent can provide. A widget
 // registered here reaches the model's schema too, since generation
@@ -78,106 +77,7 @@ func rawSpec(kind string) viewspec.Spec {
 	}
 }
 
-var handWritten = map[string]viewspec.Spec{
-	"go test": {
-		Version: viewspec.Version,
-		Match:   "go test",
-		Parse: viewspec.Parse{Kind: "lines",
-			Pattern: `^(?P<status>ok|FAIL)\s+(?P<pkg>\S+)\s+(?P<secs>[\d.]+)s`},
-		Blocks: []viewspec.Block{
-			{Kind: "meter", Title: "passed", CountWhere: "status=ok", Of: "*"},
-			{Kind: "table",
-				Columns: []viewspec.Column{
-					{Field: "status"}, {Field: "pkg", Title: "package"}, {Field: "secs", Title: "took"}},
-				Sort:    &viewspec.Sort{Field: "secs", Numeric: true, Desc: true},
-				Accent:  accentOn("status", map[string]viewspec.Role{"ok": viewspec.RoleSafe, "FAIL": viewspec.RoleDanger}),
-				OnEnter: "go test -v {pkg}"},
-		},
-	},
-	// Porcelain v1 is two status chars then the path, so the code keeps
-	// its leading space. The class is what excludes --branch's "## "..
-	"git status": {
-		Version: viewspec.Version,
-		Match:   "git status",
-		Parse:   viewspec.Parse{Kind: "lines", Pattern: `^(?P<code>[ MADRCU?!]{2})\s(?P<path>.+)$`},
-		Blocks: []viewspec.Block{
-			{Kind: "badges", Field: "code",
-				Accent: accentOn("code", gitCodes)},
-			{Kind: "list", Field: "path",
-				Sort:    &viewspec.Sort{Field: "path"},
-				Accent:  accentOn("code", gitCodes),
-				OnEnter: "git diff -- {path}"},
-		},
-	},
-	// fixed slices at the header's own offsets, which is what reads
-	// "CONTAINER ID" as one column where whitespace fields see two.
-	"docker ps": {
-		Version: viewspec.Version,
-		Match:   "docker ps",
-		Parse:   viewspec.Parse{Kind: "fixed"},
-		Blocks: []viewspec.Block{
-			{Kind: "table",
-				Columns: []viewspec.Column{
-					{Field: "names"}, {Field: "image"}, {Field: "status"}},
-				OnEnter: "docker logs --tail 50 {names}"},
-		},
-	},
-	"env": {
-		Version: viewspec.Version,
-		Match:   "env",
-		Parse:   viewspec.Parse{Kind: "pairs", Sep: "="},
-		Blocks: []viewspec.Block{
-			{Kind: "keyvalue",
-				Columns: []viewspec.Column{{Field: "key"}, {Field: "value"}},
-				Sort:    &viewspec.Sort{Field: "key"}},
-		},
-	},
-	"find": {
-		Version: viewspec.Version,
-		Match:   "find",
-		Parse:   viewspec.Parse{Kind: "lines", Pattern: `^(?P<path>\S.*)$`},
-		Blocks: []viewspec.Block{
-			{Kind: "tree", Field: "path",
-				Sort:    &viewspec.Sort{Field: "path"},
-				OnEnter: "cat {path}"},
-		},
-	},
-	"tree": {
-		Version: viewspec.Version,
-		Match:   "tree",
-		Parse:   viewspec.Parse{Kind: "indent"},
-		Blocks: []viewspec.Block{
-			{Kind: "tree", Field: "text", Depth: "depth"},
-		},
-	},
-	"ps": {
-		Version: viewspec.Version,
-		Match:   "ps",
-		Parse:   viewspec.Parse{Kind: "columns", Header: true},
-		Blocks: []viewspec.Block{
-			{Kind: "table",
-				Columns: []viewspec.Column{
-					{Field: "pid", Width: 8}, {Field: "tty", Width: 10}, {Field: "cmd", Title: "command"}},
-				OnEnter: "lsof -p {pid}"},
-		},
-	},
-}
-
-var gitCodes = map[string]viewspec.Role{
-	" M": viewspec.RoleCaution,
-	"M ": viewspec.RoleSafe,
-	"A ": viewspec.RoleSafe,
-	" D": viewspec.RoleDanger,
-	"D ": viewspec.RoleDanger,
-	"??": viewspec.RoleMuted,
-}
-
-func accentOn(field string, m map[string]viewspec.Role) *viewspec.Accent {
-	return &viewspec.Accent{Field: field, Map: m}
-}
-
 var (
-	compiled         = compileAll(handWritten)
 	compiledFallback = compileAll(fallbackSpecs)
 	compiledMarkdown = compileAll(map[string]viewspec.Spec{"m": rawSpec("markdown")})["m"]
 	// compiledPlain is the floor: raw bytes, no interpretation. Used
@@ -197,46 +97,11 @@ func compileAll[K comparable](in map[K]viewspec.Spec) map[K]*viewspec.Compiled {
 	return out
 }
 
-// multiplexers are the programs whose second word names a real
-// subcommand. Everything else keys on the program alone — "ps -U me"
-// must not key as "ps me", the way "git status" keys as "git status".
-var multiplexers = map[string]bool{
-	"git": true, "go": true, "docker": true, "kubectl": true, "make": true,
-	"npm": true, "yarn": true, "pnpm": true, "cargo": true, "brew": true,
-	"apt": true, "pip": true, "systemctl": true,
-}
-
-// normaliseCommand keys a view by command shape, so "git status
-// --porcelain=v1 --branch" and "git status -sb" share one view.
-func normaliseCommand(command string) string {
-	fields := strings.Fields(command)
-	if len(fields) == 0 {
-		return ""
-	}
-	key := fields[0]
-	if !multiplexers[key] {
-		return key
-	}
-	for _, f := range fields[1:] {
-		if strings.HasPrefix(f, "-") {
-			continue
-		}
-		if strings.ContainsAny(f, "/.") {
-			break
-		}
-		return key + " " + f
-	}
-	return key
-}
-
-// specChain is what a row's view is tried against, in order. A
-// command-keyed spec that misses this output falls to the judged
-// kind, not to plain: "ps aux" is a table even when "ps"'s spec isn't.
-func specChain(r *stepRow, output string) []*viewspec.Compiled {
+// fallbackChain is what a row's view is tried against with no model
+// involved: the built-in for whatever the output was judged to be,
+// then the raw bytes. A generated spec arrives later and replaces it.
+func fallbackChain(r *stepRow, output string) []*viewspec.Compiled {
 	var chain []*viewspec.Compiled
-	if c, ok := compiled[normaliseCommand(r.command)]; ok {
-		chain = append(chain, c)
-	}
 	kind := rowKind(r)
 	if kind == KindContent && markdown.Wants(r.command, output) {
 		chain = append(chain, compiledMarkdown)
@@ -258,7 +123,7 @@ func boundView(r *stepRow) (*viewspec.Bound, bool) {
 	}
 	r.cmd.viewTried = true
 	output := commandOutput(r.cmd.ec)
-	for _, c := range specChain(r, output) {
+	for _, c := range fallbackChain(r, output) {
 		b, err := c.Bind(output)
 		if err != nil {
 			continue
@@ -267,6 +132,25 @@ func boundView(r *stepRow) (*viewspec.Bound, bool) {
 		return b, true
 	}
 	return nil, false
+}
+
+// applyView swaps in a generated spec. It must compile against this
+// registry and bind against this output before it replaces anything —
+// a spec that arrives broken leaves the fallback exactly as it was.
+func applyView(r *stepRow, spec *viewspec.Spec) bool {
+	if r == nil || spec == nil || r.cmd.ec == nil {
+		return false
+	}
+	c, err := viewspec.Compile(*spec, viewspec.WithRegistry(viewRegistry))
+	if err != nil {
+		return false
+	}
+	b, err := c.Bind(commandOutput(r.cmd.ec))
+	if err != nil {
+		return false
+	}
+	r.cmd.view, r.cmd.viewTried = b, true
+	return true
 }
 
 func commandOutput(ec *ExecutedCommand) string {
@@ -294,3 +178,28 @@ func (m Model) seedFromView(r *stepRow) (Model, bool) {
 	m.prompt.SetValue(command)
 	return m.backToInput(), true
 }
+
+// generateView asks the Driver for a view, off the Update loop. Fired
+// once per row, after judging, because render_kind is what prunes the
+// vocabulary the model may draw from.
+func (m Model) generateView(r *stepRow) tea.Cmd {
+	if r == nil || r.cmd.ec == nil || r.cmd.generated {
+		return nil
+	}
+	r.cmd.generated = true
+	sess, ctx := m.sess, m.ctx
+	command, output, kind := r.command, commandOutput(r.cmd.ec), rowKind(r)
+	exit := r.cmd.ec.Result.ExitCode
+	return func() tea.Msg {
+		spec, ok := sess.GenerateView(ctx, command, output, exit, kind)
+		if !ok {
+			return nil
+		}
+		return viewMsg{row: r, spec: spec}
+	}
+}
+
+// Registry is the vocabulary detent draws with: viewspec's own plus
+// what only this process can provide. cmd/detent hands it to the
+// generator, so the model is offered exactly what will draw.
+func Registry() *viewspec.Registry { return viewRegistry }

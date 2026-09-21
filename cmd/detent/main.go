@@ -24,6 +24,7 @@ import (
 	"github.com/vitzeno/detent/internal/routing"
 	"github.com/vitzeno/detent/internal/sandbox"
 	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/ui"
 	"github.com/vitzeno/detent/ui/status"
 	"github.com/vitzeno/detent/ui/theme"
@@ -146,11 +147,13 @@ func run() error {
 		agent.WithStats(usage.New()),
 	}
 	// No judge without a key: TYPESAFE_API_KEY env or jev_api_key file.
+	var judge *classify.JevJudge
 	if resolved.JevAPIKey != "" {
-		sessOpts = append(sessOpts, agent.WithJudge(classify.NewJevJudge(resolved.JevAPIKey,
+		judge = classify.NewJevJudge(resolved.JevAPIKey,
 			classify.WithModel(resolved.JevModel),
 			classify.WithEndpoint(resolved.JevEndpoint),
-		)))
+		)
+		sessOpts = append(sessOpts, agent.WithJudge(judge))
 	}
 	sess := agent.New(proposer, headlessConfirmer{}, sessOpts...)
 
@@ -171,6 +174,7 @@ func run() error {
 		Runtime: resolved.SandboxRuntime, Network: resolved.SandboxNetwork,
 	}
 	drv := resolver.New(sess)
+	drv.Views = views(resolved.Views, proposer, judge)
 	// Altscreen is declared by ui.Model.View, not set here — under
 	// Bubble Tea v2 terminal state is a property of what's rendered.
 	p := tea.NewProgram(ui.New(context.Background(), drv, info))
@@ -312,4 +316,25 @@ func loadDotenv(path string) {
 			os.Setenv(key, value)
 		}
 	}
+}
+
+// views builds the output-view generator. "off" returns nil, which
+// leaves the pane exactly as it was before generated views existed.
+// "cached" serves what ships and what is on disk without ever calling
+// a model; only "generate" spends tokens.
+func views(mode string, proposer *propose.OpenAIProposer, judge *classify.JevJudge) *viewgen.Generator {
+	if mode == config.ViewsOff {
+		return nil
+	}
+	g := &viewgen.Generator{
+		Registry: ui.Registry(),
+		Store:    &viewgen.Store{Dir: viewgen.DefaultDir()},
+	}
+	if mode == config.ViewsGenerate {
+		g.Model = proposer
+		if judge != nil {
+			g.Judge = judge
+		}
+	}
+	return g
 }

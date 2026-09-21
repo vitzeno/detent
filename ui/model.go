@@ -151,6 +151,12 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.post.Attention >= status.AttentionThreshold {
 			msg.row.cmd.expanded = true
 		}
+		// render_kind is known now, which is what prunes the vocabulary
+		// a generated view may draw from.
+		return m, m.generateView(msg.row)
+
+	case viewMsg:
+		applyView(msg.row, msg.spec)
 		return m, nil
 
 	case saveDoneMsg:

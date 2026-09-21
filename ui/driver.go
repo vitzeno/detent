@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/vitzeno/detent/viewspec"
 )
 
 // This file is ui's own vocabulary for talking to Driver. ui never
@@ -47,6 +49,15 @@ type Driver interface {
 
 	Tracker() []GoalStats
 	UsageSnapshot() Snapshot
+
+	// GenerateView authors a view for a finished command's output, or
+	// reports ok=false when nothing beats the render_kind fallback.
+	// Blocking — ui calls it from a tea.Cmd, never from Update — and a
+	// cached spec returns without reaching a model at all.
+	//
+	// No DTO mirror: viewspec is outside internal/ and both sides
+	// import it, so the spec crosses untranslated.
+	GenerateView(ctx context.Context, command, output string, exitCode int, kind RenderKind) (*viewspec.Spec, bool)
 }
 
 // FileChange is one path a rollback would touch in the human's own

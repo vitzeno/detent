@@ -53,8 +53,10 @@ func (j *fakeJudge) Ask(context.Context, classify.State, classify.Questions) (cl
 	return classify.Answers{"view_fit": {Noul: s}}, classify.Usage{}, nil
 }
 
+// An unseeded command, so the generator actually runs: anything
+// detent ships a spec for short-circuits in Cached.
 func request() viewgen.Request {
-	return viewgen.Request{Command: "go test ./...", Output: goTest, Kind: "scrollable_log"}
+	return viewgen.Request{Command: "pytest -q", Output: goTest, Kind: "scrollable_log"}
 }
 
 func TestGenerate_AuthorsValidatesAndCaches(t *testing.T) {
@@ -67,13 +69,13 @@ func TestGenerate_AuthorsValidatesAndCaches(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got.Spec)
 	assert.False(t, got.Cached)
-	assert.Equal(t, "go test", got.Spec.Match, "stamped with the command shape it serves")
+	assert.Equal(t, "pytest", got.Spec.Match, "stamped with the command shape it serves")
 	assert.Equal(t, 10, got.Usage.PromptTokens)
 
 	files, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	require.Len(t, files, 1)
-	assert.Contains(t, files[0].Name(), "go-test", "the file names itself readably")
+	assert.Contains(t, files[0].Name(), "pytest", "the file names itself readably")
 
 	// A second call never reaches the model.
 	again, err := g.Generate(context.Background(), request())
@@ -208,4 +210,36 @@ func TestStore_WritesSomethingAHumanCanEdit(t *testing.T) {
 	var back viewspec.Spec
 	require.NoError(t, json.Unmarshal(raw, &back))
 	assert.Equal(t, *spec, back)
+}
+
+// Shipped specs are seeds, not defaults: an edited one on disk wins.
+func TestCached_StoreBeatsWhatWeShipped(t *testing.T) {
+	dir := t.TempDir()
+	g := &viewgen.Generator{Store: &viewgen.Store{Dir: dir}}
+	req := viewgen.Request{Command: "go test ./...", Kind: "scrollable_log"}
+
+	got, ok := g.Cached(req)
+	require.True(t, ok, "a seed serves before anything is generated")
+	assert.True(t, got.Cached)
+	assert.Len(t, got.Spec.Blocks, 2, "the shipped go test view")
+
+	edited := &viewspec.Spec{Version: 1, Match: "go test",
+		Parse:  viewspec.Parse{Kind: "none"},
+		Blocks: []viewspec.Block{{Kind: "log"}}}
+	require.NoError(t, g.Store.Save(viewgen.Key(req.Command, req.Kind), edited))
+
+	got, ok = g.Cached(req)
+	require.True(t, ok)
+	assert.Len(t, got.Spec.Blocks, 1, "the human's edit wins")
+}
+
+func TestSeeds_AllCompileAndFitTheirOwnShape(t *testing.T) {
+	for _, command := range []string{
+		"go test ./...", "git status", "docker ps", "env", "find .", "tree", "ps",
+	} {
+		got, ok := (&viewgen.Generator{}).Cached(viewgen.Request{Command: command})
+		require.True(t, ok, command)
+		_, err := viewspec.Compile(*got.Spec)
+		assert.NoError(t, err, command)
+	}
 }

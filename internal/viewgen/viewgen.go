@@ -79,15 +79,19 @@ func (g *Generator) threshold() float64 {
 	return DefaultFitThreshold
 }
 
-// Cached returns a stored spec without calling anything. Callers that
-// only want the free path use this and never reach Generate.
+// Cached returns a spec without calling anything: the store first,
+// then what detent ships. Store first so a spec the human has edited
+// beats the one we shipped, which is the whole reason a cached spec
+// is a file rather than a row.
 func (g *Generator) Cached(req Request) (Result, bool) {
 	key := Key(req.Command, req.Kind)
-	spec, ok := g.Store.Load(key)
-	if !ok {
-		return Result{}, false
+	if spec, ok := g.Store.Load(key); ok {
+		return Result{Spec: spec, Key: key, Cached: true}, true
 	}
-	return Result{Spec: spec, Key: key, Cached: true}, true
+	if spec, ok := seed(req.Command); ok {
+		return Result{Spec: spec, Key: key, Cached: true}, true
+	}
+	return Result{}, false
 }
 
 // Generate authors a spec for req, verifies it against the output that

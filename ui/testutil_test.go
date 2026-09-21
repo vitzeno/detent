@@ -9,6 +9,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/vitzeno/detent/viewspec"
 )
 
 // Shared fixtures for every *_test.go file in this package.
@@ -36,6 +38,11 @@ type fakeDriver struct {
 	execResult Result
 	execErr    error
 	post       PostJudgment
+
+	// generated is handed back by GenerateView; nil means the Driver
+	// had nothing better than the render_kind fallback.
+	generated  *viewspec.Spec
+	generatedN int
 
 	rollbackOK      bool
 	rollbackErr     error
@@ -255,4 +262,9 @@ func usageModel() (Model, *fakeDriver) {
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	return m, drv
+}
+
+func (f *fakeDriver) GenerateView(_ context.Context, _, _ string, _ int, _ RenderKind) (*viewspec.Spec, bool) {
+	f.generatedN++
+	return f.generated, f.generated != nil
 }

@@ -82,3 +82,10 @@ model: prism-ml/bonsai-27b
 # In-container mount point for the harness's working directory. The
 # host side is always the directory detent was started in.
 # sandbox_workspace: /workspace
+
+# How the output pane draws a command's result.
+#   off       the nine built-in renderings only, as before views existed
+#   cached    also serve the specs detent ships and any on disk (default)
+#   generate  author a spec for output nothing covers, verify it with Jev,
+#             and cache it; costs proposer tokens on a first encounter only
+views: cached

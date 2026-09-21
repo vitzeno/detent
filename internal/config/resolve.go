@@ -58,6 +58,9 @@ func (c *Config) apply(o Config) {
 	if o.Theme != "" {
 		c.Theme = o.Theme
 	}
+	if o.Views != "" {
+		c.Views = o.Views
+	}
 	if o.SandboxMode != "" {
 		c.SandboxMode = o.SandboxMode
 	}
@@ -108,6 +111,7 @@ func envConfig() Config {
 		ContextTokens: envInt("DETENT_CONTEXT_TOKENS"),
 		JevAPIKey:     os.Getenv("TYPESAFE_API_KEY"),
 		Theme:         os.Getenv("DETENT_THEME"),
+		Views:         os.Getenv("DETENT_VIEWS"),
 
 		SandboxMode:    os.Getenv("DETENT_SANDBOX_MODE"),
 		SandboxSocket:  os.Getenv("DETENT_SANDBOX_SOCKET"),

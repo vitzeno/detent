@@ -54,6 +54,11 @@ type Config struct {
 	// main.go does the lookup, so config has no dependency on ui.
 	Theme string `yaml:"theme"`
 
+	// Views is "off", "cached" or "generate". off is exactly the
+	// behaviour before generated views existed; cached serves what
+	// ships and what is on disk without calling a model.
+	Views string `yaml:"views"`
+
 	// SandboxMode is "auto" or "host"; unvalidated here, like Theme.
 	SandboxMode string `yaml:"sandbox_mode"`
 	// SandboxSocket overrides the OS-conventional containerd socket
@@ -71,6 +76,17 @@ type Config struct {
 // dependency.
 const DefaultTheme = "dark"
 
+// ViewsOff, ViewsCached and ViewsGenerate are the Views settings.
+const (
+	ViewsOff      = "off"
+	ViewsCached   = "cached"
+	ViewsGenerate = "generate"
+)
+
+// DefaultViews serves shipped and cached specs but calls no model
+// until asked: generation costs tokens, so it is opt-in.
+const DefaultViews = ViewsCached
+
 // Default returns the built-in configuration.
 func Default() Config {
 	return Config{
@@ -79,6 +95,7 @@ func Default() Config {
 		ContextTokens: DefaultContextTokens,
 		JevModel:      classify.DefaultModel,
 		Theme:         DefaultTheme,
+		Views:         DefaultViews,
 
 		SandboxMode:      "auto",
 		SandboxImage:     sandbox.DefaultImage,

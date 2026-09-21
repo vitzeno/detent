@@ -61,6 +61,9 @@ type cmdState struct {
 	// the attempt so a spec that doesn't fit is not retried per frame.
 	view      *viewspec.Bound
 	viewTried bool
+	// generated marks that a view was already asked for, so a redraw
+	// cannot fire a second model call for the same row.
+	generated bool
 }
 
 // toolState holds a stepRow's fields for a slash-command row (/tree,

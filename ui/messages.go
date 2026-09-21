@@ -1,5 +1,7 @@
 package ui
 
+import "github.com/vitzeno/detent/viewspec"
+
 // What arrives back on the update loop. Every one of these is produced
 // by a tea.Cmd in commands.go and consumed by a case in Model.route.
 
@@ -24,6 +26,15 @@ type execDoneMsg struct {
 type judgeMsg struct {
 	row  *stepRow
 	post PostJudgment
+}
+
+// viewMsg carries a generated view back from the Driver. It arrives
+// after the row is already drawn: the render_kind fallback renders at
+// once and this upgrades it, so a slow or dead endpoint costs the
+// upgrade and nothing else.
+type viewMsg struct {
+	row  *stepRow
+	spec *viewspec.Spec
 }
 
 type saveDoneMsg struct {
