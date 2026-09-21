@@ -352,9 +352,30 @@ routing     →  agent, sandbox
   vocabulary). Eight parse kinds — `lines`, `columns`, `fixed` (slices
   at the header's own offsets, for multi-word headings like
   `CONTAINER ID`), `delimited`, `pairs`, `indent` (leading whitespace
-  becomes a depth), `json`, `none` — and fourteen widgets: `text`,
-  `table`, `list`, `keyvalue`, `tree`, `meter`, `bar`, `sparkline`,
-  `badges`, `log`, `errors`, `json`, `diff`, `code`, plus `row`.
+  becomes a depth), `json`, `none` — and thirty widgets, each in its
+  own `widget_*.go`. Structure: `text`, `table`, `list`, `keyvalue`,
+  `tree`, `flow` (ls-style columns), `dots` (a status glyph per row).
+  Quantities: `meter`, `bar`, `gauge` (a fixed 0 to 100 scale, where
+  `bar`'s relative one flattens a disk at 90% beside one at 95%),
+  `stack`, `diverge`, `delta`, `histogram` (the only widget that
+  aggregates, since a spec carries no data and a count is data),
+  `boxplot`, `sparkline`, `series` (one sparkline per group on one
+  shared scale), `scatter` (braille, 2x4 dots per cell), `heatmap`,
+  `badges`, `stat` (one number drawn three rows tall). Time: `gantt`
+  (start plus length) and `timeline` (a moment, no length), both
+  reading clock times, dates, Go durations or bare numbers through
+  `instant`. Raw: `log`, `errors`, `json`, `diff`, `code`. Plus the
+  containers `row` and `panel`. Numbers are read by `number`, not
+  `strconv.ParseFloat`, which rejected every column `df` prints: `45%`,
+  `1.2G` and `1,024` all came back 0 and drew an empty bar rather than
+  an error anyone could see. Registering a widget is half the job:
+  `internal/viewgen/kinds.go` decides which render kinds may draw with
+  it, and one missing from every `Kind.Widgets` list is never offered
+  to the model. `widgets.go` is only the registry table and
+  `widget_shared.go` what more than one widget needs. They stay in
+  `viewspec` rather than a sub-package because a widget's `Draw` takes
+  `Block`, `Data` and `Frame`, so the sub-package would import
+  `viewspec` while `Standard()` imported it back.
   A `row` lays its `Panes` side by side and a `panel` frames its one
   pane in a border, nesting capped at one level so the schema stays
   finite — a recursive `$ref` is where strict mode's backend
@@ -365,7 +386,12 @@ routing     →  agent, sandbox
   interpreter. Three calls priced by frequency: `Compile` once per spec,
   `Bind` once per output, `Draw` per frame — `Painter` is on `Frame`,
   not `Compiled`, so the first two are pure data and test with no
-  styling at all. It declares `Painter`, `Widget` and `Extractor`
+  styling at all. `Frame.Width` is filled by every widget;
+  `Frame.Height` says how tall the pane is for the ones that can grow
+  into it (`scatter` trades height for resolution, four dot rows a
+  line) and **clips nothing**, because windowing is the caller's job
+  and clipping is what would stop a long view scrolling.
+  It declares `Painter`, `Widget` and `Extractor`
   because it calls them; `ui/painter.go` and `ui/views.go` implement and
   register them. `Registry.Schema()` describes the registered vocabulary
   as JSON Schema, so generation can't drift from what will actually
