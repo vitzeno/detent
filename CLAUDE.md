@@ -344,9 +344,14 @@ routing     →  agent, sandbox
   `CONTAINER ID`), `delimited`, `pairs`, `indent` (leading whitespace
   becomes a depth), `json`, `none` — and fourteen widgets: `text`,
   `table`, `list`, `keyvalue`, `tree`, `meter`, `bar`, `sparkline`,
-  `badges`, `log`, `errors`, `json`, `diff`, `code`. Blocks stack
-  vertically: there is no 2D layout, so a chart beside its legend
-  needs a container block that v1 deliberately does not have. Three calls priced by frequency: `Compile` once per spec,
+  `badges`, `log`, `errors`, `json`, `diff`, `code`, plus `row`.
+  A `row` lays its `Panes` side by side, nesting capped at one level so
+  the schema stays finite — a recursive `$ref` is where strict mode's
+  backend portability gets thin. It is the one kind the **interpreter**
+  draws rather than a widget: `Widget.Draw` is handed a Block and Data,
+  never the registry, so it could not resolve its children's widgets.
+  The registry extends leaves; layout is geometry and belongs to the
+  interpreter. Three calls priced by frequency: `Compile` once per spec,
   `Bind` once per output, `Draw` per frame — `Painter` is on `Frame`,
   not `Compiled`, so the first two are pure data and test with no
   styling at all. It declares `Painter`, `Widget` and `Extractor`

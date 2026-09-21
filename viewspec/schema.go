@@ -1,5 +1,7 @@
 package viewspec
 
+import "slices"
+
 // Schema describes the registry's vocabulary as a JSON Schema, strict
 // enough for a structured-output request. Register a widget and the
 // model's schema includes it; a hand-written list would rot silently.
@@ -13,7 +15,7 @@ func (r *Registry) Schema() map[string]any {
 			"blocks": map[string]any{
 				"type":        "array",
 				"description": "widgets, drawn top to bottom",
-				"items":       r.blockSchema(),
+				"items":       r.blockSchema(true),
 			},
 			// Structured {what, not_for, examples} per kind, not one
 			// shared blurb: with this many widgets a flat description
@@ -51,11 +53,19 @@ func (r *Registry) parseSchema() map[string]any {
 	}
 }
 
-func (r *Registry) blockSchema() map[string]any {
-	return map[string]any{
+// blockSchema spells a row's panes out in full rather than pointing
+// back at itself. Nesting is capped at one level, so the schema is
+// finite — which is what keeps it emittable under strict mode, where
+// a recursive $ref is exactly where backend portability gets thin.
+func (r *Registry) blockSchema(allowRow bool) map[string]any {
+	kinds := r.Kinds()
+	if !allowRow {
+		kinds = slices.DeleteFunc(slices.Clone(kinds), func(k string) bool { return k == RowKind })
+	}
+	schema := map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"kind":  enum(r.Kinds(), "which widget draws this block; see widget_guide"),
+			"kind":  enum(kinds, "which widget draws this block; see widget_guide"),
 			"title": str("a short label; renders dimmed because it is your prose, not output"),
 			"field": str("the field this widget reads, for single-field widgets"),
 			"depth": str("tree only: the field holding each row's level; empty reads field as a path"),
@@ -100,6 +110,26 @@ func (r *Registry) blockSchema() map[string]any {
 			"accent", "count_where", "of", "on_enter"},
 		"additionalProperties": false,
 	}
+	if !allowRow {
+		return schema
+	}
+	props := schema["properties"].(map[string]any)
+	props["panes"] = map[string]any{
+		"type":        "array",
+		"description": "row only: the columns laid side by side, at least two",
+		"items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"weight": map[string]any{"type": "integer",
+					"description": "share of the width; 0 means an equal share"},
+				"blocks": map[string]any{"type": "array", "items": r.blockSchema(false)},
+			},
+			"required":             []string{"weight", "blocks"},
+			"additionalProperties": false,
+		},
+	}
+	schema["required"] = append(schema["required"].([]string), "panes")
+	return schema
 }
 
 func str(desc string) map[string]any {

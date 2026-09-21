@@ -25,6 +25,7 @@ var standard = func() *Registry {
 	must(r.Extractor("delimited", newDelimitedExtractor))
 	must(r.Extractor("indent", newIndentExtractor))
 	must(r.Extractor("none", newNoneExtractor))
+	must(r.Widget(RowKind, rowWidget{}))
 	must(r.Widget("text", textWidget{}))
 	must(r.Widget("table", tableWidget{}))
 	must(r.Widget("list", listWidget{}))
@@ -156,10 +157,14 @@ func (keyvalueWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	}
 	w = min(w, f.Width/2)
 	lines := make([]string, 0, len(d.Rows))
-	for _, r := range d.Rows {
+	for i, r := range d.Rows {
+		role := accentRole(b, r)
+		if f.Focused && i == f.Cursor {
+			role = RoleAccent
+		}
 		label := f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(r[key], w), w, f.Paint))
-		value := f.Paint.Paint(accentRole(b, r), f.Paint.Truncate(r[val], max(1, f.Width-w-2)))
-		lines = append(lines, label+"  "+value)
+		lines = append(lines, label+"  "+
+			f.Paint.Paint(role, f.Paint.Truncate(r[val], max(1, f.Width-w-2))))
 	}
 	return lines, nil
 }
@@ -450,18 +455,13 @@ func pad(s string, w int, p Painter) string {
 // The two row widgets draw a cursor, so both report where it landed.
 // A table's header sits above its rows; a list's does not.
 func (tableWidget) CursorLine(_ Block, d Data, f Frame) int {
-	if f.Cursor < 0 || f.Cursor >= len(d.Rows) {
-		return -1
+	if n := rowCursor(d, f); n >= 0 {
+		return n + 1 // the header sits above the rows
 	}
-	return f.Cursor + 1
+	return -1
 }
 
-func (listWidget) CursorLine(_ Block, d Data, f Frame) int {
-	if f.Cursor < 0 || f.Cursor >= len(d.Rows) {
-		return -1
-	}
-	return f.Cursor
-}
+func (listWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }
 
 // treeWidget draws a hierarchy. Depth names the field holding each
 // row's level; without one, Field is read as a path and the levels
@@ -483,12 +483,7 @@ func (treeWidget) Validate(b Block, fields []string) error {
 	return checkShared(b, fields)
 }
 
-func (treeWidget) CursorLine(_ Block, d Data, f Frame) int {
-	if f.Cursor < 0 || f.Cursor >= len(d.Rows) {
-		return -1
-	}
-	return f.Cursor
-}
+func (treeWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }
 
 func (treeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	depths := treeDepths(b, d.Rows)
@@ -644,14 +639,18 @@ func (barWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		return nil, fmt.Errorf("no width to chart in")
 	}
 	lines := make([]string, 0, len(d.Rows))
-	for _, r := range d.Rows {
+	for i, r := range d.Rows {
 		n := 0
 		if hi > 0 {
 			n = int(parseFloat(r[value]) / hi * float64(barW))
 		}
+		role := accentOr(b, r, RoleAccent)
+		if f.Focused && i == f.Cursor {
+			role = RoleAccent
+		}
 		lines = append(lines,
 			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(r[label], labelW), labelW, f.Paint))+" "+
-				f.Paint.Paint(accentOr(b, r, RoleAccent), strings.Repeat("█", n))+
+				f.Paint.Paint(role, strings.Repeat("█", n))+
 				strings.Repeat(" ", barW-n)+" "+
 				f.Paint.Paint(RoleFaint, r[value]))
 	}
@@ -774,4 +773,34 @@ func (w rawWidget) Describe() Description {
 		NotFor:   "output with a shape worth drawing — reach for this when nothing else fits",
 		Examples: []string{"a build log", "tail -n 200 app.log"},
 	}
+}
+
+// rowWidget exists so a row is in Kinds, Schema and the widget guide
+// like anything else. Draw is unreachable: the interpreter lays panes
+// out itself, because a Widget never sees the registry.
+type rowWidget struct{}
+
+func (rowWidget) Draw(Block, Data, Frame) ([]string, error) {
+	return nil, fmt.Errorf("a row is laid out by the interpreter, not drawn")
+}
+
+func (rowWidget) Describe() Description {
+	return Description{
+		What:     "lays its panes side by side, for putting a summary next to the thing it summarises",
+		NotFor:   "blocks that simply follow one another — those stack without a row",
+		Examples: []string{"a meter beside the table it counts", "a chart beside its legend"},
+	}
+}
+
+// Every widget drawing one row per record reports its cursor, so a
+// caller can scroll to a selection and enter can act on it.
+func (barWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }
+
+func (keyvalueWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }
+
+func rowCursor(d Data, f Frame) int {
+	if f.Cursor < 0 || f.Cursor >= len(d.Rows) {
+		return -1
+	}
+	return f.Cursor
 }

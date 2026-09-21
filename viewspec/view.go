@@ -81,15 +81,50 @@ func Compile(spec Spec, opts ...Option) (*Compiled, error) {
 		return nil, err
 	}
 	for i, b := range spec.Blocks {
-		if _, ok := o.reg.widget(b.Kind); !ok {
-			return nil, &BindError{Block: i, Kind: b.Kind,
-				Err: fmt.Errorf("unknown block kind (have %s)", strings.Join(o.reg.Kinds(), ", "))}
-		}
-		if err := checkStatic(b); err != nil {
+		if err := checkBlock(b, o.reg, true); err != nil {
+			var be *BindError
+			if errors.As(err, &be) {
+				return nil, be
+			}
 			return nil, &BindError{Block: i, Kind: b.Kind, Err: err}
 		}
 	}
 	return &Compiled{spec: spec, reg: o.reg, ext: ext}, nil
+}
+
+// checkBlock validates one block against the vocabulary. topLevel
+// gates rows: nesting is capped at one, so a pane holds leaves only.
+func checkBlock(b Block, reg *Registry, topLevel bool) error {
+	if _, ok := reg.widget(b.Kind); !ok {
+		return &BindError{Kind: b.Kind,
+			Err: fmt.Errorf("unknown block kind (have %s)", strings.Join(reg.Kinds(), ", "))}
+	}
+	if b.Kind != RowKind {
+		if len(b.Panes) > 0 {
+			return &BindError{Kind: b.Kind, Err: errors.New("only a row has panes")}
+		}
+		return checkStatic(b)
+	}
+	if !topLevel {
+		return &BindError{Kind: b.Kind, Err: errors.New("rows do not nest")}
+	}
+	if len(b.Panes) < 2 {
+		return &BindError{Kind: b.Kind, Err: errors.New("a row needs at least two panes")}
+	}
+	for _, pane := range b.Panes {
+		if len(pane.Blocks) == 0 {
+			return &BindError{Kind: b.Kind, Err: errors.New("a pane needs at least one block")}
+		}
+		if pane.Weight < 0 {
+			return &BindError{Kind: b.Kind, Err: errors.New("a pane's weight must not be negative")}
+		}
+		for _, inner := range pane.Blocks {
+			if err := checkBlock(inner, reg, false); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // checkStatic catches what is wrong about a block without any data:
@@ -134,12 +169,18 @@ type Bound struct {
 	raw    string
 	fields []string
 	blocks []boundBlock
+	selSeq int
 }
 
 type boundBlock struct {
 	block Block
 	w     Widget
 	data  Data
+	// panes is set only on a row; its widget is never called.
+	panes [][]boundBlock
+	// seq numbers leaves in draw order, so Draw can tell which one
+	// holds the cursor without comparing values.
+	seq int
 }
 
 // Fields lists the field names the parse actually produced, sorted.
@@ -154,10 +195,37 @@ func (c *Compiled) Bind(output string) (*Bound, error) {
 		return nil, fmt.Errorf("viewspec: parse %q: %w", c.spec.Parse.Kind, err)
 	}
 	fields := fieldsOf(rows)
-	ordered := orderedColumns(c.ext, fields)
-	out := &Bound{c: c, raw: output, fields: fields}
-	for i, b := range c.spec.Blocks {
+	out := &Bound{c: c, raw: output, fields: fields, selSeq: -1}
+	seq := 0
+	out.blocks, err = c.bindBlocks(c.spec.Blocks, rows, Data{
+		Rows: nil, Raw: output, Columns: orderedColumns(c.ext, fields)}, fields, &seq)
+	if err != nil {
+		return nil, err
+	}
+	if sel, ok := out.selectable(); ok {
+		out.selSeq = sel.seq
+	}
+	return out, nil
+}
+
+// bindBlocks resolves one level of blocks, descending once into a
+// row's panes. Errors carry the block that failed, not the depth.
+func (c *Compiled) bindBlocks(blocks []Block, rows []Row, shared Data, fields []string, seq *int) ([]boundBlock, error) {
+	out := make([]boundBlock, 0, len(blocks))
+	for i, b := range blocks {
 		w, _ := c.reg.widget(b.Kind)
+		if b.Kind == RowKind {
+			bb := boundBlock{block: b, w: w, seq: -1}
+			for _, pane := range b.Panes {
+				inner, err := c.bindBlocks(pane.Blocks, rows, shared, fields, seq)
+				if err != nil {
+					return nil, err
+				}
+				bb.panes = append(bb.panes, inner)
+			}
+			out = append(out, bb)
+			continue
+		}
 		if v, ok := w.(Validator); ok {
 			if err := v.Validate(b, fields); err != nil {
 				var be *BindError
@@ -172,15 +240,16 @@ func (c *Compiled) Bind(output string) (*Bound, error) {
 		if err != nil {
 			return nil, &BindError{Block: i, Kind: b.Kind, Err: err}
 		}
-		out.blocks = append(out.blocks, boundBlock{block: b, w: w,
-			data: Data{Rows: sel, Raw: output, Columns: ordered}})
+		data := shared
+		data.Rows = sel
+		out = append(out, boundBlock{block: b, w: w, data: data, seq: *seq})
+		*seq++
 	}
 	return out, nil
 }
 
-// Render is one drawn view. It is a struct rather than a bare
-// []string so a caller can scroll to the selection without knowing
-// how the blocks above it were laid out.
+// Render is one drawn view. A struct rather than a bare []string so a
+// caller can scroll to the selection without knowing the layout.
 type Render struct {
 	Lines []string
 	// CursorLine indexes Lines for the selected row, or -1 when
@@ -198,25 +267,111 @@ func (b *Bound) Draw(f Frame) (Render, error) {
 	if f.Width <= 0 {
 		return Render{}, errors.New("viewspec: frame has no width")
 	}
-	out := Render{CursorLine: -1}
-	for i, bb := range b.blocks {
-		lines, err := bb.w.Draw(bb.block, bb.data, f)
-		if err != nil {
-			return Render{}, &BindError{Block: i, Kind: bb.block.Kind, Err: err}
-		}
-		if out.CursorLine < 0 {
-			if s, ok := bb.w.(Selector); ok {
-				if n := s.CursorLine(bb.block, bb.data, f); n >= 0 {
-					out.CursorLine = len(out.Lines) + n
-				}
-			}
-		}
-		out.Lines = append(out.Lines, lines...)
+	lines, cursor, err := drawBlocks(b.blocks, f, b.selSeq)
+	if err != nil {
+		return Render{}, err
 	}
+	out := Render{Lines: lines, CursorLine: cursor}
 	if f.Height > 0 && len(out.Lines) > f.Height {
 		out.Lines = out.Lines[:f.Height]
 	}
 	return out, nil
+}
+
+// drawBlocks stacks blocks vertically, reporting where the cursor
+// landed relative to what it returned.
+func drawBlocks(blocks []boundBlock, f Frame, sel int) ([]string, int, error) {
+	var lines []string
+	cursor := -1
+	for i, bb := range blocks {
+		var out []string
+		at := -1
+		var err error
+		if bb.panes != nil {
+			out, at, err = drawRow(bb, f, sel)
+		} else {
+			out, err = bb.w.Draw(bb.block, bb.data, f)
+			if bb.seq == sel {
+				if s, ok := bb.w.(Selector); ok {
+					at = s.CursorLine(bb.block, bb.data, f)
+				}
+			}
+		}
+		if err != nil {
+			return nil, -1, &BindError{Block: i, Kind: bb.block.Kind, Err: err}
+		}
+		if at >= 0 && cursor < 0 {
+			cursor = len(lines) + at
+		}
+		lines = append(lines, out...)
+	}
+	return lines, cursor, nil
+}
+
+// drawRow lays panes side by side, each stacked at its own width and
+// padded to the tallest. Joining horizontally keeps line indexes, so a
+// pane's cursor line is the row's cursor line.
+func drawRow(bb boundBlock, f Frame, sel int) ([]string, int, error) {
+	widths := paneWidths(bb.block.Panes, f.Width)
+	cols := make([][]string, len(bb.panes))
+	cursor, height := -1, 0
+	for i, pane := range bb.panes {
+		pf := f
+		pf.Width = widths[i]
+		out, at, err := drawBlocks(pane, pf, sel)
+		if err != nil {
+			return nil, -1, err
+		}
+		if at >= 0 && cursor < 0 {
+			cursor = at
+		}
+		cols[i] = out
+		height = max(height, len(out))
+	}
+	lines := make([]string, height)
+	for row := range height {
+		var line strings.Builder
+		for i, col := range cols {
+			if i > 0 {
+				line.WriteString(" ")
+			}
+			cell := ""
+			if row < len(col) {
+				cell = col[row]
+			}
+			line.WriteString(pad(f.Paint.Truncate(cell, widths[i]), widths[i], f.Paint))
+		}
+		lines[row] = strings.TrimRight(line.String(), " ")
+	}
+	return lines, cursor, nil
+}
+
+// paneWidths shares the row across its panes by weight, with a floor
+// so a pane never vanishes, and one space of gutter between them.
+func paneWidths(panes []Pane, total int) []int {
+	const floor = 6
+	n := len(panes)
+	avail := total - (n - 1)
+	sum := 0
+	for _, p := range panes {
+		sum += max(1, p.Weight)
+	}
+	out := make([]int, n)
+	used := 0
+	for i, p := range panes {
+		out[i] = max(floor, avail*max(1, p.Weight)/sum)
+		used += out[i]
+	}
+	if used < avail {
+		out[0] += avail - used
+		used = avail
+	}
+	for i := 0; used > avail; i, used = (i+1)%n, used-1 {
+		if out[i] > floor {
+			out[i]--
+		}
+	}
+	return out
 }
 
 // Action resolves the on_enter template for the cursor row. A string
@@ -250,7 +405,7 @@ func (b *Bound) SelectableRows() (int, bool) {
 func (b *Bound) selectable() (boundBlock, bool) {
 	var first boundBlock
 	found := false
-	for _, bb := range b.blocks {
+	for _, bb := range leaves(b.blocks) {
 		if _, ok := bb.w.(Selector); !ok {
 			continue
 		}
@@ -356,4 +511,20 @@ func fieldsOf(rows []Row) []string {
 		}
 	}
 	return slices.Sorted(maps.Keys(set))
+}
+
+// leaves is every drawable block in draw order, a row's panes
+// flattened in, so selection never has to know about layout.
+func leaves(blocks []boundBlock) []boundBlock {
+	var out []boundBlock
+	for _, bb := range blocks {
+		if bb.panes == nil {
+			out = append(out, bb)
+			continue
+		}
+		for _, pane := range bb.panes {
+			out = append(out, leaves(pane)...)
+		}
+	}
+	return out
 }

@@ -63,7 +63,24 @@ type Block struct {
 	Of         string `json:"of,omitempty"`
 
 	OnEnter string `json:"on_enter,omitempty"`
+
+	// Panes is set only on a row: the columns it lays side by side.
+	// Nesting is capped at one level, so a pane holds leaves only.
+	Panes []Pane `json:"panes,omitempty"`
 }
+
+// Pane is one column of a row. Weight shares the width; 0 means an
+// equal share with every other 0.
+type Pane struct {
+	Weight int     `json:"weight,omitempty"`
+	Blocks []Block `json:"blocks"`
+}
+
+// RowKind lays its panes side by side. It is the one kind the
+// interpreter draws itself: a Widget is handed a Block and Data, never
+// the registry, so it could not resolve its children's widgets.
+// Layout is geometry, and geometry belongs to the interpreter.
+const RowKind = "row"
 
 // Column is one table or keyvalue column. Width 0 shares the frame
 // proportionally.
