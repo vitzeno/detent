@@ -25,6 +25,7 @@ import (
 	"github.com/vitzeno/detent/internal/sandbox"
 	"github.com/vitzeno/detent/internal/usage"
 	"github.com/vitzeno/detent/internal/viewgen"
+	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/ui"
 	"github.com/vitzeno/detent/ui/status"
 	"github.com/vitzeno/detent/ui/theme"
@@ -83,6 +84,16 @@ func run() error {
 	}
 
 	sessionID := agent.NewSessionID()
+	// A session that cannot log is still a session: Setup says so and
+	// carries on discarding.
+	closeLog, err := logging.Setup(logging.Options{
+		Dir: resolved.LogDir, Session: sessionID,
+		Level: resolved.LogLevel, Bodies: resolved.LogBodies,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	defer func() { _ = closeLog() }()
 	runners := routing.Selector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
 	// The proposer is told where commands actually run, so it writes
 	// for that OS and knows what survives. Filled in below if a sandbox

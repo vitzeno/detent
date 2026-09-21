@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,7 @@ import (
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/usage"
 	"github.com/vitzeno/detent/internal/viewgen"
+	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -319,4 +321,77 @@ func TestGenerate_ShortOutputIsNotWorthAModelCall(t *testing.T) {
 		Command: "pytest -q", Output: "2 passed\n", Kind: "plain_text"})
 	assert.ErrorIs(t, err, viewgen.ErrNotWorth)
 	assert.Zero(t, model.calls, "and it never asks")
+}
+
+// Every branch that silently chooses something says which, because
+// "the output just looked plain" is otherwise unanswerable.
+func TestGenerate_SaysWhyOnEveryPath(t *testing.T) {
+	logs := func(t *testing.T, run func(*viewgen.Generator)) []map[string]any {
+		t.Helper()
+		dir := t.TempDir()
+		closer, err := logging.Setup(logging.Options{Dir: dir, Session: "t", Level: "debug"})
+		require.NoError(t, err)
+		run(&viewgen.Generator{Model: &fakeModel{replies: []string{goodSpec}},
+			Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1})
+		require.NoError(t, closer())
+
+		raw, err := os.ReadFile(filepath.Join(dir, "t.jsonl"))
+		require.NoError(t, err)
+		var out []map[string]any
+		for _, l := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+			var m map[string]any
+			require.NoError(t, json.Unmarshal([]byte(l), &m))
+			out = append(out, m)
+		}
+		return out
+	}
+	events := func(rs []map[string]any) []string {
+		var out []string
+		for _, r := range rs {
+			out = append(out, r["event"].(string))
+		}
+		return out
+	}
+
+	t.Run("accepted", func(t *testing.T) {
+		got := logs(t, func(g *viewgen.Generator) {
+			_, err := g.Generate(context.Background(), request())
+			require.NoError(t, err)
+		})
+		assert.Subset(t, events(got),
+			[]string{logging.LLMRequest, logging.ViewAccepted})
+		for _, r := range got {
+			assert.Equal(t, logging.Viewgen, r[logging.KeyComponent])
+		}
+	})
+
+	t.Run("skipped, with the gate that refused", func(t *testing.T) {
+		got := logs(t, func(g *viewgen.Generator) {
+			req := request()
+			req.Output = "two\nlines\n"
+			_, err := g.Generate(context.Background(), req)
+			assert.ErrorIs(t, err, viewgen.ErrNotWorth)
+		})
+		require.Len(t, got, 1)
+		assert.Equal(t, logging.ViewSkipped, got[0][logging.KeyEvent])
+		assert.Contains(t, got[0][logging.KeyReason], "lines")
+		assert.NotContains(t, events(got), logging.LLMRequest, "and it never asked")
+	})
+
+	t.Run("invalid, with the reason", func(t *testing.T) {
+		dir := t.TempDir()
+		closer, err := logging.Setup(logging.Options{Dir: dir, Session: "t"})
+		require.NoError(t, err)
+		g := &viewgen.Generator{Model: &fakeModel{replies: []string{`{"parse":{"line":"x"},"blocks":[{"kind":"log"}]}`}},
+			Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
+		_, err = g.Generate(context.Background(), request())
+		assert.ErrorIs(t, err, viewgen.ErrNoneFit)
+		require.NoError(t, closer())
+
+		raw, _ := os.ReadFile(filepath.Join(dir, "t.jsonl"))
+		assert.Contains(t, string(raw), logging.ViewInvalid)
+		assert.Contains(t, string(raw), "unknown parse kind",
+			"the reason a candidate failed, not just that it did")
+		assert.Contains(t, string(raw), logging.ViewDeclined)
+	})
 }

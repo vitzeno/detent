@@ -54,6 +54,16 @@ type Config struct {
 	// main.go does the lookup, so config has no dependency on ui.
 	Theme string `yaml:"theme"`
 
+	// LogLevel is "debug", "info", "warn" or "error".
+	LogLevel string `yaml:"log_level"`
+	// LogBodies allows prompts, model replies and command output into
+	// the log. Off by default: they carry secrets and bulk, and the
+	// shape of a reply answers most questions.
+	LogBodies bool `yaml:"log_bodies"`
+	// LogDir holds one JSONL file per session; empty means the default
+	// under ~/.local/state/detent/logs.
+	LogDir string `yaml:"log_dir"`
+
 	// Views is "saved" or "generate". See the constants.
 	Views string `yaml:"views"`
 
@@ -93,6 +103,9 @@ const (
 // Generation is opt-in because it bills the proposer.
 const DefaultViews = ViewsSaved
 
+// DefaultLogLevel records what happened without recording everything.
+const DefaultLogLevel = "info"
+
 // Default returns the built-in configuration.
 func Default() Config {
 	return Config{
@@ -102,6 +115,7 @@ func Default() Config {
 		JevModel:      classify.DefaultModel,
 		Theme:         DefaultTheme,
 		Views:         DefaultViews,
+		LogLevel:      DefaultLogLevel,
 
 		SandboxMode:      "auto",
 		SandboxImage:     sandbox.DefaultImage,

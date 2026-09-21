@@ -12,6 +12,7 @@ import (
 
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -39,30 +40,53 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
 	if g.Model == nil {
 		return Result{}, errors.New("viewgen: no Model wired")
 	}
+	log := logging.For(logging.Viewgen)
 	key := Key(req.Command, req.Kind)
 	if spec, ok := g.Store.Load(key); ok {
+		log.InfoContext(ctx, "drawing a saved view", logging.KeyEvent, logging.ViewLookup,
+			"key", key, "source", SourceSaved)
 		return Result{Spec: spec, Key: key, Source: SourceSaved}, nil
 	}
 
 	total, best, bestFit := usage.Usage{}, (*viewspec.Spec)(nil), -1.0
+	if !g.worthAsking(req) {
+		log.InfoContext(ctx, "not asking for a view", logging.KeyEvent, logging.ViewSkipped,
+			"kind", req.Kind, "lines", lines(req.Output),
+			logging.KeyReason, g.skipReason(req))
+	}
 	if g.worthAsking(req) {
 		reg := prune(g.registry(), req.Kind)
 		schema := reg.Schema()
 		user := userPrompt(req)
-		for range g.candidates() {
+		log.InfoContext(ctx, "asking for a view", logging.KeyEvent, logging.LLMRequest,
+			"kind", req.Kind, "offered", reg.Kinds(), "candidates", g.candidates())
+		for i := range g.candidates() {
 			raw, used, err := g.Model.Structured(ctx, systemPrompt, user, schema)
 			total = add(total, used)
 			if err != nil {
+				log.WarnContext(ctx, "the model call failed", logging.KeyEvent, logging.LLMError,
+					"candidate", i, logging.KeyReason, err.Error())
 				continue
 			}
+			log.DebugContext(ctx, "a candidate came back", logging.KeyEvent, logging.LLMReply,
+				"candidate", i, "bytes", len(raw), "body", logging.Body(string(raw)))
 			spec, bound, err := validate(raw, reg, req.Output)
 			if err != nil {
+				// The reason matters more than the fact: a spec that
+				// names a field the parse never produced is a different
+				// problem from one the model invented a schema for.
+				log.InfoContext(ctx, "a candidate could not draw this output",
+					logging.KeyEvent, logging.ViewInvalid, "candidate", i,
+					logging.KeyReason, err.Error(), "body", logging.Body(string(raw)))
 				continue
 			}
 			fit := 1.0
 			if g.Judge != nil {
 				fit, used = g.fit(ctx, req, spec, bound)
 				total = add(total, used)
+				log.InfoContext(ctx, "judged the candidate", logging.KeyEvent, logging.ViewFit,
+					"candidate", i, "score", fit, "threshold", g.threshold(),
+					"fields", bound.Fields())
 			}
 			if fit > bestFit {
 				best, bestFit = spec, fit
@@ -75,14 +99,21 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
 		if err := g.Store.Save(key, best); err != nil {
 			return Result{Usage: total}, err
 		}
+		log.InfoContext(ctx, "drawing a generated view", logging.KeyEvent, logging.ViewAccepted,
+			"key", key, "score", bestFit, "blocks", len(best.Blocks),
+			"tokens", total.PromptTokens+total.CompletionTokens)
 		return Result{Spec: best, Key: key, Source: SourceGenerated, Fit: bestFit, Usage: total}, nil
 	}
 	if spec, ok := seed(req.Command); ok {
+		log.InfoContext(ctx, "falling back to a shipped view", logging.KeyEvent, logging.ViewLookup,
+			"key", key, "source", SourceShipped)
 		return Result{Spec: spec, Key: key, Source: SourceShipped, Usage: total}, nil
 	}
 	if !g.worthAsking(req) {
 		return Result{}, ErrNotWorth
 	}
+	log.InfoContext(ctx, "nothing generated fit the output", logging.KeyEvent, logging.ViewDeclined,
+		"candidates", g.candidates(), "best_score", bestFit)
 	return Result{Usage: total}, ErrNoneFit
 }
 
@@ -93,7 +124,23 @@ func (g *Generator) worthAsking(req Request) bool {
 	if !worthGenerating(req.Kind) {
 		return false
 	}
-	return strings.Count(strings.TrimSuffix(req.Output, "\n"), "\n")+1 >= MinLinesToGenerate
+	return lines(req.Output) >= MinLinesToGenerate
+}
+
+// skipReason says which gate refused, since "no view appeared" is
+// otherwise the same observation whatever the cause.
+func (g *Generator) skipReason(req Request) string {
+	if !worthGenerating(req.Kind) {
+		return "this shape draws itself"
+	}
+	return fmt.Sprintf("under %d lines", MinLinesToGenerate)
+}
+
+func lines(s string) int {
+	if s == "" {
+		return 0
+	}
+	return strings.Count(strings.TrimSuffix(s, "\n"), "\n") + 1
 }
 
 // Existing returns a spec that is already written, without calling

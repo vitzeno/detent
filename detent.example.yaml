@@ -98,3 +98,19 @@ model: prism-ml/bonsai-27b
 #             for nothing, so the cost is per command shape, not per
 #             step.
 views: saved
+
+# One structured log per session, at
+# ~/.local/state/detent/logs/<session>.jsonl, one JSON record per line.
+#
+# It is a single stream rather than a file per component, because the
+# thing anyone investigates is a step and a step crosses four or five
+# of them. Every record carries session, goal, step, component and
+# event, so filtering is a field match and correlating is too:
+#
+#   jq 'select(.step == 7)'                    everything about step 7
+#   jq 'select(.component == "viewgen")'       one subsystem
+#   jq 'select(.event | startswith("view."))'  one subsystem's events
+#
+log_level: info        # debug, info, warn, error
+log_bodies: false      # record prompts, model replies and command output
+# log_dir: /somewhere/else

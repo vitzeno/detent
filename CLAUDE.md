@@ -70,6 +70,7 @@ resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio, viewge
 ui          →  its own subpackages (editor, welcome, render, status,
                 markdown, theme, island, tree, layout) + viewspec
 viewspec    →  the standard library, nothing else
+logging     →  the standard library, nothing else
 agent       →  propose, host, classify, usage, viewgen (render kinds)
 config      →  agent, classify, propose, sandbox (for their defaults only)
 host        →  capture
@@ -389,6 +390,23 @@ routing     →  agent, sandbox
   the selection, so generated views scroll like any other output.
   `ui/tabular` was `focusedTable`'s engine and is deleted; a richer
   table is a widget registered over the built-in, not a second path.
+
+- **`logging`** — the structured log, outside `internal/` like `ui` and
+  `viewspec` so anything may import it; stdlib only (`log/slog`), so no
+  package's import rules break. **One JSONL stream per session**
+  (`~/.local/state/detent/logs/<session>.jsonl`), never one file per
+  component: the unit anyone investigates is a *step*, and a step
+  crosses four or five components, so splitting by component would make
+  filtering easy and correlating impossible. A `component` field gives
+  the split for free and keeps the join. `events.go` is the closed
+  vocabulary: an `event` name is a record's primary key, since a query
+  cannot match free text reliably. Correlation rides the context
+  (`WithGoal`/`WithStep`), so a mark set once upstream reaches every
+  record beneath it and `step` is the same number the UI shows.
+  `Body` withholds prompts, replies and output unless `log_bodies` is
+  set, because they carry secrets and bulk. `viewspec` deliberately
+  does not log: it returns typed errors and the caller records them,
+  which is what keeps it embeddable.
 
 - **`internal/usage`** — timing and token accounting (`Tracker` → `Goal` →
   `Step`), independent of everything else; `agent` attaches measurements

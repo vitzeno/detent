@@ -61,6 +61,15 @@ func (c *Config) apply(o Config) {
 	if o.Views != "" {
 		c.Views = o.Views
 	}
+	if o.LogLevel != "" {
+		c.LogLevel = o.LogLevel
+	}
+	if o.LogDir != "" {
+		c.LogDir = o.LogDir
+	}
+	if o.LogBodies {
+		c.LogBodies = true
+	}
 	if o.SandboxMode != "" {
 		c.SandboxMode = o.SandboxMode
 	}
@@ -112,6 +121,9 @@ func envConfig() Config {
 		JevAPIKey:     os.Getenv("TYPESAFE_API_KEY"),
 		Theme:         os.Getenv("DETENT_THEME"),
 		Views:         os.Getenv("DETENT_VIEWS"),
+		LogLevel:      os.Getenv("DETENT_LOG_LEVEL"),
+		LogDir:        os.Getenv("DETENT_LOG_DIR"),
+		LogBodies:     os.Getenv("DETENT_LOG_BODIES") != "",
 
 		SandboxMode:    os.Getenv("DETENT_SANDBOX_MODE"),
 		SandboxSocket:  os.Getenv("DETENT_SANDBOX_SOCKET"),
