@@ -14,6 +14,7 @@ import (
 	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/ui"
 )
 
@@ -208,4 +209,28 @@ func TestResolver_TrackerAndSnapshot(t *testing.T) {
 
 	snap := r.UsageSnapshot()
 	assert.Equal(t, 1, snap.Goals)
+}
+
+// ui mirrors agent's render kinds by hand, because ui imports nothing
+// under internal/. resolver is the one package that sees both sides,
+// so this is the only place the two can be checked against each other.
+func TestRenderKinds_UIMirrorsTheOneDefinition(t *testing.T) {
+	mirror := map[string]ui.RenderKind{
+		agent.KindInline:  ui.KindInline,
+		agent.KindLog:     ui.KindLog,
+		agent.KindTable:   ui.KindTable,
+		agent.KindFiles:   ui.KindFiles,
+		agent.KindContent: ui.KindContent,
+		agent.KindError:   ui.KindError,
+		agent.KindDiff:    ui.KindDiff,
+		agent.KindJSON:    ui.KindJSON,
+		agent.KindQuiet:   ui.KindQuiet,
+	}
+	require.Len(t, mirror, len(viewgen.Kinds()),
+		"every kind viewgen defines has a ui constant")
+	for _, k := range viewgen.Kinds() {
+		got, ok := mirror[k.Name]
+		require.True(t, ok, "%s is mirrored in ui", k.Name)
+		assert.Equal(t, k.Name, string(got), "and spelled the same on both sides")
+	}
 }

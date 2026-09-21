@@ -66,11 +66,11 @@ Package dependency flow — `ui` and `agent` never import each other;
 
 ```
 cmd/detent  →  ui, resolver, agent, classify, config, routing, propose (Ping only)
-resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio
+resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio, viewgen
 ui          →  its own subpackages (editor, welcome, render, status,
                 markdown, theme, island, tree, layout) + viewspec
 viewspec    →  the standard library, nothing else
-agent       →  propose, host, classify, usage
+agent       →  propose, host, classify, usage, viewgen (render kinds)
 config      →  agent, classify, propose, sandbox (for their defaults only)
 host        →  capture
 sandbox     →  capture (never host or agent)

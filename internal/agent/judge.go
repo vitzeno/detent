@@ -8,6 +8,7 @@ import (
 
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/internal/viewgen"
 )
 
 // Mut* tiers; "" means unknown, renders neutral never safe.
@@ -48,17 +49,19 @@ const (
 	StatusEmpty    = "empty"
 )
 
-// Kind* values; "" means unknown.
+// Kind* values come from viewgen, which is the only thing that
+// consumes them: they choose a view, prune what a generated one may
+// use, and key its cache. "" still means unknown.
 const (
-	KindInline  = "inline_short"
-	KindLog     = "scrollable_log"
-	KindTable   = "table"
-	KindFiles   = "file_listing"
-	KindContent = "file_content"
-	KindError   = "error_text"
-	KindDiff    = "diff"
-	KindJSON    = "structured_json"
-	KindQuiet   = "quiet_progress"
+	KindInline  = viewgen.KindInline
+	KindLog     = viewgen.KindLog
+	KindTable   = viewgen.KindTable
+	KindFiles   = viewgen.KindFiles
+	KindContent = viewgen.KindContent
+	KindError   = viewgen.KindError
+	KindDiff    = viewgen.KindDiff
+	KindJSON    = viewgen.KindJSON
+	KindQuiet   = viewgen.KindQuiet
 )
 
 // PostJudgment classifies a finished command for rendering.
@@ -117,58 +120,9 @@ func postQuestions() classify.Questions {
 				StatusEmpty:    "ran fine but produced no useful output",
 			}},
 		},
-		// Structured {what, not_for, examples} criteria, not flat strings:
-		// with nine options, confidence calibration suffers without it.
-		// See TestRenderKindCriteria_AreStructured.
 		"render_kind": {
 			Instructions: "What shape is this command's output? Pick how a human should read it.",
-			Choice: &classify.ChoiceQuestion{Criteria: map[string]any{
-				KindInline: map[string]any{
-					"what":     "a few short lines that fit inline under the command — naturally brief, not just truncated",
-					"not_for":  "a long-running command that happened to produce little output — that's KindQuiet, not this",
-					"examples": []string{"pwd", "echo done", "git rev-parse HEAD"},
-				},
-				KindQuiet: map[string]any{
-					"what":     "a long-running or build-like command that produced almost no output — a one-line done suffices",
-					"not_for":  "a command that is always naturally short — that's KindInline even if it also ran quickly",
-					"examples": []string{"npm install, finished with a minimal log", "a background service start with no output"},
-				},
-				KindLog: map[string]any{
-					"what":     "a long log, listing, or build/test output — many lines, read top to bottom for events over time",
-					"not_for":  "a file's own prose or code body (KindContent), or output whose main point is one failure (KindError)",
-					"examples": []string{"go test ./... output", "a docker build log", "tail -n 200 app.log"},
-				},
-				KindTable: map[string]any{
-					"what":     "aligned columns with a header row — reads as a table, one record per row",
-					"not_for":  "a bare list of paths or names with no header or columns — that's KindFiles",
-					"examples": []string{"ps aux", "df -h", "ls -la"},
-				},
-				KindFiles: map[string]any{
-					"what":     "a list of paths or items to pick from, one per line, with no header or aligned columns",
-					"not_for":  "the same kind of listing but with a header row and aligned columns — that's KindTable",
-					"examples": []string{"find . -name '*.go'", "git diff --name-only", "plain ls, one entry per line"},
-				},
-				KindContent: map[string]any{
-					"what":     "a file's own prose or code body, read in full like a document — reads best with line numbers",
-					"not_for":  "well-formed JSON even if it came from cat — that's KindJSON; or scanning output for events — that's KindLog",
-					"examples": []string{"cat main.go", "cat README.md"},
-				},
-				KindError: map[string]any{
-					"what":     "an error, traceback, or compiler complaint that is the command's main point — reads in full, in order",
-					"not_for":  "a log that merely contains some warnings among mostly normal output — that's still KindLog",
-					"examples": []string{"a failed build's compiler error", "a stack trace", "command not found"},
-				},
-				KindDiff: map[string]any{
-					"what":     "a unified diff — +/- lines with @@ hunk headers — reads with added/removed coloring",
-					"not_for":  "output that merely describes changes in prose — must be the literal unified diff format",
-					"examples": []string{"git diff", "diff -u a.txt b.txt"},
-				},
-				KindJSON: map[string]any{
-					"what":     "JSON or other structured data, meant to be read as data — reads pretty-printed",
-					"not_for":  "a file's prose or code body that merely happens not to be JSON",
-					"examples": []string{"curl ... returning a JSON body", "kubectl get pod -o json"},
-				},
-			}},
+			Choice:       &classify.ChoiceQuestion{Criteria: viewgen.RenderKindCriteria()},
 		},
 		"attention": {
 			Instructions: "Does this command's outcome need the human's attention before " +

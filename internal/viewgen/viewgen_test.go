@@ -243,3 +243,27 @@ func TestSeeds_AllCompileAndFitTheirOwnShape(t *testing.T) {
 		assert.NoError(t, err, command)
 	}
 }
+
+// One table defines a kind's criteria and what may draw it, so a kind
+// cannot be judged into existence with nothing able to render it.
+func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
+	criteria := viewgen.RenderKindCriteria()
+	require.Len(t, criteria, len(viewgen.Kinds()))
+
+	known := viewspec.Standard().Kinds()
+	for _, k := range viewgen.Kinds() {
+		assert.NotEmpty(t, k.What, k.Name)
+		assert.NotEmpty(t, k.NotFor, "%s names what it is confused with", k.Name)
+		assert.NotEmpty(t, k.Examples, k.Name)
+		assert.Contains(t, criteria, k.Name)
+
+		require.NotEmpty(t, k.Widgets, "%s has something able to draw it", k.Name)
+		for _, w := range k.Widgets {
+			assert.Contains(t, known, w, "%s may draw with %s", k.Name, w)
+		}
+		if k.Generate {
+			assert.Less(t, len(k.Widgets), len(known),
+				"%s narrows the vocabulary rather than offering all of it", k.Name)
+		}
+	}
+}
