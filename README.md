@@ -34,7 +34,9 @@ make run-headless GOAL="find go files over 1MB"
 ## Reading the output
 
 The pane draws from a *view spec*: a parse saying how to read the bytes into
-rows, and blocks saying how to draw them. Fifteen widgets, eight parse kinds.
+rows, and blocks saying how to draw them. Thirty widgets, eight parse
+kinds: tables and trees, but also gauges, histograms, box plots,
+stacked bands, gantt charts, braille scatter plots and heatmaps.
 Detent ships specs for common commands and picks a sensible default otherwise.
 
 Set `views: generate` and it will ask the model to design one for output

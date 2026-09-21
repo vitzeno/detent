@@ -355,11 +355,12 @@ routing     →  agent, sandbox
   becomes a depth), `json`, `none` — and fourteen widgets: `text`,
   `table`, `list`, `keyvalue`, `tree`, `meter`, `bar`, `sparkline`,
   `badges`, `log`, `errors`, `json`, `diff`, `code`, plus `row`.
-  A `row` lays its `Panes` side by side, nesting capped at one level so
-  the schema stays finite — a recursive `$ref` is where strict mode's
-  backend portability gets thin. It is the one kind the **interpreter**
-  draws rather than a widget: `Widget.Draw` is handed a Block and Data,
-  never the registry, so it could not resolve its children's widgets.
+  A `row` lays its `Panes` side by side and a `panel` frames its one
+  pane in a border, nesting capped at one level so the schema stays
+  finite — a recursive `$ref` is where strict mode's backend
+  portability gets thin. Both are drawn by the **interpreter** rather
+  than a widget: `Widget.Draw` is handed a Block and Data, never the
+  registry, so it could not resolve its children's widgets.
   The registry extends leaves; layout is geometry and belongs to the
   interpreter. Three calls priced by frequency: `Compile` once per spec,
   `Bind` once per output, `Draw` per frame — `Painter` is on `Frame`,
