@@ -52,8 +52,8 @@ type Driver interface {
 
 	// GenerateView authors a view for a finished command's output, or
 	// reports ok=false when nothing beats the render_kind fallback.
-	// Blocking — ui calls it from a tea.Cmd, never from Update — and a
-	// cached spec returns without reaching a model at all.
+	// Blocking: ui calls it from a tea.Cmd, never from Update. A cached
+	// spec returns without reaching a model at all.
 	//
 	// No DTO mirror: viewspec is outside internal/ and both sides
 	// import it, so the spec crosses untranslated.

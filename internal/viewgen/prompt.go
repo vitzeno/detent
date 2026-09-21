@@ -6,7 +6,7 @@ import (
 )
 
 // promptLines caps what the model sees. Enough to recognise a shape,
-// far short of enough to transcribe it — which is the point.
+// far short of enough to transcribe it. That is the point.
 const promptLines = 40
 
 const systemPrompt = `You design how a terminal pane shows one command's output.

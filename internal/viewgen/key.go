@@ -8,7 +8,7 @@ import (
 )
 
 // multiplexers are the programs whose second word names a real
-// subcommand. Everything else keys on the program alone — "ps -U me"
+// subcommand. Everything else keys on the program alone: "ps -U me"
 // must not key as "ps me", the way "git status" keys as "git status".
 var multiplexers = map[string]bool{
 	"git": true, "go": true, "docker": true, "kubectl": true, "make": true,

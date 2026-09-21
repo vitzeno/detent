@@ -49,7 +49,7 @@ func must(err error) {
 	}
 }
 
-// text is model-authored framing, so it renders faint — a generated
+// text is model-authored framing, so it renders faint. A generated
 // heading must not be able to read as a finding.
 type textWidget struct{}
 
@@ -170,7 +170,7 @@ func (keyvalueWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 }
 
 // meter draws a proportion counted from rows. The numbers come from
-// here, never from the spec — a Title containing a number cannot
+// here, never from the spec. A Title containing a number cannot
 // change what the bar says.
 type meterWidget struct{}
 
@@ -249,8 +249,8 @@ func (badgesWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 }
 
 // tableColumns is the block's own columns, or every parsed field in
-// source order when it names none — which is what lets one table spec
-// serve output whose columns aren't known until it is parsed. A block
+// source order when it names none. That lets one table spec serve
+// output whose columns are not known until it is parsed. A block
 // column with no title of its own takes the parse's, so naming a
 // column does not cost you the heading the output printed.
 func tableColumns(b Block, d Data) []Column {
@@ -307,7 +307,7 @@ func (w rawWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return out, nil
 }
 
-// diffRole classifies one unified-diff line. Classification only —
+// diffRole classifies one unified-diff line. Classification only;
 // which colour a role becomes is the consumer's business.
 func diffRole(l string) Role {
 	switch {
@@ -562,7 +562,7 @@ func leaf(path string) string {
 }
 
 // sparklineWidget draws one numeric field as a bar strip, scaled to
-// the values present rather than to zero — the shape is the point.
+// the values present rather than to zero. The shape is the point.
 type sparklineWidget struct{}
 
 func (sparklineWidget) Validate(b Block, fields []string) error {

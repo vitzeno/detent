@@ -211,8 +211,8 @@ func (p *OpenAIProposer) complete(ctx context.Context, msgs []wireMessage, forma
 }
 
 // Structured asks for one JSON object matching schema. The caller
-// supplies both messages, so this carries no system prompt of its own
-// — it is the proposer's endpoint, not the proposer's job.
+// supplies both messages, so this carries no system prompt of its
+// own: it is the proposer's endpoint, not the proposer's job.
 func (p *OpenAIProposer) Structured(ctx context.Context, system, user string, schema map[string]any) ([]byte, usage.Usage, error) {
 	content, used, err := p.complete(ctx, []wireMessage{
 		{Role: "system", Content: system},

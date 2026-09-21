@@ -14,38 +14,6 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// DefaultCandidates is how many specs are generated and ranked.
-const DefaultCandidates = 2
-
-// DefaultFitThreshold is the Jev score a spec must reach to be kept.
-const DefaultFitThreshold = 0.5
-
-// ErrNotWorth means this output has no view worth a model call — a few
-// lines, or a shape already drawn well. Not a failure.
-var ErrNotWorth = errors.New("viewgen: nothing to gain from a view here")
-
-// ErrNoneFit means nothing generated survived validation or judging.
-var ErrNoneFit = errors.New("viewgen: no candidate fit the output")
-
-// Request is one command's outcome, as the generator sees it.
-type Request struct {
-	Command  string
-	Output   string
-	ExitCode int
-	// Kind is Jev's render_kind for this output; it prunes the
-	// vocabulary before the model chooses from it.
-	Kind string
-}
-
-// Result is a generated or cached spec and what it cost.
-type Result struct {
-	Spec   *viewspec.Spec
-	Key    string
-	Cached bool
-	Fit    float64
-	Usage  usage.Usage
-}
-
 // Generator authors specs. A nil Judge skips verification and keeps
 // the first candidate that validates; a nil Store disables caching.
 type Generator struct {
@@ -56,42 +24,6 @@ type Generator struct {
 
 	Candidates   int
 	FitThreshold float64
-}
-
-func (g *Generator) registry() *viewspec.Registry {
-	if g.Registry != nil {
-		return g.Registry
-	}
-	return viewspec.Standard()
-}
-
-func (g *Generator) candidates() int {
-	if g.Candidates > 0 {
-		return g.Candidates
-	}
-	return DefaultCandidates
-}
-
-func (g *Generator) threshold() float64 {
-	if g.FitThreshold > 0 {
-		return g.FitThreshold
-	}
-	return DefaultFitThreshold
-}
-
-// Cached returns a spec without calling anything: the store first,
-// then what detent ships. Store first so a spec the human has edited
-// beats the one we shipped, which is the whole reason a cached spec
-// is a file rather than a row.
-func (g *Generator) Cached(req Request) (Result, bool) {
-	key := Key(req.Command, req.Kind)
-	if spec, ok := g.Store.Load(key); ok {
-		return Result{Spec: spec, Key: key, Cached: true}, true
-	}
-	if spec, ok := seed(req.Command); ok {
-		return Result{Spec: spec, Key: key, Cached: true}, true
-	}
-	return Result{}, false
 }
 
 // Generate authors a spec for req, verifies it against the output that
@@ -146,6 +78,53 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
 	return Result{Spec: best, Key: key, Fit: bestFit, Usage: total}, nil
 }
 
+// Cached returns a spec without calling anything: the store first,
+// then what detent ships. Store first so a spec the human has edited
+// beats the one we shipped, which is the whole reason a cached spec
+// is a file rather than a row.
+func (g *Generator) Cached(req Request) (Result, bool) {
+	key := Key(req.Command, req.Kind)
+	if spec, ok := g.Store.Load(key); ok {
+		return Result{Spec: spec, Key: key, Cached: true}, true
+	}
+	if spec, ok := seed(req.Command); ok {
+		return Result{Spec: spec, Key: key, Cached: true}, true
+	}
+	return Result{}, false
+}
+
+// Request is one command's outcome, as the generator sees it.
+type Request struct {
+	Command  string
+	Output   string
+	ExitCode int
+	// Kind is Jev's render_kind for this output; it prunes the
+	// vocabulary before the model chooses from it.
+	Kind string
+}
+
+// Result is a generated or cached spec and what it cost.
+type Result struct {
+	Spec   *viewspec.Spec
+	Key    string
+	Cached bool
+	Fit    float64
+	Usage  usage.Usage
+}
+
+// DefaultCandidates is how many specs are generated and ranked.
+const DefaultCandidates = 2
+
+// DefaultFitThreshold is the Jev score a spec must reach to be kept.
+const DefaultFitThreshold = 0.5
+
+// ErrNotWorth means this output has no view worth a model call: a few
+// lines, or a shape already drawn well. Not a failure.
+var ErrNotWorth = errors.New("viewgen: nothing to gain from a view here")
+
+// ErrNoneFit means nothing generated survived validation or judging.
+var ErrNoneFit = errors.New("viewgen: no candidate fit the output")
+
 // validate is the whole defence against a spec that reads well and
 // draws nothing: it must decode, compile against the pruned
 // vocabulary, and bind against the output that actually came out.
@@ -166,8 +145,8 @@ func validate(raw []byte, reg *viewspec.Registry, output string) (*viewspec.Spec
 }
 
 // fit asks Jev whether the view reads well, over the fields the parse
-// actually produced — a closed question about real data, which is
-// what Jev is for and what authoring a spec is not.
+// actually produced. A closed question about real data is what Jev is
+// for; authoring a spec is not.
 func (g *Generator) fit(ctx context.Context, req Request, spec *viewspec.Spec, bound *viewspec.Bound) (float64, usage.Usage) {
 	kinds := make([]string, 0, len(spec.Blocks))
 	for _, b := range spec.Blocks {
@@ -195,6 +174,27 @@ func (g *Generator) fit(ctx context.Context, req Request, spec *viewspec.Spec, b
 		CompletionTokens: u.OutputTokens,
 		Model:            u.Model,
 	}
+}
+
+func (g *Generator) registry() *viewspec.Registry {
+	if g.Registry != nil {
+		return g.Registry
+	}
+	return viewspec.Standard()
+}
+
+func (g *Generator) candidates() int {
+	if g.Candidates > 0 {
+		return g.Candidates
+	}
+	return DefaultCandidates
+}
+
+func (g *Generator) threshold() float64 {
+	if g.FitThreshold > 0 {
+		return g.FitThreshold
+	}
+	return DefaultFitThreshold
 }
 
 func add(a, b usage.Usage) usage.Usage {

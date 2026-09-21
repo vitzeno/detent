@@ -43,8 +43,8 @@ func (m Model) detailLines() []string {
 	return strings.Split(m.output.View(), "\n")
 }
 
-// viewBody draws the row's view whole — no Height — so the viewport
-// windows it and a generated view scrolls like any other output.
+// viewBody draws the row's view whole, passing no Height, so the
+// viewport windows it and a view scrolls like any other output.
 func (m Model) viewBody(r *stepRow) (viewspec.Render, bool) {
 	b, ok := boundView(r)
 	if !ok {

@@ -49,8 +49,6 @@ func (s *Store) Save(key string, spec *viewspec.Spec) error {
 // Path is where key's spec lives, so a caller can open it in an editor.
 func (s *Store) Path(key string) string { return s.path(key) }
 
-func (s *Store) path(key string) string { return filepath.Join(s.Dir, key+".json") }
-
 // DefaultDir is where specs live when config says nothing.
 func DefaultDir() string {
 	dir, err := os.UserHomeDir()
@@ -59,3 +57,5 @@ func DefaultDir() string {
 	}
 	return filepath.Join(dir, ".local", "state", "detent", "views")
 }
+
+func (s *Store) path(key string) string { return filepath.Join(s.Dir, key+".json") }

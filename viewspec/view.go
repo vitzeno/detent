@@ -9,59 +9,6 @@ import (
 	"strings"
 )
 
-// Frame is everything Draw needs that Bind could not know. Painter is
-// here, not on Compiled, so Compile and Bind stay pure data and test
-// with no styling at all — see docs/design/viewspec.md.
-type Frame struct {
-	Width, Height int
-	Focused       bool
-	Cursor        int
-	Paint         Painter
-}
-
-// Option configures Compile.
-type Option func(*options)
-
-type options struct{ reg *Registry }
-
-// WithRegistry compiles against a custom vocabulary instead of Standard.
-func WithRegistry(r *Registry) Option { return func(o *options) { o.reg = r } }
-
-// BindError says which block failed to resolve and why. Callers fall
-// back on any error; errors.As is here for one that wants to report
-// which block it was.
-type BindError struct {
-	Block int
-	Kind  string
-	Field string
-	Err   error
-}
-
-func (e *BindError) Error() string {
-	at := fmt.Sprintf("block %d (%s)", e.Block, e.Kind)
-	if e.Field != "" {
-		at += fmt.Sprintf(" field %q", e.Field)
-	}
-	return fmt.Sprintf("viewspec: %s: %v", at, e.Err)
-}
-
-func (e *BindError) Unwrap() error { return e.Err }
-
-// ErrNoRows is what a row-consuming block fails with when the parse
-// produced nothing to draw.
-var ErrNoRows = errors.New("parse produced no rows")
-
-// Compiled is a validated spec. Reusable across outputs and frames,
-// and cheap to keep: it holds no data and no styling.
-type Compiled struct {
-	spec Spec
-	reg  *Registry
-	ext  Extractor
-}
-
-// Spec returns what was compiled.
-func (c *Compiled) Spec() Spec { return c.spec }
-
 // Compile validates spec against the vocabulary: every block kind
 // exists, the parse kind exists and its pattern compiles, and every
 // static field is present. Once per spec.
@@ -91,6 +38,149 @@ func Compile(spec Spec, opts ...Option) (*Compiled, error) {
 	}
 	return &Compiled{spec: spec, reg: o.reg, ext: ext}, nil
 }
+
+// Bind resolves every binding against the rows that actually came
+// out. Anything unresolved fails the whole view, never one block.
+func (c *Compiled) Bind(output string) (*Bound, error) {
+	rows, err := c.ext.Extract(output)
+	if err != nil {
+		return nil, fmt.Errorf("viewspec: parse %q: %w", c.spec.Parse.Kind, err)
+	}
+	fields := fieldsOf(rows)
+	out := &Bound{c: c, raw: output, fields: fields, selSeq: -1}
+	seq := 0
+	out.blocks, err = c.bindBlocks(c.spec.Blocks, rows, Data{
+		Rows: nil, Raw: output, Columns: orderedColumns(c.ext, fields)}, fields, &seq)
+	if err != nil {
+		return nil, err
+	}
+	if sel, ok := out.selectable(); ok {
+		out.selSeq = sel.seq
+	}
+	return out, nil
+}
+
+// Draw assembles lines at a size. Called on every resize, scroll and
+// focus change, so it parses nothing and validates nothing. A Height
+// of 0 draws the view whole, for a caller windowing it itself.
+func (b *Bound) Draw(f Frame) (Render, error) {
+	if f.Paint == nil {
+		f.Paint = Plain()
+	}
+	if f.Width <= 0 {
+		return Render{}, errors.New("viewspec: frame has no width")
+	}
+	lines, cursor, err := drawBlocks(b.blocks, f, b.selSeq)
+	if err != nil {
+		return Render{}, err
+	}
+	out := Render{Lines: lines, CursorLine: cursor}
+	if f.Height > 0 && len(out.Lines) > f.Height {
+		out.Lines = out.Lines[:f.Height]
+	}
+	return out, nil
+}
+
+// Action resolves the on_enter template for the cursor row. A string
+// and nothing else: this package has no idea what a prompt or a shell
+// is.
+func (b *Bound) Action(f Frame) (string, bool) {
+	bb, ok := b.selectable()
+	if !ok || bb.block.OnEnter == "" || f.Cursor < 0 || f.Cursor >= len(bb.data.Rows) {
+		return "", false
+	}
+	out, err := substitute(bb.block.OnEnter, bb.data.Rows[f.Cursor])
+	if err != nil {
+		return "", false
+	}
+	return out, true
+}
+
+// SelectableRows reports how many rows Frame.Cursor addresses, so a
+// caller can clamp its own cursor without knowing the view's shape.
+func (b *Bound) SelectableRows() (int, bool) {
+	bb, ok := b.selectable()
+	if !ok {
+		return 0, false
+	}
+	return len(bb.data.Rows), true
+}
+
+// Compiled is a validated spec. Reusable across outputs and frames,
+// and cheap to keep: it holds no data and no styling.
+type Compiled struct {
+	spec Spec
+	reg  *Registry
+	ext  Extractor
+}
+
+// Spec returns what was compiled.
+func (c *Compiled) Spec() Spec { return c.spec }
+
+// Bound is one output resolved against a compiled spec: parsed,
+// filtered and sorted, with every binding checked. Once per output.
+type Bound struct {
+	c      *Compiled
+	raw    string
+	fields []string
+	blocks []boundBlock
+	selSeq int
+}
+
+// Fields lists the field names the parse actually produced, sorted.
+// Generation uses it to ask a closed question about real columns.
+func (b *Bound) Fields() []string { return slices.Clone(b.fields) }
+
+// Render is one drawn view. A struct rather than a bare []string so a
+// caller can scroll to the selection without knowing the layout.
+type Render struct {
+	Lines []string
+	// CursorLine indexes Lines for the selected row, or -1 when
+	// nothing in the view takes a selection.
+	CursorLine int
+}
+
+// Frame is everything Draw needs that Bind could not know. Painter is
+// here, not on Compiled, so Compile and Bind stay pure data and test
+// with no styling at all. See docs/design/viewspec.md.
+type Frame struct {
+	Width, Height int
+	Focused       bool
+	Cursor        int
+	Paint         Painter
+}
+
+// Option configures Compile.
+type Option func(*options)
+
+// WithRegistry compiles against a custom vocabulary instead of Standard.
+func WithRegistry(r *Registry) Option { return func(o *options) { o.reg = r } }
+
+type options struct{ reg *Registry }
+
+// BindError says which block failed to resolve and why. Callers fall
+// back on any error; errors.As is here for one that wants to report
+// which block it was.
+type BindError struct {
+	Block int
+	Kind  string
+	Field string
+	Err   error
+}
+
+func (e *BindError) Error() string {
+	at := fmt.Sprintf("block %d (%s)", e.Block, e.Kind)
+	if e.Field != "" {
+		at += fmt.Sprintf(" field %q", e.Field)
+	}
+	return fmt.Sprintf("viewspec: %s: %v", at, e.Err)
+}
+
+func (e *BindError) Unwrap() error { return e.Err }
+
+// ErrNoRows is what a row-consuming block fails with when the parse
+// produced nothing to draw.
+var ErrNoRows = errors.New("parse produced no rows")
 
 // checkBlock validates one block against the vocabulary. topLevel
 // gates rows: nesting is capped at one, so a pane holds leaves only.
@@ -162,16 +252,6 @@ func checkStatic(b Block) error {
 	return nil
 }
 
-// Bound is one output resolved against a compiled spec: parsed,
-// filtered and sorted, with every binding checked. Once per output.
-type Bound struct {
-	c      *Compiled
-	raw    string
-	fields []string
-	blocks []boundBlock
-	selSeq int
-}
-
 type boundBlock struct {
 	block Block
 	w     Widget
@@ -181,31 +261,6 @@ type boundBlock struct {
 	// seq numbers leaves in draw order, so Draw can tell which one
 	// holds the cursor without comparing values.
 	seq int
-}
-
-// Fields lists the field names the parse actually produced, sorted.
-// Generation uses it to ask a closed question about real columns.
-func (b *Bound) Fields() []string { return slices.Clone(b.fields) }
-
-// Bind resolves every binding against the rows that actually came
-// out. Anything unresolved fails the whole view, never one block.
-func (c *Compiled) Bind(output string) (*Bound, error) {
-	rows, err := c.ext.Extract(output)
-	if err != nil {
-		return nil, fmt.Errorf("viewspec: parse %q: %w", c.spec.Parse.Kind, err)
-	}
-	fields := fieldsOf(rows)
-	out := &Bound{c: c, raw: output, fields: fields, selSeq: -1}
-	seq := 0
-	out.blocks, err = c.bindBlocks(c.spec.Blocks, rows, Data{
-		Rows: nil, Raw: output, Columns: orderedColumns(c.ext, fields)}, fields, &seq)
-	if err != nil {
-		return nil, err
-	}
-	if sel, ok := out.selectable(); ok {
-		out.selSeq = sel.seq
-	}
-	return out, nil
 }
 
 // bindBlocks resolves one level of blocks, descending once into a
@@ -244,36 +299,6 @@ func (c *Compiled) bindBlocks(blocks []Block, rows []Row, shared Data, fields []
 		data.Rows = sel
 		out = append(out, boundBlock{block: b, w: w, data: data, seq: *seq})
 		*seq++
-	}
-	return out, nil
-}
-
-// Render is one drawn view. A struct rather than a bare []string so a
-// caller can scroll to the selection without knowing the layout.
-type Render struct {
-	Lines []string
-	// CursorLine indexes Lines for the selected row, or -1 when
-	// nothing in the view takes a selection.
-	CursorLine int
-}
-
-// Draw assembles lines at a size. Called on every resize, scroll and
-// focus change, so it parses nothing and validates nothing. A Height
-// of 0 draws the view whole, for a caller windowing it itself.
-func (b *Bound) Draw(f Frame) (Render, error) {
-	if f.Paint == nil {
-		f.Paint = Plain()
-	}
-	if f.Width <= 0 {
-		return Render{}, errors.New("viewspec: frame has no width")
-	}
-	lines, cursor, err := drawBlocks(b.blocks, f, b.selSeq)
-	if err != nil {
-		return Render{}, err
-	}
-	out := Render{Lines: lines, CursorLine: cursor}
-	if f.Height > 0 && len(out.Lines) > f.Height {
-		out.Lines = out.Lines[:f.Height]
 	}
 	return out, nil
 }
@@ -374,34 +399,9 @@ func paneWidths(panes []Pane, total int) []int {
 	return out
 }
 
-// Action resolves the on_enter template for the cursor row. A string
-// and nothing else: this package has no idea what a prompt or a shell
-// is.
-func (b *Bound) Action(f Frame) (string, bool) {
-	bb, ok := b.selectable()
-	if !ok || bb.block.OnEnter == "" || f.Cursor < 0 || f.Cursor >= len(bb.data.Rows) {
-		return "", false
-	}
-	out, err := substitute(bb.block.OnEnter, bb.data.Rows[f.Cursor])
-	if err != nil {
-		return "", false
-	}
-	return out, true
-}
-
-// SelectableRows reports how many rows Frame.Cursor addresses, so a
-// caller can clamp its own cursor without knowing the view's shape.
-func (b *Bound) SelectableRows() (int, bool) {
-	bb, ok := b.selectable()
-	if !ok {
-		return 0, false
-	}
-	return len(bb.data.Rows), true
-}
-
 // selectable is the block the cursor addresses. Navigable and
-// actionable are separate — a table is worth moving through even when
-// nothing can be run from it — so with one cursor, on_enter wins.
+// actionable are separate: a table is worth moving through even when
+// nothing can be run from it. With one cursor, on_enter wins.
 func (b *Bound) selectable() (boundBlock, bool) {
 	var first boundBlock
 	found := false

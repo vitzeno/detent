@@ -55,8 +55,8 @@ func (r *Registry) parseSchema() map[string]any {
 
 // blockSchema spells a row's panes out in full rather than pointing
 // back at itself. Nesting is capped at one level, so the schema is
-// finite — which is what keeps it emittable under strict mode, where
-// a recursive $ref is exactly where backend portability gets thin.
+// finite. Strict mode needs that: a recursive $ref is where backend
+// portability gets thin.
 func (r *Registry) blockSchema(allowRow bool) map[string]any {
 	kinds := r.Kinds()
 	if !allowRow {

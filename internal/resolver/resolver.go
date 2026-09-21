@@ -30,7 +30,7 @@ func New(sess *agent.Session) *Resolver {
 }
 
 // GenerateView authors a view for one command's output. Views are
-// presentation, so this crosses here rather than in agent — the loop
+// presentation, so this crosses here rather than in agent: the loop
 // has no opinion about how its output is drawn.
 //
 // A nil Views generator, a kind with nothing to gain, or a model that

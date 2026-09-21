@@ -36,7 +36,7 @@ type Data struct {
 	Rows []Row
 	Raw  string
 	// Columns is the row keys in parse order, spelled as the output
-	// spelled them — neither of which a Row, being a map, can carry.
+	// spelled them. A Row, being a map, can carry neither.
 	Columns []Column
 }
 

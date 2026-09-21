@@ -94,8 +94,8 @@ Reply with exactly one JSON object, no other text and no markdown fences:
 }
 
 // JSONSchema wraps a schema in the response_format envelope. LM
-// Studio rejects {"type": "json_object"} — it accepts only
-// "json_schema" or "text" — so this form is the portable one.
+// Studio accepts only "json_schema" or "text", never
+// {"type": "json_object"}, so this form is the portable one.
 func JSONSchema(name string, schema map[string]any) map[string]any {
 	return map[string]any{
 		"type": "json_schema",

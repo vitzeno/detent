@@ -18,8 +18,8 @@ func (painter) Paint(r viewspec.Role, s string) string {
 	return roleStyle(r).Render(s)
 }
 
-// Width and Truncate are ANSI-aware because Paint emits escapes —
-// measuring painted text with len is how a table looks aligned in
+// Width and Truncate are ANSI-aware because Paint emits escapes.
+// Measuring painted text with len is how a table looks aligned in
 // tests and ragged in a terminal.
 func (painter) Width(s string) int { return lipgloss.Width(s) }
 

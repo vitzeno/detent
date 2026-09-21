@@ -23,7 +23,7 @@ func linesParse() viewspec.Parse {
 }
 
 // bind is the whole data half in one call, and it needs no Painter at
-// all — which is the reason Painter lives on Frame.
+// all. That is the reason Painter lives on Frame.
 func bind(t *testing.T, spec viewspec.Spec, output string) *viewspec.Bound {
 	t.Helper()
 	c, err := viewspec.Compile(spec)
@@ -460,8 +460,8 @@ func TestDraw_HeightZeroDrawsEverything(t *testing.T) {
 	assert.Len(t, r.Lines, 10, "a height still bounds it")
 }
 
-// rolePainter makes roles visible to assertions, which Plain cannot —
-// it paints nothing, on purpose, so golden files stay readable.
+// rolePainter makes roles visible to assertions. Plain paints nothing,
+// on purpose, so golden files stay readable.
 type rolePainter struct{ viewspec.Painter }
 
 func (p rolePainter) Paint(r viewspec.Role, s string) string { return r.String() + ":" + s }
@@ -551,7 +551,7 @@ func TestColumns_KeysAreLowerAndTitlesAreNot(t *testing.T) {
 }
 
 // With one cursor for the whole view, the block that can be acted on
-// gets it — however the blocks are ordered.
+// gets it, however the blocks are ordered.
 func TestSelectable_PrefersTheActionableBlock(t *testing.T) {
 	spec := viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{
 		{Kind: "table", Columns: []viewspec.Column{{Field: "pkg"}}},
@@ -706,7 +706,7 @@ func TestBar_ScalesToTheLargestValue(t *testing.T) {
 		bars[i] = strings.Count(l, "█")
 		assert.LessOrEqual(t, len([]rune(l)), 46, "never wider than the frame")
 	}
-	// 10.200, 9.500, 1.203, 0.412 — descending, and the largest fills.
+	// 10.200, 9.500, 1.203, 0.412: descending, and the largest fills.
 	assert.Greater(t, bars[0], bars[1])
 	assert.Greater(t, bars[1], bars[2])
 	assert.Greater(t, bars[2], bars[3])

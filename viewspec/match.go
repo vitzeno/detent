@@ -48,7 +48,7 @@ func (m matcher) count(rows []Row) int {
 }
 
 // placeholder is the only templating there is: a field name in braces,
-// substituted from one row. No expressions, no pipelines — a spec you
+// substituted from one row. No expressions, no pipelines. A spec you
 // can read and fix by hand is the payoff for caching them to disk.
 var placeholder = regexp.MustCompile(`\{([a-z_][a-z0-9_]*)\}`)
 
