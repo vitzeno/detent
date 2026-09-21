@@ -76,11 +76,20 @@ type Pane struct {
 	Blocks []Block `json:"blocks"`
 }
 
-// RowKind lays its panes side by side. It is the one kind the
-// interpreter draws itself: a Widget is handed a Block and Data, never
-// the registry, so it could not resolve its children's widgets.
-// Layout is geometry, and geometry belongs to the interpreter.
-const RowKind = "row"
+// RowKind lays its panes side by side. PanelKind frames its one pane
+// in a border. Both are drawn by the interpreter rather than by a
+// widget: a Widget is handed a Block and Data, never the registry, so
+// it could not resolve its children's widgets. Layout is geometry, and
+// geometry belongs to the interpreter.
+const (
+	RowKind   = "row"
+	PanelKind = "panel"
+)
+
+// isContainer reports whether a kind holds blocks instead of drawing
+// data. Containers live at the top level only, so nesting stays capped
+// at one and the schema stays finite.
+func isContainer(kind string) bool { return kind == RowKind || kind == PanelKind }
 
 // Column is one table or keyvalue column. Width 0 shares the frame
 // proportionally.

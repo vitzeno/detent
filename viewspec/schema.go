@@ -53,14 +53,14 @@ func (r *Registry) parseSchema() map[string]any {
 	}
 }
 
-// blockSchema spells a row's panes out in full rather than pointing
+// blockSchema spells a container's panes out in full rather than pointing
 // back at itself. Nesting is capped at one level, so the schema is
 // finite. Strict mode needs that: a recursive $ref is where backend
 // portability gets thin.
-func (r *Registry) blockSchema(allowRow bool) map[string]any {
+func (r *Registry) blockSchema(allowContainers bool) map[string]any {
 	kinds := r.Kinds()
-	if !allowRow {
-		kinds = slices.DeleteFunc(slices.Clone(kinds), func(k string) bool { return k == RowKind })
+	if !allowContainers {
+		kinds = slices.DeleteFunc(slices.Clone(kinds), isContainer)
 	}
 	schema := map[string]any{
 		"type": "object",
@@ -110,13 +110,13 @@ func (r *Registry) blockSchema(allowRow bool) map[string]any {
 			"accent", "count_where", "of", "on_enter"},
 		"additionalProperties": false,
 	}
-	if !allowRow {
+	if !allowContainers {
 		return schema
 	}
 	props := schema["properties"].(map[string]any)
 	props["panes"] = map[string]any{
 		"type":        "array",
-		"description": "row only: the columns laid side by side, at least two",
+		"description": "containers only: a row lays its panes side by side and needs at least two, a panel frames exactly one",
 		"items": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
