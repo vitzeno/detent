@@ -43,10 +43,8 @@ func (m Model) detailLines() []string {
 	return strings.Split(m.output.View(), "\n")
 }
 
-// viewBody draws the row's view whole — no Height — and leaves the
-// windowing to the viewport, which is what gives a generated view the
-// same scrolling as any other output. Any failure falls through to the
-// render_kind path: a confidently wrong view is worse than a plain one.
+// viewBody draws the row's view whole — no Height — so the viewport
+// windows it and a generated view scrolls like any other output.
 func (m Model) viewBody(r *stepRow) (viewspec.Render, bool) {
 	b, ok := boundView(r)
 	if !ok {

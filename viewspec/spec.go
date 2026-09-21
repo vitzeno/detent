@@ -1,12 +1,6 @@
 // Package viewspec interprets a view specification: how to read a
-// command's output, and how to draw what was read.
-//
-// It imports the standard library and nothing else. Everything it
-// needs from a caller arrives through Painter, Widget and Extractor,
-// all declared here because this package is what calls them.
-//
-// The three calls are priced by how often they happen: Compile once
-// per spec, Bind once per output, Draw once per frame.
+// command's output, and how to draw what was read. It imports the
+// standard library and nothing else.
 package viewspec
 
 // Version is the spec format this package understands.
@@ -39,10 +33,8 @@ type Row map[string]string
 type Data struct {
 	Rows []Row
 	Raw  string
-	// Columns names the row keys in the order the parse produced them,
-	// with the spelling the output used — neither of which a Row (a
-	// map of lowercased keys) can carry. A table with no Columns of
-	// its own draws these.
+	// Columns is the row keys in parse order, spelled as the output
+	// spelled them — neither of which a Row, being a map, can carry.
 	Columns []Column
 }
 

@@ -195,10 +195,8 @@ func newNoneExtractor(Parse) (Extractor, error) { return noneExtractor{}, nil }
 
 func (noneExtractor) Extract(string) ([]Row, error) { return nil, nil }
 
-// skipping drops Parse.Skip leading lines before the real extractor
-// sees them, so every parse kind gets banner-skipping for free. It is
-// a struct rather than an ExtractorFunc so it can forward ColumnOrder
-// — a closure would silently swallow the wrapped extractor's order.
+// skipExtractor drops leading lines so every parse kind gets banner
+// skipping free. A struct, not a closure, so it forwards ColumnOrder.
 type skipExtractor struct {
 	inner Extractor
 	n     int

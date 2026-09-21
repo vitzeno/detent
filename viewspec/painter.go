@@ -74,9 +74,8 @@ func (r *Role) UnmarshalJSON(b []byte) error {
 }
 
 // Painter turns intent into display text. Width and Truncate belong
-// here because only the implementation knows whether its Paint output
-// carries escapes, and measuring painted text with len is how a table
-// looks aligned in tests and ragged in a terminal.
+// here because only the implementation knows whether its own output
+// carries escapes, and len on painted text mismeasures every cell.
 type Painter interface {
 	Paint(r Role, s string) string
 	Width(s string) int

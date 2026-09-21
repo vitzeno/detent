@@ -218,9 +218,8 @@ func welcomeTick() tea.Cmd {
 }
 
 const (
-	maxLiveLines     = 1000
-	maxViewportLines = 400
-	streamBufSize    = 2048
+	maxLiveLines  = 1000
+	streamBufSize = 2048
 )
 
 // mode is which of the three input states the bottom zone is in.

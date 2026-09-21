@@ -2,8 +2,7 @@ package viewspec
 
 // Schema describes the registry's vocabulary as a JSON Schema, strict
 // enough for a structured-output request. Register a widget and the
-// schema a model gets includes it — a hand-written list in the
-// generator would rot silently, never emitting the new kind.
+// model's schema includes it; a hand-written list would rot silently.
 func (r *Registry) Schema() map[string]any {
 	return map[string]any{
 		"type": "object",

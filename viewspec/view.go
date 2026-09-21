@@ -146,10 +146,8 @@ type boundBlock struct {
 // Generation uses it to ask a closed question about real columns.
 func (b *Bound) Fields() []string { return slices.Clone(b.fields) }
 
-// Bind parses output and resolves every binding against the rows that
-// actually came out. Any unresolved binding fails the whole view: a
-// confidently wrong view is worse than none, because none is honest
-// about not knowing.
+// Bind resolves every binding against the rows that actually came
+// out. Anything unresolved fails the whole view, never one block.
 func (c *Compiled) Bind(output string) (*Bound, error) {
 	rows, err := c.ext.Extract(output)
 	if err != nil {
@@ -246,13 +244,9 @@ func (b *Bound) SelectableRows() (int, bool) {
 	return len(bb.data.Rows), true
 }
 
-// selectable is the block the cursor addresses: the first whose widget
-// draws one. Having a cursor and having an action are separate things
-// — a table is worth navigating even when nothing can be run from it,
-// which is why this asks the widget rather than looking at on_enter.
-//
-// v1 takes the first such block; a view wanting two navigable blocks
-// needs Frame.Cursor to become a (block, row) pair.
+// selectable is the block the cursor addresses. Navigable and
+// actionable are separate — a table is worth moving through even when
+// nothing can be run from it — so with one cursor, on_enter wins.
 func (b *Bound) selectable() (boundBlock, bool) {
 	var first boundBlock
 	found := false

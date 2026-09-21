@@ -8,9 +8,7 @@ import (
 )
 
 // Hand-written views, one per command shape, compiled once at init.
-// Phase 4 replaces this map with generated specs on disk; the point of
-// writing them by hand first is to find out whether the vocabulary is
-// expressive enough before anything depends on it.
+// Phase 4 replaces this map with generated specs on disk.
 
 // viewRegistry is Standard plus what only detent can provide. A widget
 // registered here reaches the model's schema too, since generation
@@ -21,14 +19,9 @@ var viewRegistry = func() *viewspec.Registry {
 	return r
 }()
 
-// markdownWidget renders prose through glamour, which viewspec can
-// never do itself — it is a heavy dependency, and the package imports
-// only the standard library.
-//
-// It caches its last render because Draw runs on every frame and
-// glamour is nowhere near fast enough for that. One entry is enough:
-// only the focused row is ever drawn. No lock, because Bubble Tea
-// drives Update and View from a single goroutine.
+// markdownWidget renders prose through glamour, which viewspec cannot
+// — it imports only the standard library. Caches its last render
+// because Draw runs per frame; one entry, one goroutine, no lock.
 type markdownWidget struct {
 	raw   string
 	width int
@@ -101,10 +94,8 @@ var handWritten = map[string]viewspec.Spec{
 				OnEnter: "go test -v {pkg}"},
 		},
 	},
-	// Porcelain v1 is two status characters then the path, so the code
-	// keeps its leading space: " M" is modified-in-worktree, "M " is
-	// staged. The character class is what excludes --branch's "## main"
-	// header, which a bare ".." would happily match as a file.
+	// Porcelain v1 is two status chars then the path, so the code keeps
+	// its leading space. The class is what excludes --branch's "## "..
 	"git status": {
 		Version: viewspec.Version,
 		Match:   "git status",
@@ -197,12 +188,9 @@ func normaliseCommand(command string) string {
 	return key
 }
 
-// specChain is what a row's view is tried against, in order: a spec
-// keyed to the command, then the built-in for whatever the output was
-// judged to be, then the raw bytes. A command-keyed spec that doesn't
-// fit this particular output must fall to the judged kind, not all
-// the way to plain — "ps aux" is still a table even when the spec
-// written for "ps" wanted columns it doesn't have.
+// specChain is what a row's view is tried against, in order. A
+// command-keyed spec that misses this output falls to the judged
+// kind, not to plain: "ps aux" is a table even when "ps"'s spec isn't.
 func specChain(r *stepRow, output string) []*viewspec.Compiled {
 	var chain []*viewspec.Compiled
 	if c, ok := compiled[normaliseCommand(r.command)]; ok {
@@ -251,10 +239,8 @@ func commandOutput(ec *ExecutedCommand) string {
 	return out
 }
 
-// seedFromView puts a view row's on_enter command in the prompt as
-// editable text. It does not run: from here it is an ordinary goal
-// taking the ordinary propose → judge → confirm path, which is why a
-// generated view can offer one at all.
+// seedFromView puts a row's on_enter command in the prompt as
+// editable text. It does not run: from there it is an ordinary goal.
 func (m Model) seedFromView(r *stepRow) (Model, bool) {
 	b, ok := boundView(r)
 	if !ok {

@@ -38,10 +38,9 @@ type Extractor interface {
 	Extract(output string) ([]Row, error)
 }
 
-// ColumnOrder is an optional Extractor extension: one that knows the
-// order its fields appeared in, and how the output spelled them,
-// reports both. Without it fields sort alphabetically and display by
-// their key — defined, but rarely what the output meant.
+// ColumnOrder is an optional Extractor extension reporting the order
+// fields appeared in and how the output spelled them. Without it they
+// sort alphabetically and display by key.
 type ColumnOrder interface {
 	Columns() []Column
 }

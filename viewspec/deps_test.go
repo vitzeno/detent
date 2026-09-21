@@ -9,9 +9,7 @@ import (
 )
 
 // The package is meant to be extractable to its own repository, and
-// the only thing that keeps that true is this test. Every design
-// decision in docs/design/viewspec.md is defensible by argument; this
-// one is enforceable, so it is enforced.
+// this test is the only thing that keeps that true.
 func TestPackage_DependsOnStdlibOnly(t *testing.T) {
 	out, err := exec.Command("go", "list", "-deps", "github.com/vitzeno/detent/viewspec").Output()
 	require.NoError(t, err)

@@ -323,8 +323,8 @@ routing     →  agent, sandbox
   `func (m Model)` ones can only move by first becoming their own
   type, the way `prompt` did. Sub-packages: `welcome` (the boot pane,
   handed a `welcome.Facts` so it reads nothing of the harness),
-  `render` (output transforms — diff/error colouring, JSON, line
-  numbers), `status` (usage/timing formatting — switches on the same
+  `render` (diff colouring for the save confirm; the output pane's own
+  transforms live in `viewspec`), `status` (usage/timing formatting — switches on the same
   Status*/RenderKind string values `ui.PostJudgment` carries,
   duplicated as literals rather than importing anything to get them),
   `markdown` (glamour wrapper),
@@ -361,8 +361,8 @@ routing     →  agent, sandbox
   `focusedTable` are gone. `Draw` returns a `Render` carrying
   `CursorLine`, which `refreshViewport` uses to scroll the viewport to
   the selection, so generated views scroll like any other output.
-  `ui/tabular` is currently unimported — it was `focusedTable`'s engine
-  and is the obvious basis for a richer registered table widget.
+  `ui/tabular` was `focusedTable`'s engine and is deleted; a richer
+  table is a widget registered over the built-in, not a second path.
 
 - **`internal/usage`** — timing and token accounting (`Tracker` → `Goal` →
   `Step`), independent of everything else; `agent` attaches measurements
