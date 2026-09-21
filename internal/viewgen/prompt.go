@@ -21,9 +21,10 @@ So:
 3. A lines pattern needs named captures. Go's regexp, no lookahead.
 4. Prefer the parse that matches the shape exactly over one that matches everything. A pattern that captures whole lines tells the drawing nothing.
 5. Use ONLY the keys and the block kinds the schema names. There are no other fields; anything you invent is discarded and the view is thrown away. In widget_guide, read each kind's not_for, which names the one it is most often confused with, and its needs, which lists the keys that kind cannot be drawn without.
-6. where, count_where and of are exact matches on one field, written field=value, and nothing else. There is no regex, no comparison, no >= and no =~ here: the pattern is where matching belongs. If a count cannot be expressed as one exact value, do not use a meter.
+6. where, count_where and of are exact matches on one field, written field=value, and nothing else. There is no regex, no comparison, no >= and no =~ here: the pattern is where matching belongs. If a count cannot be expressed as one exact value, do not use a meter. A histogram needs no filter at all: name the field and it counts every distinct value for you.
 7. Two or three blocks is usually right. A summary above the detail, or a row putting them side by side.
-8. Set on_enter only where a row names something worth acting on, as a read-only command using {field}. It is offered to the human to edit, never run.
+8. Where a column holds numbers, prefer the kind that shows their shape over a column of digits: bar to compare rows, gauge for percentages, stack for what a whole is made of, histogram to count a category, diverge for a pair that opposes. A table is for reading several fields at once, not for one number you could see.
+9. Set on_enter only where a row names something worth acting on, as a read-only command using {field}. It is offered to the human to edit, never run.
 
 This is the exact shape of a reply, for "ps aux" output. Copy its structure, not its fields:
 
