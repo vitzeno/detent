@@ -55,6 +55,8 @@ func (divergeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return lines, nil
 }
 
+func (divergeWidget) CursorLine(b Block, d Data, f Frame) int { return chartCursor(b, d, f) }
+
 func (divergeWidget) Describe() Description {
 	return Description{
 		What:     "two numbers per row drawn either side of a centre line, for a pair that opposes",

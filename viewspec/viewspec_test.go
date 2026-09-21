@@ -855,6 +855,18 @@ func TestCursor_EveryRowWidgetReportsIt(t *testing.T) {
 		"bar":      {Kind: "bar", Columns: []viewspec.Column{{Field: "pkg"}, {Field: "secs"}}, OnEnter: "x {pkg}"},
 		"keyvalue": {Kind: "keyvalue", Columns: []viewspec.Column{{Field: "pkg"}, {Field: "secs"}}, OnEnter: "x {pkg}"},
 		"tree":     {Kind: "tree", Field: "pkg", OnEnter: "x {pkg}"},
+		"gauge":    {Kind: "gauge", Columns: twoCols("pkg", "secs"), OnEnter: "x {pkg}"},
+		"timeline": {Kind: "timeline", Columns: twoCols("pkg", "secs"), OnEnter: "x {pkg}"},
+		"flow":     {Kind: "flow", Field: "pkg", OnEnter: "x {pkg}"},
+		"gantt": {Kind: "gantt", Columns: threeCols("pkg", "secs", "secs"),
+			OnEnter: "x {pkg}"},
+		"diverge": {Kind: "diverge", Columns: threeCols("pkg", "secs", "secs"),
+			OnEnter: "x {pkg}"},
+		"delta": {Kind: "delta", Columns: threeCols("pkg", "secs", "secs"),
+			OnEnter: "x {pkg}"},
+		"dots": {Kind: "dots", Field: "pkg", OnEnter: "x {pkg}",
+			Accent: &viewspec.Accent{Field: "status",
+				Map: map[string]viewspec.Role{"ok": viewspec.RoleSafe, "FAIL": viewspec.RoleDanger}}},
 	}
 	for kind, block := range blocks {
 		t.Run(kind, func(t *testing.T) {
@@ -875,6 +887,12 @@ func TestCursor_EveryRowWidgetReportsIt(t *testing.T) {
 		{Kind: "meter", CountWhere: "status=ok", Of: "*"},
 		{Kind: "badges", Field: "status"},
 		{Kind: "sparkline", Field: "secs"},
+		{Kind: "histogram", Field: "status"},
+		{Kind: "boxplot", Columns: twoCols("status", "secs")},
+		{Kind: "series", Columns: twoCols("status", "secs")},
+		{Kind: "scatter", Columns: twoCols("secs", "secs")},
+		{Kind: "heatmap", Columns: twoCols("status", "pkg")},
+		{Kind: "stack", Columns: twoCols("pkg", "secs")},
 		{Kind: "log"},
 	} {
 		b := bind(t, viewspec.Spec{Parse: linesParse(),
@@ -882,6 +900,32 @@ func TestCursor_EveryRowWidgetReportsIt(t *testing.T) {
 		_, ok := b.SelectableRows()
 		assert.False(t, ok, "%s summarises rather than addressing rows", block.Kind)
 	}
+}
+
+// A kind that cannot report a cursor cannot act on a row either, and
+// saying so at compile time beats a spec that looks right and does
+// nothing when the human presses enter.
+func TestOnEnter_RefusedWhereItCouldNotWork(t *testing.T) {
+	for _, block := range []viewspec.Block{
+		{Kind: "histogram", Field: "status", OnEnter: "x {pkg}"},
+		{Kind: "meter", CountWhere: "status=ok", Of: "*", OnEnter: "x {pkg}"},
+		{Kind: "badges", Field: "status", OnEnter: "x {pkg}"},
+		{Kind: "stack", Columns: twoCols("pkg", "secs"), OnEnter: "x {pkg}"},
+		{Kind: "scatter", Columns: twoCols("secs", "secs"), OnEnter: "x {pkg}"},
+	} {
+		_, err := viewspec.Compile(viewspec.Spec{Parse: linesParse(),
+			Blocks: []viewspec.Block{block}})
+		require.Error(t, err, block.Kind)
+		assert.Contains(t, err.Error(), "one row per line", block.Kind)
+	}
+}
+
+func twoCols(a, b string) []viewspec.Column {
+	return []viewspec.Column{{Field: a}, {Field: b}}
+}
+
+func threeCols(a, b, c string) []viewspec.Column {
+	return []viewspec.Column{{Field: a}, {Field: b}, {Field: c}}
 }
 
 func TestSubset_NarrowsWidgetsAndValidatesAgainstTheSame(t *testing.T) {

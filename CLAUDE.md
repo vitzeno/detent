@@ -391,6 +391,13 @@ routing     →  agent, sandbox
   into it (`scatter` trades height for resolution, four dot rows a
   line) and **clips nothing**, because windowing is the caller's job
   and clipping is what would stop a long view scrolling.
+  A widget must implement `Widget`; `Validator`, `Selector` and
+  `Described` are optional and found by type assertion, so a consumer
+  registering one is not made to write methods it has no use for.
+  `Selector` is the load-bearing one: only a kind that can say which
+  line the cursor is on may carry `on_enter`, checked in `checkBlock`,
+  because accepting it elsewhere drew a spec that looked right and did
+  nothing when the human pressed enter.
   It declares `Painter`, `Widget` and `Extractor`
   because it calls them; `ui/painter.go` and `ui/views.go` implement and
   register them. `Registry.Schema()` describes the registered vocabulary

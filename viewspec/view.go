@@ -185,9 +185,19 @@ var ErrNoRows = errors.New("parse produced no rows")
 // checkBlock validates one block against the vocabulary. topLevel
 // gates rows: nesting is capped at one, so a pane holds leaves only.
 func checkBlock(b Block, reg *Registry, topLevel bool) error {
-	if _, ok := reg.widget(b.Kind); !ok {
+	w, ok := reg.widget(b.Kind)
+	if !ok {
 		return &BindError{Kind: b.Kind,
 			Err: fmt.Errorf("unknown block kind (have %s)", strings.Join(reg.Kinds(), ", "))}
+	}
+	// A kind that cannot say which row the cursor is on cannot act on
+	// one either. Accepting on_enter there drew a spec that looked
+	// right and did nothing when the human pressed enter.
+	if b.OnEnter != "" {
+		if _, ok := w.(Selector); !ok {
+			return &BindError{Kind: b.Kind,
+				Err: errors.New("on_enter needs a kind that draws one row per line")}
+		}
 	}
 	if !isContainer(b.Kind) {
 		if len(b.Panes) > 0 {

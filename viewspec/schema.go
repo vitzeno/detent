@@ -104,7 +104,7 @@ func (r *Registry) blockSchema(allowContainers bool) map[string]any {
 			}),
 			"count_where": str(`meter only: which rows count as hits, as "field=value"`),
 			"of":          str(`meter only: the denominator, as "field=value" or "*" for every row`),
-			"on_enter":    str("a command template using {field}; it seeds the human's prompt and never runs"),
+			"on_enter":    str("a command template using {field}; it seeds the human's prompt and never runs. Only on a kind that draws one row per line: table, list, tree, keyvalue, bar, gauge, gantt, timeline, diverge, delta, dots, flow"),
 		},
 		"required": []string{"kind", "title", "field", "depth", "columns", "where", "sort",
 			"accent", "count_where", "of", "on_enter"},
