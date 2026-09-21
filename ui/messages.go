@@ -1,7 +1,5 @@
 package ui
 
-import "github.com/vitzeno/detent/viewspec"
-
 // What arrives back on the update loop. Every one of these is produced
 // by a tea.Cmd in commands.go and consumed by a case in Model.route.
 
@@ -34,7 +32,7 @@ type judgeMsg struct {
 // upgrade and nothing else.
 type viewMsg struct {
 	row  *stepRow
-	spec *viewspec.Spec
+	view GeneratedView
 }
 
 type saveDoneMsg struct {

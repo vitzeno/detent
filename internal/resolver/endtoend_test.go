@@ -36,9 +36,11 @@ var psOutput = func() string {
 	return out
 }()
 
-// fakeEndpoint answers proposals and view specs on one /chat/completions
-// route, the way a real backend does.
-func fakeEndpoint(t *testing.T, replies ...string) *httptest.Server {
+// fakeEndpoint answers proposals and view specs on the one
+// /chat/completions route a real backend uses, dispatching on the
+// schema name the request asks for rather than on call order: the
+// proposer and the generator interleave.
+func fakeEndpoint(t *testing.T, proposals []string, spec string) *httptest.Server {
 	t.Helper()
 	n := 0
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -51,8 +53,11 @@ func fakeEndpoint(t *testing.T, replies ...string) *httptest.Server {
 		}
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 
-		reply := replies[min(n, len(replies)-1)]
-		n++
+		reply := spec
+		if body.ResponseFormat.Schema.Name == "proposal" {
+			reply = proposals[min(n, len(proposals)-1)]
+			n++
+		}
 		out, err := json.Marshal(map[string]any{
 			"choices": []any{map[string]any{"message": map[string]any{"content": reply}}},
 			"usage":   map[string]any{"prompt_tokens": 12, "completion_tokens": 4},
@@ -64,15 +69,17 @@ func fakeEndpoint(t *testing.T, replies ...string) *httptest.Server {
 }
 
 func TestEndToEnd_GoalRunsAndItsOutputGetsAView(t *testing.T) {
-	const proposal = `{"command":"ps -U someone","rationale":"look at processes",` +
+	// pgrep, not ps: anything detent ships a seed for never reaches
+	// the generator, and this test is about the generator.
+	const proposal = `{"command":"pgrep -al someone","rationale":"look at processes",` +
 		`"done":false,"summary":"","file":""}`
 	const done = `{"command":"","rationale":"","done":true,` +
 		`"summary":"Listed the processes.","file":""}`
-	const spec = `{"version":1,"match":"ps","parse":{"kind":"columns","header":true},
+	const spec = `{"version":1,"match":"pgrep","parse":{"kind":"columns","header":true},
 		"blocks":[{"kind":"table","columns":[{"field":"pid"},{"field":"cmd"}],
 		"on_enter":"lsof -p {pid}"}]}`
 
-	srv := fakeEndpoint(t, proposal, done, spec)
+	srv := fakeEndpoint(t, []string{proposal, done}, spec)
 	defer srv.Close()
 
 	proposer := propose.New(propose.WithBaseURL(srv.URL), propose.WithModel("fake"))
@@ -95,7 +102,7 @@ func TestEndToEnd_GoalRunsAndItsOutputGetsAView(t *testing.T) {
 	p, pre, used, err := drv.ProposeNext(ctx, "what is running")
 	require.NoError(t, err)
 	require.False(t, p.Done)
-	assert.Equal(t, "ps -U someone", p.Command)
+	assert.Equal(t, "pgrep -al someone", p.Command)
 
 	step := drv.RecordStep(res, p, pre, used, 0)
 	ec, err := drv.Execute(ctx, res, step, p, pre, nil)
@@ -109,9 +116,11 @@ func TestEndToEnd_GoalRunsAndItsOutputGetsAView(t *testing.T) {
 	// The pane's half: a generated spec that actually draws this output.
 	got, ok := drv.GenerateView(ctx, p.Command, ec.Result.Stdout, ec.Result.ExitCode, post.RenderKind)
 	require.True(t, ok, "the endpoint authored a view")
-	require.NotNil(t, got)
+	require.NotNil(t, got.Spec)
+	assert.Equal(t, ui.ViewGenerated, got.Source,
+		"and the pane will say a model wrote this framing")
 
-	compiled, err := viewspec.Compile(*got)
+	compiled, err := viewspec.Compile(*got.Spec)
 	require.NoError(t, err)
 	bound, err := compiled.Bind(ec.Result.Stdout)
 	require.NoError(t, err)
@@ -136,7 +145,7 @@ func TestEndToEnd_GoalRunsAndItsOutputGetsAView(t *testing.T) {
 // The same run with views off must reach the pane exactly as it did
 // before generated views existed.
 func TestEndToEnd_ViewsOffChangesNothingBelowTheDriver(t *testing.T) {
-	srv := fakeEndpoint(t, `{"command":"ps","rationale":"r","done":false,"summary":"","file":""}`)
+	srv := fakeEndpoint(t, []string{`{"command":"ps","rationale":"r","done":false,"summary":"","file":""}`}, "")
 	defer srv.Close()
 
 	proposer := propose.New(propose.WithBaseURL(srv.URL), propose.WithModel("fake"))

@@ -364,7 +364,11 @@ routing     →  agent, sandbox
   and the caller falls down its spec chain — a table with one silently
   empty column is worse than plain text. It runs nothing:
   `Bound.Action` returns an `on_enter` template with `{field}`
-  substituted, and `ui`'s `enter` seeds the prompt with it. See
+  substituted, and `ui`'s `enter` seeds the prompt with it. A view
+  carries its provenance (`shipped`/`saved`/`generated`) across the
+  Driver in `ui.GeneratedView`, and `viewportHeader` marks the pane
+  with it; the built-in rendering for a judged kind is unmarked,
+  because it is detent's own and has nothing to disclose. See
   `docs/design/viewspec.md`.
 
   **There is one render path.** `ui/views.go`'s `specChain` tries, in

@@ -88,4 +88,6 @@ model: prism-ml/bonsai-27b
 #   cached    also serve the specs detent ships and any on disk (default)
 #   generate  author a spec for output nothing covers, verify it with Jev,
 #             and cache it; costs proposer tokens on a first encounter only
+# The output pane's header flags any view drawn from a spec, and says
+# whether it was shipped, saved to disk, or generated just now.
 views: cached

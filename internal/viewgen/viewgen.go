@@ -75,7 +75,7 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
 	if err := g.Store.Save(key, best); err != nil {
 		return Result{Usage: total}, err
 	}
-	return Result{Spec: best, Key: key, Fit: bestFit, Usage: total}, nil
+	return Result{Spec: best, Key: key, Source: SourceGenerated, Fit: bestFit, Usage: total}, nil
 }
 
 // Cached returns a spec without calling anything: the store first,
@@ -85,10 +85,10 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
 func (g *Generator) Cached(req Request) (Result, bool) {
 	key := Key(req.Command, req.Kind)
 	if spec, ok := g.Store.Load(key); ok {
-		return Result{Spec: spec, Key: key, Cached: true}, true
+		return Result{Spec: spec, Key: key, Source: SourceSaved}, true
 	}
 	if spec, ok := seed(req.Command); ok {
-		return Result{Spec: spec, Key: key, Cached: true}, true
+		return Result{Spec: spec, Key: key, Source: SourceShipped}, true
 	}
 	return Result{}, false
 }
@@ -103,14 +103,25 @@ type Request struct {
 	Kind string
 }
 
-// Result is a generated or cached spec and what it cost.
+// Result is a spec and where it came from. Source matters to the
+// human: shipped is detent's own, saved is on disk and editable, and
+// generated is framing a model wrote just now.
 type Result struct {
 	Spec   *viewspec.Spec
 	Key    string
-	Cached bool
+	Source Source
 	Fit    float64
 	Usage  usage.Usage
 }
+
+// Source says who authored the spec being drawn.
+type Source string
+
+const (
+	SourceShipped   Source = "shipped"
+	SourceSaved     Source = "saved"
+	SourceGenerated Source = "generated"
+)
 
 // DefaultCandidates is how many specs are generated and ranked.
 const DefaultCandidates = 2

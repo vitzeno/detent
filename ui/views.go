@@ -26,11 +26,11 @@ func (m Model) generateView(r *stepRow) tea.Cmd {
 	command, output, kind := r.command, commandOutput(r.cmd.ec), rowKind(r)
 	exit := r.cmd.ec.Result.ExitCode
 	return func() tea.Msg {
-		spec, ok := sess.GenerateView(ctx, command, output, exit, kind)
+		got, ok := sess.GenerateView(ctx, command, output, exit, kind)
 		if !ok {
 			return nil
 		}
-		return viewMsg{row: r, spec: spec}
+		return viewMsg{row: r, view: got}
 	}
 }
 
@@ -74,11 +74,11 @@ func boundView(r *stepRow) (*viewspec.Bound, bool) {
 // applyView swaps in a generated spec. It must compile against this
 // registry and bind against this output before it replaces anything.
 // A spec that arrives broken leaves the fallback exactly as it was.
-func applyView(r *stepRow, spec *viewspec.Spec) bool {
-	if r == nil || spec == nil || r.cmd.ec == nil {
+func applyView(r *stepRow, got GeneratedView) bool {
+	if r == nil || got.Spec == nil || r.cmd.ec == nil {
 		return false
 	}
-	c, err := viewspec.Compile(*spec, viewspec.WithRegistry(viewRegistry))
+	c, err := viewspec.Compile(*got.Spec, viewspec.WithRegistry(viewRegistry))
 	if err != nil {
 		return false
 	}
@@ -87,6 +87,7 @@ func applyView(r *stepRow, spec *viewspec.Spec) bool {
 		return false
 	}
 	r.cmd.view, r.cmd.viewTried = b, true
+	r.cmd.viewSource = got.Source
 	return true
 }
 

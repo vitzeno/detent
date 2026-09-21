@@ -10,7 +10,6 @@ import (
 	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/ui"
-	"github.com/vitzeno/detent/viewspec"
 )
 
 // Resolver implements ui.Driver over a *agent.Session. Holds no state
@@ -35,17 +34,17 @@ func New(sess *agent.Session) *Resolver {
 //
 // A nil Views generator, a kind with nothing to gain, or a model that
 // fails all report ok=false, and ui keeps the render_kind fallback.
-func (r *Resolver) GenerateView(ctx context.Context, command, output string, exitCode int, kind ui.RenderKind) (*viewspec.Spec, bool) {
+func (r *Resolver) GenerateView(ctx context.Context, command, output string, exitCode int, kind ui.RenderKind) (ui.GeneratedView, bool) {
 	if r.Views == nil {
-		return nil, false
+		return ui.GeneratedView{}, false
 	}
 	req := viewgen.Request{Command: command, Output: output, ExitCode: exitCode, Kind: string(kind)}
-	if got, ok := r.Views.Cached(req); ok {
-		return got.Spec, true
+	got, ok := r.Views.Cached(req)
+	if !ok {
+		var err error
+		if got, err = r.Views.Generate(ctx, req); err != nil {
+			return ui.GeneratedView{}, false
+		}
 	}
-	got, err := r.Views.Generate(ctx, req)
-	if err != nil {
-		return nil, false
-	}
-	return got.Spec, true
+	return ui.GeneratedView{Spec: got.Spec, Source: ui.ViewSource(got.Source)}, true
 }

@@ -41,8 +41,9 @@ type fakeDriver struct {
 
 	// generated is handed back by GenerateView; nil means the Driver
 	// had nothing better than the render_kind fallback.
-	generated  *viewspec.Spec
-	generatedN int
+	generated       *viewspec.Spec
+	generatedSource ViewSource
+	generatedN      int
 
 	rollbackOK      bool
 	rollbackErr     error
@@ -264,7 +265,14 @@ func usageModel() (Model, *fakeDriver) {
 	return m, drv
 }
 
-func (f *fakeDriver) GenerateView(_ context.Context, _, _ string, _ int, _ RenderKind) (*viewspec.Spec, bool) {
+func (f *fakeDriver) GenerateView(_ context.Context, _, _ string, _ int, _ RenderKind) (GeneratedView, bool) {
 	f.generatedN++
-	return f.generated, f.generated != nil
+	if f.generated == nil {
+		return GeneratedView{}, false
+	}
+	src := f.generatedSource
+	if src == "" {
+		src = ViewGenerated
+	}
+	return GeneratedView{Spec: f.generated, Source: src}, true
 }

@@ -65,9 +65,20 @@ func (m Model) viewportHeader() string {
 	if k := rowKind(r); k != "" {
 		label = status.KindLabel(string(k))
 	}
-	return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(label, active),
-		styleGoal.Render(layout.Truncate(r.command, m.layout.outputColW-24)))
+	// Where the framing came from, when it is not detent's own
+	// built-in rendering. Faint, because a spec is not a result.
+	mark, width := "", m.layout.outputColW-24
+	if src := r.cmd.viewSource; src != "" {
+		mark = styleFaint.Render(" " + viewSourceMark + " " + string(src))
+		width -= len(src) + 3
+	}
+	return fmt.Sprintf("%s %s%s — %s", paneMark(active), paneLabel(label, active), mark,
+		styleGoal.Render(layout.Truncate(r.command, width)))
 }
+
+// viewSourceMark flags a pane drawn from a spec rather than from the
+// built-in rendering for its judged kind.
+const viewSourceMark = "✦"
 
 func (m Model) historyHeader() string {
 	return fmt.Sprintf("%s %s", paneMark(m.nav.focus == focusHistory), paneLabel("history", m.nav.focus == focusHistory))

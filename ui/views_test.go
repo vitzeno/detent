@@ -60,9 +60,12 @@ func rowForKind(command, stdout string, kind RenderKind) Model {
 
 // rowWithView is a row the Driver has already supplied a view for.
 func rowWithView(command, stdout string, spec viewspec.Spec) Model {
+	return rowWithSourcedView(command, stdout, spec, ViewGenerated)
+}
+
+func rowWithSourcedView(command, stdout string, spec viewspec.Spec, src ViewSource) Model {
 	m := rowFor(command, stdout)
-	require := m.blocks[0].steps[0]
-	applyView(require, &spec)
+	applyView(m.blocks[0].steps[0], GeneratedView{Spec: &spec, Source: src})
 	return m
 }
 
@@ -105,7 +108,7 @@ func TestViews_GenerationIsAskedForOnceAndOffTheUpdateLoop(t *testing.T) {
 
 	msg, ok := cmd().(viewMsg)
 	require.True(t, ok)
-	require.True(t, applyView(msg.row, msg.spec))
+	require.True(t, applyView(msg.row, msg.view))
 	assert.Contains(t, plainLines(m)[0], "passed", "the pane upgrades in place")
 }
 
@@ -144,12 +147,12 @@ func TestViews_ABrokenSpecChangesNothing(t *testing.T) {
 	row := m.blocks[0].steps[0]
 	before := plainLines(m)
 
-	assert.False(t, applyView(row, &viewspec.Spec{Version: 1,
+	assert.False(t, applyView(row, GeneratedView{Spec: &viewspec.Spec{Version: 1,
 		Parse:  viewspec.Parse{Kind: "lines", Pattern: `^(?P<status>ok)`},
-		Blocks: []viewspec.Block{{Kind: "list", Field: "nothing_here"}}}))
+		Blocks: []viewspec.Block{{Kind: "list", Field: "nothing_here"}}}}))
 	assert.Equal(t, before, plainLines(m))
 
-	assert.False(t, applyView(row, nil))
+	assert.False(t, applyView(row, GeneratedView{}))
 	assert.Equal(t, before, plainLines(m))
 }
 
@@ -306,4 +309,21 @@ func TestViewRegistry_CarriesWhatOnlyDetentCanDo(t *testing.T) {
 	blocks := viewRegistry.Schema()["properties"].(map[string]any)["blocks"].(map[string]any)
 	kinds := blocks["items"].(map[string]any)["properties"].(map[string]any)["kind"].(map[string]any)["enum"]
 	assert.Contains(t, kinds, "markdown")
+}
+
+// A view drawn from a spec says so, and where the spec came from. The
+// built-in rendering for a judged kind says nothing, because it is
+// detent's own and there is nothing to disclose.
+func TestViews_ThePaneSaysWhereItsFramingCameFrom(t *testing.T) {
+	for _, src := range []ViewSource{ViewShipped, ViewSaved, ViewGenerated} {
+		m := rowWithSourcedView("go test ./...", goTestOutput, goTestSpec(), src)
+		header := ansi.Strip(m.viewportHeader())
+		assert.Contains(t, header, viewSourceMark, string(src))
+		assert.Contains(t, header, string(src))
+		assert.Contains(t, header, "go test ./...", "the command still fits")
+	}
+
+	plain := ansi.Strip(rowFor("curl https://example.com", "hello\n").viewportHeader())
+	assert.NotContains(t, plain, viewSourceMark,
+		"the built-in rendering is detent's own, so it claims nothing")
 }

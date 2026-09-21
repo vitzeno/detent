@@ -55,10 +55,29 @@ type Driver interface {
 	// Blocking: ui calls it from a tea.Cmd, never from Update. A cached
 	// spec returns without reaching a model at all.
 	//
-	// No DTO mirror: viewspec is outside internal/ and both sides
-	// import it, so the spec crosses untranslated.
-	GenerateView(ctx context.Context, command, output string, exitCode int, kind RenderKind) (*viewspec.Spec, bool)
+	// No DTO mirror for the spec: viewspec is outside internal/ and
+	// both sides import it, so it crosses untranslated.
+	GenerateView(ctx context.Context, command, output string, exitCode int, kind RenderKind) (GeneratedView, bool)
 }
+
+// GeneratedView is a view the Driver chose for one command's output.
+// A struct rather than a bare spec so provenance travels with it: the
+// pane says where its framing came from, and a model's is not the
+// same as detent's own.
+type GeneratedView struct {
+	Spec   *viewspec.Spec
+	Source ViewSource
+}
+
+// ViewSource mirrors viewgen's own. Shipped is detent's, saved is on
+// disk and editable, generated is a model's work this session.
+type ViewSource string
+
+const (
+	ViewShipped   ViewSource = "shipped"
+	ViewSaved     ViewSource = "saved"
+	ViewGenerated ViewSource = "generated"
+)
 
 // FileChange is one path a rollback would touch in the human's own
 // working directory. Removed distinguishes "this file arrived after

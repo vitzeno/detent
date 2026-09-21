@@ -65,6 +65,8 @@ type SessionInfo struct {
 	Proposer string
 	Judge    string // "" when no judge is wired
 	RunMode  string // "host" or "sandbox"
+	// Views is "off", "cached" or "generate".
+	Views string
 
 	// Sandbox facts for the welcome pane; empty in host mode.
 	Image   string
@@ -156,7 +158,7 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.generateView(msg.row)
 
 	case viewMsg:
-		applyView(msg.row, msg.spec)
+		applyView(msg.row, msg.view)
 		return m, nil
 
 	case saveDoneMsg:

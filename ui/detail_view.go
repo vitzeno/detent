@@ -151,6 +151,7 @@ func (m Model) welcomePane() []string {
 	snap := m.sess.UsageSnapshot()
 	return welcome.Lines(welcome.Facts{
 		Proposer: m.info.Proposer, Judge: m.info.Judge, RunMode: m.info.RunMode,
+		Views: m.info.Views,
 		Image: m.info.Image, Mount: m.info.Mount,
 		Runtime: m.info.Runtime, Network: m.info.Network,
 		Goals: snap.Goals, Commands: snap.Commands, MachineTime: snap.MachineTime(),

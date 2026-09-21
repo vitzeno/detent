@@ -68,7 +68,7 @@ func TestGenerate_AuthorsValidatesAndCaches(t *testing.T) {
 	got, err := g.Generate(context.Background(), request())
 	require.NoError(t, err)
 	require.NotNil(t, got.Spec)
-	assert.False(t, got.Cached)
+	assert.Equal(t, viewgen.SourceGenerated, got.Source)
 	assert.Equal(t, "pytest", got.Spec.Match, "stamped with the command shape it serves")
 	assert.Equal(t, 10, got.Usage.PromptTokens)
 
@@ -80,7 +80,7 @@ func TestGenerate_AuthorsValidatesAndCaches(t *testing.T) {
 	// A second call never reaches the model.
 	again, err := g.Generate(context.Background(), request())
 	require.NoError(t, err)
-	assert.True(t, again.Cached)
+	assert.Equal(t, viewgen.SourceSaved, again.Source)
 	assert.Zero(t, again.Usage.PromptTokens, "the cost of a cached view is nothing")
 	assert.Equal(t, 1, model.calls)
 }
@@ -220,7 +220,7 @@ func TestCached_StoreBeatsWhatWeShipped(t *testing.T) {
 
 	got, ok := g.Cached(req)
 	require.True(t, ok, "a seed serves before anything is generated")
-	assert.True(t, got.Cached)
+	assert.Equal(t, viewgen.SourceShipped, got.Source)
 	assert.Len(t, got.Spec.Blocks, 2, "the shipped go test view")
 
 	edited := &viewspec.Spec{Version: 1, Match: "go test",
@@ -230,6 +230,7 @@ func TestCached_StoreBeatsWhatWeShipped(t *testing.T) {
 
 	got, ok = g.Cached(req)
 	require.True(t, ok)
+	assert.Equal(t, viewgen.SourceSaved, got.Source, "and says so, since it is editable")
 	assert.Len(t, got.Spec.Blocks, 1, "the human's edit wins")
 }
 

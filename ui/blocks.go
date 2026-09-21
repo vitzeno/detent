@@ -64,6 +64,9 @@ type cmdState struct {
 	// generated marks that a view was already asked for, so a redraw
 	// cannot fire a second model call for the same row.
 	generated bool
+	// viewSource is where the drawn view's framing came from; empty
+	// means the built-in fallback for its judged kind.
+	viewSource ViewSource
 }
 
 // toolState holds a stepRow's fields for a slash-command row (/tree,

@@ -170,6 +170,7 @@ func run() error {
 	_, runMode := runners.Select(agent.PreJudgment{})
 	info := ui.SessionInfo{
 		Proposer: resolved.Model, Judge: judgeName, RunMode: runMode,
+		Views: resolved.Views,
 		Image: resolved.SandboxImage, Mount: resolved.SandboxWorkspace,
 		Runtime: resolved.SandboxRuntime, Network: resolved.SandboxNetwork,
 	}
