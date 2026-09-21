@@ -20,6 +20,12 @@ func WithJudge(judge Judge) Option {
 	return func(s *Session) { s.Judge = judge }
 }
 
+// WithSummarizer condenses the transcript when it outgrows its budget.
+// Without one, compaction drops the oldest turns instead.
+func WithSummarizer(sum Summarizer) Option {
+	return func(s *Session) { s.Summarizer = sum }
+}
+
 func WithRiskThreshold(t float64) Option {
 	return func(s *Session) { s.RiskThreshold = t }
 }

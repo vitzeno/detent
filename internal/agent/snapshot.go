@@ -132,6 +132,12 @@ func (s *Session) Rollback(ctx context.Context, res *GoalResult, step int, rever
 	if target == "" {
 		return true, fmt.Errorf("agent: no checkpoint before step %d, nothing to roll back to", step)
 	}
+	// Checked before anything is restored: a compacted-away mark would
+	// leave the transcript describing work the container no longer has.
+	cut, ok := s.index(mark)
+	if !ok {
+		return true, fmt.Errorf("agent: step %d is older than the transcript kept in context, cannot roll back to it", step)
+	}
 	if err := snap.Rollback(ctx, target); err != nil {
 		return true, err
 	}
@@ -145,6 +151,7 @@ func (s *Session) Rollback(ctx context.Context, res *GoalResult, step int, rever
 		}
 	}
 	res.Commands = res.Commands[:step-1]
-	s.Transcript = s.Transcript[:mark]
+	s.Transcript = s.Transcript[:cut]
+	s.seq = mark
 	return true, nil
 }

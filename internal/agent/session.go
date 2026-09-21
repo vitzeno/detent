@@ -48,8 +48,9 @@ type ExecutedCommand struct {
 	// after this step, so a rollback can offer to revert it. The
 	// container snapshot stops at the bind mount.
 	Worktree worktree.Checkpoint
-	// TranscriptMark is len(Session.Transcript) right after this step;
-	// what Rollback truncates Transcript back to.
+	// TranscriptMark is where the transcript ended right after this
+	// step; what Rollback truncates it back to. Counted in appends, not
+	// slice positions, so compaction can't move it out from under us.
 	TranscriptMark int
 	// Usage links the measured step; nil when untracked.
 	Usage *usage.Step
@@ -99,6 +100,10 @@ type Session struct {
 	Judge         Judge
 	RiskThreshold float64
 
+	// Summarizer condenses the transcript when it outgrows
+	// MaxTranscriptBytes; nil drops the oldest turns instead.
+	Summarizer Summarizer
+
 	// StepBudget caps iterations per goal; <=0 means unbounded.
 	StepBudget int
 
@@ -108,10 +113,16 @@ type Session struct {
 	Transcript []propose.Message
 	GoalsDone  int
 
-	// goalMark is the transcript length when the open goal began, so
+	// goalMark is the transcript mark when the open goal began, so
 	// ProposeNext can tell "nothing has run for this goal" from
 	// "nothing has run at all". One goal is open at a time.
 	goalMark int
+
+	// seq counts every message ever appended, and is what a mark
+	// records — slice positions move when compaction rewrites the front.
+	seq int
+	// dropped is how far they have moved: seq-dropped is len(Transcript).
+	dropped int
 }
 
 // NewSessionID generates a random session identifier. New calls this
@@ -149,7 +160,11 @@ func (s *Session) riskThreshold() float64 {
 
 func (s *Session) append(m propose.Message) {
 	s.Transcript = append(s.Transcript, m)
+	s.seq++
 }
+
+// mark names the transcript's current end for a step to remember.
+func (s *Session) mark() int { return s.seq }
 
 // finish closes res and syncs GoalsDone; every terminal path uses it.
 func (s *Session) finish(res *GoalResult, reason EndReason, summary string) {
@@ -202,5 +217,6 @@ func (s *Session) Reset() {
 	s.Transcript = nil
 	s.GoalsDone = 0
 	s.goalMark = 0
+	s.seq, s.dropped = 0, 0
 	s.Stats.Reset()
 }

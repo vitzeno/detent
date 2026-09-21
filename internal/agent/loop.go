@@ -34,6 +34,10 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 	if s.Runners == nil {
 		return nil, fmt.Errorf("agent: no Runners wired")
 	}
+	// A goal boundary is the only safe place to compact: mid-goal the
+	// model needs its own steps intact, and this runs before the new
+	// goal is appended so the fresh ask is never what gets dropped.
+	s.compact(ctx)
 	s.append(propose.Message{Role: propose.RoleUser, Content: goal})
 	prober := probe.New(probeRunner{runner: s.Runners.Probe()})
 	if out := prober.Run(ctx, probe.Select(ctx, s.Judge, goal)); out != "" {
@@ -50,7 +54,7 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 		res.Baseline = id
 	}
 	res.BaselineTree = s.SnapshotWorktree(ctx)
-	res.BaselineMark = len(s.Transcript)
+	res.BaselineMark = s.mark()
 	s.goalMark = res.BaselineMark
 	return res, nil
 }
@@ -76,7 +80,7 @@ func (s *Session) ProposeNext(ctx context.Context, goal string) (propose.Proposa
 	case err != nil:
 		return propose.Proposal{}, PreJudgment{}, used, fmt.Errorf("agent: %w", err)
 	}
-	if p.Done && len(s.Transcript) == s.goalMark {
+	if p.Done && s.mark() == s.goalMark {
 		p, used, err = s.reask(ctx, used,
 			"Nothing has run for this goal yet, so there is no output of its own to conclude from. "+
 				"Earlier goals' output describes the past. Propose the command that answers this goal now.")
@@ -128,7 +132,7 @@ func (s *Session) RecordStep(res *GoalResult, p propose.Proposal, pre PreJudgmen
 func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Step, p propose.Proposal, pre PreJudgment, events chan<- host.StreamEvent) (*ExecutedCommand, error) {
 	t0 := time.Now()
 	runner, _ := s.Runners.Select(pre)
-	outcome, err := runner.Run(ctx, p.Command, events)
+	outcome, err := runSafely(ctx, runner, p.Command, events)
 	elapsed := time.Since(t0)
 	if err != nil {
 		s.append(propose.Message{Role: propose.RoleAssistant,
@@ -156,8 +160,20 @@ func (s *Session) Execute(ctx context.Context, res *GoalResult, ustep *usage.Ste
 	s.append(propose.Message{Role: propose.RoleAssistant,
 		Content: propose.EncodeAssistantTurn(p)})
 	s.append(propose.Message{Role: propose.RoleTool, Content: formatToolResult(p.Command, outcome)})
-	ec.TranscriptMark = len(s.Transcript)
+	ec.TranscriptMark = s.mark()
 	return ec, nil
+}
+
+// runSafely turns a panicking Runner into a failed step. Taking the
+// session down would lose every checkpoint the human could still roll
+// back to, which is worse than one broken command.
+func runSafely(ctx context.Context, runner Runner, command string, events chan<- host.StreamEvent) (res host.Result, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("runner panicked: %v", r)
+		}
+	}()
+	return runner.Run(ctx, command, events)
 }
 
 // JudgeResult judges; judgments never enter the transcript. Falls back

@@ -137,20 +137,34 @@ func (p *OpenAIProposer) Propose(ctx context.Context, messages []Message) (Propo
 		wireMsgs = append(wireMsgs, wm)
 	}
 
+	content, used, err := p.complete(ctx, wireMsgs, responseFormat())
+	if err != nil {
+		return Proposal{}, used, err
+	}
+	proposal, err := parseProposal(content)
+	if err != nil {
+		return Proposal{}, used, err
+	}
+	return proposal, used, nil
+}
+
+// complete is one /chat/completions round trip, shared by Propose and
+// Summarize. format is nil for free-form prose.
+func (p *OpenAIProposer) complete(ctx context.Context, msgs []wireMessage, format map[string]any) (string, usage.Usage, error) {
 	body, err := json.Marshal(wireRequest{
 		Model:          p.model(),
-		Messages:       wireMsgs,
-		ResponseFormat: responseFormat(),
+		Messages:       msgs,
+		ResponseFormat: format,
 		Temperature:    0.2,
 	})
 	if err != nil {
-		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: encoding request: %w", err)
+		return "", usage.Usage{}, fmt.Errorf("propose: encoding request: %w", err)
 	}
 
 	url := p.baseURL() + "/chat/completions"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: building request: %w", err)
+		return "", usage.Usage{}, fmt.Errorf("propose: building request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if p.APIKey != "" {
@@ -164,24 +178,24 @@ func (p *OpenAIProposer) Propose(ctx context.Context, messages []Message) (Propo
 	resp, err := p.httpClient().Do(req)
 	latency := time.Since(t0)
 	if err != nil {
-		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: request failed: %w", err)
+		return "", usage.Usage{}, fmt.Errorf("propose: request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: reading response: %w", err)
+		return "", usage.Usage{}, fmt.Errorf("propose: reading response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: HTTP %d: %s", resp.StatusCode, truncateStr(string(respBody), 500))
+		return "", usage.Usage{}, fmt.Errorf("propose: HTTP %d: %s", resp.StatusCode, truncateStr(string(respBody), 500))
 	}
 
 	var wireResp wireResponse
 	if err := json.Unmarshal(respBody, &wireResp); err != nil {
-		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: decoding response: %w", err)
+		return "", usage.Usage{}, fmt.Errorf("propose: decoding response: %w", err)
 	}
 	if len(wireResp.Choices) == 0 {
-		return Proposal{}, usage.Usage{}, fmt.Errorf("propose: response contained no choices")
+		return "", usage.Usage{}, fmt.Errorf("propose: response contained no choices")
 	}
 	used := usage.Usage{
 		PromptTokens:     wireResp.Usage.PromptTokens,
@@ -189,13 +203,9 @@ func (p *OpenAIProposer) Propose(ctx context.Context, messages []Message) (Propo
 		Latency:          latency,
 		Model:            cmp.Or(wireResp.Model, p.model()),
 	}
-	proposal, err := parseProposal(cmp.Or(
+	return cmp.Or(
 		wireResp.Choices[0].Message.Content,
 		wireResp.Choices[0].Message.ReasoningContent,
 		wireResp.Choices[0].Message.Reasoning,
-	))
-	if err != nil {
-		return Proposal{}, used, err
-	}
-	return proposal, used, nil
+	), used, nil
 }

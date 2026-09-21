@@ -137,6 +137,9 @@ func run() error {
 	sessOpts := []agent.Option{
 		agent.WithID(sessionID),
 		agent.WithRunners(runners),
+		// The same endpoint compacts its own history when it outgrows
+		// the context window.
+		agent.WithSummarizer(proposer),
 		agent.WithStepBudget(resolved.Steps),
 		agent.WithRiskThreshold(resolved.RiskThreshold),
 		agent.WithStats(usage.New()),
