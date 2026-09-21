@@ -40,7 +40,7 @@ func (r *Resolver) GenerateView(ctx context.Context, command, output string, exi
 		return ui.GeneratedView{}, false
 	}
 	req := viewgen.Request{Command: command, Output: output, ExitCode: exitCode, Kind: string(kind)}
-	got, ok := r.Views.Existing(req)
+	got, ok := r.Views.Existing(ctx, req)
 	if !ok {
 		var err error
 		if got, err = r.Views.Generate(ctx, req); err != nil {

@@ -434,7 +434,12 @@ routing     →  agent, sandbox
   when nothing covers the output. Only `generate` ever writes a spec,
   which is why `saved` alone never grows the set. `Generate` asks the
   model before falling back to a shipped spec, so shipping one is a
-  floor rather than a ceiling.
+  floor rather than a ceiling. A spec that already exists still has to
+  bind against the real output before it is used: the key is the
+  command's first word, so `ps` and `ps aux` share one, and an
+  unchecked seed matched, drew nothing, and blocked generation behind
+  itself. `Generator.usable` is that check, and it logs either way,
+  because a silent lookup is why the logs said nothing at all.
 
   **There is one render path.** `ui/views.go`'s `specChain` tries, in
   order: a spec keyed to the command (`normaliseCommand`), the built-in

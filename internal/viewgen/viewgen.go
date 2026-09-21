@@ -42,9 +42,7 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
 	}
 	log := logging.For(logging.Viewgen)
 	key := Key(req.Command, req.Kind)
-	if spec, ok := g.Store.Load(key); ok {
-		log.InfoContext(ctx, "drawing a saved view", logging.KeyEvent, logging.ViewLookup,
-			"key", key, "source", SourceSaved)
+	if spec, ok := g.Store.Load(key); ok && g.usable(ctx, req, spec, SourceSaved) {
 		return Result{Spec: spec, Key: key, Source: SourceSaved}, nil
 	}
 
@@ -104,9 +102,7 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
 			"tokens", total.PromptTokens+total.CompletionTokens)
 		return Result{Spec: best, Key: key, Source: SourceGenerated, Fit: bestFit, Usage: total}, nil
 	}
-	if spec, ok := seed(req.Command); ok {
-		log.InfoContext(ctx, "falling back to a shipped view", logging.KeyEvent, logging.ViewLookup,
-			"key", key, "source", SourceShipped)
+	if spec, ok := seed(req.Command); ok && g.usable(ctx, req, spec, SourceShipped) {
 		return Result{Spec: spec, Key: key, Source: SourceShipped, Usage: total}, nil
 	}
 	if !g.worthAsking(req) {
@@ -149,15 +145,46 @@ func lines(s string) int {
 // whole reason a saved spec is a file rather than a row.
 //
 // This is the entirety of views: saved.
-func (g *Generator) Existing(req Request) (Result, bool) {
+func (g *Generator) Existing(ctx context.Context, req Request) (Result, bool) {
 	key := Key(req.Command, req.Kind)
-	if spec, ok := g.Store.Load(key); ok {
+	if spec, ok := g.Store.Load(key); ok && g.usable(ctx, req, spec, SourceSaved) {
 		return Result{Spec: spec, Key: key, Source: SourceSaved}, true
 	}
-	if spec, ok := seed(req.Command); ok {
+	if spec, ok := seed(req.Command); ok && g.usable(ctx, req, spec, SourceShipped) {
 		return Result{Spec: spec, Key: key, Source: SourceShipped}, true
 	}
 	return Result{}, false
+}
+
+// usable reports whether a spec that already exists can draw this
+// output, and says which either way. Matching on the command alone is
+// not enough: "ps" and "ps aux" normalise to one key and print
+// different columns, so the shipped spec bound nowhere, the pane fell
+// back to plain text, and generation never ran because something had
+// already matched. Nothing said so, because nothing logged it.
+func (g *Generator) usable(ctx context.Context, req Request, spec *viewspec.Spec, source Source) bool {
+	log := logging.For(logging.Viewgen)
+	key := Key(req.Command, req.Kind)
+	err := draws(spec, g.registry(), req.Output)
+	if err != nil {
+		log.InfoContext(ctx, "an existing view cannot draw this output",
+			logging.KeyEvent, logging.ViewInvalid, "key", key, "source", source,
+			logging.KeyReason, err.Error())
+		return false
+	}
+	log.InfoContext(ctx, "drawing an existing view", logging.KeyEvent, logging.ViewLookup,
+		"key", key, "source", source)
+	return true
+}
+
+// draws is validate without the decoding, for a spec already in hand.
+func draws(spec *viewspec.Spec, reg *viewspec.Registry, output string) error {
+	compiled, err := viewspec.Compile(*spec, viewspec.WithRegistry(reg))
+	if err != nil {
+		return err
+	}
+	_, err = compiled.Bind(output)
+	return err
 }
 
 // Request is one command's outcome, as the generator sees it.

@@ -231,9 +231,9 @@ func TestStore_WritesSomethingAHumanCanEdit(t *testing.T) {
 func TestExisting_StoreBeatsWhatWeShipped(t *testing.T) {
 	dir := t.TempDir()
 	g := &viewgen.Generator{Store: &viewgen.Store{Dir: dir}}
-	req := viewgen.Request{Command: "go test ./...", Kind: "plain_text"}
+	req := viewgen.Request{Command: "go test ./...", Output: goTest, Kind: "plain_text"}
 
-	got, ok := g.Existing(req)
+	got, ok := g.Existing(context.Background(), req)
 	require.True(t, ok, "a seed serves before anything is generated")
 	assert.Equal(t, viewgen.SourceShipped, got.Source)
 	assert.Len(t, got.Spec.Blocks, 2, "the shipped go test view")
@@ -243,21 +243,51 @@ func TestExisting_StoreBeatsWhatWeShipped(t *testing.T) {
 		Blocks: []viewspec.Block{{Kind: "log"}}}
 	require.NoError(t, g.Store.Save(viewgen.Key(req.Command, req.Kind), edited))
 
-	got, ok = g.Existing(req)
+	got, ok = g.Existing(context.Background(), req)
 	require.True(t, ok)
 	assert.Equal(t, viewgen.SourceSaved, got.Source, "and says so, since it is editable")
 	assert.Len(t, got.Spec.Blocks, 1, "the human's edit wins")
 }
 
 func TestSeeds_AllCompileAndFitTheirOwnShape(t *testing.T) {
-	for _, command := range []string{
-		"go test ./...", "git status", "docker ps", "env", "find .", "tree", "ps",
-	} {
-		got, ok := (&viewgen.Generator{}).Existing(viewgen.Request{Command: command})
-		require.True(t, ok, command)
-		_, err := viewspec.Compile(*got.Spec)
-		assert.NoError(t, err, command)
+	for command, output := range seedOutput {
+		got, ok := (&viewgen.Generator{}).Existing(context.Background(),
+			viewgen.Request{Command: command, Output: output})
+		require.True(t, ok, "%s: the shipped spec should draw its own command", command)
+		assert.Equal(t, viewgen.SourceShipped, got.Source, command)
 	}
+}
+
+// A spec that already exists still has to bind. "ps" and "ps aux"
+// normalise to one key and print different columns, so the shipped
+// spec matched, drew nothing, and blocked generation behind itself.
+func TestExisting_RejectsASpecThatCannotDrawTheOutput(t *testing.T) {
+	const psAux = `USER  PID %CPU %MEM    VSZ   RSS TTY STAT START TIME COMMAND
+root    1  0.1  0.0   1090   640 ?   Ss   20:41 0:00 /bin/sh
+root   14  0.0  0.0   7376  3200 ?   R    20:47 0:00 ps aux
+`
+	g := &viewgen.Generator{}
+	_, ok := g.Existing(context.Background(),
+		viewgen.Request{Command: "ps", Output: seedOutput["ps"]})
+	require.True(t, ok, "plain ps is what the seed was written for")
+
+	_, ok = g.Existing(context.Background(),
+		viewgen.Request{Command: "ps aux --sort=-%cpu | head -n 20", Output: psAux})
+	assert.False(t, ok, "ps aux has command, not cmd, so the seed must stand aside")
+}
+
+// One sample of each shipped command's real output, so "fits its own
+// shape" means it binds rather than merely compiles.
+var seedOutput = map[string]string{
+	"go test ./...": goTest,
+	"git status":    " M internal/agent/loop.go\n?? notes.txt\nA  ui/paste_test.go\n",
+	"docker ps": "CONTAINER ID   IMAGE     STATUS         NAMES\n" +
+		"9f2a1c3d4e5f   nginx     Up 2 hours     web\n",
+	"env":    "PATH=/usr/bin\nHOME=/root\nSHELL=/bin/sh\n",
+	"find .": "./main.go\n./internal/agent/loop.go\n./ui/keys.go\n",
+	"tree":   ".\n  internal\n    agent\n      loop.go\n  ui\n    keys.go\n",
+	"ps": "  PID TTY          TIME CMD\n" +
+		"  1 ?        00:00:00 sh\n 14 ?        00:00:00 ps\n",
 }
 
 // One table defines a kind's criteria and what may draw it, so a kind
@@ -306,7 +336,7 @@ func TestGenerate_AShippedSpecDoesNotShadowTheModel(t *testing.T) {
 	assert.Len(t, got.Spec.Blocks, 2, "detent's own go test view")
 
 	// With no model at all, Existing is the whole of views: saved.
-	out, ok := (&viewgen.Generator{}).Existing(seeded)
+	out, ok := (&viewgen.Generator{}).Existing(context.Background(), seeded)
 	require.True(t, ok)
 	assert.Equal(t, viewgen.SourceShipped, out.Source)
 }
