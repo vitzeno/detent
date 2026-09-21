@@ -121,6 +121,9 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
+	case tea.PasteMsg:
+		return m.handlePaste(msg.Content)
+
 	case tea.KeyboardEnhancementsMsg:
 		// The terminal answered our request; only now do we know
 		// whether shift+enter is a key of its own here.

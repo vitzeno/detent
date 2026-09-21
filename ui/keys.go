@@ -43,6 +43,30 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
+// handlePaste routes pasted text to whoever owns text entry, and
+// nowhere otherwise: a paste into history or the output pane has no
+// meaning, so it is dropped rather than going somewhere surprising.
+func (m Model) handlePaste(text string) (tea.Model, tea.Cmd) {
+	if text == "" {
+		return m, nil
+	}
+	if m.save.editing {
+		if r := m.focused(); r != nil && r.editor != nil {
+			r.editor.Paste(text)
+		}
+		return m, nil
+	}
+	if m.mode != modeInput {
+		return m, nil
+	}
+	switch m.owner() {
+	case ownerInput, ownerBusy:
+		m.prompt.Paste(text)
+		m.clearNotice()
+	}
+	return m, nil
+}
+
 // keyOwner names who owns a keystroke; handleKey computes exactly one.
 // Editing and modeSaveConfirm aren't keyOwner values — both take over
 // every key unconditionally and short-circuit before owner() runs.

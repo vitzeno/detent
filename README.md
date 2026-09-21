@@ -96,6 +96,8 @@ because nothing detent ran accounts for those.
 `alt+enter` or `ctrl+j` inserts a newline. For `shift+enter`, bind it in your
 terminal to send `\x1b\r`; terminals send the same byte for both otherwise.
 
+Paste works in the input box and in the editor, newlines included.
+
 ## Themes
 
 `dark`, `light`, `solarized`, `dracula` via `theme:` or `DETENT_THEME`.

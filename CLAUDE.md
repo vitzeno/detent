@@ -306,6 +306,11 @@ routing     →  agent, sandbox
   mutators at all now); `tool_flow.go`/`exec_flow.go`/`save_flow.go`
   handle the slash-command, streaming, and file-save flows the same way;
   `keys.go` decides what a keystroke means and `nav.go` what it does.
+  Pasted text is a `tea.PasteMsg`, not a key, so `handlePaste` routes
+  it beside `handleKey` and by the same rule: to whoever owns text
+  entry, and dropped everywhere else, since a paste into history has
+  nowhere to land. Bracketed paste is on by default in Bubble Tea v2;
+  what was missing was a case for the message.
   `esc` and `tab` are intercepted in `handleKey` before `owner()`
   dispatches, so anything wanting either has to be handled there —
   `onEscape` backs out of the innermost thing first (dropdown, then a

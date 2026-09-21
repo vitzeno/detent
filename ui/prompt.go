@@ -80,6 +80,13 @@ func (p *prompt) Key(msg tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
+// Paste drops text in at the cursor and re-matches, so pasting a
+// slash command opens its dropdown exactly as typing one does.
+func (p *prompt) Paste(s string) {
+	p.input.InsertString(s)
+	p.rematch()
+}
+
 // Clear empties the box and closes the dropdown.
 func (p *prompt) Clear() {
 	p.input.SetValue("")

@@ -67,6 +67,10 @@ func (m Model) Value() string   { return m.area.Value() }
 // want to simulate every keystroke.
 func (m *Model) SetValue(s string) { m.area.SetValue(s) }
 
+// Paste drops text in at the cursor rather than replacing the
+// buffer, which is what SetValue would do.
+func (m *Model) Paste(s string) { m.area.InsertString(s) }
+
 // Dirty reports whether the buffer differs from what's confirmed saved.
 func (m Model) Dirty() bool {
 	return m.loadErr == nil && m.area.Value() != m.saved
