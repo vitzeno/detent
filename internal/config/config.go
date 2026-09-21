@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/sandbox"
@@ -24,6 +25,11 @@ const (
 	DefaultModel   = propose.DefaultModel
 )
 
+// DefaultContextTokens is aliased for the same reason. Unlike Steps, 0
+// is not a meaningful value here — an unbounded transcript is the bug
+// compaction exists to fix — so a plain default is enough.
+const DefaultContextTokens = agent.DefaultContextTokens
+
 // DefaultSandboxWorkspace is the in-container mount point, not the
 // host source (always os.Getwd(); see sandbox.Container).
 const DefaultSandboxWorkspace = "/workspace"
@@ -35,6 +41,9 @@ type Config struct {
 	APIKey  string            `yaml:"api_key"`
 	Headers map[string]string `yaml:"headers"`
 	Steps   int               `yaml:"steps"`
+	// ContextTokens is how much of the model's window the transcript
+	// may fill before older turns are summarised away.
+	ContextTokens int `yaml:"context_tokens"`
 
 	JevAPIKey     string  `yaml:"jev_api_key"`
 	JevModel      string  `yaml:"jev_model"`
@@ -65,10 +74,11 @@ const DefaultTheme = "dark"
 // Default returns the built-in configuration.
 func Default() Config {
 	return Config{
-		BaseURL:  DefaultBaseURL,
-		Model:    DefaultModel,
-		JevModel: classify.DefaultModel,
-		Theme:    DefaultTheme,
+		BaseURL:       DefaultBaseURL,
+		Model:         DefaultModel,
+		ContextTokens: DefaultContextTokens,
+		JevModel:      classify.DefaultModel,
+		Theme:         DefaultTheme,
 
 		SandboxMode:      "auto",
 		SandboxImage:     sandbox.DefaultImage,

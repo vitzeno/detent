@@ -104,3 +104,24 @@ func TestResolve_SandboxDefaultsWhenUnset(t *testing.T) {
 	assert.Empty(t, got.SandboxSocket, "no built-in default; main.go's defaultSandboxSocket() picks it")
 	assert.Empty(t, got.SandboxRuntime, "empty means containerd's own default runtime")
 }
+
+func TestResolve_ContextTokensPrecedence(t *testing.T) {
+	t.Setenv("DETENT_CONTEXT_TOKENS", "64000")
+	file := Config{ContextTokens: 8_000}
+
+	got := Resolve(file, Config{}, -1)
+	assert.Equal(t, 64_000, got.ContextTokens, "env beats file")
+
+	got = Resolve(file, Config{ContextTokens: 12_000}, -1)
+	assert.Equal(t, 12_000, got.ContextTokens, "flag beats env beats file")
+}
+
+func TestResolve_ContextTokensDefaultsWhenUnset(t *testing.T) {
+	t.Setenv("DETENT_CONTEXT_TOKENS", "")
+	assert.Equal(t, DefaultContextTokens, Resolve(Config{}, Config{}, -1).ContextTokens)
+
+	// A value that isn't a number sets nothing rather than zeroing the
+	// budget, which would mean an unbounded transcript.
+	t.Setenv("DETENT_CONTEXT_TOKENS", "lots")
+	assert.Equal(t, DefaultContextTokens, Resolve(Config{}, Config{}, -1).ContextTokens)
+}

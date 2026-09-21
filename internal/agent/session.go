@@ -100,8 +100,11 @@ type Session struct {
 	Judge         Judge
 	RiskThreshold float64
 
-	// Summarizer condenses the transcript when it outgrows
-	// MaxTranscriptBytes; nil drops the oldest turns instead.
+	// ContextTokens is how much of the model's window the transcript
+	// may fill; <=0 means DefaultContextTokens.
+	ContextTokens int
+	// Summarizer condenses the transcript when it outgrows that
+	// budget; nil drops the oldest turns instead.
 	Summarizer Summarizer
 
 	// StepBudget caps iterations per goal; <=0 means unbounded.

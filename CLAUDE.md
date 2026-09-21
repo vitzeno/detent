@@ -45,7 +45,9 @@ Precedence: flags > environment > config file > built-ins. Config file is
 `./.detent.yaml` (repo-local, gitignored) or `~/.config/detent/config.yaml`;
 see `detent.example.yaml` for every key. Relevant env vars: `DETENT_BASE_URL`,
 `DETENT_MODEL`, `DETENT_API_KEY` (falls back to `OPENROUTER_API_KEY` then
-`OPENAI_API_KEY`), `TYPESAFE_API_KEY` (enables the Jev judge), `DETENT_THEME`
+`OPENAI_API_KEY`), `TYPESAFE_API_KEY` (enables the Jev judge), `DETENT_CONTEXT_TOKENS`
+(transcript budget; unset or unparseable falls through to the next
+layer rather than zeroing it), `DETENT_THEME`
 (one of `ui/theme.Themes`' names: `dark`, `light`, `solarized`,
 `dracula`). A `.env` in the repo root is also loaded at startup
 (`cmd/detent/main.go` `loadDotenv`), real env vars always win over it.
@@ -68,6 +70,7 @@ resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio
 ui          →  its own subpackages only (editor, welcome, render, status,
                 tabular, markdown, theme, island, tree, layout)
 agent       →  propose, host, classify, usage
+config      →  agent, classify, propose, sandbox (for their defaults only)
 host        →  capture
 sandbox     →  capture (never host or agent)
 routing     →  agent, sandbox
@@ -200,8 +203,13 @@ routing     →  agent, sandbox
   see and having it disappear is the point; restoring *to* a step
   instead would make `/rollback <last>` a no-op.
 
-  `compact.go` keeps the transcript under `MaxTranscriptBytes`, since
-  every propose call resends all of it. It runs in `BeginGoal` only —
+  `compact.go` keeps the transcript under `Session.ContextTokens`
+  (`DefaultContextTokens` when unset, `context_tokens` in config),
+  since every propose call resends all of it. The budget is stated in
+  tokens because that's the unit the status bar and `/usage` already
+  show; `BytesPerToken` converts it to what `transcriptBytes` can
+  actually count, and is a ceiling to stay under rather than an
+  accounting of what the endpoint bills. It runs in `BeginGoal` only —
   a goal boundary is the one place the model doesn't need the turns
   being dropped, and it happens *before* the new goal is appended so
   the fresh ask can't be what goes. Because compaction rewrites the

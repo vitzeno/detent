@@ -58,11 +58,30 @@ func TestSession_Compact_DropsOldestAndKeepsNewest(t *testing.T) {
 
 	s.compact(context.Background())
 
-	assert.LessOrEqual(t, s.transcriptBytes(), MaxTranscriptBytes)
+	assert.LessOrEqual(t, s.transcriptBytes(), s.budgetBytes())
 	assert.Equal(t, "the newest turn", s.Transcript[len(s.Transcript)-1].Content)
 	assert.Contains(t, s.Transcript[0].Content, "earlier turns in this session were dropped")
 	// The invariant every mark depends on.
 	assert.Equal(t, len(s.Transcript), s.seq-s.dropped)
+}
+
+func TestSession_Compact_HonoursConfiguredBudget(t *testing.T) {
+	small := &Session{ContextTokens: 1_000} // 4KB
+	big := &Session{ContextTokens: 200_000} // 800KB
+	fill(small, 50, 4*1024)
+	fill(big, 50, 4*1024) // 200KB: over the small budget, under the big one
+
+	small.compact(context.Background())
+	big.compact(context.Background())
+
+	assert.Less(t, small.transcriptBytes(), 50*4*1024, "a small budget compacts")
+	assert.Zero(t, big.dropped, "a budget above the transcript leaves it alone")
+}
+
+func TestSession_BudgetBytes_DefaultsWhenUnset(t *testing.T) {
+	assert.Equal(t, DefaultContextTokens*BytesPerToken, (&Session{}).budgetBytes())
+	assert.Equal(t, DefaultContextTokens*BytesPerToken, (&Session{ContextTokens: -1}).budgetBytes())
+	assert.Equal(t, 40_000, (&Session{ContextTokens: 10_000}).budgetBytes())
 }
 
 func TestSession_Compact_UsesSummarizerWhenWired(t *testing.T) {
@@ -83,7 +102,7 @@ func TestSession_Compact_FallsBackWhenSummarizerFails(t *testing.T) {
 	s.compact(context.Background())
 
 	assert.Contains(t, s.Transcript[0].Content, "were dropped")
-	assert.LessOrEqual(t, s.transcriptBytes(), MaxTranscriptBytes)
+	assert.LessOrEqual(t, s.transcriptBytes(), s.budgetBytes())
 }
 
 // A mark is only useful if it still names the same message after the

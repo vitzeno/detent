@@ -20,6 +20,12 @@ func WithJudge(judge Judge) Option {
 	return func(s *Session) { s.Judge = judge }
 }
 
+// WithContextTokens sets how much of the model's window the transcript
+// may fill before compaction; <=0 keeps DefaultContextTokens.
+func WithContextTokens(n int) Option {
+	return func(s *Session) { s.ContextTokens = n }
+}
+
 // WithSummarizer condenses the transcript when it outgrows its budget.
 // Without one, compaction drops the oldest turns instead.
 func WithSummarizer(sum Summarizer) Option {

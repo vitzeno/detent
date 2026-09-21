@@ -7,11 +7,22 @@ import (
 	"github.com/vitzeno/detent/internal/propose"
 )
 
-// MaxTranscriptBytes caps the transcript as a whole. boundStr bounds
-// one entry, but the whole thing is resent on every propose call, so
-// without this a long session outgrows the context window. Roughly 30k
-// tokens, leaving room for the system prompt and the reply.
-const MaxTranscriptBytes = 120 * 1024
+// DefaultContextTokens caps the transcript as a whole — boundStr bounds
+// one entry, but the whole thing is resent on every propose call. Sized
+// for a 32k model; Session.ContextTokens raises it for a bigger one.
+const DefaultContextTokens = 24_000
+
+// BytesPerToken converts that budget into what compaction can measure.
+// A rough average, for a ceiling to stay under — not a bill.
+const BytesPerToken = 4
+
+// budgetBytes is ContextTokens in the units compaction counts.
+func (s *Session) budgetBytes() int {
+	if s.ContextTokens > 0 {
+		return s.ContextTokens * BytesPerToken
+	}
+	return DefaultContextTokens * BytesPerToken
+}
 
 // Summarizer condenses the oldest turns. Optional, like Judge: without
 // one, compaction drops them and says plainly that it did.
@@ -22,10 +33,11 @@ type Summarizer interface {
 // compact keeps the newest turns whole and replaces the rest with one
 // note. Only safe at a goal boundary — see the call in BeginGoal.
 func (s *Session) compact(ctx context.Context) {
-	if s.transcriptBytes() <= MaxTranscriptBytes {
+	budget := s.budgetBytes()
+	if s.transcriptBytes() <= budget {
 		return
 	}
-	cut := s.cutPoint()
+	cut := s.cutPoint(budget)
 	if cut <= 0 {
 		return
 	}
@@ -48,8 +60,8 @@ func (s *Session) compact(ctx context.Context) {
 
 // cutPoint is the first message to keep: half the budget's worth of
 // tail, so compaction buys room rather than running again next goal.
-func (s *Session) cutPoint() int {
-	target := MaxTranscriptBytes / 2
+func (s *Session) cutPoint(budget int) int {
+	target := budget / 2
 	total := 0
 	for i := len(s.Transcript) - 1; i >= 0; i-- {
 		total += len(s.Transcript[i].Content)

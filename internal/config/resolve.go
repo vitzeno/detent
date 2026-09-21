@@ -3,6 +3,7 @@ package config
 import (
 	"cmp"
 	"os"
+	"strconv"
 )
 
 // Resolve layers sources low to high: built-ins, file, environment,
@@ -38,6 +39,9 @@ func (c *Config) apply(o Config) {
 	}
 	if o.Steps != 0 {
 		c.Steps = o.Steps
+	}
+	if o.ContextTokens != 0 {
+		c.ContextTokens = o.ContextTokens
 	}
 	if o.JevAPIKey != "" {
 		c.JevAPIKey = o.JevAPIKey
@@ -80,6 +84,16 @@ func (c *Config) apply(o Config) {
 // default (unbounded) already is 0. Giving RiskThreshold a flag would
 // need the same -1 sentinel treatment as steps above.
 
+// envInt reads a numeric variable, treating unset and unparseable
+// alike as "this layer sets nothing" — apply skips 0.
+func envInt(key string) int {
+	n, err := strconv.Atoi(os.Getenv(key))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
 // envConfig reads the environment as one layer. Key aliases fall back in
 // order; the first set variable wins.
 func envConfig() Config {
@@ -91,8 +105,9 @@ func envConfig() Config {
 			os.Getenv("OPENROUTER_API_KEY"),
 			os.Getenv("OPENAI_API_KEY"),
 		),
-		JevAPIKey: os.Getenv("TYPESAFE_API_KEY"),
-		Theme:     os.Getenv("DETENT_THEME"),
+		ContextTokens: envInt("DETENT_CONTEXT_TOKENS"),
+		JevAPIKey:     os.Getenv("TYPESAFE_API_KEY"),
+		Theme:         os.Getenv("DETENT_THEME"),
 
 		SandboxMode:    os.Getenv("DETENT_SANDBOX_MODE"),
 		SandboxSocket:  os.Getenv("DETENT_SANDBOX_SOCKET"),

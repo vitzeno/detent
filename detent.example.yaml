@@ -25,6 +25,15 @@ model: prism-ml/bonsai-27b
 # on every command is the bound.
 # steps: 0
 
+# How much of the model's context window the transcript may fill.
+# Every proposal resends the whole thing, so without a ceiling a long
+# session gets steadily more expensive and eventually overruns the
+# window. Past it, the oldest turns are replaced by a summary the same
+# model writes; what's left is the recent half plus that summary.
+# The default suits a 32k model — raise it if yours has more to spend,
+# and remember the system prompt and the reply need room too.
+# context_tokens: 24000
+
 # --- Judge (Jev): classifier for confirm emphasis and row rendering ---
 # Omit jev_api_key (and TYPESAFE_API_KEY) to run without a judge; rows
 # stay heuristic and confirms stay neutral.
@@ -52,9 +61,10 @@ model: prism-ml/bonsai-27b
 
 # Image sandboxed commands run in. Must be a fully qualified ref —
 # unlike docker/nerdctl, containerd's client doesn't expand Docker Hub
-# shorthand itself. The default is Ubuntu plus git/curl; the container
-# has no network, so it can't install tooling itself — pick an image
-# that already carries whatever your goals need.
+# shorthand itself. The default is Ubuntu plus git/curl, which is what
+# makes goals work under sandbox_network: none — with no network the
+# container can't install tooling itself, so pick an image that already
+# carries whatever your goals need.
 # sandbox_image: docker.io/library/buildpack-deps:24.04-scm
 
 # OCI runtime handle. Empty (default) is containerd's own default
