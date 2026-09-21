@@ -320,9 +320,9 @@ func loadDotenv(path string) {
 }
 
 // views builds the output-view generator. "off" returns nil, which
-// leaves the pane exactly as it was before generated views existed.
-// "cached" serves what ships and what is on disk without ever calling
-// a model; only "generate" spends tokens.
+// leaves the pane exactly as it was before views existed. Without a
+// Model the generator can only serve specs that already exist, which
+// is what makes "saved" a mode rather than a flag.
 func views(mode string, proposer *propose.OpenAIProposer, judge *classify.JevJudge) *viewgen.Generator {
 	if mode == config.ViewsOff {
 		return nil

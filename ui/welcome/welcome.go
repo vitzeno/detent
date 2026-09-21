@@ -26,7 +26,7 @@ type Facts struct {
 	Proposer string
 	Judge    string // "" when no judge is wired
 	RunMode  string // "host" or "sandbox"
-	// Views is "off", "cached" or "generate": whether the output pane
+	// Views is "off", "saved" or "generate": whether the output pane
 	// may draw from a spec, and whether a model may author one.
 	Views string
 
@@ -157,7 +157,7 @@ func views(f Facts) string {
 	case "generate":
 		return goal.Render("generated") +
 			faint.Render("  a model writes views for output nothing covers")
-	case "cached":
+	case "saved":
 		return goal.Render("shipped and saved") +
 			faint.Render("  set views: generate to author new ones")
 	}

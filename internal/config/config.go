@@ -54,9 +54,8 @@ type Config struct {
 	// main.go does the lookup, so config has no dependency on ui.
 	Theme string `yaml:"theme"`
 
-	// Views is "off", "cached" or "generate". off is exactly the
-	// behaviour before generated views existed; cached serves what
-	// ships and what is on disk without calling a model.
+	// Views is "off", "saved" or "generate". See the constants for
+	// what each one does.
 	Views string `yaml:"views"`
 
 	// SandboxMode is "auto" or "host"; unvalidated here, like Theme.
@@ -76,16 +75,24 @@ type Config struct {
 // dependency.
 const DefaultTheme = "dark"
 
-// ViewsOff, ViewsCached and ViewsGenerate are the Views settings.
+// How the output pane may draw a command's result.
 const (
-	ViewsOff      = "off"
-	ViewsCached   = "cached"
+	// ViewsOff draws with the built-in rendering for the judged kind
+	// and nothing else. Exactly how output looked before views existed.
+	ViewsOff = "off"
+	// ViewsSaved also draws from specs that already exist: the ones
+	// detent ships and any saved on disk. It never calls a model, so
+	// the set of specs never grows.
+	ViewsSaved = "saved"
+	// ViewsGenerate does what ViewsSaved does first, and when neither
+	// covers an output, asks a model for a spec and saves it. The next
+	// run of that command shape is then served from disk for nothing.
 	ViewsGenerate = "generate"
 )
 
-// DefaultViews serves shipped and cached specs but calls no model
-// until asked: generation costs tokens, so it is opt-in.
-const DefaultViews = ViewsCached
+// DefaultViews draws from what already exists but spends no tokens.
+// Generation is opt-in because it bills the proposer.
+const DefaultViews = ViewsSaved
 
 // Default returns the built-in configuration.
 func Default() Config {

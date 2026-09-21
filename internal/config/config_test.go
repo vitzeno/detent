@@ -116,3 +116,12 @@ func TestLoad_ExampleFileStaysValid(t *testing.T) {
 	assert.Equal(t, "http://localhost:1234/v1", cfg.BaseURL)
 	assert.Equal(t, "prism-ml/bonsai-27b", cfg.Model)
 }
+
+// Only generate ever writes to the cache. saved is read-only, which
+// is the distinction its old name ("cached") got backwards.
+func TestViews_DefaultsToSavedAndSpendsNothing(t *testing.T) {
+	assert.Equal(t, ViewsSaved, Default().Views)
+	assert.Equal(t, "saved", ViewsSaved)
+	assert.NotEqual(t, ViewsGenerate, Default().Views,
+		"generation bills the proposer, so it is opt-in")
+}

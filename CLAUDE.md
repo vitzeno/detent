@@ -368,7 +368,12 @@ routing     →  agent, sandbox
   carries its provenance (`shipped`/`saved`/`generated`) across the
   Driver in `ui.GeneratedView`, and `viewportHeader` marks the pane
   with it; the built-in rendering for a judged kind is unmarked,
-  because it is detent's own and has nothing to disclose. See
+  because it is detent's own and has nothing to disclose. `views:`
+  picks how far the pane may go: `off` is built-in renderings only,
+  `saved` also draws specs that already exist and never calls a model,
+  `generate` does that first and authors one when nothing covers the
+  output. Only `generate` ever writes to the cache, which is why
+  `saved` alone leaves it empty. See
   `docs/design/viewspec.md`.
 
   **There is one render path.** `ui/views.go`'s `specChain` tries, in
