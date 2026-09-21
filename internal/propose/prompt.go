@@ -93,27 +93,32 @@ Reply with exactly one JSON object, no other text and no markdown fences:
 {"command": "the shell command, or empty string iff done", "rationale": "one or two sentences, shown next to the command", "done": false, "summary": "shown once when this goal finishes, empty string until done", "file": "the one file the command shows or writes in full, or empty string"}`
 }
 
-// responseFormat fixes the proposal shape as a strict JSON schema.
-// LM Studio's server rejects {"type": "json_object"} — it only accepts
-// "json_schema" or "text" — so the schema form is the portable choice.
-func responseFormat() map[string]any {
+// JSONSchema wraps a schema in the response_format envelope. LM
+// Studio rejects {"type": "json_object"} — it accepts only
+// "json_schema" or "text" — so this form is the portable one.
+func JSONSchema(name string, schema map[string]any) map[string]any {
 	return map[string]any{
 		"type": "json_schema",
 		"json_schema": map[string]any{
-			"name":   "proposal",
+			"name":   name,
 			"strict": true,
-			"schema": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"command":   map[string]any{"type": "string"},
-					"rationale": map[string]any{"type": "string"},
-					"done":      map[string]any{"type": "boolean"},
-					"summary":   map[string]any{"type": "string"},
-					"file":      map[string]any{"type": "string"},
-				},
-				"required":             []string{"command", "rationale", "done", "summary", "file"},
-				"additionalProperties": false,
-			},
+			"schema": schema,
 		},
 	}
+}
+
+// responseFormat fixes the proposal shape as a strict JSON schema.
+func responseFormat() map[string]any {
+	return JSONSchema("proposal", map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"command":   map[string]any{"type": "string"},
+			"rationale": map[string]any{"type": "string"},
+			"done":      map[string]any{"type": "boolean"},
+			"summary":   map[string]any{"type": "string"},
+			"file":      map[string]any{"type": "string"},
+		},
+		"required":             []string{"command", "rationale", "done", "summary", "file"},
+		"additionalProperties": false,
+	})
 }
