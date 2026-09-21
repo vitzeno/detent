@@ -1,0 +1,109 @@
+package viewspec
+
+import (
+	"fmt"
+	"maps"
+	"slices"
+)
+
+// Widget draws one block kind. Returning an error drops the whole
+// view, never just this block — a table rendering three real columns
+// beside one silently empty one is a lie with a border around it.
+type Widget interface {
+	Draw(b Block, d Data, f Frame) ([]string, error)
+}
+
+// WidgetFunc adapts a plain function, as http.HandlerFunc does.
+type WidgetFunc func(Block, Data, Frame) ([]string, error)
+
+func (fn WidgetFunc) Draw(b Block, d Data, f Frame) ([]string, error) { return fn(b, d, f) }
+
+// Validator is an optional Widget extension. Bind calls it with the
+// fields the parse actually produced, so a widget can reject a block
+// before any frame is drawn rather than failing mid-render.
+type Validator interface {
+	Validate(b Block, fields []string) error
+}
+
+// Extractor turns captured bytes into rows. It never sees a Block: a
+// parse describes the output, not the view drawn from it.
+type Extractor interface {
+	Extract(output string) ([]Row, error)
+}
+
+// ExtractorFunc adapts a plain function.
+type ExtractorFunc func(string) ([]Row, error)
+
+func (fn ExtractorFunc) Extract(output string) ([]Row, error) { return fn(output) }
+
+// Registry is the vocabulary a spec is compiled against, and the
+// extension point: a consumer registers its own widgets and parse
+// kinds rather than forking the package.
+type Registry struct {
+	widgets    map[string]Widget
+	extractors map[string]func(Parse) (Extractor, error)
+}
+
+// NewRegistry returns an empty registry, for a caller that wants only
+// its own vocabulary.
+func NewRegistry() *Registry {
+	return &Registry{
+		widgets:    map[string]Widget{},
+		extractors: map[string]func(Parse) (Extractor, error){},
+	}
+}
+
+// Widget registers a widget under kind, replacing any built-in of the
+// same name — which is how a consumer swaps in a richer table without
+// this package learning what its table library is.
+func (r *Registry) Widget(kind string, w Widget) error {
+	if kind == "" {
+		return fmt.Errorf("viewspec: widget kind must not be empty")
+	}
+	if w == nil {
+		return fmt.Errorf("viewspec: widget %q must not be nil", kind)
+	}
+	r.widgets[kind] = w
+	return nil
+}
+
+// Extractor registers a parse kind. mk is called once per Compile so
+// an extractor can do its own setup, such as compiling a pattern.
+func (r *Registry) Extractor(kind string, mk func(Parse) (Extractor, error)) error {
+	if kind == "" {
+		return fmt.Errorf("viewspec: parse kind must not be empty")
+	}
+	if mk == nil {
+		return fmt.Errorf("viewspec: parse kind %q must not be nil", kind)
+	}
+	r.extractors[kind] = mk
+	return nil
+}
+
+// Kinds lists every registered block kind, sorted.
+func (r *Registry) Kinds() []string { return slices.Sorted(maps.Keys(r.widgets)) }
+
+// ParseKinds lists every registered parse kind, sorted.
+func (r *Registry) ParseKinds() []string { return slices.Sorted(maps.Keys(r.extractors)) }
+
+func (r *Registry) widget(kind string) (Widget, bool) {
+	w, ok := r.widgets[kind]
+	return w, ok
+}
+
+func (r *Registry) extractor(p Parse) (Extractor, error) {
+	mk, ok := r.extractors[p.Kind]
+	if !ok {
+		return nil, fmt.Errorf("viewspec: unknown parse kind %q", p.Kind)
+	}
+	return mk(p)
+}
+
+// clone lets Standard hand out a fresh registry per call, so one
+// caller's registration can't leak into another's.
+func (r *Registry) clone() *Registry {
+	out := NewRegistry()
+	maps.Copy(out.widgets, r.widgets)
+	maps.Copy(out.extractors, r.extractors)
+	return out
+}
