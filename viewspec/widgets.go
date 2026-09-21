@@ -666,3 +666,112 @@ func accentOr(b Block, r Row, fallback Role) Role {
 	}
 	return accentRole(b, r)
 }
+
+// What each widget is for, and the one it is most likely confused
+// with. These reach the model through Registry.Schema.
+
+func (textWidget) Describe() Description {
+	return Description{
+		What:     "one short label, drawn dim because it is your prose rather than output",
+		NotFor:   "anything counted or measured — a meter computes its numbers, a title cannot",
+		Examples: []string{"a heading above a table"},
+	}
+}
+
+func (tableWidget) Describe() Description {
+	return Description{
+		What:     "rows in aligned columns, for reading several fields per record",
+		NotFor:   "comparing one number across rows, where bar shows the shape at a glance",
+		Examples: []string{"docker ps", "ps aux", "a package list with status and duration"},
+	}
+}
+
+func (listWidget) Describe() Description {
+	return Description{
+		What:     "one field per line, for a set of names or paths",
+		NotFor:   "paths whose nesting matters — tree draws that",
+		Examples: []string{"changed files", "branch names"},
+	}
+}
+
+func (keyvalueWidget) Describe() Description {
+	return Description{
+		What:     "label and value per row, aligned on the label",
+		NotFor:   "many records of the same shape, which is a table",
+		Examples: []string{"env", "git config -l", "one object's fields"},
+	}
+}
+
+func (treeWidget) Describe() Description {
+	return Description{
+		What:     "a hierarchy, from a depth field or from a path's slashes",
+		NotFor:   "a flat set of names with no nesting, which is a list",
+		Examples: []string{"tree", "find . -name '*.go'", "an indented outline"},
+	}
+}
+
+func (meterWidget) Describe() Description {
+	return Description{
+		What:     "one proportion counted from the rows, as a bar and a fraction",
+		NotFor:   "a value per row — that is bar",
+		Examples: []string{"how many tests passed", "how many files are staged"},
+	}
+}
+
+func (barWidget) Describe() Description {
+	return Description{
+		What:     "one bar per row, scaled to the largest, for comparing a number across rows",
+		NotFor:   "a single proportion of a whole, which is a meter",
+		Examples: []string{"time per package", "size per directory"},
+	}
+}
+
+func (sparklineWidget) Describe() Description {
+	return Description{
+		What:     "one compact strip showing the shape of a numeric field across rows",
+		NotFor:   "comparing individual rows, where bar is readable and this is not",
+		Examples: []string{"a latency series", "sizes over time"},
+	}
+}
+
+func (badgesWidget) Describe() Description {
+	return Description{
+		What:     "each distinct value of one field with how many rows have it",
+		NotFor:   "showing the rows themselves — this only summarises them",
+		Examples: []string{"git status codes", "container states"},
+	}
+}
+
+func (w rawWidget) Describe() Description {
+	switch w.mode {
+	case "errors":
+		return Description{
+			What:     "output whose point is a failure, coloured line by line by severity",
+			NotFor:   "a long log that merely contains some warnings, which is log",
+			Examples: []string{"a failed build", "a stack trace"},
+		}
+	case "json":
+		return Description{
+			What:     "JSON shown pretty-printed, read as data",
+			NotFor:   "a few top-level fields a human reads as labels — that is keyvalue",
+			Examples: []string{"an API response", "kubectl get -o json"},
+		}
+	case "diff":
+		return Description{
+			What:     "a unified diff, added and removed lines coloured",
+			NotFor:   "prose describing changes; this needs the literal diff format",
+			Examples: []string{"git diff", "diff -u a b"},
+		}
+	case "code":
+		return Description{
+			What:     "a file's own body, with a line-number gutter",
+			NotFor:   "well-formed JSON, even from cat — that is the json widget",
+			Examples: []string{"cat main.go"},
+		}
+	}
+	return Description{
+		What:     "the output verbatim, read top to bottom",
+		NotFor:   "output with a shape worth drawing — reach for this when nothing else fits",
+		Examples: []string{"a build log", "tail -n 200 app.log"},
+	}
+}

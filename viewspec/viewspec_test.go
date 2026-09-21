@@ -713,3 +713,25 @@ func TestBar_ScalesToTheLargestValue(t *testing.T) {
 	assert.InDelta(t, 9.5/10.2, float64(bars[1])/float64(bars[0]), 0.05,
 		"bar length tracks the value")
 }
+
+// Every built-in says what it is for and what it is not, because a
+// fourteen-way choice on flat one-liners loses a model's calibration.
+func TestSchema_EveryBuiltinDescribesItself(t *testing.T) {
+	reg := viewspec.Standard()
+	guide := reg.Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)
+	got := guide["const"].(map[string]viewspec.Description)
+
+	for _, kind := range reg.Kinds() {
+		d, ok := got[kind]
+		require.True(t, ok, "%s describes itself", kind)
+		assert.NotEmpty(t, d.What, kind)
+		assert.NotEmpty(t, d.NotFor, "%s names what it is confused with", kind)
+		assert.NotEmpty(t, d.Examples, kind)
+	}
+
+	// A widget that says nothing is absent rather than blank.
+	require.NoError(t, reg.Widget("hologram", viewspec.WidgetFunc(
+		func(viewspec.Block, viewspec.Data, viewspec.Frame) ([]string, error) { return nil, nil })))
+	guide = reg.Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)
+	assert.NotContains(t, guide["const"].(map[string]viewspec.Description), "hologram")
+}

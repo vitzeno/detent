@@ -15,6 +15,15 @@ func (r *Registry) Schema() map[string]any {
 				"description": "widgets, drawn top to bottom",
 				"items":       r.blockSchema(),
 			},
+			// Structured {what, not_for, examples} per kind, not one
+			// shared blurb: with this many widgets a flat description
+			// costs the model's calibration. Same lesson as the
+			// render_kind criteria in internal/agent/judge.go.
+			"widget_guide": map[string]any{
+				"type":        "object",
+				"description": "what each block kind is for. Read before choosing kind; ignore when emitting.",
+				"const":       r.describe(),
+			},
 		},
 		"required":             []string{"version", "match", "parse", "blocks"},
 		"additionalProperties": false,
@@ -46,7 +55,7 @@ func (r *Registry) blockSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"kind":  enum(r.Kinds(), "which widget draws this block"),
+			"kind":  enum(r.Kinds(), "which widget draws this block; see widget_guide"),
 			"title": str("a short label; renders dimmed because it is your prose, not output"),
 			"field": str("the field this widget reads, for single-field widgets"),
 			"depth": str("tree only: the field holding each row's level; empty reads field as a path"),

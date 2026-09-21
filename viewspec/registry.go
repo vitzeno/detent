@@ -32,6 +32,22 @@ type Selector interface {
 	CursorLine(b Block, d Data, f Frame) int
 }
 
+// Description is what a widget is for, stated the way a many-way
+// choice needs: structured, with a counter-case. Flat one-liners lose
+// a model's calibration once there are more than a handful of options.
+type Description struct {
+	What     string   `json:"what"`
+	NotFor   string   `json:"not_for,omitempty"`
+	Examples []string `json:"examples,omitempty"`
+}
+
+// Described is an optional Widget extension carrying that description
+// into Registry.Schema, so the model choosing a widget reads the same
+// criteria the author wrote.
+type Described interface {
+	Describe() Description
+}
+
 // Extractor turns captured bytes into rows. It never sees a Block: a
 // parse describes the output, not the view drawn from it.
 type Extractor interface {
@@ -119,5 +135,18 @@ func (r *Registry) clone() *Registry {
 	out := NewRegistry()
 	maps.Copy(out.widgets, r.widgets)
 	maps.Copy(out.extractors, r.extractors)
+	return out
+}
+
+// describe returns every registered widget's description, keyed by
+// kind. A widget that says nothing is simply absent, which is how a
+// consumer-registered widget opts out.
+func (r *Registry) describe() map[string]Description {
+	out := make(map[string]Description, len(r.widgets))
+	for kind, w := range r.widgets {
+		if d, ok := w.(Described); ok {
+			out[kind] = d.Describe()
+		}
+	}
 	return out
 }

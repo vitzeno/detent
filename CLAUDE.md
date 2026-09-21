@@ -353,7 +353,9 @@ routing     →  agent, sandbox
   because it calls them; `ui/painter.go` and `ui/views.go` implement and
   register them. `Registry.Schema()` describes the registered vocabulary
   as JSON Schema, so generation can't drift from what will actually
-  draw. Any unresolved binding fails the **whole** view (`BindError`)
+  draw; each widget's own `Describe` carries structured
+  `{what, not_for, examples}` criteria into a `widget_guide`, for the
+  calibration reason `internal/agent/judge.go` states at nine options. Any unresolved binding fails the **whole** view (`BindError`)
   and the caller falls down its spec chain — a table with one silently
   empty column is worse than plain text. It runs nothing:
   `Bound.Action` returns an `on_enter` template with `{field}`
