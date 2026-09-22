@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/vitzeno/detent/views"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -31,12 +32,12 @@ var seedOutput = map[string]string{
 }
 
 func TestSeeds_EveryShippedSpecHasASampleOfItsOwnOutput(t *testing.T) {
-	for command := range seeds {
+	for _, command := range views.Commands() {
 		_, ok := seedOutput[command]
 		assert.True(t, ok, "%s ships a spec with no sample output to bind it against", command)
 	}
 	for command := range seedOutput {
-		_, ok := seeds[command]
+		_, ok := views.ForCommand(command)
 		assert.True(t, ok, "%s has a sample but no shipped spec", command)
 	}
 }
@@ -54,7 +55,7 @@ func TestSeeds_RealInvocationsReachTheirSeed(t *testing.T) {
 		"ps aux --sort=-%cpu | head -20": "ps",
 	} {
 		assert.Equal(t, want, Normalise(command), command)
-		_, ok := seeds[Normalise(command)]
+		_, ok := views.ForCommand(Normalise(command))
 		assert.True(t, ok, "%s should reach a shipped spec", command)
 	}
 }

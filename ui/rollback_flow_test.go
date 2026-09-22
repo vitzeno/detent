@@ -1,10 +1,11 @@
 package ui
 
 import (
-	tea "charm.land/bubbletea/v2"
 	"errors"
 	"fmt"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

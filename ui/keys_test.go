@@ -2,8 +2,9 @@ package ui
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/require"

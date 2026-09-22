@@ -77,8 +77,9 @@ Package dependency flow — `ui` and `agent` never import each other;
 cmd/detent  →  ui, resolver, agent, classify, config, routing, propose (Ping only)
 resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio, viewgen
 ui          →  its own subpackages (editor, welcome, render, status,
-                markdown, theme, island, tree, layout) + viewspec, logging
+                markdown, theme, island, tree, layout) + viewspec, views, logging
 viewspec    →  the standard library, nothing else
+views       →  viewspec           (the specs detent ships, data only)
 logging     →  the standard library, nothing else
 agent       →  propose, host, classify, usage, viewgen (render kinds)
 config      →  agent, classify, propose, sandbox (for their defaults only)
@@ -481,6 +482,18 @@ routing     →  agent, sandbox
   set, because they carry secrets and bulk. `viewspec` deliberately
   does not log: it returns typed errors and the caller records them,
   which is what keeps it embeddable.
+
+- **`views`** — every spec detent ships, in one place: the ones keyed
+  by a command's normalised name (`ForCommand`) and the ones keyed by
+  the shape its output was judged to have (`ForKind`). They were two
+  maps in two packages that could not see each other, and had started
+  to overlap: the `table` shape spec and the shipped `ps` spec are
+  nearly the same thing, and the `ps` one had already drifted, written
+  for plain `ps` and drawing nothing for `ps aux`. It imports
+  `viewspec` and nothing else, which is what lets both `ui` and
+  `viewgen` read it without either importing the other. `ForCommand`
+  returns a copy, so two rows drawing the same shipped spec cannot
+  edit each other's.
 
 - **`internal/usage`** — timing and token accounting (`Tracker` → `Goal` →
   `Step`), independent of everything else; `agent` attaches measurements

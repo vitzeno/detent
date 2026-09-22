@@ -7,6 +7,7 @@ import (
 
 	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/ui/markdown"
+	"github.com/vitzeno/detent/views"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -156,42 +157,28 @@ func must(err error) {
 	}
 }
 
-// fallbackSpecs is what render_kind chooses from when no view is keyed
-// to the command. One block each: the nine kinds were always specs,
-// they just used to be a switch.
-var fallbackSpecs = map[RenderKind]viewspec.Spec{
-	KindText:    rawSpec("log"),
-	KindError:   rawSpec("errors"),
-	KindDiff:    rawSpec("diff"),
-	KindJSON:    rawSpec("json"),
-	KindContent: rawSpec("code"),
-	KindTable: {
-		Version: viewspec.Version,
-		Parse:   viewspec.Parse{Kind: "columns", Header: true},
-		Blocks:  []viewspec.Block{{Kind: "table"}},
-	},
-	KindFiles: {
-		Version: viewspec.Version,
-		Parse:   viewspec.Parse{Kind: "lines", Pattern: `^(?P<path>\S.*)$`},
-		Blocks:  []viewspec.Block{{Kind: "list", Field: "path"}},
-	},
-}
-
-func rawSpec(kind string) viewspec.Spec {
-	return viewspec.Spec{
-		Version: viewspec.Version,
-		Parse:   viewspec.Parse{Kind: "none"},
-		Blocks:  []viewspec.Block{{Kind: kind}},
-	}
-}
-
+// The specs themselves live in views, which viewgen reads too. These
+// are them compiled once against this registry, since Compile is per
+// spec and Bind is per output.
 var (
-	compiledFallback = compileAll(fallbackSpecs)
-	compiledMarkdown = compileAll(map[string]viewspec.Spec{"m": rawSpec("markdown")})["m"]
+	compiledFallback = compileAll(byKind())
+	compiledMarkdown = compileAll(map[string]viewspec.Spec{"m": views.Raw("markdown")})["m"]
 	// compiledPlain is the floor: raw bytes, no interpretation. Used
 	// before anything is judged, and when a fitted spec doesn't fit.
-	compiledPlain = compileAll(map[string]viewspec.Spec{"p": rawSpec("log")})["p"]
+	compiledPlain = compileAll(map[string]viewspec.Spec{"p": views.Raw("log")})["p"]
 )
+
+// byKind reads the shipped shape specs under ui's own RenderKind,
+// which mirrors viewgen's strings the way every other DTO here does.
+func byKind() map[RenderKind]viewspec.Spec {
+	out := map[RenderKind]viewspec.Spec{}
+	for _, kind := range views.Kinds() {
+		if spec, ok := views.ForKind(kind); ok {
+			out[RenderKind(kind)] = spec
+		}
+	}
+	return out
+}
 
 // compileAll drops what doesn't compile. A bad spec here is a
 // programming error, but one must not take the whole map with it.

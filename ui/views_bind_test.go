@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/vitzeno/detent/views"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -13,8 +14,8 @@ import (
 // whole map with it, so a typo here is a render kind that quietly
 // loses its rendering. Nothing else would notice.
 func TestFallbacks_EveryKindStillCompiles(t *testing.T) {
-	require.Len(t, compiledFallback, len(fallbackSpecs))
-	for kind := range fallbackSpecs {
+	require.Len(t, compiledFallback, len(views.Kinds()))
+	for kind := range byKind() {
 		assert.Contains(t, compiledFallback, kind, "%s lost its built-in spec", kind)
 	}
 	assert.NotNil(t, compiledPlain, "the floor must exist or a row can have no view")

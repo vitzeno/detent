@@ -2,9 +2,10 @@ package ui
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/render"
-	"strings"
 
 	"charm.land/lipgloss/v2"
 )
