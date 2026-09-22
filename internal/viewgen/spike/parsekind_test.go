@@ -118,7 +118,7 @@ func TestSpike_JevChoosesAParseKind(t *testing.T) {
 		}
 
 		start := time.Now()
-		choice, conf := ask(t, judge, s.command, output)
+		choice, conf := ask(t, judge, s.command, output, headerOf(judge, s.command, output))
 		took := time.Since(start)
 		sum += took
 		if took > slowest {
@@ -142,8 +142,11 @@ func TestSpike_JevChoosesAParseKind(t *testing.T) {
 	t.Logf("compare: generation ran 31s median, 80s worst, in session 722911c3")
 }
 
-// ask puts the same question COMPOSE_PLAN.md step 1 would ask.
-func ask(t *testing.T, j *classify.JevJudge, command, output string) (string, float64) {
+// ask puts the same question COMPOSE_PLAN.md step 1 would ask. header
+// is what askSkip found, so the kind question is answered knowing
+// where the table starts: netstat picked columns over fixed because
+// the line it was reading as a header was a sentence.
+func ask(t *testing.T, j *classify.JevJudge, command, output, header string) (string, float64) {
 	t.Helper()
 	criteria := map[string]any{
 		"columns": map[string]any{
@@ -179,15 +182,18 @@ func ask(t *testing.T, j *classify.JevJudge, command, output string) (string, fl
 			"not_for": "output with any repeating shape at all; prefer a real parse kind",
 		},
 	}
+	state := map[string]any{"command": command, "output": head(output, 4096)}
+	if header != "" {
+		state["header_line"] = header
+	}
 	answers, _, ok := classify.AskOrFallback(context.Background(), j,
-		classify.State(map[string]any{
-			"command": command,
-			"output":  head(output, 4096),
-		}),
+		classify.State(state),
 		classify.Questions{
 			"parse_kind": {
 				Instructions: "How should this command's output be read into rows? " +
-					"Choose the kind that describes the shape of the bytes, not what they mean.",
+					"Choose the kind that describes the shape of the bytes, not what they mean. " +
+					"Where header_line is given, it is the line naming the columns: read it to " +
+					"decide whether the headings are single words or contain spaces.",
 				Choice: &classify.ChoiceQuestion{Criteria: criteria},
 			},
 		})

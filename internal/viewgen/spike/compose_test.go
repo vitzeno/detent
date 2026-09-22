@@ -46,25 +46,18 @@ func TestSpike_JevComposesAView(t *testing.T) {
 			continue
 		}
 		output := string(out)
-		kind, _ := ask(t, judge, s.command, output)
+		// Header first. Which line names the columns is a property of
+		// the output, and knowing it is what lets the kind question
+		// tell single-word headings from ones containing spaces.
+		skip := askSkip(t, judge, s.command, output)
+		kind, _ := ask(t, judge, s.command, output, headerLine(output, skip))
 		parse, ok := parseFor(kind, output)
 		if !ok {
 			t.Logf("\n%s: jev chose %q, which produces nothing here", s.name, kind)
 			continue
 		}
 		if parse.Header {
-			tuned := parse
-			switch skip := askSkip(t, judge, s.command, output); {
-			case skip < 0:
-				tuned.Header, tuned.Fields = false, positional(output)
-			case skip > 0:
-				tuned.Skip = skip
-			}
-			// Only if it still parses: a wrong answer here must not
-			// cost a view that worked without one.
-			if _, err := fieldsOfRaw(tuned, output); err == nil {
-				parse = tuned
-			}
+			parse = honour(parse, skip, output)
 		}
 		total++
 
@@ -309,23 +302,9 @@ func askSkip(t *testing.T, j *classify.JevJudge, command, output string) int {
 	if len(lines) < 2 {
 		return 0
 	}
-	n := min(len(lines), 4)
-	criteria := map[string]any{
-		"none": "None of these is a header. Every line is data, as in ls -la.",
-	}
-	for i := range n {
-		criteria[strconv.Itoa(i)] = fmt.Sprintf("line %d: %s", i+1, head(lines[i], 120))
-	}
 	answers, _, ok := classify.AskOrFallback(context.Background(), j,
 		classify.State(map[string]any{"command": command, "output": head(output, 2048)}),
-		classify.Questions{
-			"header_line": {
-				Instructions: "Which of these lines names the columns of the table below it? " +
-					"Choose the first line if the output starts with its header, and a later " +
-					"one when a total, a title or a blank line comes first.",
-				Choice: &classify.ChoiceQuestion{Criteria: criteria},
-			},
-		})
+		skipQuestion(output))
 	if !ok {
 		return 0
 	}
@@ -333,10 +312,84 @@ func askSkip(t *testing.T, j *classify.JevJudge, command, output string) int {
 		return -1
 	}
 	skip, err := strconv.Atoi(answers["header_line"].Choice)
-	if err != nil || skip < 0 || skip >= n {
+	if err != nil || skip < 0 {
 		return 0
 	}
 	return skip
+}
+
+// skipQuestion quotes the candidate lines, which is what makes this
+// answerable where "how many lines to skip" is arithmetic.
+func skipQuestion(output string) classify.Questions {
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	criteria := map[string]any{
+		"none": "None of these is a header. Every line is data, as in ls -la.",
+	}
+	for i := range min(len(lines), 4) {
+		criteria[strconv.Itoa(i)] = fmt.Sprintf("line %d: %s", i+1, head(lines[i], 120))
+	}
+	return classify.Questions{
+		"header_line": {
+			Instructions: "Which of these lines names the columns of the table below it? " +
+				"Choose the first line if the output starts with its header, and a later " +
+				"one when a total, a title or a blank line comes first.",
+			Choice: &classify.ChoiceQuestion{Criteria: criteria},
+		},
+	}
+}
+
+// honour treats the header answer as established and the kind as a
+// preference. netstat is why: Jev located the header at 0.99, and the
+// kind it chose could not read it, columns splitting "Local Address"
+// into two names and dropping every row. fixed reads the same header
+// correctly. So the skip stands and the kind gives way, tried against
+// the interpreter rather than argued about.
+func honour(chosen viewspec.Parse, skip int, output string) viewspec.Parse {
+	if skip < 0 {
+		headerless := chosen
+		headerless.Header, headerless.Fields = false, positional(output)
+		if _, err := fieldsOfRaw(headerless, output); err == nil {
+			return headerless
+		}
+		return chosen
+	}
+	// The chosen kind first, then the siblings that read a header.
+	for _, kind := range append([]string{chosen.Kind}, "fixed", "columns") {
+		p := chosen
+		p.Kind, p.Skip = kind, skip
+		if fields, err := fieldsOfRaw(p, output); err == nil && len(fields) > 1 {
+			return p
+		}
+	}
+	return chosen
+}
+
+// headerLine is the line askSkip identified, or "" when it found none.
+func headerLine(output string, skip int) string {
+	if skip < 0 {
+		return ""
+	}
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	if skip >= len(lines) {
+		return ""
+	}
+	return lines[skip]
+}
+
+// headerOf is headerLine for the parse-kind spike, which asks the two
+// questions in the same order.
+func headerOf(j *classify.JevJudge, command, output string) string {
+	answers, _, ok := classify.AskOrFallback(context.Background(), j,
+		classify.State(map[string]any{"command": command, "output": head(output, 2048)}),
+		skipQuestion(output))
+	if !ok || answers["header_line"].Choice == "none" {
+		return ""
+	}
+	i, err := strconv.Atoi(answers["header_line"].Choice)
+	if err != nil {
+		return ""
+	}
+	return headerLine(output, i)
 }
 
 // positional names a headerless table col1..colN. The names are
