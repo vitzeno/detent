@@ -2,6 +2,7 @@
 package agent
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -117,6 +118,10 @@ type Session struct {
 	Transcript []propose.Message
 	GoalsDone  int
 
+	// probes is the environment gathered while nobody was waiting.
+	// See prefetch.go for why it is filled as a goal closes.
+	probes probeCache
+
 	// steps counts executed commands across the session, so a log
 	// record carries the same number the UI shows against a row and
 	// /rollback takes.
@@ -183,6 +188,14 @@ func (s *Session) finish(res *GoalResult, reason EndReason, summary string) {
 	logging.For(logging.Agent).Info("goal closed", logging.KeyEvent, logging.GoalEnd,
 		logging.KeyGoal, s.GoalsDone, logging.KeyReason, string(reason),
 		"steps", len(res.Commands))
+	// The environment just changed and nothing will change it again
+	// until the next goal runs, so this is both the freshest moment to
+	// look and the one where nobody is waiting.
+	//
+	// Background, not the goal's context: the goal is over, and its
+	// cancellation says nothing about whether the next one wants to
+	// know what the machine looks like.
+	s.gather(context.Background())
 }
 
 func formatToolResult(command string, r host.Result) string {

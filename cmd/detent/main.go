@@ -187,6 +187,9 @@ func run() error {
 		sessOpts = append(sessOpts, agent.WithJudge(judge))
 	}
 	sess := agent.New(proposer, headlessConfirmer{}, sessOpts...)
+	// Look at the machine now, while the human is reading the welcome
+	// pane, so the first goal does not wait for it.
+	sess.Prime(context.Background())
 
 	if *goal != "" {
 		return printGoalResult(sess.RunGoal(context.Background(), *goal))

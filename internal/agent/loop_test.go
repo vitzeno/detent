@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -710,4 +711,90 @@ func TestBeginGoal_ProbeOutputIsBounded(t *testing.T) {
 		assert.LessOrEqual(t, len(m.Content), MaxTranscriptOutputBytes+64,
 			"message %d is %d bytes", i, len(m.Content))
 	}
+}
+
+// Probes are gathered as a goal closes, so the next goal reads what is
+// already there. After a goal rather than before the next one: the
+// environment has just changed and nothing else will change it, which
+// is both the freshest moment and the one where nobody is waiting.
+func TestPrefetch_GoalAfterTheFirstUsesWhatWasGathered(t *testing.T) {
+	var mu sync.Mutex
+	var ran []string
+	runner := runFunc(func(_ context.Context, cmd string, _ chan<- host.StreamEvent) (host.Result, error) {
+		mu.Lock()
+		ran = append(ran, cmd)
+		mu.Unlock()
+		return host.Result{Stdout: "looked\n"}, nil
+	})
+	s := &Session{
+		Proposer: &stubProposer{script: []propose.Proposal{{Done: true, Summary: "done"}}},
+		Confirm:  confirmFunc(func(ConfirmRequest) bool { return true }),
+		Runners:  SingleRunner{Runner: runner},
+	}
+
+	// First goal has nothing gathered, so it runs probes itself.
+	res, err := s.BeginGoal(context.Background(), "first")
+	require.NoError(t, err)
+	mu.Lock()
+	duringFirst := len(ran)
+	mu.Unlock()
+	assert.Positive(t, duringFirst, "a cold session still gets its context")
+
+	// Closing it gathers for whatever comes next.
+	s.RecordDone(res, propose.Proposal{Done: true, Summary: "done"})
+	require.True(t, waitForGather(s), "gather finished")
+	mu.Lock()
+	afterClose := len(ran)
+	mu.Unlock()
+	assert.Greater(t, afterClose, duringFirst, "the environment was looked at while nobody waited")
+
+	// The second goal reads it rather than running anything.
+	_, err = s.BeginGoal(context.Background(), "second")
+	require.NoError(t, err)
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, afterClose, len(ran), "no probe ran while the human waited")
+}
+
+// Gathered output and freshly run output have to be the same blob, or
+// the model can tell which goal got the slow path.
+func TestPrefetch_ReadsTheSameAsRunningItNow(t *testing.T) {
+	runner := runFunc(func(_ context.Context, cmd string, _ chan<- host.StreamEvent) (host.Result, error) {
+		return host.Result{Stdout: "out of " + cmd + "\n"}, nil
+	})
+	newSession := func() *Session {
+		return &Session{
+			Proposer: &stubProposer{script: []propose.Proposal{{Done: true}}},
+			Confirm:  confirmFunc(func(ConfirmRequest) bool { return true }),
+			Runners:  SingleRunner{Runner: runner},
+		}
+	}
+
+	cold := newSession()
+	res, err := cold.BeginGoal(context.Background(), "g")
+	require.NoError(t, err)
+
+	warm := newSession()
+	warm.gather(context.Background())
+	require.True(t, waitForGather(warm))
+	_, err = warm.BeginGoal(context.Background(), "g")
+	require.NoError(t, err)
+
+	assert.Equal(t, cold.Transcript, warm.Transcript,
+		"a prefetched goal reads exactly as one that probed on the spot")
+	_ = res
+}
+
+// waitForGather blocks until no gather is in flight.
+func waitForGather(s *Session) bool {
+	for range 200 {
+		s.probes.mu.Lock()
+		done := s.probes.ready
+		s.probes.mu.Unlock()
+		if done == nil {
+			return true
+		}
+		<-done
+	}
+	return false
 }

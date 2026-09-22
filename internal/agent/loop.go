@@ -20,8 +20,12 @@ type probeRunner struct {
 	runner Runner
 }
 
+// Run goes through runSafely for the same reason Execute does, and
+// one more: probes also run in the background between goals, where a
+// panicking Runner would take the session down with nobody asking it
+// to do anything.
 func (r probeRunner) Run(ctx context.Context, command string) (host.Result, error) {
-	return r.runner.Run(ctx, command, nil)
+	return runSafely(ctx, r.runner, command, nil)
 }
 
 // BeginGoal opens a goal and primes the transcript with fixed, unconfirmed
@@ -68,7 +72,6 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 		snapshotFor = time.Since(t3)
 	}()
 
-	prober := probe.New(probeRunner{runner: s.Runners.Probe()})
 	t1 := time.Now()
 	chosen := probe.Select(ctx, s.Judge, goal)
 	chose := time.Since(t1)
@@ -76,13 +79,20 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 	for _, pr := range chosen {
 		names = append(names, pr.Name)
 	}
+
+	// Gathered as the last goal closed, when nobody was waiting. A
+	// miss runs them now rather than going without: stale context is
+	// worse than a pause, and no context is worse than both.
 	t2 := time.Now()
+	said, hit := s.take(ctx, chosen)
+	if !hit {
+		said = probe.New(probeRunner{runner: s.Runners.Probe()}).Each(ctx, chosen)
+	}
 	// Bounded like every other path into the transcript. Unbounded, a
 	// single ps on a busy machine is 200KB, which is twice the whole
 	// transcript budget and is resent on every later propose until
 	// compaction throws it away again.
-	out := prober.Run(ctx, chosen)
-	if out != "" {
+	if out := probe.Format(chosen, said); out != "" {
 		s.append(propose.Message{Role: propose.RoleTool, Content: boundStr(out)})
 	}
 	// Timed per phase because they are serial and nothing else can
@@ -91,7 +101,7 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 	// judging and view composition run alongside.
 	log.InfoContext(ctx, "probes chosen", logging.KeyEvent, logging.ProbeRun, "probes", names,
 		logging.KeyMS, ms(chose+time.Since(t2)), "select_ms", ms(chose),
-		"run_ms", ms(time.Since(t2)), "compact_ms", ms(compacted))
+		"run_ms", ms(time.Since(t2)), "compact_ms", ms(compacted), "prefetched", hit)
 	// An abort during probe collection must close the goal here, not
 	// fall through into the first Propose.
 	if err := ctx.Err(); err != nil {

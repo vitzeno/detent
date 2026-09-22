@@ -93,24 +93,49 @@ func (pb *Prober) Run(ctx context.Context, probes []Probe) string {
 	if len(probes) == 0 {
 		return ""
 	}
-	results := make([]string, len(probes))
+	// Assembled in the order asked for, so what the model reads does
+	// not depend on which probe happened to finish first.
+	return Format(probes, pb.Each(ctx, probes))
+}
+
+// Each runs probes together and keeps what each said, by name, so a
+// caller can gather the whole menu before it knows which of them a
+// goal will want.
+func (pb *Prober) Each(ctx context.Context, probes []Probe) map[string]string {
+	out := make(map[string]string, len(probes))
+	var mu sync.Mutex
 	var wg sync.WaitGroup
-	for i, p := range probes {
+	for _, p := range probes {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i] = pb.one(ctx, p)
+			said := pb.one(ctx, p)
+			mu.Lock()
+			out[p.Name] = said
+			mu.Unlock()
 		}()
 	}
 	wg.Wait()
+	return out
+}
 
-	// Assembled in menu order, so what the model reads does not depend
-	// on which probe happened to finish first.
+// Format assembles gathered output into the blob the model reads. The
+// one place that shape is written, so output gathered earlier and
+// output run just now are indistinguishable to the model, which is
+// what makes gathering early safe to do at all.
+func Format(probes []Probe, said map[string]string) string {
+	if len(probes) == 0 {
+		return ""
+	}
 	var b strings.Builder
 	b.WriteString("Environment context gathered automatically before this goal (not something you ran):\n")
-	for i, p := range probes {
+	for _, p := range probes {
+		out, ok := said[p.Name]
+		if !ok {
+			continue
+		}
 		fmt.Fprintf(&b, "\n$ %s\n", p.Command)
-		b.WriteString(results[i])
+		b.WriteString(out)
 	}
 	return b.String()
 }
