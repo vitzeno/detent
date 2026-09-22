@@ -27,7 +27,7 @@ func (textWidget) Describe() Description {
 		What: "one short label, drawn dim because it is your prose rather than output",
 		// No Slots: this needs a title, which is prose,
 		// so nothing can compose one from field choices alone.
-		NotFor:   "anything counted or measured — a meter computes its numbers, a title cannot",
+		NotFor:   "anything counted or measured: a meter computes its numbers, a title cannot",
 		Examples: []string{"a heading above a table"},
 	}
 }

@@ -106,7 +106,7 @@ func (w rawWidget) Describe() Description {
 	case "json":
 		return Description{
 			What:     "JSON shown pretty-printed, read as data",
-			NotFor:   "a few top-level fields a human reads as labels — that is keyvalue",
+			NotFor:   "a few top-level fields a human reads as labels, which is keyvalue",
 			Examples: []string{"an API response", "kubectl get -o json"},
 		}
 	case "diff":
@@ -118,13 +118,13 @@ func (w rawWidget) Describe() Description {
 	case "code":
 		return Description{
 			What:     "a file's own body, with a line-number gutter",
-			NotFor:   "well-formed JSON, even from cat — that is the json widget",
+			NotFor:   "well-formed JSON, even from cat, which the json widget draws",
 			Examples: []string{"cat main.go"},
 		}
 	}
 	return Description{
 		What:     "the output verbatim, read top to bottom",
-		NotFor:   "output with a shape worth drawing — reach for this when nothing else fits",
+		NotFor:   "output with a shape worth drawing; reach for this when nothing else fits",
 		Examples: []string{"a build log", "tail -n 200 app.log"},
 	}
 }

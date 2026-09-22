@@ -394,19 +394,10 @@ func (pairsExtractor) Columns() []Column {
 	return []Column{{Field: "key"}, {Field: "value"}}
 }
 
-// prefix splits each line at the first run of whitespace: a leading
-// token, and whatever follows. It covers the shape a great many
-// commands print without a header of any kind, where the alternative
-// is a regexp:
-//
-//	git log --oneline   3416b00  Let the header answer settle the kind
-//	du -sh              100K     internal/agent
-//	wc -l               117      viewspec/spec.go
-//	go test ./...       ok       github.com/x/a  0.412s
-//
-// Two fields rather than many, because a third would be guessing where
-// the remainder divides. A command needing that has columns or a
-// pattern.
+// prefix splits each line at the first run of whitespace, which is the
+// shape git log, du, wc and go test all print without a header. Two
+// fields and no more: a third would guess where the remainder divides,
+// and a command needing that has columns or a pattern.
 type prefixExtractor struct{}
 
 func newPrefixExtractor(p Parse) (Extractor, error) { return skipping(p, prefixExtractor{}), nil }

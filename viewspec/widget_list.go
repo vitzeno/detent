@@ -38,7 +38,7 @@ func (listWidget) Describe() Description {
 		Needs: []Slot{
 			{Name: "field", What: "the value to list, one per line"},
 		},
-		NotFor:   "paths whose nesting matters — tree draws that",
+		NotFor:   "paths whose nesting matters, which tree draws",
 		Examples: []string{"changed files", "branch names"},
 	}
 }

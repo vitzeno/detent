@@ -95,20 +95,24 @@ sandbox_network: ""
 # /workspace.
 sandbox_workspace: ""
 
-# --- Views: whether a model may write a view for output nothing covers ---
+# --- Views: whether a view may be written for output nothing covers ---
 #
-# The pane always draws from a spec. The built-in rendering for each
-# judged kind is one, the ones detent ships for known commands are
-# more, and any you have saved under ~/.local/state/detent/views are
-# more again. The header says which of them drew what you are reading.
+# The pane always draws from a spec. The rendering for each judged
+# shape is one, the ones detent ships for known commands are more, and
+# any you have saved under ~/.local/state/detent/views are more again.
+# The header says which of them drew what you are reading.
 #
-#   saved     draw only from specs that already exist. Never calls a
-#             model, so that set never grows.
-#   generate  do that first, and when nothing covers an output, ask the
-#             proposer for a spec, verify it with Jev, and save it. The
-#             next run of that command shape is then served from disk
-#             for nothing, so the cost is per command shape, not per
-#             step.
+#   saved     draw only from specs that already exist. Asks nothing, so
+#             that set never grows.
+#   generate  do that first, and when nothing covers an output, compose
+#             one by asking the judge where the header is, how to read
+#             the bytes, which widget draws them, and which field each
+#             one reads. About 600ms, then saved, so the next run of
+#             that command shape is served from disk for nothing.
+#
+# generate needs jev_api_key: the judge is what writes a spec, so
+# detent refuses the combination at startup rather than quietly
+# behaving as saved.
 views: saved
 
 # --- Logs ---

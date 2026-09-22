@@ -71,7 +71,7 @@ func (meterWidget) Describe() Description {
 		What:       "one proportion counted from the rows, as a bar and a fraction",
 		// No Slots: this needs a count_where filter and an of denominator, which are values rather than fields,
 		// so nothing can compose one from field choices alone.
-		NotFor:   "a value per row — that is bar",
+		NotFor:   "a value per row, which is bar",
 		Examples: []string{"how many tests passed", "how many files are staged"},
 	}
 }

@@ -126,25 +126,16 @@ type Container interface {
 type Description struct {
 	What   string `json:"what"`
 	NotFor string `json:"not_for,omitempty"`
-	// Needs lists the fields this kind cannot draw without. A model
-	// told to fill every key and leave unused ones empty will
-	// otherwise empty a required one and the block fails to bind.
-	// Name the shape a field takes where it is not obvious: a filter
-	// that silently matches nothing draws a plausible, wrong view.
 	// Needs are the fields this kind cannot draw without, in the order
-	// it reads them. Structured rather than prose because a caller
-	// composing a block has to ask for each one: a sentence saying
-	// "columns (exactly two: label, then the number)" reads well and
-	// has to be kept in step by hand with whatever does the asking.
-	// One slot fills Block.Field; two or more fill Block.Columns in
-	// order. A kind needing something that is not a field, such as a
-	// title or a filter, declares none and cannot be composed.
+	// it reads them. One slot fills Block.Field, two or more fill
+	// Block.Columns in order, and a kind needing something that is not
+	// a field declares none. Structured rather than prose because
+	// whatever composes a block has to ask for each one, and a
+	// sentence has to be kept in step with that by hand.
 	Needs []Slot `json:"needs,omitempty"`
-	// Summarises marks a kind that draws one fact about every row
-	// rather than the rows themselves. A caller composing a view asks
-	// for a body and a summary separately, and which a widget is
-	// belongs here beside the widget, not in a list somewhere else
-	// that has to be kept in step with this one.
+	// Summarises marks a kind drawing one fact about every row rather
+	// than the rows themselves. A caller asks for a body and a summary
+	// separately, and which a widget is belongs beside the widget.
 	Summarises bool     `json:"summarises,omitempty"`
 	Examples   []string `json:"examples,omitempty"`
 }
