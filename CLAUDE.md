@@ -82,6 +82,7 @@ viewspec    →  the standard library, nothing else
 views       →  viewspec           (the specs detent ships, data only)
 logging     →  the standard library, nothing else
 agent       →  propose, host, classify, usage, viewgen (render kinds)
+viewgen     →  classify, usage, views, viewspec, logging
 config      →  agent, classify, propose, sandbox (for their defaults only)
 host        →  capture
 sandbox     →  capture (never host or agent)
@@ -455,16 +456,37 @@ routing     →  agent, sandbox
   `boundView` and `applyView` now log the drop, since the pane falling
   back looks identical to the pane having nothing to say.
 
-  **There is one render path.** `ui/views.go`'s `specChain` tries, in
-  order: a spec keyed to the command (`normaliseCommand`), the built-in
-  `fallbackSpecs` entry for whatever `render_kind` judged the output to
-  be, then plain bytes. So `render_kind` no longer renders anything — it
-  *chooses a prebuilt spec*, which is why `styledBody`'s switch and
-  `focusedTable` are gone. `Draw` returns a `Render` carrying
-  `CursorLine`, which `refreshViewport` uses to scroll the viewport to
-  the selection, so generated views scroll like any other output.
-  `ui/tabular` was `focusedTable`'s engine and is deleted; a richer
-  table is a widget registered over the built-in, not a second path.
+  **There is one render path.** Every row draws from a spec, and the
+  spec comes from exactly one of five places, tried in this order:
+
+  | | Where | Cost |
+  | --- | --- | --- |
+  | saved | `~/.local/state/detent/views/`, composed on an earlier run | ~1ms |
+  | composed | the judge, this run, then written to disk | ~660ms |
+  | shipped | `views.ForCommand(normalised)` | 0 |
+  | by shape | `views.ForKind(render_kind)` | 0 |
+  | raw | `views.Raw("log")` | 0 |
+
+  The first three are `viewgen`, behind the Driver. The last two are
+  `ui`'s own chain in `fallbackChain`, which needs no Driver at all, so
+  the pane is never blank while the judge is answering. A composed view
+  replaces what is already drawn when it arrives.
+
+  So `render_kind` renders nothing — it *chooses a prebuilt spec* and
+  *prunes the vocabulary* a composed one may use, which is why
+  `styledBody`'s switch and `focusedTable` are gone. `Draw` returns a
+  `Render` carrying `CursorLine`, which `refreshViewport` uses to
+  scroll to the selection, so a composed view scrolls like any other
+  output. `ui/tabular` was `focusedTable`'s engine and is deleted; a
+  richer table is a widget registered over the built-in, not a second
+  path.
+
+  **Nothing is trusted without binding.** Saved, shipped and composed
+  specs all bind against the real output before use (`usable`), because
+  a key match is not a guarantee: `ps` and `ps aux` share one key and
+  print different columns, so a spec that bound nowhere still sat in
+  front of composition, silently. `applyView` binds once more on the
+  `ui` side, since a Driver hands over a `Spec` and not a `Bound`.
 
 - **`logging`** — the structured log, outside `internal/` like `ui` and
   `viewspec` so anything may import it; stdlib only (`log/slog`), so no
@@ -482,6 +504,42 @@ routing     →  agent, sandbox
   set, because they carry secrets and bulk. `viewspec` deliberately
   does not log: it returns typed errors and the caller records them,
   which is what keeps it embeddable.
+
+- **`internal/viewgen`** — writes a spec by asking the judge closed
+  questions and assembling the answers. It does not ask a model to
+  write JSON; that path existed, ran 31s median against 300ms here, and
+  could name a widget, a role or a field that did not exist. All three
+  happened. None is representable from a list the program built.
+
+  `Compose` is four questions in a fixed order, and the order is the
+  whole design: each step narrows what the next can be wrong about.
+
+  1. **which line is the header** (`header`) — the candidate lines are
+     quoted, plus `none` for a bare listing like `ls -la`. "How many
+     lines to skip" is arithmetic; naming the lines is a choice.
+  2. **which parse kind** (`parseKind`) — eight options, with the
+     located header in the state, because `columns` and `fixed` differ
+     only in whether the header's own names contain spaces. `honour`
+     then treats the header as fact and the kind as a preference: where
+     the chosen kind cannot read that header, the kind gives way, tried
+     against the interpreter rather than argued about. netstat is why.
+  3. **run the extractor** — now the field names are real rather than
+     guessed, and `Bound.Sample` gives values to show alongside them.
+  4. **body and summary widget, then a field per slot** — two batched
+     calls. The widgets are whatever `prune` allows for this render
+     kind, split into body and summary by each widget's own
+     `Describe().Summarises`. The fields are what step 3 produced.
+
+  `lines` is the one parse that carries a pattern, and it is fixed
+  (`wholeLine`): one field holding the line. A pattern naming three
+  parts is the single thing a choice cannot express, so output needing
+  one draws plainly rather than wrongly. `on_enter` is gone from
+  composed specs for the same reason: a command template is free text.
+  Saved and shipped specs still carry one.
+
+  **Composition needs a judge.** It is the only way a spec gets written
+  now, so `views: generate` without a `jev_api_key` is rejected at
+  startup rather than quietly behaving as `saved`.
 
 - **`views`** — every spec detent ships, in one place: the ones keyed
   by a command's normalised name (`ForCommand`) and the ones keyed by
@@ -506,6 +564,40 @@ routing     →  agent, sandbox
   `config` independently declare the same LM Studio defaults
   (`http://localhost:1234/v1`, `prism-ml/bonsai-27b`) — that duplication is
   intentional so `propose` has no dependency on `config`.
+
+### Adding or changing a widget
+
+Four files can decide something about a widget, and it is worth knowing
+which, because three of them fail *silently* when missed. Adding
+`markdown` needed all four and had only one, for months.
+
+| Decides | Where | Missed it? |
+| ------- | ----- | ---------- |
+| the widget exists and draws | `viewspec/widget_<name>.go` | compile error |
+| what it is for, and whether it summarises | its own `Describe()` | **absent from every choice list** |
+| which output shapes may use it | `internal/viewgen/kinds.go` | **never offered** |
+| anything needing more than stdlib | registered in `ui/views.go` | n/a |
+
+`Describe()` is optional so a consumer can register a plain function as
+a widget, which is right; the cost is that a widget without one is
+registered, drawable, and invisible to the judge with no error
+anywhere. `Summarises` lives there too, rather than in a list in
+viewgen, so registering a widget is enough to have it offered as a
+summary: the fact belongs beside the widget, not somewhere that has to
+be kept in step with it.
+
+The fourth row is `markdown`: it needs glamour, which is 126 packages,
+and `viewspec` imports only the standard library
+(`TestPackage_DependsOnStdlibOnly`). So `ui` registers it over the
+standard set. That is the extension point working as intended, and it
+is safe in one direction only: `ui` adds to `viewspec.Standard()` and
+never removes, so the composer can only pick what `ui` can draw.
+`TestRegistry_ComposerCannotPickWhatUiCannotDraw` pins that.
+
+`ui`'s `markdown.Wants` heuristic is not a fifth place. It is the same
+two-layer split `render_kind` already has: a heuristic when no judge
+has spoken, the judge's answer when one has. `fallbackChain` runs
+before anything is judged and with no Driver at all.
 
 ### Keeping `ui` and `agent` in sync
 

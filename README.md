@@ -39,9 +39,14 @@ kinds: tables and trees, but also gauges, histograms, box plots,
 stacked bands, gantt charts, braille scatter plots and heatmaps.
 Detent ships specs for common commands and picks a sensible default otherwise.
 
-Set `views: generate` and it will ask the model to design one for output
-nothing covers, check it actually binds against the real bytes, have Jev score
-it, and save the winner. The second run of that command is free.
+Set `views: generate` and it will design one for output nothing covers, by
+asking the judge a handful of closed questions: where the header is, how to
+read the bytes, which widget draws them, which field each one reads. It never
+writes the spec, it picks from lists, so it cannot name a widget or a field
+that does not exist. About 600ms, and the second run of that command is free.
+
+That needs a Jev key. Without one you still get every spec detent ships and
+every one you have saved; you just never get a new one.
 
 ![generated view](screenshots/tui-0-dark-gen.png)
 
