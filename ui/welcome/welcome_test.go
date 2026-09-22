@@ -88,3 +88,13 @@ func TestWelcome_CentresVertically(t *testing.T) {
 	assert.Positive(t, lead, "content must be pushed down, not pinned to the top")
 	assert.InDelta(t, lead, trail, 2, "roughly as much space above as below")
 }
+
+// The welcome pane is where a human learns which build they are
+// running, so the version sits under the name rather than only in the
+// status bar, which truncates first when the window is narrow.
+func TestLines_ShowsTheVersion(t *testing.T) {
+	got := Lines(Facts{
+		Version: "9.9.9", Proposer: "m", RunMode: "host", Views: "saved",
+	}, 90, 30, 0)
+	assert.Contains(t, strings.Join(got, "\n"), "9.9.9")
+}

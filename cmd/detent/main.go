@@ -29,6 +29,7 @@ import (
 	"github.com/vitzeno/detent/ui"
 	"github.com/vitzeno/detent/ui/status"
 	"github.com/vitzeno/detent/ui/theme"
+	"github.com/vitzeno/detent/version"
 )
 
 func main() {
@@ -50,7 +51,13 @@ func run() error {
 	themeName := flag.String("theme", "", "color scheme: "+strings.Join(theme.Names(), ", ")+" (default: config file, else "+config.DefaultTheme+")")
 	sandboxMode := flag.String("sandbox", "", "sandbox mode: auto, host (default: config file, else auto)")
 	sandboxSocket := flag.String("sandbox-socket", "", "containerd socket path (default: config file, else OS-conventional)")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("detent", version.String())
+		return nil
+	}
 
 	fileCfg, err := config.Load(*configPath)
 	if err != nil {

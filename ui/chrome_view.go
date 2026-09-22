@@ -5,6 +5,7 @@ import (
 
 	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/status"
+	"github.com/vitzeno/detent/version"
 )
 
 // The frame around the panes, in the order it appears on screen: the
@@ -29,7 +30,7 @@ func (m Model) sessionBar() string {
 	usage := styleFaint.Render(fmt.Sprintf("⏱ %s · %stok",
 		status.Dur(snap.MachineTime()), status.Tokens(snap.ProposerTokens+snap.JudgeTokens)))
 	return fmt.Sprintf("%s %s · %d goal(s) · %d cmd(s)  %s  %s  %s",
-		styleBrand.Render("◆ detent v2"), styleFaint.Render(m.info.Proposer),
+		styleBrand.Render("◆ detent "+version.Number), styleFaint.Render(m.info.Proposer),
 		goals, m.totalCmds, usage, runModeBadge(m.info.RunMode), jev)
 }
 

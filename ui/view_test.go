@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/vitzeno/detent/version"
 )
 
 // Tests for view.go: rendering, sizing, and the detail-zone component
@@ -160,7 +161,7 @@ func TestUI_ExpandedRowsCannotPushOutSessionBar(t *testing.T) {
 	v := m.View().Content
 	lines := strings.Count(v, "\n") + 1
 	require.Equal(t, m.layout.height, lines, "expanded rows and multiline banners must not grow the frame")
-	require.Contains(t, v, "detent v2", "session bar stays on screen")
+	require.Contains(t, v, "detent "+version.Number, "session bar stays on screen")
 }
 
 func TestUI_WideLinesCannotPushOutSessionBar(t *testing.T) {
@@ -181,7 +182,7 @@ func TestUI_WideLinesCannotPushOutSessionBar(t *testing.T) {
 	v := m.View().Content
 	lines := strings.Count(v, "\n") + 1
 	require.Equal(t, m.layout.height, lines, "wide content must not grow the frame")
-	require.Contains(t, v, "detent v2", "session bar stays on screen")
+	require.Contains(t, v, "detent "+version.Number, "session bar stays on screen")
 	require.Contains(t, v, "…", "cuts marked visibly")
 }
 

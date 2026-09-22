@@ -8,6 +8,7 @@ import (
 	"github.com/vitzeno/detent/ui/editor"
 	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/welcome"
+	"github.com/vitzeno/detent/version"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -152,6 +153,7 @@ func (m *Model) refreshViewport() {
 func (m Model) welcomePane() []string {
 	snap := m.sess.UsageSnapshot()
 	return welcome.Lines(welcome.Facts{
+		Version:  version.String(),
 		Proposer: m.info.Proposer, Judge: m.info.Judge, RunMode: m.info.RunMode,
 		Views: m.info.Views,
 		Image: m.info.Image, Mount: m.info.Mount,

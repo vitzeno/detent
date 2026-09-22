@@ -23,6 +23,8 @@ const TickRate = 420 * time.Millisecond
 
 // Facts is what the pane reports about this run.
 type Facts struct {
+	// Version is what this build calls itself.
+	Version  string
 	Proposer string
 	Judge    string // "" when no judge is wired
 	RunMode  string // "host" or "sandbox"
@@ -79,11 +81,11 @@ func banner(f Facts, width, frame int, compact bool) []string {
 		out = append(out, pad+l)
 	}
 	if compact {
-		return append(out, centreLine(brand.Render("d e t e n t"), width))
+		return append(out, centreLine(brand.Render("d e t e n t")+faint.Render("  "+f.Version), width))
 	}
 	return append(out,
 		"",
-		centreLine(brand.Render("d e t e n t"), width),
+		centreLine(brand.Render("d e t e n t")+faint.Render("  "+f.Version), width),
 		// Checkpointing is a sandbox thing; on the host the
 		// environment section below carries the correction rather than
 		// the tagline hedging it.
