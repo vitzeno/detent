@@ -18,22 +18,31 @@ type slashCmd struct {
 	run  func(m Model, input string) (tea.Model, tea.Cmd)
 }
 
-var slashCommands = []slashCmd{
-	{"/quit", "quit detent", func(m Model, _ string) (tea.Model, tea.Cmd) {
-		return m, tea.Quit
-	}},
-	{"/abort", "abort the running command", Model.abortRunning},
-	{"/tree", "browse files and directories", func(m Model, _ string) (tea.Model, tea.Cmd) {
-		return m.openTreeTool()
-	}},
-	{"/usage", "show usage and timings", func(m Model, _ string) (tea.Model, tea.Cmd) {
-		return m.openTool("usage", &stepRow{command: "/usage", toolKind: "usage", tool: toolState{usageExpand: -1}})
-	}},
-	{"/rollback", "undo a step and everything after it, e.g. /rollback 2", Model.runRollback},
-	{"/new", "clear the session and start over", Model.startOver},
-	{"/help", "show slash commands", func(m Model, _ string) (tea.Model, tea.Cmd) {
-		return m.openTool("help", &stepRow{command: "/help", toolKind: "help"})
-	}},
+// slashCommands is a function rather than a var because /help draws
+// the registry and the registry contains /help: as a package-level
+// variable that is an initialisation cycle, which the compiler is
+// right to refuse.
+func slashCommands() []slashCmd {
+	return []slashCmd{
+		{"/quit", "quit detent", func(m Model, _ string) (tea.Model, tea.Cmd) {
+			return m, tea.Quit
+		}},
+		{"/abort", "abort the running command", Model.abortRunning},
+		{"/tree", "browse files and directories", func(m Model, _ string) (tea.Model, tea.Cmd) {
+			return m.openTreeTool()
+		}},
+		{"/usage", "show usage and timings", func(m Model, _ string) (tea.Model, tea.Cmd) {
+			return m.openPanel(panelUsage)
+		}},
+		{"/status", "show what detent is and what it has done", func(m Model, _ string) (tea.Model, tea.Cmd) {
+			return m.openPanel(panelStatus)
+		}},
+		{"/rollback", "undo a step and everything after it, e.g. /rollback 2", Model.runRollback},
+		{"/new", "clear the session and start over", Model.startOver},
+		{"/help", "show slash commands", func(m Model, _ string) (tea.Model, tea.Cmd) {
+			return m.openPanel(panelHelp)
+		}},
+	}
 }
 
 // maxSlashRows caps how many entries the dropdown shows at once. Past
@@ -47,7 +56,7 @@ func matchSlash(input string) []slashCmd {
 		return nil
 	}
 	var out []slashCmd
-	for _, c := range slashCommands {
+	for _, c := range slashCommands() {
 		if strings.HasPrefix(c.Name, strings.ToLower(input)) {
 			out = append(out, c)
 		}
@@ -68,7 +77,7 @@ func lookupSlash(input string) (slashCmd, bool) {
 		return slashCmd{}, false
 	}
 	name := strings.ToLower(fields[0])
-	for _, c := range slashCommands {
+	for _, c := range slashCommands() {
 		if c.Name == name {
 			return c, true
 		}

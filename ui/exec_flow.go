@@ -47,6 +47,9 @@ func (m Model) onExecDone(msg execDoneMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	row.cmd.ec = msg.ec
+	if msg.ec.Result.ExitCode != 0 {
+		m.counts.failed++
+	}
 	// Only for a command that worked. A failed one often never wrote
 	// the file, and the editor takes the whole output pane — so the
 	// stderr explaining the failure got replaced by "could not open".

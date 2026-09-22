@@ -245,6 +245,13 @@ func tableBlock() *goalBlock {
 	return &goalBlock{goal: "g", steps: steps}
 }
 
+// addGoal appends a finished goal, for a test about how many of them
+// the panel shows.
+func (f *fakeDriver) addGoal(text string) {
+	f.tracker = append(f.tracker, GoalStats{Text: text, End: "done"})
+	f.snap.Goals++
+}
+
 func usageModel() (Model, *fakeDriver) {
 	drv := newFakeDriver()
 	drv.tracker = []GoalStats{{

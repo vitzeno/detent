@@ -38,7 +38,12 @@ type Model struct {
 	waiting bool
 	abort   context.CancelFunc
 
-	nav      navState
+	nav navState
+
+	// panel is the open read-only page, if any: usage, status, help.
+	// Not part of blocks, so opening one leaves history alone.
+	panel    panelState
+	counts   counters
 	layout   layoutState
 	confirm  confirmState
 	save     saveState
@@ -164,6 +169,7 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !applyView(msg.row, msg.view) && msg.view.Source == ViewDeclined {
 			msg.row.cmd.viewDeclined = true
 		}
+		m.countView(msg.view.Source)
 		return m, nil
 
 	case saveDoneMsg:

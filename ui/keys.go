@@ -240,6 +240,12 @@ func (m Model) slashKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 
 // outputKey acts inside the detail component instead of moving rows.
 func (m Model) outputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// A panel owns its own keys where it has any; the rest scroll.
+	if m.panel.open() {
+		if next, cmd, handled := m.panelKey(msg); handled {
+			return next, cmd
+		}
+	}
 	switch msg.String() {
 	case "up":
 		return m.outputNav(-1)
@@ -262,16 +268,8 @@ func (m Model) outputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 					return nm, nil
 				}
 			}
-			switch r.toolKind {
-			case "tree":
+			if r.toolKind == "tree" {
 				return m.openTreeSelection(r)
-			case "usage":
-				if r.tool.usageExpand == r.tool.usageCursor {
-					r.tool.usageExpand = -1
-				} else {
-					r.tool.usageExpand = r.tool.usageCursor
-				}
-				return m, nil
 			}
 			r.cmd.expanded = !r.cmd.expanded
 		}
@@ -316,6 +314,9 @@ func (m Model) onEscape() (tea.Model, tea.Cmd) {
 	if m.prompt.Open() {
 		m.prompt.Close()
 		return m, nil
+	}
+	if m.panel.open() {
+		return m.closePanel(), nil
 	}
 	// Idle esc in the output pane steps back to history; a running
 	// command still aborts.

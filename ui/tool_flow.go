@@ -109,6 +109,8 @@ func (m Model) startOver(string) (tea.Model, tea.Cmd) {
 	m.blocks = nil
 	m.cur = nil
 	m.totalCmds = 0
+	m.panel = panelState{}
+	m.counts = counters{}
 	m.nav = navState{follow: true, histHeight: m.nav.histHeight}
 	m.mode = modeInput
 	m.prompt.Clear()

@@ -42,6 +42,10 @@ func (m Model) viewportHeader() string {
 		return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel("reverting", active),
 			styleGoal.Render(plural(len(m.rollback.files), "file")))
 	}
+	if m.panel.open() {
+		return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(m.panel.kind, active),
+			styleFaint.Render("esc to close"))
+	}
 	r := m.focused()
 	if r == nil {
 		return fmt.Sprintf("%s %s", paneMark(active), paneLabel("detent", active))

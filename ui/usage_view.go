@@ -11,8 +11,9 @@ import (
 
 // usageLines renders the /usage row: session totals, per-goal rows, and
 // the selected goal's per-step spans. Cursor/expand state lives on the
-// row, not Model, so more than one /usage invocation can coexist.
-func (m Model) usageLines(r *stepRow) []string {
+// The cursor comes from the open panel rather than from a row,
+// since /usage is a page about the session and not a step in it.
+func (m Model) usageLines(cursor, expand int) []string {
 	goals := m.sess.Tracker()
 	snap := m.sess.UsageSnapshot()
 
@@ -27,15 +28,11 @@ func (m Model) usageLines(r *stepRow) []string {
 	}
 	lines = append(lines, "")
 
-	shown := goals
-	moreGoals := 0
-	if len(shown) > 8 {
-		shown = shown[:8]
-		moreGoals = len(goals) - 8
-	}
-	for i, g := range shown {
+	// Every goal, not the first eight: the panel is a scrolling
+	// viewport, so a cap here would hide what scrolling is for.
+	for i, g := range goals {
 		mark := "  "
-		if i == r.tool.usageCursor {
+		if i == cursor {
 			mark = styleRowCursor.Render("▸ ")
 		}
 		ptok, jtok := 0, 0
@@ -50,26 +47,18 @@ func (m Model) usageLines(r *stepRow) []string {
 		lines = append(lines, fmt.Sprintf("%s%d. %s (%s) · %d steps · %s · %s tok",
 			mark, i+1, layout.Truncate(g.Text, 40), end, len(g.Steps),
 			status.Dur(g.MachineTime()), status.Tokens(ptok+jtok)))
-		if i == r.tool.usageExpand {
+		if i == expand {
 			lines = append(lines, usageSteps(g)...)
 		}
-	}
-	if moreGoals > 0 {
-		lines = append(lines, styleFaint.Render(fmt.Sprintf("  … +%d more goals", moreGoals)))
 	}
 	return lines
 }
 
-// usageSteps renders one goal's per-step spans, capped.
+// usageSteps renders one goal's per-step spans. Uncapped: the
+// panel scrolls.
 func usageSteps(g GoalStats) []string {
 	var out []string
-	steps := g.Steps
-	more := 0
-	if len(steps) > 10 {
-		steps = steps[:10]
-		more = len(g.Steps) - 10
-	}
-	for i, s := range steps {
+	for i, s := range g.Steps {
 		var b strings.Builder
 		fmt.Fprintf(&b, "    %d. %s", i+1, layout.Truncate(s.Command, 30))
 		fmt.Fprintf(&b, " · p %s/%s", status.Dur(s.Propose), status.Tokens(s.ProposerPrompt+s.ProposerComplete))
@@ -89,9 +78,6 @@ func usageSteps(g GoalStats) []string {
 			}
 		}
 		out = append(out, styleMuted.Render(b.String()))
-	}
-	if more > 0 {
-		out = append(out, styleFaint.Render(fmt.Sprintf("    … +%d more steps", more)))
 	}
 	return out
 }

@@ -28,15 +28,6 @@ func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case "usage":
-			n := len(m.sess.Tracker())
-			if d < 0 && r.tool.usageCursor > 0 {
-				r.tool.usageCursor--
-			}
-			if d > 0 && r.tool.usageCursor < n-1 {
-				r.tool.usageCursor++
-			}
-			return m, nil
 		}
 	}
 	if d < 0 {

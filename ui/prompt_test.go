@@ -118,7 +118,7 @@ func typeRune(m Model, r rune) Model {
 func TestSlashDropdown_OpensFiltersAccepts(t *testing.T) {
 	m := testUIModel()
 	m = typeRune(m, '/')
-	require.Len(t, m.prompt.matches, len(slashCommands), "bare / lists every command")
+	require.Len(t, m.prompt.matches, len(slashCommands()), "bare / lists every command")
 
 	m = typeRune(m, 'q')
 	require.Len(t, m.prompt.matches, 1)
@@ -141,7 +141,7 @@ func TestSlashDropdown_OpensFiltersAccepts(t *testing.T) {
 func TestSlashDropdown_NavigateAndEsc(t *testing.T) {
 	m := testUIModel()
 	m = typeRune(m, '/')
-	require.Len(t, m.prompt.matches, len(slashCommands))
+	require.Len(t, m.prompt.matches, len(slashCommands()))
 
 	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = nm.(Model)
@@ -184,21 +184,21 @@ func TestSlashDropdown_RendersAboveInput(t *testing.T) {
 // merely out of view must say so rather than look like one that isn't
 // there — and walking down to it must bring it on screen.
 func TestSlashDropdown_ScrollsToReachEveryCommand(t *testing.T) {
-	require.Greater(t, len(slashCommands), maxSlashRows,
+	require.Greater(t, len(slashCommands()), maxSlashRows,
 		"this test only means something while the registry is taller than the window")
 
 	m := typeRune(testUIModel(), '/')
-	last := slashCommands[len(slashCommands)-1]
+	last := slashCommands()[len(slashCommands())-1]
 
 	v := plain(m.View().Content)
 	assert.NotContains(t, v, last.Desc, "the tail starts out of view")
 	assert.Contains(t, v, "more", "and the dropdown says what it is hiding")
 
-	for range len(slashCommands) {
+	for range len(slashCommands()) {
 		nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 		m = nm.(Model)
 	}
-	assert.Equal(t, len(slashCommands)-1, m.prompt.cursor, "down stops at the last entry")
+	assert.Equal(t, len(slashCommands())-1, m.prompt.cursor, "down stops at the last entry")
 
 	v = plain(m.View().Content)
 	assert.Contains(t, v, last.Desc, "scrolled to, the last entry is on screen")
@@ -245,14 +245,14 @@ func TestSlashDropdown_RowsAlign(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, cols, min(len(slashCommands), maxSlashRows), "every dropdown row must render")
+	require.Len(t, cols, min(len(slashCommands()), maxSlashRows), "every dropdown row must render")
 	for i, col := range cols[1:] {
 		assert.Equal(t, cols[0], col, "row %d must start in the same column as the cursor row", i+1)
 	}
 }
 
 func TestSlashRegistry_MatchAndExact(t *testing.T) {
-	assert.Len(t, matchSlash("/"), len(slashCommands), "bare / matches the whole registry")
+	assert.Len(t, matchSlash("/"), len(slashCommands()), "bare / matches the whole registry")
 	require.Len(t, matchSlash("/q"), 1)
 	assert.Equal(t, "/quit", matchSlash("/q")[0].Name)
 	assert.Empty(t, matchSlash("/x"))
@@ -266,7 +266,7 @@ func TestSlashRegistry_MatchAndExact(t *testing.T) {
 // must be listed — the two used to live in different packages and had
 // already drifted (/q ran but never appeared anywhere).
 func TestSlashRegistry_EveryCommandRuns(t *testing.T) {
-	for _, c := range slashCommands {
+	for _, c := range slashCommands() {
 		t.Run(c.Name, func(t *testing.T) {
 			require.NotNil(t, c.run, "registered without a handler")
 			require.NotEmpty(t, c.Desc, "registered without a description")

@@ -73,12 +73,11 @@ type cmdState struct {
 	viewDeclined bool
 }
 
-// toolState holds a stepRow's fields for a slash-command row (/tree,
-// /usage, /help, or a tree-opened file); zero-valued on a command row.
+// toolState holds a stepRow's fields for a slash-command row. Only
+// /tree is one now: the pages about the session are panels, which are
+// not rows at all.
 type toolState struct {
-	tree        *tree.Model // toolKind == "tree"
-	usageCursor int         // toolKind == "usage"
-	usageExpand int
+	tree *tree.Model
 }
 
 // goalJudgement is the second opinion on a finished goal. scored is

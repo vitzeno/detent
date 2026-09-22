@@ -25,6 +25,11 @@ func (m Model) detailLines() []string {
 	if m.mode == modeRollbackConfirm {
 		return strings.Split(m.output.View(), "\n")
 	}
+	// A panel is a page about the session, drawn through the viewport
+	// so it scrolls however long it runs.
+	if m.panel.open() {
+		return strings.Split(m.output.View(), "\n")
+	}
 	if m.showWelcome() {
 		return m.welcomePane()
 	}
@@ -32,13 +37,8 @@ func (m Model) detailLines() []string {
 		if r.editor != nil {
 			return m.editorLines(r.editor)
 		}
-		switch r.toolKind {
-		case "tree":
+		if r.toolKind == "tree" {
 			return r.tool.tree.View(paneInner(m.layout.outputColW), m.output.Height())
-		case "usage":
-			return m.usageLines(r)
-		case "help":
-			return helpLines()
 		}
 	}
 	return strings.Split(m.output.View(), "\n")
@@ -114,6 +114,10 @@ func (m *Model) refreshViewport() {
 		m.perf.uiPreps++
 	}()
 	_, m.nav.histOffset = m.historyWindow()
+	if m.panel.open() {
+		m.setViewContent(strings.Join(m.panelLines(), "\n"))
+		return
+	}
 	if m.mode == modeRollbackConfirm {
 		m.setViewContent(m.rollbackFileLines())
 		return
