@@ -13,6 +13,7 @@ default, OpenRouter or OpenAI too.
 
 ```sh
 make build && ./bin/detent          # sandboxed (needs containerd, see below)
+make install                        # and onto your PATH
 ./bin/detent -sandbox host          # straight on your machine
 make run-headless GOAL="find go files over 1MB"
 ```

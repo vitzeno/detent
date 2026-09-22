@@ -28,6 +28,8 @@ to heuristics for post-execution rendering. Widening what counts as Dangerous
 
 ```sh
 make build         # go build -o bin/detent ./cmd/detent
+make install       # build, then copy it to go env GOBIN (or GOPATH/bin)
+                   # PREFIX=/usr/local/bin with sudo for a system-wide one
 make run           # launch the TUI (go run, no build step)
 make run-headless GOAL="..."   # run one goal headlessly and exit
 make test          # go test ./...
