@@ -449,3 +449,53 @@ func TestFitThreshold_KeepsWhatJevActuallyScores(t *testing.T) {
 		assert.ErrorIs(t, err, viewgen.ErrNoneFit, "%v", tc.score)
 	}
 }
+
+// A judge that fails has approved nothing. Returning a perfect score
+// on error meant a whole session of candidates was accepted unjudged,
+// which is how the views got bad without anything looking broken.
+func TestFit_AJudgeThatFailsRejects(t *testing.T) {
+	g := &viewgen.Generator{
+		Model: &fakeModel{replies: []string{goodSpec}},
+		Judge: &failingJudge{},
+		Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
+
+	_, err := g.Generate(context.Background(), request())
+	assert.ErrorIs(t, err, viewgen.ErrNoneFit, "unjudged is not approved")
+}
+
+// The judge is asked about shape, so it gets a sample. Sending the
+// whole output is what made the call fail in the first place.
+func TestFit_TheJudgeSeesABoundedSample(t *testing.T) {
+	spy := &statejudge{score: 0.9}
+	g := &viewgen.Generator{
+		Model: &fakeModel{replies: []string{goodSpec}},
+		Judge: spy,
+		Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
+
+	req := request()
+	req.Output = strings.Repeat(goTest, 200) // long, and still parseable
+	require.Greater(t, len(req.Output), viewgen.MaxJudgeBytes*4)
+
+	_, err := g.Generate(context.Background(), req)
+	require.NoError(t, err)
+
+	shown := spy.seen["output"].(string)
+	assert.LessOrEqual(t, len(shown), viewgen.MaxJudgeBytes+len("\n…[truncated]"))
+	assert.Contains(t, shown, "truncated")
+}
+
+type failingJudge struct{}
+
+func (failingJudge) Ask(context.Context, classify.State, classify.Questions) (classify.Answers, classify.Usage, error) {
+	return nil, classify.Usage{}, errors.New("jev unreachable")
+}
+
+type statejudge struct {
+	score float64
+	seen  map[string]any
+}
+
+func (j *statejudge) Ask(_ context.Context, state classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
+	j.seen = state.(map[string]any)
+	return classify.Answers{"view_fit": {Noul: j.score}}, classify.Usage{}, nil
+}

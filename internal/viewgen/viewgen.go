@@ -251,6 +251,18 @@ const (
 // DefaultCandidates is how many specs are generated and ranked.
 const DefaultCandidates = 2
 
+// MaxJudgeBytes caps the output shown to the judge. A choice about
+// shape needs a sample, not the whole thing.
+const MaxJudgeBytes = 4 * 1024
+
+// head returns at most n bytes of s, marked where it was cut.
+func head(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "\n…[truncated]"
+}
+
 // DefaultFitThreshold is the Jev score a spec must reach to be kept.
 // At 0.5 nothing was ever kept: a session's four valid candidates came
 // back 0.45, 0.48, 0.45, 0.45, a band too tight to be Jev disliking
@@ -301,8 +313,11 @@ func (g *Generator) fit(ctx context.Context, req Request, spec *viewspec.Spec, b
 		kinds = append(kinds, b.Kind)
 	}
 	answers, u, ok := classify.AskOrFallback(ctx, g.Judge, classify.State(map[string]any{
-		"command":       req.Command,
-		"output":        req.Output,
+		"command": req.Command,
+		// Bounded, the way agent's own judgePost bounds it. Sent whole,
+		// a long output made every view_fit call fail, and the failure
+		// scored a perfect 1 (see below), so nothing was ever judged.
+		"output":        head(req.Output, MaxJudgeBytes),
 		"parse_kind":    spec.Parse.Kind,
 		"fields_found":  bound.Fields(),
 		"blocks_chosen": kinds,
@@ -314,8 +329,11 @@ func (g *Generator) fit(ctx context.Context, req Request, spec *viewspec.Spec, b
 			Noul: &classify.NoulQuestion{},
 		},
 	})
+	// Fail closed. A judge that did not answer has not approved
+	// anything, and scoring the unjudged a perfect 1 turned every
+	// outage into "accept whatever came back".
 	if !ok {
-		return 1, usage.Usage{}
+		return 0, usage.Usage{}
 	}
 	return answers["view_fit"].Noul, usage.Usage{
 		PromptTokens:     u.InputTokens,
