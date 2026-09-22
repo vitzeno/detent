@@ -13,12 +13,10 @@ import (
 
 // Panels: read-only pages about the session rather than about a step.
 //
-// They take the output pane without touching history. A panel is not
-// something the harness did, so filing one as a history entry put a
-// row where the running goal's own row should be, and there is no
-// undoing or re-reading it later. Being an overlay also means the
-// viewport draws them, so a long one scrolls rather than being cut at
-// whatever count fitted.
+// They take the output pane without touching history, because a panel
+// is not something the harness did: filing one put a row where the
+// running goal's own row belongs. The viewport draws them, so a long
+// one scrolls rather than stopping at whatever count fitted.
 
 const (
 	panelUsage  = "usage"
