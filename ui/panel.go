@@ -104,8 +104,10 @@ func (m Model) panelLines() []string {
 func (m Model) statusLines() []string {
 	snap := m.sess.UsageSnapshot()
 	var out []string
+	// Padded before styling: a width verb counts the escape bytes in a
+	// rendered string, so styling first left every label unaligned.
 	add := func(label, value string) {
-		out = append(out, fmt.Sprintf("  %-16s %s", styleFaint.Render(label), value))
+		out = append(out, "  "+styleFaint.Render(fmt.Sprintf("%-14s", label))+" "+value)
 	}
 	head := func(s string) {
 		out = append(out, "", styleBrand.Render(s))
