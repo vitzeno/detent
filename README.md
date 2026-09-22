@@ -90,7 +90,7 @@ because nothing detent ran accounts for those.
 | Key | Does |
 | --- | --- |
 | `enter` | run the goal in the input box |
-| `/` | command list: `/rollback`, `/tree`, `/usage`, `/new`, `/abort`, `/quit` |
+| `/` | command list: `/status`, `/usage`, `/rollback`, `/tree`, `/new`, `/abort`, `/quit` |
 | `esc` | abort the running goal |
 | `tab` | cycle input → history → output |
 | `↑` `↓` | move through history, or scroll the focused pane |

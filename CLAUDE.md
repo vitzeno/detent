@@ -79,9 +79,11 @@ Package dependency flow — `ui` and `agent` never import each other;
 cmd/detent  →  ui, resolver, agent, classify, config, routing, propose (Ping only)
 resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio, viewgen
 ui          →  its own subpackages (editor, welcome, render, status,
-                markdown, theme, island, tree, layout) + viewspec, views, logging
+                markdown, theme, island, tree, layout) + viewspec, views,
+                version, logging
 viewspec    →  the standard library, nothing else
 views       →  viewspec           (the specs detent ships, data only)
+version     →  nothing at all
 logging     →  the standard library, nothing else
 agent       →  propose, host, classify, usage, viewgen (render kinds)
 viewgen     →  classify, usage, views, viewspec, logging
@@ -291,13 +293,27 @@ routing     →  agent, sandbox
   message and then re-syncs the panes **once**, so no handler has to
   remember to refresh anything. What history shows is derived per
   render by `historyWindow`; the only scroll state kept is its offset.
+  `trackNewest` separates two things a new row does: history scrolls to
+  the bottom whatever the human was doing, since that is what history
+  is for, while the cursor moves only when nobody is reading the output
+  pane, because moving it swaps the output out from under them.
   `prompt.go` owns the input box and its slash dropdown together, so
   nothing else reaches into the textarea or the match list.
   `slash.go` is the slash-command registry, and each entry carries its
   own handler so a command can't be listed without working or work
   without being listed; the dropdown scrolls once the registry
   outgrows `maxSlashRows`, its window derived from the cursor rather
-  than stored beside it. The input keeps focus while a goal runs
+  than stored beside it. It is a function rather than a var because
+  `/help` draws the registry and the registry contains `/help`, which
+  as a package-level variable is an initialisation cycle.
+  `panel.go` holds the pages about the session rather than about a
+  step: `/usage`, `/status`, `/help`. A panel is an overlay, not a
+  block, so opening one leaves history alone; filing `/usage` as a row
+  put it where the running goal's own row belongs, which is exactly
+  what you are looking at when you ask a long goal how it is going.
+  They draw through the viewport, so length is scrolling rather than a
+  cap: `/usage` showed eight goals and ten steps and counted the rest
+  away. The input keeps focus while a goal runs
   (`owner()` returns `ownerBusy`), which is what makes `/abort`
   typeable mid-run — blurring it sent every key down the history
   branch and `busyKey` was unreachable. `welcome_view.go` is derived state, not a mode:
@@ -542,6 +558,13 @@ routing     →  agent, sandbox
   **Composition needs a judge.** It is the only way a spec gets written
   now, so `views: generate` without a `jev_api_key` is rejected at
   startup rather than quietly behaving as `saved`.
+
+- **`version`** — what this build calls itself, and nothing else, so
+  anything may import it. `Number` is the release and is overridable
+  with `-ldflags`; `String` adds the revision the linker stamped in
+  plus `-dirty`, because a binary built from a dirty tree should not
+  claim to be a tagged release. The welcome pane shows it under the
+  name and `-version` prints it.
 
 - **`views`** — every spec detent ships, in one place: the ones keyed
   by a command's normalised name (`ForCommand`) and the ones keyed by
