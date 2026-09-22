@@ -69,6 +69,8 @@ func workable(output string) []string {
 		switch kind {
 		case "lines":
 			p.Pattern = `^(?P<line>.+)$`
+		case "prefix":
+			// nothing to configure
 		case "columns", "fixed":
 			p.Header = true
 		case "pairs":
@@ -157,9 +159,15 @@ func ask(t *testing.T, j *classify.JevJudge, command, output, header string) (st
 			"what":    "aligned columns whose header contains multi-word names, sliced at the header's own offsets",
 			"not_for": "columns whose headings are single words, which plain columns reads more simply",
 		},
+		"prefix": map[string]any{
+			"what": "every line is a leading token then the rest: a hash and a subject, " +
+				"a size and a path, a count and a filename, a status and a name",
+			"not_for": "lines with three or more fields worth separating, which is columns",
+		},
 		"lines": map[string]any{
-			"what":    "every line has the same shape but no header, so a pattern names the parts",
-			"not_for": "output that already has a header row naming its columns",
+			"what": "every line has the same shape, no header, and needs three or more parts " +
+				"named separately, so a pattern is the only way to name them",
+			"not_for": "a leading token and a remainder, which prefix reads without a pattern",
 		},
 		"pairs": map[string]any{
 			"what":    "one key and value per line, separated by = or :",
