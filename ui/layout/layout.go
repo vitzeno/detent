@@ -5,8 +5,6 @@
 package layout
 
 import (
-	"strings"
-
 	"charm.land/lipgloss/v2"
 )
 
@@ -81,11 +79,6 @@ func split(total int, weights []int, min int, out []int, floored []bool) []int {
 // never pads or truncates.
 func Row(blocks ...string) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, blocks...)
-}
-
-// Column is Row's vertical counterpart.
-func Column(blocks ...string) string {
-	return strings.Join(blocks, "\n")
 }
 
 // Truncate cuts s to w columns, marking where it cut. Bytes, not

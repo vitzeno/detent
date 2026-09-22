@@ -49,7 +49,3 @@ func TestRow_JoinsLeftToRight(t *testing.T) {
 	// Same visual row: "a"/"c" and "b"/"d" must each share a line, not stack.
 	assert.Equal(t, "ac\nbd", Row("a\nb", "c\nd"))
 }
-
-func TestColumn_JoinsTopToBottom(t *testing.T) {
-	assert.Equal(t, "a\nb\nc", Column("a", "b", "c"))
-}
