@@ -63,3 +63,15 @@ func TestBoundView_AlwaysYieldsSomethingDrawable(t *testing.T) {
 		}
 	}
 }
+
+// cmd/detent hands the composer ui's own registry, so a spec it
+// composed always binds here too. The nil case is safe the same way:
+// viewspec.Standard is a subset of this one, since ui only adds to it.
+func TestRegistry_ComposerCannotPickWhatUiCannotDraw(t *testing.T) {
+	ours := Registry().Kinds()
+	for _, kind := range viewspec.Standard().Kinds() {
+		assert.Contains(t, ours, kind,
+			"%s is offered to the judge but ui cannot draw it", kind)
+	}
+	assert.Contains(t, ours, "markdown", "and ui adds one of its own")
+}

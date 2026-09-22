@@ -79,9 +79,10 @@ func boundView(r *stepRow) (*viewspec.Bound, bool) {
 	return nil, false
 }
 
-// applyView swaps in a generated spec. It must compile against this
-// registry and bind against this output before it replaces anything.
-// A spec that arrives broken leaves the fallback exactly as it was.
+// applyView swaps in a composed spec. A Driver hands over a Spec and
+// not a Bound, so this binds it again: ui accepts data from a Driver
+// it does not control, and a spec that arrives broken must leave the
+// fallback exactly as it was.
 func applyView(r *stepRow, got GeneratedView) bool {
 	if r == nil || got.Spec == nil || r.cmd.ec == nil {
 		return false
@@ -95,10 +96,10 @@ func applyView(r *stepRow, got GeneratedView) bool {
 			return true
 		}
 	}
-	// viewgen binds every spec against this same output and registry
-	// before handing one over, so reaching here means the two have
-	// drifted apart. Silence is what made the last one take an
-	// afternoon to find.
+	// cmd/detent hands the composer this very registry, and it binds
+	// every spec before handing one over, so this should be
+	// unreachable. It is warned rather than dropped because reaching
+	// it means something is genuinely wrong, not merely unlucky.
 	logging.For(logging.UI).Warn("a fitted view could not draw this output",
 		logging.KeyEvent, logging.ViewInvalid, "source", string(got.Source),
 		logging.KeyReason, err.Error())
