@@ -5,6 +5,8 @@
 package layout
 
 import (
+	"strings"
+
 	"charm.land/lipgloss/v2"
 )
 
@@ -81,14 +83,35 @@ func Row(blocks ...string) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, blocks...)
 }
 
-// Truncate cuts s to w columns, marking where it cut. Bytes, not
-// display columns: callers pass ASCII-ish paths and commands.
+// Truncate fits s into one line of at most w columns, marking where it
+// cut. One line is the whole point: every caller is placing this
+// inside a bordered pane or a rail-prefixed row, and a newline getting
+// through draws the rest of the string outside that frame, over
+// whatever was there. A heredoc command did exactly that.
+//
+// Runes, not bytes, so a multi-byte character is never cut in half.
 func Truncate(s string, w int) string {
 	if w < 4 {
 		w = 4
 	}
-	if len(s) <= w {
+	s = flatten(s)
+	r := []rune(s)
+	if len(r) <= w {
 		return s
 	}
-	return s[:w-1] + "…"
+	return string(r[:w-1]) + "…"
 }
+
+// flatten collapses a string that spans lines into one, indentation
+// and all, so a script reads as a sentence rather than a line of gaps.
+// A string already on one line is returned untouched: its spacing is
+// the command as the human or the model wrote it, and a row should not
+// quietly restate it.
+func flatten(s string) string {
+	if strings.IndexFunc(s, isBreak) < 0 {
+		return s
+	}
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func isBreak(r rune) bool { return r == '\n' || r == '\r' || r == '\v' || r == '\f' }

@@ -174,3 +174,33 @@ func railTestBlock() *goalBlock {
 	b.judge = goalVerdict(b)
 	return b
 }
+
+// A multi-line command drew its tail outside the pane, over whatever
+// was beside it: continuation lines carried no rail, so the block's
+// left edge vanished and the rows ran into the output pane. Seen with
+// a python heredoc, which is a perfectly ordinary thing to run.
+func TestHistory_MultiLineCommandStaysInsideThePane(t *testing.T) {
+	const heredoc = "python3 - <<'EOF'\nimport re\np = 'ui/goal_flow.go'\ns = open(p).read()\nEOF"
+
+	m := testUIModel()
+	m.layout.width, m.layout.height = 120, 40
+	m.sizeViewport()
+	b := railTestBlock()
+	b.goal = "rewrite the flow\nacross two lines"
+	b.steps[0].command = heredoc
+	m.blocks = []*goalBlock{b}
+	m.nav.cursor = 0
+	m.sizeViewport()
+
+	inner := paneInner(m.layout.histColW)
+	lines, _ := m.historyLines()
+	for i, l := range lines {
+		assert.NotContains(t, l, "\n", "row %d is more than one line", i)
+		assert.LessOrEqual(t, lipgloss.Width(stripANSI(l)), inner,
+			"row %d overflows the %d-wide pane: %q", i, inner, stripANSI(l))
+	}
+
+	// And the pane header, which sits inside its own border.
+	m.nav.focus = focusOutput
+	assert.NotContains(t, m.viewportHeader(), "\n")
+}

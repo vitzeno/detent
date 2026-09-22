@@ -2,6 +2,7 @@ package layout
 
 import (
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -48,4 +49,38 @@ func TestSplit_SumsToTotalWhenUnconstrained(t *testing.T) {
 func TestRow_JoinsLeftToRight(t *testing.T) {
 	// Same visual row: "a"/"c" and "b"/"d" must each share a line, not stack.
 	assert.Equal(t, "ac\nbd", Row("a\nb", "c\nd"))
+}
+
+// A command spanning lines drew its tail outside the pane, over
+// whatever was beside it: history rows lost their rail, and the output
+// pane header ran through its own border. Every caller is placing this
+// inside a frame, so one line is what it has to return.
+func TestTruncate_ReturnsOneLine(t *testing.T) {
+	const heredoc = "python3 - <<'EOF'\nimport re\np = 'ui/goal_flow.go'\nEOF"
+
+	assert.Equal(t, "python3 - <<'EOF' import re p = 'ui/goal_flow.go' EOF",
+		Truncate(heredoc, 200), "short enough to keep, still one line")
+	assert.Equal(t, "python3 - <<'EOF' import…", Truncate(heredoc, 25))
+
+	for _, w := range []int{4, 10, 25, 200} {
+		assert.NotContains(t, Truncate(heredoc, w), "\n", "width %d", w)
+	}
+}
+
+// Runs of whitespace collapse rather than each becoming a space, so an
+// indented script does not turn into a line of gaps.
+func TestTruncate_CollapsesIndentation(t *testing.T) {
+	assert.Equal(t, "if x: return", Truncate("if x:\n    return", 40))
+	assert.Equal(t, "a b", Truncate("\n\na\t\tb\n", 40), "and the edges go")
+	assert.Equal(t, "grep -n  two  spaces", Truncate("grep -n  two  spaces", 40),
+		"but one line is left exactly as the command was written")
+}
+
+// Runes, not bytes: cutting mid-character draws a replacement glyph,
+// and measuring in bytes cuts a wide string far too short.
+func TestTruncate_CutsRunesNotBytes(t *testing.T) {
+	const s = "ßßßßßßßßßß" // ten runes, twenty bytes
+	assert.Equal(t, s, Truncate(s, 10), "ten runes fit in ten columns")
+	assert.Equal(t, "ßßßß…", Truncate(s, 5))
+	assert.True(t, utf8.ValidString(Truncate(s, 7)))
 }
