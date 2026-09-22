@@ -12,18 +12,13 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// Compose builds a spec by asking the judge a series of closed
-// questions and assembling the answers, rather than asking a
-// generative model to write one.
+// Compose builds a spec by asking the judge closed questions and
+// assembling the answers, rather than asking a model to write one.
 //
-// It replaced generation because generation was too slow to use: 31s
-// median and 80s worst against 300ms here, measured on the same
-// endpoint. Speed is not the main argument though. A generated spec
-// could name a widget nobody registered, a role that does not exist,
-// or a field the parse never produced, and every one of those
-// happened. None is representable here: the model picks from a list
-// the program built, so a wrong answer is a worse view rather than no
-// view at all.
+// It replaced generation on two counts. Generation ran 31s median
+// against 300ms here, and a generated spec could name a widget, a role
+// or a field that did not exist, which all happened. Neither is
+// possible from a list the program built.
 func (g *Generator) Compose(ctx context.Context, req Request) (Result, error) {
 	log := logging.For(logging.Viewgen)
 	key := Key(req.Command, req.Kind)
@@ -83,10 +78,9 @@ type composer struct {
 	used  usage.Usage
 }
 
-// run is the pipeline. Each step narrows what the next one can be
-// wrong about: locating the header decides how the parse is read,
-// running the parse decides which fields exist, and only then is there
-// anything to choose a widget for.
+// run is the pipeline, and the order is the point. The header decides
+// how the parse reads, the parse decides which fields exist, and only
+// then is there anything to choose a widget for.
 func (c *composer) run(ctx context.Context) (*viewspec.Spec, error) {
 	parse, err := c.parse(ctx)
 	if err != nil {
@@ -108,10 +102,9 @@ func (c *composer) run(ctx context.Context) (*viewspec.Spec, error) {
 	return spec, nil
 }
 
-// parse settles how the output is read: where the header is, then
-// which kind reads it. In that order, because "columns" and "fixed"
-// differ only in whether the header's own names contain spaces, and
-// that cannot be judged before the header is found.
+// parse settles where the header is, then which kind reads it. That
+// order, because columns and fixed differ only in whether the header's
+// own names contain spaces.
 func (c *composer) parse(ctx context.Context) (viewspec.Parse, error) {
 	skip := c.header(ctx)
 	kind, err := c.parseKind(ctx, headerLine(c.req.Output, skip))
@@ -198,13 +191,12 @@ func (c *composer) parseKind(ctx context.Context, header string) (string, error)
 	return answers["parse_kind"].Choice, nil
 }
 
-// blocks chooses what draws the rows, and what field each block reads.
-// Both are closed: the widgets are whatever the render kind allows,
-// and the fields are what the parse actually produced, so neither can
-// name something that does not exist.
+// blocks chooses what draws the rows and what field each one reads.
+// The widgets are whatever the render kind allows and the fields are
+// what the parse produced, so neither can name something absent.
 func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 	fields []string, rows []viewspec.Row) ([]viewspec.Block, error) {
-	offered := c.g.registry().Subset(byName[c.req.Kind].Widgets...).Kinds()
+	offered := prune(c.g.registry(), c.req.Kind).Kinds()
 	body := intersect(bodyKinds, offered)
 	if len(body) == 0 {
 		return nil, fmt.Errorf("no body widget is offered for %s", c.req.Kind)
@@ -276,9 +268,8 @@ func (c *composer) askState(ctx context.Context, state map[string]any,
 	return answers, true
 }
 
-// state is what every question is answered against: the command and a
-// sample of what it printed. Bounded, because a judge deciding shape
-// needs a sample and not the whole thing.
+// state is what every question is answered against. Bounded: a judge
+// deciding shape needs a sample, not the whole output.
 func (c *composer) state() map[string]any {
 	return map[string]any{
 		"command": c.req.Command,

@@ -314,3 +314,18 @@ func TestCompose_FallsBackToAShippedSpec(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, viewgen.SourceShipped, got.Source)
 }
+
+// A kind nobody recognises gets the whole vocabulary rather than none.
+// Subsetting on an unknown kind's empty widget list offers nothing,
+// and a composition with nothing to choose from cannot start.
+func TestCompose_AnUnknownKindStillHasAVocabulary(t *testing.T) {
+	g, _ := composer(t, map[string]string{
+		"header_line": "none", "parse_kind": "prefix", "body": "table", "summary": "none",
+	})
+	req := request()
+	req.Kind = "something_jev_invented"
+
+	got, err := g.Compose(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "table", got.Spec.Blocks[0].Kind)
+}

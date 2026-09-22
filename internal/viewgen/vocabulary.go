@@ -155,12 +155,11 @@ func fieldQuestion(s slot, fields []string, rows []viewspec.Row) classify.Questi
 	}
 }
 
-// honour treats the header answer as established and the kind as a
-// preference. netstat is why: the header is located at 0.99 confidence
-// and the chosen kind could not read it, columns splitting "Local
-// Address" into two names and dropping every row. So the skip stands
-// and the kind gives way, tried against the interpreter rather than
-// argued about.
+// honour treats the header answer as fact and the kind as a
+// preference. netstat is why: the header is located at 0.99 and
+// columns could not read it, splitting "Local Address" into two names
+// and dropping every row. So the kind gives way, tried against the
+// interpreter rather than argued about.
 func honour(chosen viewspec.Parse, skip int, output string) viewspec.Parse {
 	if skip < 0 {
 		headerless := chosen

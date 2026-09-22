@@ -9,13 +9,13 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// Store keeps generated specs on disk, one JSON file per key. Files
+// Store keeps composed specs on disk, one JSON file per key. Files
 // rather than a database on purpose: a spec you can read and fix by
 // hand is the payoff for caching one at all, and /view edit opens it.
 type Store struct{ Dir string }
 
 // Load returns the saved spec for key. A missing or unreadable file
-// is a miss, never an error: the worst case is generating again.
+// is a miss, never an error: the worst case is composing it again.
 func (s *Store) Load(key string) (*viewspec.Spec, bool) {
 	if s == nil || s.Dir == "" {
 		return nil, false

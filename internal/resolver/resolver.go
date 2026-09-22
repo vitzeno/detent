@@ -18,7 +18,7 @@ import (
 type Resolver struct {
 	sess *agent.Session
 
-	// Views generates output views; nil disables them entirely.
+	// Views composes output views; nil disables them entirely.
 	Views *viewgen.Generator
 }
 
@@ -33,8 +33,8 @@ func New(sess *agent.Session) *Resolver {
 // presentation, so this crosses here rather than in agent: the loop
 // has no opinion about how its output is drawn.
 //
-// A nil Views generator, a kind with nothing to gain, or a model that
-// fails all report ok=false, and ui keeps the render_kind fallback.
+// A nil generator, a kind with nothing to gain, or a judge that does
+// not answer all report ok=false, and ui keeps its own fallback.
 func (r *Resolver) GenerateView(ctx context.Context, command, output string, exitCode int, kind ui.RenderKind) (ui.GeneratedView, bool) {
 	if r.Views == nil {
 		return ui.GeneratedView{}, false

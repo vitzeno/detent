@@ -29,7 +29,7 @@ func (g *Generator) worthAsking(req Request) bool {
 	if !worthGenerating(req.Kind) {
 		return false
 	}
-	return lines(req.Output) >= MinLinesToGenerate
+	return lines(req.Output) >= MinLinesToCompose
 }
 
 // skipReason says which gate refused, since "no view appeared" is
@@ -38,7 +38,7 @@ func (g *Generator) skipReason(req Request) string {
 	if !worthGenerating(req.Kind) {
 		return "this shape draws itself"
 	}
-	return fmt.Sprintf("under %d lines", MinLinesToGenerate)
+	return fmt.Sprintf("under %d lines", MinLinesToCompose)
 }
 
 func lines(s string) int {
@@ -65,12 +65,10 @@ func (g *Generator) Existing(ctx context.Context, req Request) (Result, bool) {
 	return Result{}, false
 }
 
-// usable reports whether a spec that already exists can draw this
-// output, and says which either way. Matching on the command alone is
-// not enough: "ps" and "ps aux" normalise to one key and print
-// different columns, so the shipped spec bound nowhere, the pane fell
-// back to plain text, and generation never ran because something had
-// already matched. Nothing said so, because nothing logged it.
+// usable reports whether an existing spec can draw this output, and
+// says which either way. A key match is not enough: "ps" and "ps aux"
+// share one and print different columns, so a spec that bound nowhere
+// still blocked composition behind it, silently.
 func (g *Generator) usable(ctx context.Context, req Request, spec *viewspec.Spec, source Source) bool {
 	log := logging.For(logging.Viewgen)
 	key := Key(req.Command, req.Kind)
@@ -138,11 +136,10 @@ func head(s string, n int) string {
 	return s[:n] + "\n…[truncated]"
 }
 
-// MinLinesToGenerate is the output below which no view is worth a
-// model call. Length used to live inside render_kind as inline_short;
-// it belongs here, because it is a property of the output rather than
-// of its shape.
-const MinLinesToGenerate = 8
+// MinLinesToCompose is the output below which no view is worth
+// asking about. Length lived inside render_kind once; it belongs here,
+// being a property of the output rather than of its shape.
+const MinLinesToCompose = 8
 
 // ErrNotWorth means this output has no view worth a model call: a few
 // lines, or a shape already drawn well. Not a failure.

@@ -4,8 +4,8 @@ import "github.com/vitzeno/detent/viewspec"
 
 // Kind* name the shapes a command's output can take. One table below
 // defines all three things a kind is for, so they cannot drift:
-// the criteria Jev classifies by, the widgets a generated view may
-// draw from, and whether a view is worth generating at all.
+// the criteria Jev classifies by, the widgets a composed view may
+// draw from, and whether a view is worth asking about at all.
 const (
 	// KindText is any unstructured text read top to bottom. It covers
 	// what used to be three kinds split by length: the viewport scrolls
@@ -30,12 +30,12 @@ type Kind struct {
 	What     string
 	NotFor   string
 	Examples []string
-	// Widgets is what a generated view for this shape may use.
+	// Widgets is what a composed view for this shape may use.
 	// Offering a model four kinds instead of fifteen is the single
 	// biggest thing that makes a small one reliable.
 	Widgets []string
-	// Generate is false where there is nothing to gain: a few lines of
-	// output has no view worth a model call, and most steps are that.
+	// Generate is false where there is nothing to gain: a diff and a
+	// stack trace already draw themselves.
 	Generate bool
 }
 
@@ -126,11 +126,19 @@ func RenderKindCriteria() map[string]any {
 	return out
 }
 
-// worthGenerating reports whether this shape earns a model call.
-func worthGenerating(kind string) bool { return byName[kind].Generate }
+// worthGenerating reports whether this shape earns asking. A kind
+// nobody recognises is worth asking about: reading the zero Kind's
+// false as "skip" turned an unrecognised answer into "this shape draws
+// itself", which is a sentence about a kind we have never seen.
+func worthGenerating(kind string) bool {
+	k, ok := byName[kind]
+	return !ok || k.Generate
+}
 
 // prune returns the registry a view for this shape may be built from.
-// An unknown kind gets the whole vocabulary rather than none.
+// An unknown kind gets the whole vocabulary rather than none, for the
+// same reason: the zero Kind has no widgets, and subsetting on none
+// offers nothing to choose between.
 func prune(reg *viewspec.Registry, kind string) *viewspec.Registry {
 	k, ok := byName[kind]
 	if !ok || len(k.Widgets) == 0 {

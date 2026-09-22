@@ -13,12 +13,12 @@ import (
 
 // Registry is the vocabulary detent draws with: viewspec's own plus
 // what only this process can provide. cmd/detent hands it to the
-// generator, so the model is offered exactly what will draw.
+// composer, so the judge is offered exactly what will draw.
 func Registry() *viewspec.Registry { return viewRegistry }
 
 // generateView asks the Driver for a view, off the Update loop. Fired
 // once per row, after judging, because render_kind is what prunes the
-// vocabulary the model may draw from.
+// vocabulary the judge chooses from.
 func (m Model) generateView(r *stepRow) tea.Cmd {
 	if r == nil || r.cmd.ec == nil || r.cmd.generated {
 		return nil

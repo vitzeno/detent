@@ -1,15 +1,12 @@
-// Package views holds every spec detent ships: the ones chosen by a
-// command's name, and the ones chosen by the shape its output turned
-// out to have.
+// Package views holds every spec detent ships, keyed by a command's
+// name or by the shape its output turned out to have.
 //
-// They live together because they had started to overlap. The
-// render-kind spec for a table and the shipped spec for ps are nearly
-// the same thing, written twice in two packages that could not see
-// each other, and the ps one had already drifted: written for plain
-// ps, it silently drew nothing for ps aux.
+// They live together because they had started to overlap: the table
+// shape spec and the shipped ps spec are nearly the same object, and
+// the ps one had already drifted, drawing nothing for ps aux.
 //
-// It imports viewspec and nothing else, which is what lets both ui and
-// viewgen use it without either importing the other.
+// It imports viewspec and nothing else, which is what lets ui and
+// viewgen both read it without either importing the other.
 package views
 
 import "github.com/vitzeno/detent/viewspec"
@@ -27,10 +24,9 @@ func ForCommand(name string) (*viewspec.Spec, bool) {
 }
 
 // ForKind is the spec for output judged to have a given shape, used
-// when nothing is keyed to the command. Kinds are the strings
-// internal/viewgen/kinds.go defines; they are spelled out here rather
-// than imported, since ui reads this package and imports nothing under
-// internal.
+// when nothing is keyed to the command. The kind strings are spelled
+// out below rather than imported: ui reads this package, and imports
+// nothing under internal.
 func ForKind(kind string) (viewspec.Spec, bool) {
 	spec, ok := byKind[kind]
 	return spec, ok
