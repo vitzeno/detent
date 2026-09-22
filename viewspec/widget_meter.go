@@ -69,8 +69,9 @@ func (meterWidget) Describe() Description {
 	return Description{
 		Summarises: true,
 		What:       "one proportion counted from the rows, as a bar and a fraction",
-		Needs:      []string{"count_where as field=value, an exact match", "of"},
-		NotFor:     "a value per row — that is bar",
-		Examples:   []string{"how many tests passed", "how many files are staged"},
+		// No Slots: this needs a count_where filter and an of denominator, which are values rather than fields,
+		// so nothing can compose one from field choices alone.
+		NotFor:   "a value per row — that is bar",
+		Examples: []string{"how many tests passed", "how many files are staged"},
 	}
 }

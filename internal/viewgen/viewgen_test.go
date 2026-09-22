@@ -344,3 +344,55 @@ func TestCompose_AnUnknownKindStillHasAVocabulary(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "table", got.Spec.Blocks[0].Kind)
 }
+
+// Every widget a render kind offers has to be composable: its needs
+// must be fields the composer knows how to ask for. Offering one whose
+// needs cannot be filled composes a block that fails to validate, and
+// that throws away the whole view, not just the block.
+//
+// kinds.go and slotsFor are two lists that have to agree, and they had
+// drifted: eleven widgets were offered whose columns nobody asked for.
+func TestCompose_EveryOfferedWidgetCanBeComposed(t *testing.T) {
+	const columnar = "pkg secs status\na 1.2 ok\nb 3.4 ok\nc 0.5 FAIL\nd 9.9 ok\n" +
+		"e 1.1 ok\nf 2.2 ok\ng 3.3 ok\nh 4.4 ok\n"
+	guide := ui.Registry().Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)["const"].(map[string]viewspec.Description)
+
+	for _, k := range viewgen.Kinds() {
+		if !k.Generate {
+			continue
+		}
+		for _, w := range k.Widgets {
+			if w == viewspec.RowKind || w == viewspec.PanelKind {
+				continue // containers hold blocks; nothing composes one yet
+			}
+			role, other := "body", "none"
+			if guide[w].Summarises {
+				// A summary needs a body under it, and it has to be
+				// one this kind actually offers.
+				role, other = "summary", firstBody(guide, k.Widgets)
+			}
+			t.Run(k.Name+"/"+w, func(t *testing.T) {
+				g, _ := composer(t, map[string]string{
+					"header_line": "0", "parse_kind": "columns",
+					"body": other, "summary": "none", role: w,
+				})
+				g.Registry = ui.Registry()
+				req := request()
+				req.Kind, req.Output = k.Name, columnar
+				_, err := g.Compose(context.Background(), req)
+				assert.NoError(t, err, "%s is offered for %s but cannot be composed", w, k.Name)
+			})
+		}
+	}
+}
+
+// firstBody is any widget from the list that draws rows, for a test
+// that needs a body it is not itself about.
+func firstBody(guide map[string]viewspec.Description, kinds []string) string {
+	for _, k := range kinds {
+		if d, ok := guide[k]; ok && !d.Summarises && k != viewspec.RowKind && k != viewspec.PanelKind {
+			return k
+		}
+	}
+	return "log"
+}

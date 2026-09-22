@@ -84,8 +84,11 @@ func fill(dst []rune, from, to int, r rune) {
 
 func (boxplotWidget) Describe() Description {
 	return Description{
-		What:     "each group's spread on one line: whiskers to the extremes, a box over the middle half, a bright median",
-		Needs:    []string{"columns (exactly two: the group, then the number)"},
+		What: "each group's spread on one line: whiskers to the extremes, a box over the middle half, a bright median",
+		Needs: []Slot{
+			{Name: "group", What: "the group each row belongs to"},
+			{Name: "value", What: "the number to spread"},
+		},
 		NotFor:   "one number per row, which is bar",
 		Examples: []string{"latency per endpoint", "test time per package", "file size per directory"},
 	}

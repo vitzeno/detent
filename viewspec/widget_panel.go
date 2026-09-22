@@ -58,8 +58,9 @@ func panelTop(title string, f Frame) string {
 
 func (panelWidget) Describe() Description {
 	return Description{
-		What:     "frames one pane of blocks in a border, with its title written into the top edge",
-		Needs:    []string{"panes (exactly one)", "title"},
+		What: "frames one pane of blocks in a border, with its title written into the top edge",
+		// No Slots: this needs panes, which hold blocks,
+		// so nothing can compose one from field choices alone.
 		NotFor:   "putting two things side by side, which is row",
 		Examples: []string{"a summary set apart from the listing beneath it"},
 	}

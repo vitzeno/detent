@@ -59,8 +59,12 @@ func (deltaWidget) CursorLine(b Block, d Data, f Frame) int { return chartCursor
 
 func (deltaWidget) Describe() Description {
 	return Description{
-		What:     "what a number moved to, with the direction and the size of the move worked out for you",
-		Needs:    []string{"columns (exactly three: label, the old number, then the new one)"},
+		What: "what a number moved to, with the direction and the size of the move worked out for you",
+		Needs: []Slot{
+			{Name: "label", What: "names each row"},
+			{Name: "from", What: "the number before"},
+			{Name: "to", What: "the number after"},
+		},
 		NotFor:   "a single number with nothing to compare against, which is bar",
 		Examples: []string{"benchmark before and after", "quota used against limit"},
 	}

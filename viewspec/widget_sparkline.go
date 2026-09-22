@@ -55,8 +55,10 @@ func (sparklineWidget) Describe() Description {
 	return Description{
 		Summarises: true,
 		What:       "one compact strip showing the shape of a numeric field across rows",
-		Needs:      []string{"field"},
-		NotFor:     "comparing individual rows, where bar is readable and this is not",
-		Examples:   []string{"a latency series", "sizes over time"},
+		Needs: []Slot{
+			{Name: "field", What: "the number to plot across rows"},
+		},
+		NotFor:   "comparing individual rows, where bar is readable and this is not",
+		Examples: []string{"a latency series", "sizes over time"},
 	}
 }

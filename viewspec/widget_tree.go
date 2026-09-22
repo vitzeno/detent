@@ -111,8 +111,10 @@ func leaf(path string) string {
 
 func (treeWidget) Describe() Description {
 	return Description{
-		What:     "a hierarchy, from a depth field or from a path's slashes",
-		Needs:    []string{"field"},
+		What: "a hierarchy, from a depth field or from a path's slashes",
+		Needs: []Slot{
+			{Name: "field", What: "the path or name at each node"},
+		},
 		NotFor:   "a flat set of names with no nesting, which is a list",
 		Examples: []string{"tree", "find . -name '*.go'", "an indented outline"},
 	}

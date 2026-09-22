@@ -130,8 +130,11 @@ func runeAt(s string, i int) rune {
 
 func (heatmapWidget) Describe() Description {
 	return Description{
-		What:     "a shaded grid of two fields crossed against each other, darker where there is more",
-		Needs:    []string{"columns (two to cross and count, or three where the third is the value)"},
+		What: "a shaded grid of two fields crossed against each other, darker where there is more",
+		Needs: []Slot{
+			{Name: "row", What: "the value naming each row of the grid"},
+			{Name: "column", What: "the value naming each column"},
+		},
 		NotFor:   "one field summarised on its own, which is histogram",
 		Examples: []string{"commits by weekday and hour", "errors by host and service"},
 	}

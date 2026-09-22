@@ -131,7 +131,15 @@ type Description struct {
 	// otherwise empty a required one and the block fails to bind.
 	// Name the shape a field takes where it is not obvious: a filter
 	// that silently matches nothing draws a plausible, wrong view.
-	Needs []string `json:"needs,omitempty"`
+	// Needs are the fields this kind cannot draw without, in the order
+	// it reads them. Structured rather than prose because a caller
+	// composing a block has to ask for each one: a sentence saying
+	// "columns (exactly two: label, then the number)" reads well and
+	// has to be kept in step by hand with whatever does the asking.
+	// One slot fills Block.Field; two or more fill Block.Columns in
+	// order. A kind needing something that is not a field, such as a
+	// title or a filter, declares none and cannot be composed.
+	Needs []Slot `json:"needs,omitempty"`
 	// Summarises marks a kind that draws one fact about every row
 	// rather than the rows themselves. A caller composing a view asks
 	// for a body and a summary separately, and which a widget is
@@ -139,6 +147,14 @@ type Description struct {
 	// that has to be kept in step with this one.
 	Summarises bool     `json:"summarises,omitempty"`
 	Examples   []string `json:"examples,omitempty"`
+}
+
+// Slot is one field a widget cannot be drawn without, named for the
+// part it plays so a caller can ask for it in those terms.
+type Slot struct {
+	Name string `json:"name"`
+	// What it should hold, phrased as the answer to "which field".
+	What string `json:"what"`
 }
 
 // Described is an optional Widget extension carrying that description
@@ -191,6 +207,22 @@ func (r *Registry) clone() *Registry {
 	maps.Copy(out.widgets, r.widgets)
 	maps.Copy(out.extractors, r.extractors)
 	return out
+}
+
+// Describe returns what a registered widget says about itself. A
+// widget with no Describe reports false: it is drawable and invisible
+// to anything choosing between kinds, which is how a plain WidgetFunc
+// opts out.
+func (r *Registry) Describe(kind string) (Description, bool) {
+	w, ok := r.widgets[kind]
+	if !ok {
+		return Description{}, false
+	}
+	d, ok := w.(Described)
+	if !ok {
+		return Description{}, false
+	}
+	return d.Describe(), true
 }
 
 // describe returns every registered widget's description, keyed by

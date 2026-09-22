@@ -69,8 +69,12 @@ func (ganttWidget) CursorLine(b Block, d Data, f Frame) int { return chartCursor
 
 func (ganttWidget) Describe() Description {
 	return Description{
-		What:     "one bar per row placed where it started and drawn as long as it ran",
-		Needs:    []string{"columns (exactly three: label, start, then length)"},
+		What: "one bar per row placed where it started and drawn as long as it ran",
+		Needs: []Slot{
+			{Name: "label", What: "names each bar"},
+			{Name: "start", What: "when it began"},
+			{Name: "length", What: "how long it ran"},
+		},
 		NotFor:   "lengths with no start, which is bar",
 		Examples: []string{"systemd-analyze blame", "per-package test time", "build phases"},
 	}

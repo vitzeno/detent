@@ -49,8 +49,11 @@ func (seriesWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 
 func (seriesWidget) Describe() Description {
 	return Description{
-		What:     "one sparkline per group on a shared scale, for comparing shapes rather than reading one",
-		Needs:    []string{"columns (exactly two: the group, then the number)"},
+		What: "one sparkline per group on a shared scale, for comparing shapes rather than reading one",
+		Needs: []Slot{
+			{Name: "group", What: "the series each row belongs to"},
+			{Name: "value", What: "the number to plot"},
+		},
 		NotFor:   "a single series, which is sparkline",
 		Examples: []string{"requests per host over time", "usage per core"},
 	}

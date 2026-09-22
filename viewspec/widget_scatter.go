@@ -87,8 +87,11 @@ func (scatterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 
 func (scatterWidget) Describe() Description {
 	return Description{
-		What:     "a braille plot of one numeric field against another, for a relationship or a curve",
-		Needs:    []string{"columns (exactly two: x, then y)"},
+		What: "a braille plot of one numeric field against another, for a relationship or a curve",
+		Needs: []Slot{
+			{Name: "x", What: "the horizontal number"},
+			{Name: "y", What: "the vertical number"},
+		},
 		NotFor:   "one series read in order, which is sparkline",
 		Examples: []string{"size against modified time", "latency against request count"},
 	}

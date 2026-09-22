@@ -112,8 +112,11 @@ func instant(s string) (float64, bool) {
 
 func (timelineWidget) Describe() Description {
 	return Description{
-		What:     "one marker per row on a shared axis, for events that have a moment but no length",
-		Needs:    []string{"columns (exactly two: label, then the time)"},
+		What: "one marker per row on a shared axis, for events that have a moment but no length",
+		Needs: []Slot{
+			{Name: "label", What: "names each event"},
+			{Name: "time", What: "when it happened"},
+		},
 		NotFor:   "events that lasted, which is gantt",
 		Examples: []string{"git log dates", "docker events", "journalctl timestamps"},
 	}

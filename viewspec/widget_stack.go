@@ -85,8 +85,11 @@ func shareWidth(rows []Row, field string, total float64, width int) []int {
 
 func (stackWidget) Describe() Description {
 	return Description{
-		What:     "one band split into proportional segments with a legend, for what a whole is made of",
-		Needs:    []string{"columns (exactly two: label, then the number)"},
+		What: "one band split into proportional segments with a legend, for what a whole is made of",
+		Needs: []Slot{
+			{Name: "label", What: "names each segment"},
+			{Name: "value", What: "how much of the whole it is"},
+		},
 		NotFor:   "comparing rows against each other, which is bar",
 		Examples: []string{"disk used by directory", "lines by language", "time by phase"},
 	}

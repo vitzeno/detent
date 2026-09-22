@@ -21,6 +21,12 @@ const (
 	KindJSON    = "structured_json"
 )
 
+// meter, stat, text and dots are deliberately in no list here. Each
+// needs something a field choice cannot supply: a count_where filter,
+// a title, an accent map. They stay drawable, so a saved or shipped
+// spec may use one; nothing composes them.
+// TestCompose_EveryOfferedWidgetCanBeComposed is what holds that line.
+
 // Kind describes one output shape.
 type Kind struct {
 	Name string
@@ -45,8 +51,8 @@ var kinds = []Kind{
 		What:     "unstructured text, read top to bottom: logs, build output, a few lines of status",
 		NotFor:   "text with a shape worth drawing: aligned columns, a listing, a diff, JSON, or a failure",
 		Examples: []string{"go test ./... output", "a docker build log", "pwd", "npm install"},
-		Widgets: []string{"log", "errors", "text", "table", "meter", "stat", "histogram",
-			"gantt", "badges", viewspec.PanelKind, viewspec.RowKind},
+		Widgets: []string{"log", "errors", "table", "histogram", "gantt", "badges",
+			viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
 	},
 	{
@@ -55,8 +61,8 @@ var kinds = []Kind{
 		NotFor:   "a bare list of paths or names with no header or columns, which is file_listing",
 		Examples: []string{"ps aux", "df -h", "ls -la", "docker ps"},
 		Widgets: []string{"table", "bar", "gauge", "stack", "diverge", "delta", "histogram",
-			"boxplot", "series", "heatmap", "scatter", "gantt", "timeline", "dots",
-			"meter", "stat", "keyvalue", "badges", "text", viewspec.PanelKind, viewspec.RowKind},
+			"boxplot", "series", "heatmap", "scatter", "gantt", "timeline",
+			"keyvalue", "badges", viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
 	},
 	{
@@ -64,7 +70,7 @@ var kinds = []Kind{
 		What:     "a list of paths or items to pick from, one per line, with no header or aligned columns",
 		NotFor:   "the same listing with a header row and aligned columns, which is table",
 		Examples: []string{"find . -name '*.go'", "git diff --name-only", "plain ls"},
-		Widgets: []string{"list", "tree", "flow", "badges", "stat", "histogram", "text",
+		Widgets: []string{"list", "tree", "flow", "badges", "histogram",
 			viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
 	},
@@ -73,7 +79,7 @@ var kinds = []Kind{
 		What:     "a file's own prose or code body, read in full like a document",
 		NotFor:   "well-formed JSON even when it came from cat, which is structured_json",
 		Examples: []string{"cat main.go", "cat README.md"},
-		Widgets:  []string{"code", "markdown", "log", "text"},
+		Widgets:  []string{"code", "markdown", "log"},
 		Generate: true,
 	},
 	{
@@ -81,7 +87,7 @@ var kinds = []Kind{
 		What:     "an error, traceback or compiler complaint that is the command's whole point",
 		NotFor:   "text that merely contains some warnings among normal output, which is plain_text",
 		Examples: []string{"a failed build's compiler error", "a stack trace", "command not found"},
-		Widgets:  []string{"errors", "log", "text"},
+		Widgets:  []string{"errors", "log"},
 		Generate: true,
 	},
 	{
@@ -89,15 +95,15 @@ var kinds = []Kind{
 		What:     "a unified diff: +/- lines with @@ hunk headers",
 		NotFor:   "output that merely describes changes in prose; this needs the literal diff format",
 		Examples: []string{"git diff", "diff -u a.txt b.txt"},
-		Widgets:  []string{"diff", "text"},
+		Widgets:  []string{"diff"},
 	},
 	{
 		Name:     KindJSON,
 		What:     "JSON or other structured data, read as data",
 		NotFor:   "a file's prose or code body that merely happens not to be JSON",
 		Examples: []string{"curl returning a JSON body", "kubectl get pod -o json"},
-		Widgets: []string{"keyvalue", "table", "json", "stat", "histogram", "delta", "badges",
-			"text", viewspec.PanelKind, viewspec.RowKind},
+		Widgets: []string{"keyvalue", "table", "json", "histogram", "delta", "badges",
+			viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
 	},
 }

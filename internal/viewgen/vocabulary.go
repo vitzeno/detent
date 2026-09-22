@@ -100,46 +100,22 @@ func split(guide map[string]viewspec.Description, offered []string) (body, summa
 	return body, summary
 }
 
-// slot is one field a widget cannot be drawn without, named so the
-// question reads as a question. A table needs none: with no columns it
-// draws every parsed field in the order the output printed them.
-type slot struct {
-	name         string
-	instructions string
-	column       bool
-}
-
-func slotsFor(kind string) []slot {
-	switch kind {
-	case "list", "tree", "flow", "badges", "histogram", "sparkline", "dots":
-		return []slot{{name: "field", instructions: "Which field holds the value to draw?"}}
-	case "bar", "gauge", "keyvalue":
-		return []slot{
-			{name: "label", instructions: "Which field labels each row?", column: true},
-			{name: "value", instructions: "Which field holds the number or value for each row?", column: true},
-		}
-	}
-	return nil
-}
-
 // block assembles one widget from the fields chosen for its slots.
-func block(kind string, answers classify.Answers, prefix string) viewspec.Block {
+// One slot fills Field and more than one fills Columns in order, which
+// is the rule viewspec.Slot states and every widget's Validate
+// already enforces.
+func block(kind string, needs []viewspec.Slot, answers classify.Answers, prefix string) viewspec.Block {
 	b := viewspec.Block{Kind: kind}
-	for _, s := range slotsFor(kind) {
-		got := answers[prefix+s.name].Choice
+	for _, s := range needs {
+		got := answers[prefix+s.Name].Choice
 		if got == "" {
 			continue
 		}
-		if s.column {
-			b.Columns = append(b.Columns, viewspec.Column{Field: got})
+		if len(needs) == 1 {
+			b.Field = got
 			continue
 		}
-		b.Field = got
-	}
-	// dots colours by what it draws unless told otherwise, since it
-	// cannot bind without an accent.
-	if kind == "dots" && b.Field != "" {
-		b.Accent = &viewspec.Accent{Field: b.Field, Map: map[string]viewspec.Role{}}
+		b.Columns = append(b.Columns, viewspec.Column{Field: got})
 	}
 	return b
 }
@@ -147,7 +123,7 @@ func block(kind string, answers classify.Answers, prefix string) viewspec.Block 
 // fieldQuestion offers the fields the parse produced, each shown with
 // a value it holds. A name alone is thin for %iused and meaningless
 // for col3.
-func fieldQuestion(s slot, fields []string, rows []viewspec.Row) classify.Question {
+func fieldQuestion(s viewspec.Slot, fields []string, rows []viewspec.Row) classify.Question {
 	criteria := map[string]any{}
 	for _, f := range fields {
 		var samples []string
@@ -163,7 +139,7 @@ func fieldQuestion(s slot, fields []string, rows []viewspec.Row) classify.Questi
 		criteria[f] = fmt.Sprintf("%s, holding values like: %s", f, strings.Join(samples, ", "))
 	}
 	return classify.Question{
-		Instructions: s.instructions,
+		Instructions: "Which field " + s.What + "?",
 		Choice:       &classify.ChoiceQuestion{Criteria: criteria},
 	}
 }
@@ -241,11 +217,15 @@ func readWith(p viewspec.Parse, output string) ([]string, []viewspec.Row, error)
 
 const sampleRows = 3
 
-// describe reads the descriptions the registry publishes, which are
-// the criteria a widget choice is made from.
+// describe reads what each registered widget says about itself.
 func describe(reg *viewspec.Registry) map[string]viewspec.Description {
-	props := reg.Schema()["properties"].(map[string]any)
-	return props["widget_guide"].(map[string]any)["const"].(map[string]viewspec.Description)
+	out := map[string]viewspec.Description{}
+	for _, kind := range reg.Kinds() {
+		if d, ok := reg.Describe(kind); ok {
+			out[kind] = d
+		}
+	}
+	return out
 }
 
 func criteriaFor(guide map[string]viewspec.Description, kinds []string) map[string]any {

@@ -50,8 +50,9 @@ func (dotsWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d,
 
 func (dotsWidget) Describe() Description {
 	return Description{
-		What:     "one row per line led by a coloured status glyph, for output about health",
-		Needs:    []string{"field", "accent naming the field that carries the state"},
+		What: "one row per line led by a coloured status glyph, for output about health",
+		// No Slots: this needs an accent mapping values to roles, which is data rather than a field,
+		// so nothing can compose one from field choices alone.
 		NotFor:   "rows with several fields worth reading, which is a table",
 		Examples: []string{"systemctl list-units", "docker ps status", "a service health check"},
 	}

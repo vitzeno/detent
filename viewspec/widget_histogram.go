@@ -58,8 +58,10 @@ func (histogramWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 
 func (histogramWidget) Describe() Description {
 	return Description{
-		What:     "groups rows by a field and charts how many fell in each, counting them for you",
-		Needs:    []string{"field"},
+		What: "groups rows by a field and charts how many fell in each, counting them for you",
+		Needs: []Slot{
+			{Name: "field", What: "the value to group and count rows by"},
+		},
 		NotFor:   "a number the rows already carry, which is bar",
 		Examples: []string{"commits per author", "processes per user", "responses per status code"},
 	}

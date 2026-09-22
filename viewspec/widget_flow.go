@@ -65,8 +65,10 @@ func (flowWidget) CursorLine(b Block, d Data, f Frame) int {
 
 func (flowWidget) Describe() Description {
 	return Description{
-		What:     "one field filled across the pane in as many columns as fit, the way ls does",
-		Needs:    []string{"field"},
+		What: "one field filled across the pane in as many columns as fit, the way ls does",
+		Needs: []Slot{
+			{Name: "field", What: "the value to fill the pane with"},
+		},
 		NotFor:   "values whose nesting matters, which is tree",
 		Examples: []string{"a long list of short names", "branch names", "installed packages"},
 	}

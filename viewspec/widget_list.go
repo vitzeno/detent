@@ -34,8 +34,10 @@ func (listWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d,
 
 func (listWidget) Describe() Description {
 	return Description{
-		What:     "one field per line, for a set of names or paths",
-		Needs:    []string{"field"},
+		What: "one field per line, for a set of names or paths",
+		Needs: []Slot{
+			{Name: "field", What: "the value to list, one per line"},
+		},
 		NotFor:   "paths whose nesting matters — tree draws that",
 		Examples: []string{"changed files", "branch names"},
 	}

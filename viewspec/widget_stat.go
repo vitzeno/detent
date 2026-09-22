@@ -104,8 +104,9 @@ func (statWidget) Describe() Description {
 	return Description{
 		Summarises: true,
 		What:       "one counted number drawn large with a label, for the headline figure of a pane",
-		Needs:      []string{"title", "count_where as field=value when counting a subset, else omit it", "of"},
-		NotFor:     "a proportion you want drawn as a bar, which is meter",
-		Examples:   []string{"how many containers are running", "how many files changed"},
+		// No Slots: this needs a title, which is prose,
+		// so nothing can compose one from field choices alone.
+		NotFor:   "a proportion you want drawn as a bar, which is meter",
+		Examples: []string{"how many containers are running", "how many files changed"},
 	}
 }

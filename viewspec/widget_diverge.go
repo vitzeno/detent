@@ -65,8 +65,12 @@ func (divergeWidget) CursorLine(b Block, d Data, f Frame) int { return chartCurs
 
 func (divergeWidget) Describe() Description {
 	return Description{
-		What:     "two numbers per row drawn either side of a centre line, for a pair that opposes",
-		Needs:    []string{"columns (exactly three: label, left number, right number)"},
+		What: "two numbers per row drawn either side of a centre line, for a pair that opposes",
+		Needs: []Slot{
+			{Name: "label", What: "names each row"},
+			{Name: "left", What: "the number growing leftward"},
+			{Name: "right", What: "the number growing rightward"},
+		},
 		NotFor:   "a single number per row, which is bar",
 		Examples: []string{"git diff --numstat added against removed", "passed against failed"},
 	}

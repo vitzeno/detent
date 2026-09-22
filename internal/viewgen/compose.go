@@ -223,12 +223,12 @@ func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 
 	// One call for every field every chosen widget needs.
 	qs := classify.Questions{}
-	for _, s := range slotsFor(chosen) {
-		qs[s.name] = fieldQuestion(s, fields, rows)
+	for _, s := range guide[chosen].Needs {
+		qs[s.Name] = fieldQuestion(s, fields, rows)
 	}
 	if summary != choiceNone {
-		for _, s := range slotsFor(summary) {
-			qs["summary_"+s.name] = fieldQuestion(s, fields, rows)
+		for _, s := range guide[summary].Needs {
+			qs["summary_"+s.Name] = fieldQuestion(s, fields, rows)
 		}
 	}
 	picked := classify.Answers{}
@@ -242,9 +242,9 @@ func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 
 	var out []viewspec.Block
 	if summary != choiceNone {
-		out = append(out, block(summary, picked, "summary_"))
+		out = append(out, block(summary, guide[summary].Needs, picked, "summary_"))
 	}
-	return append(out, block(chosen, picked, "")), nil
+	return append(out, block(chosen, guide[chosen].Needs, picked, "")), nil
 }
 
 // ask and askState put one batch of questions and record the cost.

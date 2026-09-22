@@ -51,8 +51,11 @@ func (keyvalueWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 
 func (keyvalueWidget) Describe() Description {
 	return Description{
-		What:     "label and value per row, aligned on the label",
-		Needs:    []string{"columns (exactly two: label, then value)"},
+		What: "label and value per row, aligned on the label",
+		Needs: []Slot{
+			{Name: "label", What: "the key"},
+			{Name: "value", What: "the value beside it"},
+		},
 		NotFor:   "many records of the same shape, which is a table",
 		Examples: []string{"env", "git config -l", "one object's fields"},
 	}

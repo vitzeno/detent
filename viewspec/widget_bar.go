@@ -68,8 +68,11 @@ func (barWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 
 func (barWidget) Describe() Description {
 	return Description{
-		What:     "one bar per row, scaled to the largest, for comparing a number across rows",
-		Needs:    []string{"columns (exactly two: label, then the number)"},
+		What: "one bar per row, scaled to the largest, for comparing a number across rows",
+		Needs: []Slot{
+			{Name: "label", What: "labels each bar"},
+			{Name: "value", What: "the number each bar is long by"},
+		},
 		NotFor:   "a single proportion of a whole, which is a meter",
 		Examples: []string{"time per package", "size per directory"},
 	}

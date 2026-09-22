@@ -86,8 +86,9 @@ func paneWidths(panes []Pane, total int) []int {
 
 func (rowWidget) Describe() Description {
 	return Description{
-		What:     "lays its panes side by side, for putting a summary next to the thing it summarises",
-		Needs:    []string{"panes (at least two)"},
+		What: "lays its panes side by side, for putting a summary next to the thing it summarises",
+		// No Slots: this needs panes, which hold blocks,
+		// so nothing can compose one from field choices alone.
 		NotFor:   "blocks that simply follow one another, which stack without a row",
 		Examples: []string{"a meter beside the table it counts", "a chart beside its legend"},
 	}

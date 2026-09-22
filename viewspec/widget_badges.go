@@ -45,8 +45,10 @@ func (badgesWidget) Describe() Description {
 	return Description{
 		Summarises: true,
 		What:       "each distinct value of one field with how many rows have it",
-		Needs:      []string{"field"},
-		NotFor:     "showing the rows themselves — this only summarises them",
-		Examples:   []string{"git status codes", "container states"},
+		Needs: []Slot{
+			{Name: "field", What: "the value to count distinct values of"},
+		},
+		NotFor:   "showing the rows themselves — this only summarises them",
+		Examples: []string{"git status codes", "container states"},
 	}
 }
