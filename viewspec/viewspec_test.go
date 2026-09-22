@@ -1047,3 +1047,26 @@ func nestedKinds(t *testing.T, reg *viewspec.Registry) []string {
 	kinds := inner["items"].(map[string]any)["properties"].(map[string]any)["kind"].(map[string]any)
 	return kinds["enum"].([]string)
 }
+
+// One object per line is what jq -c, docker inspect and most
+// structured logs print. Whole-document parsing rejects it, and the
+// parse-kind spike found that out by choosing json correctly for
+// output our own extractor then refused.
+func TestJSON_ReadsOneObjectPerLine(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "json"},
+		Blocks: []viewspec.Block{{Kind: "table"}}}
+
+	got := draw(t, spec, "{\"a\":1,\"b\":\"two\"}\n{\"a\":2,\"b\":\"three\"}\n", 40)
+	require.Len(t, got, 3, "a header and two rows")
+	assert.Contains(t, got[1], "two")
+	assert.Contains(t, got[2], "three")
+
+	// A whole document still wins, and half a stream still fails.
+	got = draw(t, spec, `[{"a":1},{"a":2}]`, 40)
+	assert.Len(t, got, 3)
+
+	c, err := viewspec.Compile(spec)
+	require.NoError(t, err)
+	_, err = c.Bind("{\"a\":1}\n{\"a\":2\n")
+	assert.Error(t, err, "a truncated stream fails rather than drawing the half it liked")
+}

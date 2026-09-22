@@ -164,10 +164,36 @@ func (jsonExtractor) Extract(output string) ([]Row, error) {
 		return jsonRows(arr), nil
 	}
 	var one map[string]any
-	if err := json.Unmarshal([]byte(trimmed), &one); err != nil {
-		return nil, fmt.Errorf("not a JSON object or array: %w", err)
+	if err := json.Unmarshal([]byte(trimmed), &one); err == nil {
+		return jsonRows([]map[string]any{one}), nil
 	}
-	return jsonRows([]map[string]any{one}), nil
+	// One object per line, which is what jq -c, docker inspect and
+	// most structured logs print. Whole-document parsing rejects it.
+	objs, err := jsonLines(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("not JSON, a JSON array, or one object per line: %w", err)
+	}
+	return jsonRows(objs), nil
+}
+
+// jsonLines reads newline-delimited objects. Every line must be one,
+// so a truncated stream fails rather than drawing the half it liked.
+func jsonLines(s string) ([]map[string]any, error) {
+	var out []map[string]any
+	for _, line := range strings.Split(s, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var row map[string]any
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no objects")
+	}
+	return out, nil
 }
 
 func jsonRows(in []map[string]any) []Row {
