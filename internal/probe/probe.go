@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/vitzeno/detent/internal/classify"
 )
@@ -81,34 +82,58 @@ func New(runner Runner) *Prober {
 	return &Prober{runner: runner}
 }
 
-// Run executes probes and returns one combined blob, or "" when probes is empty.
+// Run executes probes and returns one combined blob, or "" when probes
+// is empty.
+//
+// Run together, not in turn. They are read-only commands that do not
+// depend on each other, and nothing about a goal can start until all
+// of them have answered: serially, a sandbox exec costs around 90ms
+// each and the human waits for the sum.
 func (pb *Prober) Run(ctx context.Context, probes []Probe) string {
 	if len(probes) == 0 {
 		return ""
 	}
+	results := make([]string, len(probes))
+	var wg sync.WaitGroup
+	for i, p := range probes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i] = pb.one(ctx, p)
+		}()
+	}
+	wg.Wait()
+
+	// Assembled in menu order, so what the model reads does not depend
+	// on which probe happened to finish first.
 	var b strings.Builder
 	b.WriteString("Environment context gathered automatically before this goal (not something you ran):\n")
-	for _, p := range probes {
+	for i, p := range probes {
 		fmt.Fprintf(&b, "\n$ %s\n", p.Command)
-		res, err := pb.runner.Run(ctx, p.Command)
-		if err != nil {
-			fmt.Fprintf(&b, "(failed: %v)\n", err)
-			continue
-		}
-		out := res.Stdout
-		if res.Stderr != "" {
-			if out != "" && !strings.HasSuffix(out, "\n") {
-				out += "\n"
-			}
-			out += res.Stderr
-		}
-		if out == "" {
-			out = "(no output)\n"
-		}
-		b.WriteString(out)
-		if !strings.HasSuffix(out, "\n") {
-			b.WriteString("\n")
-		}
+		b.WriteString(results[i])
 	}
 	return b.String()
+}
+
+// one runs a single probe and formats what it said, newline-terminated
+// so the blob reads as a transcript.
+func (pb *Prober) one(ctx context.Context, p Probe) string {
+	res, err := pb.runner.Run(ctx, p.Command)
+	if err != nil {
+		return fmt.Sprintf("(failed: %v)\n", err)
+	}
+	out := res.Stdout
+	if res.Stderr != "" {
+		if out != "" && !strings.HasSuffix(out, "\n") {
+			out += "\n"
+		}
+		out += res.Stderr
+	}
+	if out == "" {
+		return "(no output)\n"
+	}
+	if !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return out
 }

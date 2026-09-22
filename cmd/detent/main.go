@@ -88,10 +88,15 @@ func run() error {
 			resolved.SandboxNetwork, sandbox.NetworkHost, sandbox.NetworkNone)
 	}
 
-	if err := propose.Ping(context.Background(), resolved.BaseURL, resolved.APIKey); err != nil {
-		return fmt.Errorf("%v\n\nis the model endpoint up? Wanted %s with model %s — for LM Studio, load the model and Start Server; otherwise point -url/-model (or a config file) at your provider",
-			err, resolved.BaseURL, resolved.Model)
-	}
+	// Started here and waited for below. It still fails fast with a
+	// clear message rather than a raw dial error on the first goal,
+	// but it is a network round trip and everything between here and
+	// the wait needs no endpoint: at ~270ms it was the largest single
+	// thing between launching detent and seeing it.
+	pinged := make(chan error, 1)
+	go func() {
+		pinged <- propose.Ping(context.Background(), resolved.BaseURL, resolved.APIKey)
+	}()
 
 	sessionID := agent.NewSessionID()
 	// A session that cannot log is still a session: Setup says so and
@@ -146,6 +151,11 @@ func run() error {
 			Network:   resolved.SandboxNetwork == sandbox.NetworkHost,
 			Undoable:  true,
 		}
+	}
+
+	if err := <-pinged; err != nil {
+		return fmt.Errorf("%v\n\nis the model endpoint up? Wanted %s with model %s — for LM Studio, load the model and Start Server; otherwise point -url/-model (or a config file) at your provider",
+			err, resolved.BaseURL, resolved.Model)
 	}
 
 	proposer := propose.New(

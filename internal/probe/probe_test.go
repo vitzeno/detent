@@ -3,9 +3,12 @@ package probe
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/host"
@@ -126,3 +129,36 @@ func TestMenu_NamesAreUnique(t *testing.T) {
 		assert.NotEmpty(t, p.Instructions)
 	}
 }
+
+// Probes are independent read-only commands and nothing about a goal
+// can start until all have answered, so they run together. Serially a
+// sandbox exec costs about 90ms and the human waits for the sum.
+func TestRun_ProbesGoTogether(t *testing.T) {
+	const delay = 80 * time.Millisecond
+	slow := runnerFunc(func(_ context.Context, cmd string) (host.Result, error) {
+		time.Sleep(delay)
+		return host.Result{Stdout: cmd + " said so\n"}, nil
+	})
+
+	menu := Menu
+	require.Greater(t, len(menu), 2, "the point needs several")
+
+	start := time.Now()
+	out := New(slow).Run(context.Background(), menu)
+	took := time.Since(start)
+
+	assert.Less(t, took, time.Duration(len(menu))*delay/2,
+		"%d probes took %v; serially that is %v", len(menu), took, time.Duration(len(menu))*delay)
+
+	// Menu order, whatever order they finished in.
+	var at int
+	for _, p := range menu {
+		i := strings.Index(out, p.Command)
+		require.GreaterOrEqual(t, i, at, "%s is out of order", p.Name)
+		at = i
+	}
+}
+
+type runnerFunc func(context.Context, string) (host.Result, error)
+
+func (f runnerFunc) Run(ctx context.Context, cmd string) (host.Result, error) { return f(ctx, cmd) }

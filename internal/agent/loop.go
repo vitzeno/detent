@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/vitzeno/detent/internal/host"
@@ -43,29 +44,59 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 	log.InfoContext(ctx, "goal opened", logging.KeyEvent, logging.GoalBegin,
 		"goal_text", goal, "transcript", len(s.Transcript))
 
+	t0 := time.Now()
 	s.compact(ctx)
+	compacted := time.Since(t0)
+
 	s.append(propose.Message{Role: propose.RoleUser, Content: goal})
+
+	// The baseline is what rollback restores to, and it depends on
+	// nothing the probes do, so it is taken while they run. Probes are
+	// read-only: a checkpoint from before them is a checkpoint from
+	// before the goal.
+	res := &GoalResult{Goal: goal}
+	var baseline sync.WaitGroup
+	baseline.Add(1)
+	t3 := time.Now()
+	var snapshotFor time.Duration
+	go func() {
+		defer baseline.Done()
+		if id, ok, err := s.Snapshot(ctx); ok && err == nil {
+			res.Baseline = id
+		}
+		res.BaselineTree = s.SnapshotWorktree(ctx)
+		snapshotFor = time.Since(t3)
+	}()
+
 	prober := probe.New(probeRunner{runner: s.Runners.Probe()})
+	t1 := time.Now()
 	chosen := probe.Select(ctx, s.Judge, goal)
+	chose := time.Since(t1)
 	names := make([]string, 0, len(chosen))
 	for _, pr := range chosen {
 		names = append(names, pr.Name)
 	}
-	log.InfoContext(ctx, "probes chosen", logging.KeyEvent, logging.ProbeRun, "probes", names)
-	if out := prober.Run(ctx, chosen); out != "" {
+	t2 := time.Now()
+	out := prober.Run(ctx, chosen)
+	if out != "" {
 		s.append(propose.Message{Role: propose.RoleTool, Content: out})
 	}
+	// Timed per phase because they are serial and nothing else can
+	// start until they finish: a goal's first command waits on all of
+	// it. Gaps between events cannot be read as a chain here, since
+	// judging and view composition run alongside.
+	log.InfoContext(ctx, "probes chosen", logging.KeyEvent, logging.ProbeRun, "probes", names,
+		logging.KeyMS, ms(chose+time.Since(t2)), "select_ms", ms(chose),
+		"run_ms", ms(time.Since(t2)), "compact_ms", ms(compacted))
 	// An abort during probe collection must close the goal here, not
 	// fall through into the first Propose.
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	res := &GoalResult{Goal: goal}
+	baseline.Wait()
 	res.Stats = s.Stats.StartGoal(goal)
-	if id, ok, err := s.Snapshot(ctx); ok && err == nil {
-		res.Baseline = id
-	}
-	res.BaselineTree = s.SnapshotWorktree(ctx)
+	log.DebugContext(ctx, "goal ready to propose", logging.KeyEvent, logging.GoalBegin,
+		"snapshot_ms", ms(snapshotFor), logging.KeyMS, ms(time.Since(t0)))
 	res.BaselineMark = s.mark()
 	s.goalMark = res.BaselineMark
 	return res, nil
@@ -315,3 +346,7 @@ func (s *Session) RunGoal(ctx context.Context, goal string) (GoalResult, error) 
 		ec.Post = &post
 	}
 }
+
+// ms rounds a duration for a log field: microseconds on a network call
+// are noise, and a whole number is what a query filters on.
+func ms(d time.Duration) int64 { return d.Milliseconds() }
