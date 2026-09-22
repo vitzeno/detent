@@ -19,3 +19,5 @@ __pycache__/
 
 # build output
 bin/
+.vscode/
+ui/zz_snapshot_test.go
