@@ -127,6 +127,19 @@ type Bound struct {
 // Generation uses it to ask a closed question about real columns.
 func (b *Bound) Fields() []string { return slices.Clone(b.fields) }
 
+// Sample returns up to n parsed rows. A name alone is thin for a field
+// called %iused and meaningless for one called col3, so a caller
+// asking which field to draw can show what the field holds.
+func (b *Bound) Sample(n int) []Row {
+	for _, bb := range leaves(b.blocks) {
+		if len(bb.data.Rows) == 0 {
+			continue
+		}
+		return slices.Clone(bb.data.Rows[:min(n, len(bb.data.Rows))])
+	}
+	return nil
+}
+
 // Render is one drawn view. A struct rather than a bare []string so a
 // caller can scroll to the selection without knowing the layout.
 type Render struct {

@@ -1070,3 +1070,22 @@ func TestJSON_ReadsOneObjectPerLine(t *testing.T) {
 	_, err = c.Bind("{\"a\":1}\n{\"a\":2\n")
 	assert.Error(t, err, "a truncated stream fails rather than drawing the half it liked")
 }
+
+// Composing a view means asking which field to draw, and a field name
+// on its own is thin. Sample is how a caller shows what one holds.
+func TestSample_ShowsWhatAFieldHolds(t *testing.T) {
+	b := bind(t, viewspec.Spec{Parse: linesParse(),
+		Blocks: []viewspec.Block{{Kind: "table"}}}, goTest)
+
+	got := b.Sample(2)
+	require.Len(t, got, 2, "capped at what was asked for")
+	assert.Equal(t, "github.com/x/a", got[0]["pkg"])
+	assert.Equal(t, "FAIL", got[1]["status"])
+
+	assert.Len(t, b.Sample(100), 4, "and never more than there are")
+
+	// Nothing parsed means nothing to show, not a panic.
+	none := bind(t, viewspec.Spec{Parse: viewspec.Parse{Kind: "none"},
+		Blocks: []viewspec.Block{{Kind: "log"}}}, "some text\n")
+	assert.Empty(t, none.Sample(3))
+}
