@@ -131,8 +131,14 @@ type Description struct {
 	// otherwise empty a required one and the block fails to bind.
 	// Name the shape a field takes where it is not obvious: a filter
 	// that silently matches nothing draws a plausible, wrong view.
-	Needs    []string `json:"needs,omitempty"`
-	Examples []string `json:"examples,omitempty"`
+	Needs []string `json:"needs,omitempty"`
+	// Summarises marks a kind that draws one fact about every row
+	// rather than the rows themselves. A caller composing a view asks
+	// for a body and a summary separately, and which a widget is
+	// belongs here beside the widget, not in a list somewhere else
+	// that has to be kept in step with this one.
+	Summarises bool     `json:"summarises,omitempty"`
+	Examples   []string `json:"examples,omitempty"`
 }
 
 // Described is an optional Widget extension carrying that description

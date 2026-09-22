@@ -53,9 +53,10 @@ func (sparklineWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 
 func (sparklineWidget) Describe() Description {
 	return Description{
-		What:     "one compact strip showing the shape of a numeric field across rows",
-		Needs:    []string{"field"},
-		NotFor:   "comparing individual rows, where bar is readable and this is not",
-		Examples: []string{"a latency series", "sizes over time"},
+		Summarises: true,
+		What:       "one compact strip showing the shape of a numeric field across rows",
+		Needs:      []string{"field"},
+		NotFor:     "comparing individual rows, where bar is readable and this is not",
+		Examples:   []string{"a latency series", "sizes over time"},
 	}
 }

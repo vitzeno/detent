@@ -79,13 +79,26 @@ var parseCriteria = map[string]any{
 	},
 }
 
-// bodyKinds draw the rows and summaryKinds draw one line about all of
-// them. Split so a single question never offers a meter against a
-// table, which are answers to different questions.
-var bodyKinds = []string{"table", "list", "tree", "flow", "keyvalue", "bar",
-	"gauge", "dots", "histogram", "log", "code", "errors", "json", "diff"}
-
-var summaryKinds = []string{"meter", "badges", "stat", "sparkline", "histogram"}
+// split sorts the offered kinds into the ones that draw the rows and
+// the ones that draw a fact about all of them, so a single question
+// never offers a meter against a table: they answer different
+// questions. Each widget says which it is in its own Describe, so
+// registering one is enough to be offered.
+func split(guide map[string]viewspec.Description, offered []string) (body, summary []string) {
+	for _, kind := range offered {
+		d, ok := guide[kind]
+		if !ok {
+			// No description, no criteria to offer it under.
+			continue
+		}
+		if d.Summarises {
+			summary = append(summary, kind)
+			continue
+		}
+		body = append(body, kind)
+	}
+	return body, summary
+}
 
 // slot is one field a widget cannot be drawn without, named so the
 // question reads as a question. A table needs none: with no columns it
@@ -248,21 +261,6 @@ func criteriaFor(guide map[string]viewspec.Description, kinds []string) map[stri
 func withNone(in map[string]any) map[string]any {
 	in[choiceNone] = map[string]any{"what": "no summary; the body speaks for itself"}
 	return in
-}
-
-// intersect keeps want's order, so the criteria read the same way
-// whatever the registry's own ordering is.
-func intersect(want, have []string) []string {
-	var out []string
-	for _, w := range want {
-		for _, h := range have {
-			if w == h {
-				out = append(out, w)
-				break
-			}
-		}
-	}
-	return out
 }
 
 // logger is what a composer records through.

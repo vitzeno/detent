@@ -196,12 +196,11 @@ func (c *composer) parseKind(ctx context.Context, header string) (string, error)
 // what the parse produced, so neither can name something absent.
 func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 	fields []string, rows []viewspec.Row) ([]viewspec.Block, error) {
-	offered := prune(c.g.registry(), c.req.Kind).Kinds()
-	body := intersect(bodyKinds, offered)
-	if len(body) == 0 {
+	guide := describe(c.g.registry())
+	bodies, summaries := split(guide, prune(c.g.registry(), c.req.Kind).Kinds())
+	if len(bodies) == 0 {
 		return nil, fmt.Errorf("no body widget is offered for %s", c.req.Kind)
 	}
-	guide := describe(c.g.registry())
 
 	state := c.state()
 	state["parse_kind"], state["fields_found"] = parse.Kind, fields
@@ -209,13 +208,12 @@ func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 		"body": {
 			Instructions: "Which widget should draw the body of this output? " +
 				"Choose what a human would read this best as.",
-			Choice: &classify.ChoiceQuestion{Criteria: criteriaFor(guide, body)},
+			Choice: &classify.ChoiceQuestion{Criteria: criteriaFor(guide, bodies)},
 		},
 		"summary": {
 			Instructions: "Which widget, if any, should sit above the body as a one-line " +
 				"summary? Choose none unless it genuinely adds something.",
-			Choice: &classify.ChoiceQuestion{
-				Criteria: withNone(criteriaFor(guide, intersect(summaryKinds, offered)))},
+			Choice: &classify.ChoiceQuestion{Criteria: withNone(criteriaFor(guide, summaries))},
 		},
 	})
 	if !ok {

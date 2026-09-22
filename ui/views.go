@@ -106,9 +106,15 @@ func applyView(r *stepRow, got GeneratedView) bool {
 	return false
 }
 
-// fallbackChain is what a row's view is tried against with no model
-// involved: the built-in for whatever the output was judged to be,
-// then the raw bytes. A generated spec arrives later and replaces it.
+// fallbackChain is what a row draws from with no judge involved: the
+// spec for whatever shape the output was judged to be, then the raw
+// bytes. A composed spec arrives later and replaces it.
+//
+// markdown.Wants is the one heuristic here, and it is ui's own layer
+// rather than a rule the judge never learned: this chain runs before
+// anything is judged and with no Driver at all, the same way
+// heuristicPost classifies when Jev is absent. The judge is offered
+// markdown too, under file_content.
 func fallbackChain(r *stepRow, output string) []*viewspec.Compiled {
 	var chain []*viewspec.Compiled
 	kind := rowKind(r)
@@ -150,6 +156,17 @@ func (w *markdownWidget) Draw(_ viewspec.Block, d viewspec.Data, f viewspec.Fram
 	w.raw, w.width = d.Raw, f.Width
 	w.out = strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")
 	return w.out, nil
+}
+
+// Describe puts markdown in the guide the judge chooses from. Without
+// it the widget is registered, drawable, and silently absent from
+// every criteria list, since criteria are built from Described alone.
+func (*markdownWidget) Describe() viewspec.Description {
+	return viewspec.Description{
+		What:     "prose rendered as a document: headings, lists, emphasis, code blocks",
+		NotFor:   "source code or a config file, which code draws with its lines intact",
+		Examples: []string{"cat README.md", "a changelog", "generated documentation"},
+	}
 }
 
 func must(err error) {

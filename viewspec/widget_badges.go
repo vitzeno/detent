@@ -43,9 +43,10 @@ func (badgesWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 
 func (badgesWidget) Describe() Description {
 	return Description{
-		What:     "each distinct value of one field with how many rows have it",
-		Needs:    []string{"field"},
-		NotFor:   "showing the rows themselves — this only summarises them",
-		Examples: []string{"git status codes", "container states"},
+		Summarises: true,
+		What:       "each distinct value of one field with how many rows have it",
+		Needs:      []string{"field"},
+		NotFor:     "showing the rows themselves — this only summarises them",
+		Examples:   []string{"git status codes", "container states"},
 	}
 }

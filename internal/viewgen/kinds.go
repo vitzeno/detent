@@ -73,7 +73,7 @@ var kinds = []Kind{
 		What:     "a file's own prose or code body, read in full like a document",
 		NotFor:   "well-formed JSON even when it came from cat, which is structured_json",
 		Examples: []string{"cat main.go", "cat README.md"},
-		Widgets:  []string{"code", "log", "text"},
+		Widgets:  []string{"code", "markdown", "log", "text"},
 		Generate: true,
 	},
 	{

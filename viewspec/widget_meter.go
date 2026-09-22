@@ -67,9 +67,10 @@ func (meterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 
 func (meterWidget) Describe() Description {
 	return Description{
-		What:     "one proportion counted from the rows, as a bar and a fraction",
-		Needs:    []string{"count_where as field=value, an exact match", "of"},
-		NotFor:   "a value per row — that is bar",
-		Examples: []string{"how many tests passed", "how many files are staged"},
+		Summarises: true,
+		What:       "one proportion counted from the rows, as a bar and a fraction",
+		Needs:      []string{"count_where as field=value, an exact match", "of"},
+		NotFor:     "a value per row — that is bar",
+		Examples:   []string{"how many tests passed", "how many files are staged"},
 	}
 }

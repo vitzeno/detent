@@ -17,6 +17,7 @@ import (
 
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/viewgen"
+	"github.com/vitzeno/detent/ui"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -131,8 +132,13 @@ root   14  0.0  0.0   7376  3200 ?   R    20:47 0:00 ps aux
 func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
 	criteria := viewgen.RenderKindCriteria()
 	require.Len(t, criteria, len(viewgen.Kinds()))
+	guide := ui.Registry().Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)["const"].(map[string]viewspec.Description)
 
-	known := viewspec.Standard().Kinds()
+	// The registry detent actually runs with, not viewspec's own:
+	// ui registers markdown on top, and a kind may name it. Checking
+	// against Standard made the table and the production vocabulary
+	// two different things.
+	known := ui.Registry().Kinds()
 	for _, k := range viewgen.Kinds() {
 		assert.NotEmpty(t, k.What, k.Name)
 		assert.NotEmpty(t, k.NotFor, "%s names what it is confused with", k.Name)
@@ -147,6 +153,15 @@ func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
 			assert.Less(t, len(k.Widgets), len(known),
 				"%s narrows the vocabulary rather than offering all of it", k.Name)
 		}
+		// Every kind must offer something that draws rows, or there is
+		// nothing for the body question to choose between.
+		var bodies int
+		for _, w := range k.Widgets {
+			if d, ok := guide[w]; ok && !d.Summarises {
+				bodies++
+			}
+		}
+		assert.Positive(t, bodies, "%s offers a body widget, not only summaries", k.Name)
 	}
 }
 
