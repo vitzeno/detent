@@ -13,7 +13,6 @@ package spike
 import (
 	"context"
 	"os"
-	"os/exec"
 	"sort"
 	"strings"
 	"testing"
@@ -106,7 +105,7 @@ func TestSpike_JevChoosesAParseKind(t *testing.T) {
 	var slowest, sum time.Duration
 	t.Logf("%-12s %-12s %-9s %s", "sample", "jev", "latency", "workable")
 	for _, s := range samples {
-		out, err := exec.Command("sh", "-c", s.command).CombinedOutput()
+		out, err := run(s.command)
 		if err != nil && len(out) == 0 {
 			t.Logf("%-12s (command produced nothing, skipped)", s.name)
 			continue
