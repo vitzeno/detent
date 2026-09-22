@@ -217,14 +217,15 @@ func (m *Model) focused() *stepRow {
 	return rows[m.nav.cursor]
 }
 
-// trackNewest follows the latest row, unless the human has taken over.
+// trackNewest brings the newest row into view. Two separate things,
+// because they interrupt differently: the history pane scrolls to the
+// bottom whatever the human was doing, since a new row arriving is
+// exactly what history is for, while the cursor only moves when
+// nobody is reading the output pane, because moving it would swap the
+// output out from under them.
 func (m *Model) trackNewest() {
-	if !m.nav.follow {
-		return
-	}
-	// A reader parked in the output pane stays parked.
+	m.nav.follow = true
 	if m.nav.focus == focusOutput {
-		m.nav.follow = false
 		return
 	}
 	m.nav.cursor = len(m.rows()) - 1

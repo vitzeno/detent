@@ -3,6 +3,7 @@ package ui
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,13 +21,32 @@ func TestUI_TrackNewestParksOutputReaders(t *testing.T) {
 	m.blocks[0].steps = append(m.blocks[0].steps, tableBlock().steps[0])
 	m.trackNewest()
 	require.Equal(t, 0, m.nav.cursor, "parked reader keeps its row")
-	require.False(t, m.nav.follow, "parking unfollows")
+	require.True(t, m.nav.follow, "but history still scrolls to the new row")
 
 	m.nav.focus = focusHistory
-	m.nav.follow = true // re-followed by navigating to the bottom
 	m.trackNewest()
-	require.Equal(t, len(m.rows())-1, m.nav.cursor, "history focus still follows")
+	require.Equal(t, len(m.rows())-1, m.nav.cursor, "history focus follows")
 	require.True(t, m.nav.follow)
+}
+
+// Scrolling history up is a look at something, not a decision to stop
+// watching: the next row that arrives brings the pane back to the
+// bottom, which is what a log does.
+func TestUI_NewOutputReturnsHistoryToTheBottom(t *testing.T) {
+	m := testUIModel()
+	m.blocks = []*goalBlock{tableBlock()}
+	m.blocks[0].steps = append(m.blocks[0].steps, tableBlock().steps[0])
+	m.nav.cursor = len(m.rows()) - 1
+	m.nav.follow = true
+
+	nm, _ := m.navUp()
+	m = nm.(Model)
+	require.False(t, m.nav.follow, "looking away stops following")
+
+	m.blocks[0].steps = append(m.blocks[0].steps, tableBlock().steps[0])
+	m.trackNewest()
+	assert.True(t, m.nav.follow, "a new row brings it back")
+	assert.Equal(t, len(m.rows())-1, m.nav.cursor)
 }
 
 // TestUI_SpinnerTickAnimatesHistory locks a bug where the history
