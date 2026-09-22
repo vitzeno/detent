@@ -5,19 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/internal/classify"
-	"github.com/vitzeno/detent/internal/usage"
 	"github.com/vitzeno/detent/internal/viewgen"
-	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -35,171 +34,10 @@ var goTest = func() string {
 	return out
 }()
 
-const goodSpec = `{"version":1,"match":"","parse":{"kind":"lines",
-"pattern":"^(?P<status>ok|FAIL)\\s+(?P<pkg>\\S+)\\s+(?P<secs>[\\d.]+)s"},
-"blocks":[{"kind":"meter","title":"passed","count_where":"status=ok","of":"*"},
-{"kind":"table","columns":[{"field":"status"},{"field":"pkg"}]}]}`
-
-// fakeModel replies with each canned answer in turn.
-type fakeModel struct {
-	mu      sync.Mutex
-	replies []string
-	calls   int
-	schema  map[string]any
-	err     error
-}
-
-// Locked because Structured is called from several goroutines at once,
-// which is the contract viewgen now states.
-func (m *fakeModel) Structured(_ context.Context, _, _ string, schema map[string]any) ([]byte, usage.Usage, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.schema = schema
-	if m.err != nil {
-		return nil, usage.Usage{}, m.err
-	}
-	reply := m.replies[min(m.calls, len(m.replies)-1)]
-	m.calls++
-	return []byte(reply), usage.Usage{PromptTokens: 10, CompletionTokens: 5}, nil
-}
-
-type fakeJudge struct {
-	scores []float64
-	calls  int
-	// byState scores from what the judge was shown rather than from
-	// call order, which stopped saying which candidate is which once
-	// they were asked together.
-	byState func(classify.State) float64
-}
-
-func (j *fakeJudge) Ask(_ context.Context, state classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
-	if j.byState != nil {
-		return classify.Answers{"view_fit": {Noul: j.byState(state)}}, classify.Usage{}, nil
-	}
-	s := j.scores[min(j.calls, len(j.scores)-1)]
-	j.calls++
-	return classify.Answers{"view_fit": {Noul: s}}, classify.Usage{}, nil
-}
-
 // An unseeded command, so the generator actually runs: anything
 // detent ships a spec for is answered by Existing instead.
 func request() viewgen.Request {
 	return viewgen.Request{Command: "pytest -q", Output: goTest, Kind: "plain_text"}
-}
-
-func TestGenerate_AuthorsValidatesAndCaches(t *testing.T) {
-	dir := t.TempDir()
-	model := &fakeModel{replies: []string{goodSpec}}
-	g := &viewgen.Generator{Model: model, Store: &viewgen.Store{Dir: dir},
-		Candidates: 1}
-
-	got, err := g.Generate(context.Background(), request())
-	require.NoError(t, err)
-	require.NotNil(t, got.Spec)
-	assert.Equal(t, viewgen.SourceGenerated, got.Source)
-	assert.Equal(t, "pytest", got.Spec.Match, "stamped with the command shape it serves")
-	assert.Equal(t, 10, got.Usage.PromptTokens)
-
-	files, err := os.ReadDir(dir)
-	require.NoError(t, err)
-	require.Len(t, files, 1)
-	assert.Contains(t, files[0].Name(), "pytest", "the file names itself readably")
-
-	// A second call never reaches the model.
-	again, err := g.Generate(context.Background(), request())
-	require.NoError(t, err)
-	assert.Equal(t, viewgen.SourceSaved, again.Source)
-	assert.Zero(t, again.Usage.PromptTokens, "a spec that already exists costs nothing")
-	assert.Equal(t, 1, model.calls)
-}
-
-// A spec that decodes but cannot draw this output is not a view.
-func TestGenerate_RejectsWhatCannotDrawTheOutput(t *testing.T) {
-	tests := []struct{ name, reply string }{
-		{"not JSON at all", `sure! here is your view:`},
-		{"a kind that does not exist", `{"version":1,"parse":{"kind":"none"},
-			"blocks":[{"kind":"hologram"}]}`},
-		{"a field the parse never produced", `{"version":1,
-			"parse":{"kind":"lines","pattern":"^(?P<status>ok|FAIL)"},
-			"blocks":[{"kind":"list","field":"elapsed"}]}`},
-		{"a pattern that matches nothing", `{"version":1,
-			"parse":{"kind":"lines","pattern":"^(?P<nope>zzzz)$"},
-			"blocks":[{"kind":"list","field":"nope"}]}`},
-		{"a pattern that does not compile", `{"version":1,
-			"parse":{"kind":"lines","pattern":"^(?P<a>"},"blocks":[{"kind":"log"}]}`},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			g := &viewgen.Generator{Model: &fakeModel{replies: []string{tc.reply}},
-				Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
-			_, err := g.Generate(context.Background(), request())
-			assert.ErrorIs(t, err, viewgen.ErrNoneFit)
-		})
-	}
-}
-
-func TestGenerate_JevDecidesBetweenCandidatesAndCanRejectBoth(t *testing.T) {
-	plainer := `{"version":1,"parse":{"kind":"none"},"blocks":[{"kind":"log"}]}`
-
-	g := &viewgen.Generator{
-		Model: &fakeModel{replies: []string{plainer, goodSpec}},
-		Judge: &fakeJudge{byState: func(s classify.State) float64 {
-			// State is any; the generator always passes this map.
-			if len(s.(map[string]any)["blocks_chosen"].([]string)) > 1 {
-				return 0.9
-			}
-			return 0.2
-		}},
-		Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 2}
-	got, err := g.Generate(context.Background(), request())
-	require.NoError(t, err)
-	assert.Equal(t, 0.9, got.Fit)
-	assert.Len(t, got.Spec.Blocks, 2, "the better-judged candidate won")
-
-	// Both below threshold and the output stays plain text.
-	g = &viewgen.Generator{
-		Model: &fakeModel{replies: []string{goodSpec}},
-		Judge: &fakeJudge{scores: []float64{0.1}},
-		Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
-	_, err = g.Generate(context.Background(), request())
-	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
-}
-
-// A diff already draws itself; there is no view to gain from one.
-func TestGenerate_SkipsShapesWithNothingToGain(t *testing.T) {
-	for _, kind := range []string{"diff"} {
-		model := &fakeModel{replies: []string{goodSpec}}
-		g := &viewgen.Generator{Model: model, Store: &viewgen.Store{Dir: t.TempDir()}}
-		req := request()
-		req.Kind = kind
-		_, err := g.Generate(context.Background(), req)
-		assert.ErrorIs(t, err, viewgen.ErrNotWorth, kind)
-		assert.Zero(t, model.calls, "and never asks")
-	}
-}
-
-// The model is only shown the kinds that suit what Jev said this is.
-func TestGenerate_PrunesTheVocabularyByRenderKind(t *testing.T) {
-	model := &fakeModel{replies: []string{goodSpec}}
-	g := &viewgen.Generator{Model: model, Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
-	req := request()
-	req.Kind = "file_listing"
-	_, _ = g.Generate(context.Background(), req)
-
-	blocks := model.schema["properties"].(map[string]any)["blocks"].(map[string]any)
-	kinds := blocks["items"].(map[string]any)["properties"].(map[string]any)["kind"].(map[string]any)["enum"].([]string)
-	assert.Contains(t, kinds, "tree")
-	assert.Contains(t, kinds, "list")
-	assert.NotContains(t, kinds, "diff", "a file listing has no use for a diff")
-	assert.NotContains(t, kinds, "code")
-	assert.Less(t, len(kinds), len(viewspec.Standard().Kinds()))
-}
-
-func TestGenerate_ErrorsFromTheModelAreNotFatal(t *testing.T) {
-	g := &viewgen.Generator{Model: &fakeModel{err: errors.New("endpoint down")},
-		Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 2}
-	_, err := g.Generate(context.Background(), request())
-	assert.ErrorIs(t, err, viewgen.ErrNoneFit, "a dead endpoint costs the view, not the step")
 }
 
 func TestKey_SharesAShapeButNotAKind(t *testing.T) {
@@ -312,190 +150,167 @@ func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
 	}
 }
 
-// A shipped spec is the floor, not the ceiling: a seeded command still
-// gets the model's attempt, and only falls back when it comes to
-// nothing. Checking seeds first made those commands ungeneratable.
-func TestGenerate_AShippedSpecDoesNotShadowTheModel(t *testing.T) {
-	seeded := viewgen.Request{Command: "go test ./...", Output: goTest, Kind: "plain_text"}
-
-	model := &fakeModel{replies: []string{goodSpec}}
-	g := &viewgen.Generator{Model: model, Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
-	got, err := g.Generate(context.Background(), seeded)
-	require.NoError(t, err)
-	assert.Equal(t, viewgen.SourceGenerated, got.Source, "the model was asked")
-	assert.Positive(t, model.calls)
-
-	// When nothing generated survives, the shipped spec catches it.
-	g = &viewgen.Generator{Model: &fakeModel{replies: []string{`not a spec`}},
-		Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
-	got, err = g.Generate(context.Background(), seeded)
-	require.NoError(t, err)
-	assert.Equal(t, viewgen.SourceShipped, got.Source, "and the floor held")
-	assert.Len(t, got.Spec.Blocks, 2, "detent's own go test view")
-
-	// With no model at all, Existing is the whole of views: saved.
-	out, ok := (&viewgen.Generator{}).Existing(context.Background(), seeded)
-	require.True(t, ok)
-	assert.Equal(t, viewgen.SourceShipped, out.Source)
-}
-
-// Length is a property of the output, not of its shape, so it gates
-// the model call rather than hiding inside a render kind.
-func TestGenerate_ShortOutputIsNotWorthAModelCall(t *testing.T) {
-	model := &fakeModel{replies: []string{goodSpec}}
-	g := &viewgen.Generator{Model: model, Store: &viewgen.Store{Dir: t.TempDir()}}
-
-	_, err := g.Generate(context.Background(), viewgen.Request{
-		Command: "pytest -q", Output: "2 passed\n", Kind: "plain_text"})
-	assert.ErrorIs(t, err, viewgen.ErrNotWorth)
-	assert.Zero(t, model.calls, "and it never asks")
-}
-
-// Every branch that silently chooses something says which, because
-// "the output just looked plain" is otherwise unanswerable.
-func TestGenerate_SaysWhyOnEveryPath(t *testing.T) {
-	logs := func(t *testing.T, run func(*viewgen.Generator)) []map[string]any {
-		t.Helper()
-		dir := t.TempDir()
-		closer, err := logging.Setup(logging.Options{Dir: dir, Session: "t", Level: "debug"})
-		require.NoError(t, err)
-		run(&viewgen.Generator{Model: &fakeModel{replies: []string{goodSpec}},
-			Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1})
-		require.NoError(t, closer())
-
-		raw, err := os.ReadFile(filepath.Join(dir, "t.jsonl"))
-		require.NoError(t, err)
-		var out []map[string]any
-		for _, l := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
-			var m map[string]any
-			require.NoError(t, json.Unmarshal([]byte(l), &m))
-			out = append(out, m)
-		}
-		return out
-	}
-	events := func(rs []map[string]any) []string {
-		var out []string
-		for _, r := range rs {
-			out = append(out, r["event"].(string))
-		}
-		return out
-	}
-
-	t.Run("accepted", func(t *testing.T) {
-		got := logs(t, func(g *viewgen.Generator) {
-			_, err := g.Generate(context.Background(), request())
-			require.NoError(t, err)
-		})
-		assert.Subset(t, events(got),
-			[]string{logging.LLMRequest, logging.ViewAccepted})
-		for _, r := range got {
-			assert.Equal(t, logging.Viewgen, r[logging.KeyComponent])
-		}
-	})
-
-	t.Run("skipped, with the gate that refused", func(t *testing.T) {
-		got := logs(t, func(g *viewgen.Generator) {
-			req := request()
-			req.Output = "two\nlines\n"
-			_, err := g.Generate(context.Background(), req)
-			assert.ErrorIs(t, err, viewgen.ErrNotWorth)
-		})
-		require.Len(t, got, 1)
-		assert.Equal(t, logging.ViewSkipped, got[0][logging.KeyEvent])
-		assert.Contains(t, got[0][logging.KeyReason], "lines")
-		assert.NotContains(t, events(got), logging.LLMRequest, "and it never asked")
-	})
-
-	t.Run("invalid, with the reason", func(t *testing.T) {
-		dir := t.TempDir()
-		closer, err := logging.Setup(logging.Options{Dir: dir, Session: "t"})
-		require.NoError(t, err)
-		g := &viewgen.Generator{Model: &fakeModel{replies: []string{`{"parse":{"line":"x"},"blocks":[{"kind":"log"}]}`}},
-			Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
-		_, err = g.Generate(context.Background(), request())
-		assert.ErrorIs(t, err, viewgen.ErrNoneFit)
-		require.NoError(t, closer())
-
-		raw, _ := os.ReadFile(filepath.Join(dir, "t.jsonl"))
-		assert.Contains(t, string(raw), logging.ViewInvalid)
-		assert.Contains(t, string(raw), "unknown parse kind",
-			"the reason a candidate failed, not just that it did")
-		assert.Contains(t, string(raw), logging.ViewDeclined)
-	})
-}
-
-// The bar is tuned, so it is worth pinning what it lets through. Jev
-// answered 0.45 to 0.48 on valid candidates across a whole session and
-// nothing was ever kept; a declined view and a bad one look the same
-// to the human, since the pane falls back to plain text either way.
-func TestFitThreshold_KeepsWhatJevActuallyScores(t *testing.T) {
-	for _, tc := range []struct {
-		score float64
-		keep  bool
-	}{
-		{0.48, true}, {0.45, true}, {0.3, true},
-		{0.29, false}, {0.1, false},
-	} {
-		g := &viewgen.Generator{
-			Model: &fakeModel{replies: []string{goodSpec}},
-			Judge: &fakeJudge{scores: []float64{tc.score}},
-			Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
-		got, err := g.Generate(context.Background(), request())
-		if tc.keep {
-			require.NoError(t, err, "%v", tc.score)
-			assert.Equal(t, viewgen.SourceGenerated, got.Source)
-			continue
-		}
-		assert.ErrorIs(t, err, viewgen.ErrNoneFit, "%v", tc.score)
-	}
-}
-
-// A judge that fails has approved nothing. Returning a perfect score
-// on error meant a whole session of candidates was accepted unjudged,
-// which is how the views got bad without anything looking broken.
-func TestFit_AJudgeThatFailsRejects(t *testing.T) {
-	g := &viewgen.Generator{
-		Model: &fakeModel{replies: []string{goodSpec}},
-		Judge: &failingJudge{},
-		Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
-
-	_, err := g.Generate(context.Background(), request())
-	assert.ErrorIs(t, err, viewgen.ErrNoneFit, "unjudged is not approved")
-}
-
-// The judge is asked about shape, so it gets a sample. Sending the
-// whole output is what made the call fail in the first place.
-func TestFit_TheJudgeSeesABoundedSample(t *testing.T) {
-	spy := &statejudge{score: 0.9}
-	g := &viewgen.Generator{
-		Model: &fakeModel{replies: []string{goodSpec}},
-		Judge: spy,
-		Store: &viewgen.Store{Dir: t.TempDir()}, Candidates: 1}
-
-	req := request()
-	req.Output = strings.Repeat(goTest, 200) // long, and still parseable
-	require.Greater(t, len(req.Output), viewgen.MaxJudgeBytes*4)
-
-	_, err := g.Generate(context.Background(), req)
-	require.NoError(t, err)
-
-	shown := spy.seen["output"].(string)
-	assert.LessOrEqual(t, len(shown), viewgen.MaxJudgeBytes+len("\n…[truncated]"))
-	assert.Contains(t, shown, "truncated")
-}
-
 type failingJudge struct{}
 
 func (failingJudge) Ask(context.Context, classify.State, classify.Questions) (classify.Answers, classify.Usage, error) {
 	return nil, classify.Usage{}, errors.New("jev unreachable")
 }
 
-type statejudge struct {
-	score float64
-	seen  map[string]any
+// scriptedJudge answers each question by name, so a test can say what
+// the composition decided without a network. Unscripted questions take
+// the first criterion, which keeps a test to the decisions it is
+// actually about.
+type scriptedJudge struct {
+	say  map[string]string
+	seen []classify.State
+	err  error
 }
 
-func (j *statejudge) Ask(_ context.Context, state classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
-	j.seen = state.(map[string]any)
-	return classify.Answers{"view_fit": {Noul: j.score}}, classify.Usage{}, nil
+func (j *scriptedJudge) Ask(_ context.Context, state classify.State,
+	qs classify.Questions) (classify.Answers, classify.Usage, error) {
+	if j.err != nil {
+		return nil, classify.Usage{}, j.err
+	}
+	j.seen = append(j.seen, state)
+	out := classify.Answers{}
+	for name, q := range qs {
+		choice, ok := j.say[name]
+		if !ok {
+			choice = firstCriterion(q)
+		}
+		if _, valid := q.Choice.Criteria[choice]; !valid {
+			return nil, classify.Usage{}, fmt.Errorf("scripted %q for %q, which was not offered (have %v)",
+				choice, name, slices.Sorted(maps.Keys(q.Choice.Criteria)))
+		}
+		out[name] = classify.Answer{Choice: choice, Confidence: 0.9}
+	}
+	return out, classify.Usage{InputTokens: 10}, nil
+}
+
+func firstCriterion(q classify.Question) string {
+	return slices.Sorted(maps.Keys(q.Choice.Criteria))[0]
+}
+
+// composer builds a Generator wired to answer as scripted.
+func composer(t *testing.T, say map[string]string) (*viewgen.Generator, *scriptedJudge) {
+	t.Helper()
+	j := &scriptedJudge{say: say}
+	return &viewgen.Generator{Judge: j, Store: &viewgen.Store{Dir: t.TempDir()}}, j
+}
+
+// A composed spec is assembled from answers, so a wrong answer is a
+// worse view rather than no view. That is the whole reason the
+// generative path went: it could name a widget, a role or a field that
+// did not exist, and each of those threw the view away.
+func TestCompose_AssemblesFromChoicesAndCaches(t *testing.T) {
+	g, judge := composer(t, map[string]string{
+		"header_line": "none",
+		"parse_kind":  "prefix",
+		"body":        "table",
+		"summary":     "none",
+	})
+	got, err := g.Compose(context.Background(), request())
+	require.NoError(t, err)
+
+	assert.Equal(t, viewgen.SourceGenerated, got.Source)
+	assert.Equal(t, "prefix", got.Spec.Parse.Kind)
+	require.Len(t, got.Spec.Blocks, 1)
+	assert.Equal(t, "table", got.Spec.Blocks[0].Kind)
+	assert.Equal(t, "pytest", got.Spec.Match, "filed under the normalised command")
+	assert.Positive(t, got.Usage.PromptTokens, "the cost is reported")
+
+	// Cached, and served from disk without asking again.
+	before := len(judge.seen)
+	again, ok := g.Existing(context.Background(), request())
+	require.True(t, ok)
+	assert.Equal(t, viewgen.SourceSaved, again.Source)
+	assert.Len(t, judge.seen, before, "a saved spec asks nothing")
+}
+
+// Every field the composition picks comes from a list the program
+// built out of what the parse actually produced.
+func TestCompose_OffersOnlyFieldsTheParseProduced(t *testing.T) {
+	g, judge := composer(t, map[string]string{
+		"header_line": "0",
+		"parse_kind":  "columns",
+		"body":        "bar",
+		"summary":     "none",
+		"label":       "pkg",
+		"value":       "secs",
+	})
+	req := request()
+	// bar is offered for a table, not for plain text: the vocabulary
+	// is still pruned by render kind, as it was for generation.
+	req.Kind = "table"
+	req.Output = "pkg secs status\na 1.2 ok\nb 3.4 ok\nc 0.5 FAIL\nd 9.9 ok\ne 1.1 ok\nf 2.2 ok\ng 3.3 ok\nh 4.4 ok\n"
+	got, err := g.Compose(context.Background(), req)
+	require.NoError(t, err)
+
+	require.Len(t, got.Spec.Blocks, 1)
+	assert.Equal(t, []viewspec.Column{{Field: "pkg"}, {Field: "secs"}}, got.Spec.Blocks[0].Columns)
+
+	// The question offered the parsed fields and nothing else.
+	var offered []string
+	for _, state := range judge.seen {
+		if f, ok := state.(map[string]any)["fields_found"]; ok {
+			offered = f.([]string)
+		}
+	}
+	assert.Equal(t, []string{"pkg", "secs", "status"}, offered)
+}
+
+// "none" is how a composition declines, and prose is what it declines.
+func TestCompose_DeclinesOutputWithNothingToExtract(t *testing.T) {
+	g, _ := composer(t, map[string]string{"header_line": "none", "parse_kind": "none"})
+	_, err := g.Compose(context.Background(), request())
+	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
+}
+
+// The judge writes the spec now, so without one there is nothing to
+// compose with. Said plainly rather than quietly doing nothing.
+func TestCompose_NeedsAJudge(t *testing.T) {
+	g := &viewgen.Generator{Store: &viewgen.Store{Dir: t.TempDir()}}
+	_, err := g.Compose(context.Background(), request())
+	assert.ErrorIs(t, err, viewgen.ErrNoJudge)
+}
+
+func TestCompose_AJudgeThatFailsComposesNothing(t *testing.T) {
+	g := &viewgen.Generator{Judge: failingJudge{}, Store: &viewgen.Store{Dir: t.TempDir()}}
+	_, err := g.Compose(context.Background(), request())
+	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
+}
+
+// A judge deciding shape needs a sample, not the whole thing. Sending
+// the output whole is what made every view_fit call fail silently.
+func TestCompose_TheJudgeSeesABoundedSample(t *testing.T) {
+	g, judge := composer(t, map[string]string{"header_line": "none", "parse_kind": "prefix"})
+	req := request()
+	req.Output = strings.Repeat(goTest, 200)
+	require.Greater(t, len(req.Output), viewgen.MaxJudgeBytes*4)
+
+	_, err := g.Compose(context.Background(), req)
+	require.NoError(t, err)
+	require.NotEmpty(t, judge.seen)
+	shown := judge.seen[0].(map[string]any)["output"].(string)
+	assert.LessOrEqual(t, len(shown), viewgen.MaxJudgeBytes+len("\n…[truncated]"))
+}
+
+// Short output is not worth asking about, whatever shape it is.
+func TestCompose_ShortOutputIsNotWorthAsking(t *testing.T) {
+	g, judge := composer(t, nil)
+	req := request()
+	req.Output = "two\nlines\n"
+	_, err := g.Compose(context.Background(), req)
+	assert.ErrorIs(t, err, viewgen.ErrNotWorth)
+	assert.Empty(t, judge.seen, "and it never asked")
+}
+
+// A shipped spec is the floor: composition is tried first, and the
+// seed catches what composition declines.
+func TestCompose_FallsBackToAShippedSpec(t *testing.T) {
+	g := &viewgen.Generator{Judge: failingJudge{}, Store: &viewgen.Store{Dir: t.TempDir()}}
+	got, err := g.Compose(context.Background(),
+		viewgen.Request{Command: "go test ./...", Output: goTest, Kind: "plain_text"})
+	require.NoError(t, err)
+	assert.Equal(t, viewgen.SourceShipped, got.Source)
 }

@@ -70,6 +70,9 @@ func run() error {
 	theme.Apply(th)
 	ui.RefreshStyles()
 
+	if resolved.Views == config.ViewsGenerate && resolved.JevAPIKey == "" {
+		return fmt.Errorf("views: generate composes a view by asking the judge, so it needs jev_api_key (or TYPESAFE_API_KEY) — set one, or use views: saved")
+	}
 	if resolved.SandboxMode != "auto" && resolved.SandboxMode != "host" {
 		return fmt.Errorf("unknown -sandbox %q — choose one of: auto, host", resolved.SandboxMode)
 	}
@@ -186,7 +189,7 @@ func run() error {
 		Runtime: resolved.SandboxRuntime, Network: resolved.SandboxNetwork,
 	}
 	drv := resolver.New(sess)
-	drv.Views = views(resolved.Views, proposer, judge)
+	drv.Views = views(resolved.Views, judge)
 	// Altscreen is declared by ui.Model.View, not set here — under
 	// Bubble Tea v2 terminal state is a property of what's rendered.
 	p := tea.NewProgram(ui.New(context.Background(), drv, info))
@@ -330,19 +333,17 @@ func loadDotenv(path string) {
 	}
 }
 
-// views builds the output-view generator. Without a Model it can only
-// serve specs that already exist, which is what makes "saved" a mode
-// rather than a flag.
-func views(mode string, proposer *propose.OpenAIProposer, judge *classify.JevJudge) *viewgen.Generator {
+// views wires the composer. Composition is the only way a spec gets
+// written now, and the judge is what writes it, so views: generate
+// without a jev key has nothing to compose with; run() rejects that
+// combination rather than silently drawing from saved specs only.
+func views(mode string, judge *classify.JevJudge) *viewgen.Generator {
 	g := &viewgen.Generator{
 		Registry: ui.Registry(),
 		Store:    &viewgen.Store{Dir: viewgen.DefaultDir()},
 	}
-	if mode == config.ViewsGenerate {
-		g.Model = proposer
-		if judge != nil {
-			g.Judge = judge
-		}
+	if mode == config.ViewsGenerate && judge != nil {
+		g.Judge = judge
 	}
 	return g
 }

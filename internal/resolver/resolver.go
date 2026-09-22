@@ -43,7 +43,7 @@ func (r *Resolver) GenerateView(ctx context.Context, command, output string, exi
 	got, ok := r.Views.Existing(ctx, req)
 	if !ok {
 		var err error
-		if got, err = r.Views.Generate(ctx, req); err != nil {
+		if got, err = r.Views.Compose(ctx, req); err != nil {
 			// Asked and refused is worth saying; never asked is not.
 			if errors.Is(err, viewgen.ErrNoneFit) {
 				return ui.GeneratedView{Source: ui.ViewDeclined}, false

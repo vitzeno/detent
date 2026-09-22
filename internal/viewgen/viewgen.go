@@ -5,143 +5,21 @@ package viewgen
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
-	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/usage"
 	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// Generator authors specs. A nil Judge skips verification and keeps
-// the first candidate that validates; a nil Store disables caching.
+// Generator composes specs. The Judge is what writes one, so without
+// it there is no composition; a nil Store disables caching.
 type Generator struct {
-	Model    Structurer
 	Judge    Judge
 	Registry *viewspec.Registry
 	Store    *Store
-
-	Candidates   int
-	FitThreshold float64
-}
-
-// Generate authors a spec for req, verifies it against the output that
-// actually came out, and caches it.
-//
-// Order matters: disk, then the model, then what detent ships. A
-// shipped spec is the floor and not the ceiling, so a seeded command
-// still gets a model's attempt. Checking seeds first made those
-// commands permanently ungeneratable, and the only way to override one
-// was to hand-write a file at a hashed key.
-func (g *Generator) Generate(ctx context.Context, req Request) (Result, error) {
-	if g.Model == nil {
-		return Result{}, errors.New("viewgen: no Model wired")
-	}
-	log := logging.For(logging.Viewgen)
-	key := Key(req.Command, req.Kind)
-	if spec, ok := g.Store.Load(key); ok && g.usable(ctx, req, spec, SourceSaved) {
-		return Result{Spec: spec, Key: key, Source: SourceSaved}, nil
-	}
-
-	total, best, bestFit := usage.Usage{}, (*viewspec.Spec)(nil), -1.0
-	if !g.worthAsking(req) {
-		log.InfoContext(ctx, "not asking for a view", logging.KeyEvent, logging.ViewSkipped,
-			"kind", req.Kind, "lines", lines(req.Output),
-			logging.KeyReason, g.skipReason(req))
-	}
-	if g.worthAsking(req) {
-		reg := prune(g.registry(), req.Kind)
-		schema := reg.Schema()
-		user := userPrompt(req)
-		log.InfoContext(ctx, "asking for a view", logging.KeyEvent, logging.LLMRequest,
-			"kind", req.Kind, "offered", reg.Kinds(), "candidates", g.candidates())
-		// Asked together rather than one after the other: the
-		// candidates are independent, and waiting for each in turn
-		// made a view arrive after the goal that wanted it had ended.
-		asked := make([]attempt, g.candidates())
-		var wg sync.WaitGroup
-		for i := range asked {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				asked[i].raw, asked[i].used, asked[i].err =
-					g.Model.Structured(ctx, systemPrompt, user, schema)
-			}()
-		}
-		wg.Wait()
-
-		// Read back in order, so the log reads the same either way.
-		for i, a := range asked {
-			raw, err := a.raw, a.err
-			total = add(total, a.used)
-			if err != nil {
-				log.WarnContext(ctx, "the model call failed", logging.KeyEvent, logging.LLMError,
-					"candidate", i, logging.KeyReason, err.Error())
-				continue
-			}
-			log.DebugContext(ctx, "a candidate came back", logging.KeyEvent, logging.LLMReply,
-				"candidate", i, "bytes", len(raw), "body", logging.Body(string(raw)))
-			spec, bound, err := validate(raw, reg, req.Output)
-			if err != nil {
-				// The reason matters more than the fact: a spec that
-				// names a field the parse never produced is a different
-				// problem from one the model invented a schema for.
-				log.InfoContext(ctx, "a candidate could not draw this output",
-					logging.KeyEvent, logging.ViewInvalid, "candidate", i,
-					logging.KeyReason, err.Error(), "body", logging.Body(string(raw)))
-				continue
-			}
-			fit := 1.0
-			if g.Judge != nil {
-				var judged usage.Usage
-				fit, judged = g.fit(ctx, req, spec, bound)
-				total = add(total, judged)
-				log.InfoContext(ctx, "judged the candidate", logging.KeyEvent, logging.ViewFit,
-					"candidate", i, "score", fit, "threshold", g.threshold(),
-					"fields", bound.Fields())
-			}
-			if fit > bestFit {
-				best, bestFit = spec, fit
-			}
-		}
-	}
-	if best != nil && bestFit >= g.threshold() {
-		best.Version = viewspec.Version
-		best.Match = Normalise(req.Command)
-		if err := g.Store.Save(key, best); err != nil {
-			return Result{Usage: total}, err
-		}
-		log.InfoContext(ctx, "drawing a generated view", logging.KeyEvent, logging.ViewAccepted,
-			"key", key, "score", bestFit, "blocks", len(best.Blocks),
-			"tokens", total.PromptTokens+total.CompletionTokens)
-		return Result{Spec: best, Key: key, Source: SourceGenerated, Fit: bestFit, Usage: total}, nil
-	}
-	// Silent: a caller reaches Generate through Existing, which has
-	// already logged what it made of this seed. Saying so twice reads
-	// like two different rejections.
-	if spec, ok := seed(req.Command); ok && draws(spec, g.registry(), req.Output) == nil {
-		log.InfoContext(ctx, "falling back to a shipped view", logging.KeyEvent, logging.ViewLookup,
-			"key", key, "source", SourceShipped)
-		return Result{Spec: spec, Key: key, Source: SourceShipped, Usage: total}, nil
-	}
-	if !g.worthAsking(req) {
-		return Result{}, ErrNotWorth
-	}
-	log.InfoContext(ctx, "nothing generated fit the output", logging.KeyEvent, logging.ViewDeclined,
-		"candidates", g.candidates(), "best_score", bestFit)
-	return Result{Usage: total}, ErrNoneFit
-}
-
-// attempt is one candidate's outcome, kept so the calls can overlap
-// and still be read back in a fixed order.
-type attempt struct {
-	raw  []byte
-	used usage.Usage
-	err  error
 }
 
 // worthAsking reports whether this output earns a model call. Shape
@@ -248,9 +126,6 @@ const (
 	SourceGenerated Source = "generated"
 )
 
-// DefaultCandidates is how many specs are generated and ranked.
-const DefaultCandidates = 2
-
 // MaxJudgeBytes caps the output shown to the judge. A choice about
 // shape needs a sample, not the whole thing.
 const MaxJudgeBytes = 4 * 1024
@@ -263,15 +138,6 @@ func head(s string, n int) string {
 	return s[:n] + "\n…[truncated]"
 }
 
-// DefaultFitThreshold is the Jev score a spec must reach to be kept.
-// At 0.5 nothing was ever kept: a session's four valid candidates came
-// back 0.45, 0.48, 0.45, 0.45, a band too tight to be Jev disliking
-// them and wide enough to sit entirely under the bar. A declined view
-// costs the human nothing to look at, since the pane falls back to
-// plain text either way, so the bar belongs below where the judge
-// actually answers.
-const DefaultFitThreshold = 0.3
-
 // MinLinesToGenerate is the output below which no view is worth a
 // model call. Length used to live inside render_kind as inline_short;
 // it belongs here, because it is a property of the output rather than
@@ -282,85 +148,15 @@ const MinLinesToGenerate = 8
 // lines, or a shape already drawn well. Not a failure.
 var ErrNotWorth = errors.New("viewgen: nothing to gain from a view here")
 
-// ErrNoneFit means nothing generated survived validation or judging.
-var ErrNoneFit = errors.New("viewgen: no candidate fit the output")
-
-// validate is the whole defence against a spec that reads well and
-// draws nothing: it must decode, compile against the pruned
-// vocabulary, and bind against the output that actually came out.
-func validate(raw []byte, reg *viewspec.Registry, output string) (*viewspec.Spec, *viewspec.Bound, error) {
-	var spec viewspec.Spec
-	if err := json.Unmarshal(raw, &spec); err != nil {
-		return nil, nil, fmt.Errorf("viewgen: decoding spec: %w", err)
-	}
-	compiled, err := viewspec.Compile(spec, viewspec.WithRegistry(reg))
-	if err != nil {
-		return nil, nil, err
-	}
-	bound, err := compiled.Bind(output)
-	if err != nil {
-		return nil, nil, err
-	}
-	return &spec, bound, nil
-}
-
-// fit asks Jev whether the view reads well, over the fields the parse
-// actually produced. A closed question about real data is what Jev is
-// for; authoring a spec is not.
-func (g *Generator) fit(ctx context.Context, req Request, spec *viewspec.Spec, bound *viewspec.Bound) (float64, usage.Usage) {
-	kinds := make([]string, 0, len(spec.Blocks))
-	for _, b := range spec.Blocks {
-		kinds = append(kinds, b.Kind)
-	}
-	answers, u, ok := classify.AskOrFallback(ctx, g.Judge, classify.State(map[string]any{
-		"command": req.Command,
-		// Bounded, the way agent's own judgePost bounds it. Sent whole,
-		// a long output made every view_fit call fail, and the failure
-		// scored a perfect 1 (see below), so nothing was ever judged.
-		"output":        head(req.Output, MaxJudgeBytes),
-		"parse_kind":    spec.Parse.Kind,
-		"fields_found":  bound.Fields(),
-		"blocks_chosen": kinds,
-	}), classify.Questions{
-		"view_fit": {
-			Instructions: "This view was generated to draw the command's output. " +
-				"Given the fields the parse actually found and the blocks chosen, " +
-				"would a human read this output better this way than as plain text?",
-			Noul: &classify.NoulQuestion{},
-		},
-	})
-	// Fail closed. A judge that did not answer has not approved
-	// anything, and scoring the unjudged a perfect 1 turned every
-	// outage into "accept whatever came back".
-	if !ok {
-		return 0, usage.Usage{}
-	}
-	return answers["view_fit"].Noul, usage.Usage{
-		PromptTokens:     u.InputTokens,
-		CompletionTokens: u.OutputTokens,
-		Model:            u.Model,
-	}
-}
+// ErrNoneFit means nothing was composed: the judge declined, or did
+// not answer, or what it chose could not draw this output.
+var ErrNoneFit = errors.New("viewgen: nothing composed fit the output")
 
 func (g *Generator) registry() *viewspec.Registry {
 	if g.Registry != nil {
 		return g.Registry
 	}
 	return viewspec.Standard()
-}
-
-func (g *Generator) candidates() int {
-	if g.Candidates > 0 {
-		return g.Candidates
-	}
-	return DefaultCandidates
-}
-
-func (g *Generator) threshold() float64 {
-	if g.FitThreshold > 0 {
-		return g.FitThreshold
-	}
-	return DefaultFitThreshold
 }
 
 func add(a, b usage.Usage) usage.Usage {

@@ -357,38 +357,3 @@ func TestOpenAIProposer_ExtraHeadersSent(t *testing.T) {
 	assert.Equal(t, "https://example.com", gotReferer)
 	assert.Equal(t, "detent", gotTitle)
 }
-
-func TestStructured_ReturnsRawJSONAndItsCost(t *testing.T) {
-	var got map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&got))
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"kind\":\"table\"}"}}],` +
-			`"usage":{"prompt_tokens":11,"completion_tokens":3},"model":"m"}`))
-	}))
-	defer srv.Close()
-
-	p := &OpenAIProposer{BaseURL: srv.URL, Model: "m"}
-	raw, used, err := p.Structured(context.Background(), "sys", "usr",
-		map[string]any{"type": "object"})
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"kind":"table"}`, string(raw))
-	assert.Equal(t, 11, used.PromptTokens)
-	assert.Equal(t, 3, used.CompletionTokens)
-
-	msgs := got["messages"].([]any)
-	require.Len(t, msgs, 2, "the caller's two messages, no system prompt of ours")
-	assert.Equal(t, "sys", msgs[0].(map[string]any)["content"])
-	assert.Equal(t, "structured",
-		got["response_format"].(map[string]any)["json_schema"].(map[string]any)["name"])
-}
-
-func TestStructured_EmptyReplyIsAnError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"  "}}]}`))
-	}))
-	defer srv.Close()
-
-	p := &OpenAIProposer{BaseURL: srv.URL}
-	_, _, err := p.Structured(context.Background(), "s", "u", map[string]any{})
-	assert.Error(t, err)
-}

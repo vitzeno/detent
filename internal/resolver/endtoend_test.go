@@ -3,6 +3,7 @@ package resolver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/internal/agent"
+	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/propose"
 	"github.com/vitzeno/detent/internal/usage"
@@ -40,24 +42,15 @@ var psOutput = func() string {
 // /chat/completions route a real backend uses, dispatching on the
 // schema name the request asks for rather than on call order: the
 // proposer and the generator interleave.
-func fakeEndpoint(t *testing.T, proposals []string, spec string) *httptest.Server {
+// fakeEndpoint answers proposals only. A view is composed from the
+// judge's answers now, so the proposer is never asked for one.
+func fakeEndpoint(t *testing.T, proposals []string) *httptest.Server {
 	t.Helper()
 	n := 0
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			ResponseFormat struct {
-				Schema struct {
-					Name string `json:"name"`
-				} `json:"json_schema"`
-			} `json:"response_format"`
-		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-
-		reply := spec
-		if body.ResponseFormat.Schema.Name == "proposal" {
-			reply = proposals[min(n, len(proposals)-1)]
-			n++
-		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&struct{}{}))
+		reply := proposals[min(n, len(proposals)-1)]
+		n++
 		out, err := json.Marshal(map[string]any{
 			"choices": []any{map[string]any{"message": map[string]any{"content": reply}}},
 			"usage":   map[string]any{"prompt_tokens": 12, "completion_tokens": 4},
@@ -75,11 +68,7 @@ func TestEndToEnd_GoalRunsAndItsOutputGetsAView(t *testing.T) {
 		`"done":false,"summary":"","file":""}`
 	const done = `{"command":"","rationale":"","done":true,` +
 		`"summary":"Listed the processes.","file":""}`
-	const spec = `{"version":1,"match":"pgrep","parse":{"kind":"columns","header":true},
-		"blocks":[{"kind":"table","columns":[{"field":"pid"},{"field":"cmd"}],
-		"on_enter":"lsof -p {pid}"}]}`
-
-	srv := fakeEndpoint(t, []string{proposal, done}, spec)
+	srv := fakeEndpoint(t, []string{proposal, done})
 	defer srv.Close()
 
 	proposer := propose.New(propose.WithBaseURL(srv.URL), propose.WithModel("fake"))
@@ -91,7 +80,7 @@ func TestEndToEnd_GoalRunsAndItsOutputGetsAView(t *testing.T) {
 		agent.WithStats(usage.New()))
 
 	drv := New(sess)
-	drv.Views = &viewgen.Generator{Model: proposer, Candidates: 1,
+	drv.Views = &viewgen.Generator{Judge: composingJudge{},
 		Store: &viewgen.Store{Dir: t.TempDir()}}
 
 	ctx := context.Background()
@@ -115,10 +104,10 @@ func TestEndToEnd_GoalRunsAndItsOutputGetsAView(t *testing.T) {
 
 	// The pane's half: a generated spec that actually draws this output.
 	got, ok := drv.GenerateView(ctx, p.Command, ec.Result.Stdout, ec.Result.ExitCode, post.RenderKind)
-	require.True(t, ok, "the endpoint authored a view")
+	require.True(t, ok, "the judge composed a view")
 	require.NotNil(t, got.Spec)
 	assert.Equal(t, ui.ViewGenerated, got.Source,
-		"and the pane will say a model wrote this framing")
+		"and the pane will say a model had a hand in this framing")
 
 	compiled, err := viewspec.Compile(*got.Spec)
 	require.NoError(t, err)
@@ -130,9 +119,11 @@ func TestEndToEnd_GoalRunsAndItsOutputGetsAView(t *testing.T) {
 	assert.Contains(t, drawn.Lines[0], "PID")
 	assert.Contains(t, drawn.Lines[1], "501")
 
-	action, ok := bound.Action(viewspec.Frame{Cursor: 0})
-	require.True(t, ok)
-	assert.Equal(t, "lsof -p 501", action, "enter would seed this, from a real parsed row")
+	// A composed view carries no on_enter: a command template is free
+	// text, and composition only ever picks from a list. Saved and
+	// shipped specs still have one, so enter still acts on those.
+	_, ok = bound.Action(viewspec.Frame{Cursor: 0})
+	assert.False(t, ok)
 
 	// Step two closes the goal.
 	p, _, _, err = drv.ProposeNext(ctx, "what is running")
@@ -146,7 +137,7 @@ func TestEndToEnd_GoalRunsAndItsOutputGetsAView(t *testing.T) {
 // rendering. There is no "off" mode, but a nil generator is still a
 // state the boundary has to survive.
 func TestEndToEnd_NoGeneratorLeavesTheBuiltinRendering(t *testing.T) {
-	srv := fakeEndpoint(t, []string{`{"command":"ps","rationale":"r","done":false,"summary":"","file":""}`}, "")
+	srv := fakeEndpoint(t, []string{`{"command":"ps","rationale":"r","done":false,"summary":"","file":""}`})
 	defer srv.Close()
 
 	proposer := propose.New(propose.WithBaseURL(srv.URL), propose.WithModel("fake"))
@@ -166,12 +157,13 @@ func TestEndToEnd_NoGeneratorLeavesTheBuiltinRendering(t *testing.T) {
 // not, because there is nothing to tell the human about.
 func TestEndToEnd_ARefusedGenerationIsReportedAsDeclined(t *testing.T) {
 	srv := fakeEndpoint(t, []string{`{"command":"df -h","rationale":"r",` +
-		`"done":false,"summary":"","file":""}`}, `not a spec at all`)
+		`"done":false,"summary":"","file":""}`})
 	defer srv.Close()
 
 	proposer := propose.New(propose.WithBaseURL(srv.URL), propose.WithModel("fake"))
 	drv := New(agent.New(proposer, nil))
-	drv.Views = &viewgen.Generator{Model: proposer, Candidates: 1,
+	// A judge that answers nothing composes nothing.
+	drv.Views = &viewgen.Generator{Judge: silentJudge{},
 		Store: &viewgen.Store{Dir: t.TempDir()}}
 
 	got, ok := drv.GenerateView(context.Background(), "df -h", psOutput, 0, ui.KindTable)
@@ -182,4 +174,34 @@ func TestEndToEnd_ARefusedGenerationIsReportedAsDeclined(t *testing.T) {
 	got, ok = drv.GenerateView(context.Background(), "df -h", "one\ntwo\n", 0, ui.KindTable)
 	assert.False(t, ok)
 	assert.Empty(t, got.Source)
+}
+
+// composingJudge answers the composition's questions the way a real
+// one would for column output: a header on the first line, columns,
+// and a table over them.
+type composingJudge struct{}
+
+func (composingJudge) Ask(_ context.Context, _ classify.State,
+	qs classify.Questions) (classify.Answers, classify.Usage, error) {
+	say := map[string]string{
+		"header_line": "0", "parse_kind": "columns", "body": "table", "summary": "none",
+	}
+	out := classify.Answers{}
+	for name, q := range qs {
+		choice, ok := say[name]
+		if !ok || q.Choice == nil {
+			continue
+		}
+		if _, valid := q.Choice.Criteria[choice]; !valid {
+			return nil, classify.Usage{}, fmt.Errorf("%q not offered for %q", choice, name)
+		}
+		out[name] = classify.Answer{Choice: choice}
+	}
+	return out, classify.Usage{}, nil
+}
+
+type silentJudge struct{}
+
+func (silentJudge) Ask(context.Context, classify.State, classify.Questions) (classify.Answers, classify.Usage, error) {
+	return nil, classify.Usage{}, errors.New("no judge today")
 }
