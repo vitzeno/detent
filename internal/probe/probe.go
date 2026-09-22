@@ -82,22 +82,6 @@ func New(runner Runner) *Prober {
 	return &Prober{runner: runner}
 }
 
-// Run executes probes and returns one combined blob, or "" when probes
-// is empty.
-//
-// Run together, not in turn. They are read-only commands that do not
-// depend on each other, and nothing about a goal can start until all
-// of them have answered: serially, a sandbox exec costs around 90ms
-// each and the human waits for the sum.
-func (pb *Prober) Run(ctx context.Context, probes []Probe) string {
-	if len(probes) == 0 {
-		return ""
-	}
-	// Assembled in the order asked for, so what the model reads does
-	// not depend on which probe happened to finish first.
-	return Format(probes, pb.Each(ctx, probes))
-}
-
 // Each runs probes together and keeps what each said, by name, so a
 // caller can gather the whole menu before it knows which of them a
 // goal will want.

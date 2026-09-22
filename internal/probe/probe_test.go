@@ -84,9 +84,17 @@ func (f fakeRunner) Run(ctx context.Context, command string) (host.Result, error
 	return f(ctx, command)
 }
 
+// gather is what BeginGoal does: run them together, then assemble.
+// The tests go through both halves because production does, and a
+// convenience wrapper that only tests use is a third path to keep in
+// step.
+func gather(ctx context.Context, r Runner, probes []Probe) string {
+	return Format(probes, New(r).Each(ctx, probes))
+}
+
 func TestRun(t *testing.T) {
 	t.Run("empty probes returns empty", func(t *testing.T) {
-		assert.Empty(t, New(hostRunner{}).Run(context.Background(), nil))
+		assert.Empty(t, gather(context.Background(), hostRunner{}, nil))
 	})
 
 	t.Run("combines output from multiple probes in order", func(t *testing.T) {
@@ -94,7 +102,7 @@ func TestRun(t *testing.T) {
 			{Name: "a", Command: "echo one"},
 			{Name: "b", Command: "echo two"},
 		}
-		out := New(hostRunner{}).Run(context.Background(), probes)
+		out := gather(context.Background(), hostRunner{}, probes)
 		assert.Contains(t, out, "$ echo one")
 		assert.Contains(t, out, "one")
 		assert.Contains(t, out, "$ echo two")
@@ -104,7 +112,7 @@ func TestRun(t *testing.T) {
 	t.Run("failed command is noted, not fatal", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		out := New(hostRunner{}).Run(ctx, []Probe{{Name: "a", Command: "echo hi"}})
+		out := gather(ctx, hostRunner{}, []Probe{{Name: "a", Command: "echo hi"}})
 		assert.Contains(t, out, "failed")
 	})
 
@@ -114,7 +122,7 @@ func TestRun(t *testing.T) {
 			got = command
 			return host.Result{Stdout: "stubbed\n"}, nil
 		})
-		out := New(fake).Run(context.Background(), []Probe{{Name: "a", Command: "should not really run"}})
+		out := gather(context.Background(), fake, []Probe{{Name: "a", Command: "should not really run"}})
 		assert.Equal(t, "should not really run", got)
 		assert.Contains(t, out, "stubbed")
 	})
@@ -144,7 +152,7 @@ func TestRun_ProbesGoTogether(t *testing.T) {
 	require.Greater(t, len(menu), 2, "the point needs several")
 
 	start := time.Now()
-	out := New(slow).Run(context.Background(), menu)
+	out := gather(context.Background(), slow, menu)
 	took := time.Since(start)
 
 	assert.Less(t, took, time.Duration(len(menu))*delay/2,
