@@ -112,3 +112,23 @@ func TestSetup_LevelFiltersAsAsked(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.Equal(t, slog.LevelWarn.String(), got[0]["level"])
 }
+
+// Every event name is distinct: a name is a record's primary key, so
+// two different things sharing one makes a query return both. The
+// goal-ready record reused goal.begin, and "everything about a goal
+// starting" then came back twice with half the fields missing.
+func TestEvents_NamesAreUnique(t *testing.T) {
+	names := map[string]int{}
+	for _, e := range []string{
+		logging.GoalBegin, logging.GoalReady, logging.GoalEnd, logging.ProbeRun,
+		logging.LLMRequest, logging.LLMReply, logging.LLMError,
+		logging.JudgePre, logging.JudgePost,
+		logging.CmdPropose, logging.CmdConfirm, logging.CmdRun, logging.CmdDone,
+		logging.Snapshot, logging.Rollback, logging.Compaction,
+		logging.ViewLookup, logging.ViewSkipped, logging.ViewInvalid,
+		logging.ViewFit, logging.ViewAccepted, logging.ViewDeclined, logging.ViewDrawn,
+	} {
+		names[e]++
+		assert.Equal(t, 1, names[e], "%s is used by more than one event", e)
+	}
+}

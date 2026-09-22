@@ -18,6 +18,9 @@ const (
 	// Jev classified something.
 	JudgePre  = "judge.pre"
 	JudgePost = "judge.post"
+	// GoalReady is the point a goal has everything it needs to ask for
+	// a command: probes in, baseline taken.
+	GoalReady = "goal.ready"
 
 	// What a command did.
 	CmdPropose = "cmd.propose"

@@ -103,7 +103,7 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 	}
 	baseline.Wait()
 	res.Stats = s.Stats.StartGoal(goal)
-	log.DebugContext(ctx, "goal ready to propose", logging.KeyEvent, logging.GoalBegin,
+	log.DebugContext(ctx, "goal ready to propose", logging.KeyEvent, logging.GoalReady,
 		"snapshot_ms", ms(snapshotFor), logging.KeyMS, ms(time.Since(t0)))
 	res.BaselineMark = s.mark()
 	s.goalMark = res.BaselineMark
@@ -266,14 +266,20 @@ func (s *Session) JudgeResult(ctx context.Context, goal, command string, result 
 	if len(out) > MaxTranscriptOutputBytes {
 		out = out[:MaxTranscriptOutputBytes] + "\n…[truncated]"
 	}
-	logging.For(logging.Agent).DebugContext(ctx, "judging the result",
-		logging.KeyEvent, logging.JudgePost, "command", command, "exit", result.ExitCode)
+	t0 := time.Now()
 	post := s.judgePost(ctx, goal, command, resultView{
 		ExitCode: result.ExitCode,
 		Output:   out,
 		Lines:    countLines(result.Stdout) + countLines(result.Stderr),
 	})
 	step.SetJudgePost(post.JudgeUsage, post.Attention, post.GoalAchieved)
+	// The answer, not the question. Logging what was asked told a
+	// reader nothing they could not see from cmd.run, and left the one
+	// field that explains a loop, goal_achieved, unrecorded.
+	logging.For(logging.Agent).DebugContext(ctx, "judged the result",
+		logging.KeyEvent, logging.JudgePost, "command", command, "exit", result.ExitCode,
+		"status", post.Status, "kind", post.RenderKind, "attention", post.Attention,
+		"goal_achieved", post.GoalAchieved, "from_judge", post.FromJudge, logging.KeyMS, ms(time.Since(t0)))
 	return post
 }
 
