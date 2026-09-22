@@ -20,10 +20,9 @@ type probeRunner struct {
 	runner Runner
 }
 
-// Run goes through runSafely for the same reason Execute does, and
-// one more: probes also run in the background between goals, where a
-// panicking Runner would take the session down with nobody asking it
-// to do anything.
+// Run goes through runSafely for the reason Execute does, and because
+// probes run in the background between goals, where a panicking
+// Runner would take the session down unasked.
 func (r probeRunner) Run(ctx context.Context, command string) (host.Result, error) {
 	return runSafely(ctx, r.runner, command, nil)
 }
@@ -54,10 +53,8 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 
 	s.append(propose.Message{Role: propose.RoleUser, Content: goal})
 
-	// The baseline is what rollback restores to, and it depends on
-	// nothing the probes do, so it is taken while they run. Probes are
-	// read-only: a checkpoint from before them is a checkpoint from
-	// before the goal.
+	// Taken while the probes run: they are read-only, so a checkpoint
+	// from before them is a checkpoint from before the goal.
 	res := &GoalResult{Goal: goal}
 	var baseline sync.WaitGroup
 	baseline.Add(1)
@@ -80,25 +77,22 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 		names = append(names, pr.Name)
 	}
 
-	// Gathered as the last goal closed, when nobody was waiting. A
-	// miss runs them now rather than going without: stale context is
-	// worse than a pause, and no context is worse than both.
+	// Gathered as the last goal closed. A miss runs them now rather
+	// than going without: no context is worse than a pause.
 	t2 := time.Now()
 	said, hit := s.take(ctx, chosen)
 	if !hit {
 		said = probe.New(probeRunner{runner: s.Runners.Probe()}).Each(ctx, chosen)
 	}
-	// Bounded like every other path into the transcript. Unbounded, a
-	// single ps on a busy machine is 200KB, which is twice the whole
-	// transcript budget and is resent on every later propose until
-	// compaction throws it away again.
+	// Bounded like every other path in. One ps on a busy machine is
+	// 200KB, twice the whole transcript budget, resent on every later
+	// propose until compaction throws it away.
 	if out := probe.Format(chosen, said); out != "" {
 		s.append(propose.Message{Role: propose.RoleTool, Content: boundStr(out)})
 	}
-	// Timed per phase because they are serial and nothing else can
-	// start until they finish: a goal's first command waits on all of
-	// it. Gaps between events cannot be read as a chain here, since
-	// judging and view composition run alongside.
+	// Timed per phase: these are serial and the first command waits on
+	// all of them. Event gaps cannot be read as a chain, since judging
+	// and view composition run alongside.
 	log.InfoContext(ctx, "probes chosen", logging.KeyEvent, logging.ProbeRun, "probes", names,
 		logging.KeyMS, ms(chose+time.Since(t2)), "select_ms", ms(chose),
 		"run_ms", ms(time.Since(t2)), "compact_ms", ms(compacted), "prefetched", hit)

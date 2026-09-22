@@ -83,13 +83,9 @@ func Row(blocks ...string) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, blocks...)
 }
 
-// Truncate fits s into one line of at most w columns, marking where it
-// cut. One line is the whole point: every caller is placing this
-// inside a bordered pane or a rail-prefixed row, and a newline getting
-// through draws the rest of the string outside that frame, over
-// whatever was there. A heredoc command did exactly that.
-//
-// Runes, not bytes, so a multi-byte character is never cut in half.
+// Truncate fits s into one line of at most w columns. One line is the
+// point: a newline through it puts the tail outside the caller's
+// frame. Runes, not bytes, so nothing is cut mid-character.
 func Truncate(s string, w int) string {
 	if w < 4 {
 		w = 4
@@ -102,11 +98,9 @@ func Truncate(s string, w int) string {
 	return string(r[:w-1]) + "…"
 }
 
-// flatten collapses a string that spans lines into one, indentation
-// and all, so a script reads as a sentence rather than a line of gaps.
+// flatten collapses a multi-line string into one, indentation and all.
 // A string already on one line is returned untouched: its spacing is
-// the command as the human or the model wrote it, and a row should not
-// quietly restate it.
+// the command as written, and a row should not restate it.
 func flatten(s string) string {
 	if strings.IndexFunc(s, isBreak) < 0 {
 		return s

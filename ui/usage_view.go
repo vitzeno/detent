@@ -9,10 +9,9 @@ import (
 	"github.com/vitzeno/detent/ui/status"
 )
 
-// usageLines renders the /usage row: session totals, per-goal rows, and
-// the selected goal's per-step spans. Cursor/expand state lives on the
-// The cursor comes from the open panel rather than from a row,
-// since /usage is a page about the session and not a step in it.
+// usageLines renders the /usage panel: session totals, per-goal rows,
+// and the selected goal's per-step spans. Cursor and expand come from
+// the panel, since /usage is a page about the session, not a step.
 func (m Model) usageLines(cursor, expand int) []string {
 	goals := m.sess.Tracker()
 	snap := m.sess.UsageSnapshot()

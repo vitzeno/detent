@@ -188,13 +188,9 @@ func (s *Session) finish(res *GoalResult, reason EndReason, summary string) {
 	logging.For(logging.Agent).Info("goal closed", logging.KeyEvent, logging.GoalEnd,
 		logging.KeyGoal, s.GoalsDone, logging.KeyReason, string(reason),
 		"steps", len(res.Commands))
-	// The environment just changed and nothing will change it again
-	// until the next goal runs, so this is both the freshest moment to
-	// look and the one where nobody is waiting.
-	//
-	// Background, not the goal's context: the goal is over, and its
-	// cancellation says nothing about whether the next one wants to
-	// know what the machine looks like.
+	// The freshest moment to look, and the one nobody waits for.
+	// Background: the goal is over, so its cancellation says nothing
+	// about whether the next one wants this.
 	s.gather(context.Background())
 }
 

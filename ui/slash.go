@@ -18,10 +18,9 @@ type slashCmd struct {
 	run  func(m Model, input string) (tea.Model, tea.Cmd)
 }
 
-// slashCommands is a function rather than a var because /help draws
-// the registry and the registry contains /help: as a package-level
-// variable that is an initialisation cycle, which the compiler is
-// right to refuse.
+// slashCommands is a function, not a var: /help draws the registry and
+// the registry contains /help, which as a package-level variable is an
+// initialisation cycle.
 func slashCommands() []slashCmd {
 	return []slashCmd{
 		{"/quit", "quit detent", func(m Model, _ string) (tea.Model, tea.Cmd) {

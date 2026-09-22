@@ -217,12 +217,9 @@ func (m *Model) focused() *stepRow {
 	return rows[m.nav.cursor]
 }
 
-// trackNewest brings the newest row into view. Two separate things,
-// because they interrupt differently: the history pane scrolls to the
-// bottom whatever the human was doing, since a new row arriving is
-// exactly what history is for, while the cursor only moves when
-// nobody is reading the output pane, because moving it would swap the
-// output out from under them.
+// trackNewest brings the newest row into view. History scrolls to the
+// bottom whatever the human was doing; the cursor moves only when
+// nobody is in the output pane, since moving it swaps what they read.
 func (m *Model) trackNewest() {
 	m.nav.follow = true
 	if m.nav.focus == focusOutput {

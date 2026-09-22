@@ -11,12 +11,9 @@ import (
 	"github.com/vitzeno/detent/version"
 )
 
-// Panels: read-only pages about the session rather than about a step.
-//
-// They take the output pane without touching history, because a panel
-// is not something the harness did: filing one put a row where the
-// running goal's own row belongs. The viewport draws them, so a long
-// one scrolls rather than stopping at whatever count fitted.
+// Panels: read-only pages about the session, not about a step. They
+// take the output pane without touching history, and the viewport
+// draws them, so a long one scrolls rather than being capped.
 
 const (
 	panelUsage  = "usage"
@@ -95,10 +92,9 @@ func (m Model) panelLines() []string {
 	return nil
 }
 
-// statusLines is what detent is, right now: the build, what it talks
-// to, where commands run, and what the session has done. The welcome
-// pane says most of this before anything has run; this is the same
-// question asked later, when it has.
+// statusLines is what detent is right now: the build, what it talks
+// to, where commands run, what the session has done. The welcome pane
+// answers this before anything has run; /status answers it after.
 func (m Model) statusLines() []string {
 	snap := m.sess.UsageSnapshot()
 	var out []string
@@ -162,10 +158,9 @@ func countStyle(n int) string {
 	return styleDanger.Render(fmt.Sprintf("%d", n))
 }
 
-// counters are what /status reports beyond what usage already tracks.
-// Views are counted here rather than in viewgen because the pane is
-// what learns the answer: a spec may be composed once and drawn for
-// several rows.
+// counters are what /status reports beyond what usage tracks. Counted
+// in the pane, not viewgen: one spec may be composed once and drawn
+// for several rows.
 type counters struct {
 	failed       int
 	composed     int

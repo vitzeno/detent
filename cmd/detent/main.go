@@ -88,11 +88,9 @@ func run() error {
 			resolved.SandboxNetwork, sandbox.NetworkHost, sandbox.NetworkNone)
 	}
 
-	// Started here and waited for below. It still fails fast with a
-	// clear message rather than a raw dial error on the first goal,
-	// but it is a network round trip and everything between here and
-	// the wait needs no endpoint: at ~270ms it was the largest single
-	// thing between launching detent and seeing it.
+	// Waited for below, so it still fails fast with a clear message.
+	// Everything between here and the wait needs no endpoint, and this
+	// was ~270ms of the time before anything drew.
 	pinged := make(chan error, 1)
 	go func() {
 		pinged <- propose.Ping(context.Background(), resolved.BaseURL, resolved.APIKey)

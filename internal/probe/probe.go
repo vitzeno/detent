@@ -104,9 +104,8 @@ func (pb *Prober) Each(ctx context.Context, probes []Probe) map[string]string {
 }
 
 // Format assembles gathered output into the blob the model reads. The
-// one place that shape is written, so output gathered earlier and
-// output run just now are indistinguishable to the model, which is
-// what makes gathering early safe to do at all.
+// one place that shape is written, so output gathered earlier reads
+// identically to output run just now.
 func Format(probes []Probe, said map[string]string) string {
 	if len(probes) == 0 {
 		return ""
