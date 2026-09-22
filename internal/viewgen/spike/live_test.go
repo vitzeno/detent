@@ -20,6 +20,9 @@ import (
 // spikes proved the idea; this proves what shipped does it.
 //
 //	TYPESAFE_API_KEY=... go test ./internal/viewgen/spike/ -run Live -v
+//
+// The key lives in .detent.yaml as jev_api_key; these read the
+// environment, so export it first.
 func TestLive_ComposeDrawsRealCommands(t *testing.T) {
 	key := os.Getenv("TYPESAFE_API_KEY")
 	if key == "" {

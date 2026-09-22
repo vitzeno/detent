@@ -8,6 +8,9 @@
 // Needs a real key:
 //
 //	TYPESAFE_API_KEY=... go test ./internal/viewgen/spike/ -v
+//
+// The key lives in .detent.yaml as jev_api_key; these read the
+// environment, so export it first.
 package spike
 
 import (

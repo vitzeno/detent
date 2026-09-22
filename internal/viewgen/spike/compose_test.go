@@ -4,6 +4,9 @@
 // overlap. bar, gauge and histogram are genuinely close calls.
 //
 //	TYPESAFE_API_KEY=... go test ./internal/viewgen/spike/ -run Compose -v
+//
+// The key lives in .detent.yaml as jev_api_key; these read the
+// environment, so export it first.
 package spike
 
 import (
