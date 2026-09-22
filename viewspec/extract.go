@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // linesExtractor makes a row per line matching a named-capture
@@ -391,6 +392,51 @@ func newPairsExtractor(p Parse) (Extractor, error) {
 
 func (pairsExtractor) Columns() []Column {
 	return []Column{{Field: "key"}, {Field: "value"}}
+}
+
+// prefix splits each line at the first run of whitespace: a leading
+// token, and whatever follows. It covers the shape a great many
+// commands print without a header of any kind, where the alternative
+// is a regexp:
+//
+//	git log --oneline   3416b00  Let the header answer settle the kind
+//	du -sh              100K     internal/agent
+//	wc -l               117      viewspec/spec.go
+//	go test ./...       ok       github.com/x/a  0.412s
+//
+// Two fields rather than many, because a third would be guessing where
+// the remainder divides. A command needing that has columns or a
+// pattern.
+type prefixExtractor struct{}
+
+func newPrefixExtractor(p Parse) (Extractor, error) { return skipping(p, prefixExtractor{}), nil }
+
+func (prefixExtractor) Extract(output string) ([]Row, error) {
+	var rows []Row
+	for _, line := range splitLines(output) {
+		first, rest := cutField(line)
+		if first == "" {
+			continue
+		}
+		rows = append(rows, Row{"first": first, "rest": rest})
+	}
+	return rows, nil
+}
+
+func (prefixExtractor) Columns() []Column {
+	return []Column{{Field: "first"}, {Field: "rest"}}
+}
+
+// cutField takes the leading token and the remainder, each trimmed.
+// Leading whitespace is skipped first, since wc right-aligns its counts
+// and a blank first field would drop every line.
+func cutField(line string) (first, rest string) {
+	line = strings.TrimSpace(line)
+	i := strings.IndexFunc(line, unicode.IsSpace)
+	if i < 0 {
+		return line, ""
+	}
+	return line[:i], strings.TrimSpace(line[i:])
 }
 
 func (e pairsExtractor) Extract(output string) ([]Row, error) {

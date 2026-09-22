@@ -1089,3 +1089,63 @@ func TestSample_ShowsWhatAFieldHolds(t *testing.T) {
 		Blocks: []viewspec.Block{{Kind: "log"}}}, "some text\n")
 	assert.Empty(t, none.Sample(3))
 }
+
+// prefix exists because the composition spike found nine of fifteen
+// real commands had no header and no separator, only a leading token
+// and a remainder. Their alternative was a generated regexp, which is
+// the slow, error-prone half of the pipeline.
+func TestPrefix_TakesTheFirstTokenAndTheRest(t *testing.T) {
+	tests := []struct {
+		name, output string
+		want         []viewspec.Row
+	}{
+		{
+			name:   "git log --oneline",
+			output: "3416b00 Let the header answer settle the parse kind\nda6986a Spike: show field values\n",
+			want: []viewspec.Row{
+				{"first": "3416b00", "rest": "Let the header answer settle the parse kind"},
+				{"first": "da6986a", "rest": "Spike: show field values"},
+			},
+		},
+		{
+			name:   "du -sh, tab separated",
+			output: "100K\tinternal/agent\n 16K\tlogging\n",
+			want: []viewspec.Row{
+				{"first": "100K", "rest": "internal/agent"},
+				{"first": "16K", "rest": "logging"},
+			},
+		},
+		{
+			name:   "wc -l, right aligned",
+			output: "     117 viewspec/spec.go\n     514 viewspec/view.go\n",
+			want: []viewspec.Row{
+				{"first": "117", "rest": "viewspec/spec.go"},
+				{"first": "514", "rest": "viewspec/view.go"},
+			},
+		},
+		{
+			name:   "a single token, and a blank line",
+			output: "FAIL\n\nok\n",
+			want:   []viewspec.Row{{"first": "FAIL", "rest": ""}, {"first": "ok", "rest": ""}},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			b := bind(t, viewspec.Spec{Parse: viewspec.Parse{Kind: "prefix"},
+				Blocks: []viewspec.Block{{Kind: "table"}}}, tc.output)
+			assert.Equal(t, tc.want, b.Sample(10))
+			assert.Equal(t, []string{"first", "rest"}, fieldOrder(b),
+				"the leading token comes first, as the output printed it")
+		})
+	}
+}
+
+// fieldOrder is the order a table would draw, which is the extractor's
+// own rather than alphabetical.
+func fieldOrder(b *viewspec.Bound) []string {
+	r, err := b.Draw(viewspec.Frame{Width: 60, Paint: viewspec.Plain()})
+	if err != nil {
+		return nil
+	}
+	return strings.Fields(r.Lines[0])
+}

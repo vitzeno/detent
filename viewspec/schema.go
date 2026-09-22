@@ -39,7 +39,8 @@ func (r *Registry) parseSchema() map[string]any {
 		"properties": map[string]any{
 			"kind": enum(r.ParseKinds(), "lines applies pattern per line; columns splits on whitespace; "+
 				"fixed slices at the header's own offsets, for multi-word headings; delimited splits on sep; "+
-				"pairs reads key<sep>value lines; indent turns leading whitespace into a depth; "+
+				"pairs reads key<sep>value lines; prefix takes the first token and the rest of each line; "+
+				"indent turns leading whitespace into a depth; "+
 				"json reads objects; none skips extraction"),
 			"pattern": str("lines only: a regexp with named captures, one row per matching line"),
 			"skip":    map[string]any{"type": "integer", "description": "leading lines to drop before parsing"},
