@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +52,20 @@ func TestSpike_JevComposesAView(t *testing.T) {
 			t.Logf("\n%s: jev chose %q, which produces nothing here", s.name, kind)
 			continue
 		}
+		if parse.Header {
+			tuned := parse
+			switch skip := askSkip(t, judge, s.command, output); {
+			case skip < 0:
+				tuned.Header, tuned.Fields = false, positional(output)
+			case skip > 0:
+				tuned.Skip = skip
+			}
+			// Only if it still parses: a wrong answer here must not
+			// cost a view that worked without one.
+			if _, err := fieldsOfRaw(tuned, output); err == nil {
+				parse = tuned
+			}
+		}
 		total++
 
 		c, err := compose(t, judge, reg, s.command, output, parse)
@@ -87,7 +102,7 @@ func compose(t *testing.T, j *classify.JevJudge, reg *viewspec.Registry,
 	var c composed
 	c.spec = viewspec.Spec{Version: viewspec.Version, Parse: parse}
 
-	fields, err := fieldsOf(reg, parse, output)
+	fields, rows, err := fieldsAndRows(parse, output)
 	if err != nil {
 		return c, err
 	}
@@ -129,14 +144,14 @@ func compose(t *testing.T, j *classify.JevJudge, reg *viewspec.Registry,
 	for _, slot := range slots {
 		qs[slot.name] = classify.Question{
 			Instructions: slot.instructions,
-			Choice:       &classify.ChoiceQuestion{Criteria: fieldCriteria(fields)},
+			Choice:       &classify.ChoiceQuestion{Criteria: fieldCriteria(fields, rows)},
 		}
 	}
 	if summary != "none" {
 		for _, slot := range slotsFor(summary) {
 			qs["summary_"+slot.name] = classify.Question{
 				Instructions: "For the summary widget: " + slot.instructions,
-				Choice:       &classify.ChoiceQuestion{Criteria: fieldCriteria(fields)},
+				Choice:       &classify.ChoiceQuestion{Criteria: fieldCriteria(fields, rows)},
 			}
 		}
 	}
@@ -238,10 +253,22 @@ func withNone(in map[string]any) map[string]any {
 	return in
 }
 
-func fieldCriteria(fields []string) map[string]any {
+// fieldCriteria shows each field with a value it actually holds. A
+// name alone is thin for %iused and meaningless for col3.
+func fieldCriteria(fields []string, rows []viewspec.Row) map[string]any {
 	out := map[string]any{}
 	for _, f := range fields {
-		out[f] = "the field named " + f
+		var samples []string
+		for _, r := range rows {
+			if v := strings.TrimSpace(r[f]); v != "" && len(samples) < 3 {
+				samples = append(samples, head(v, 40))
+			}
+		}
+		if len(samples) == 0 {
+			out[f] = f
+			continue
+		}
+		out[f] = fmt.Sprintf("%s, holding values like: %s", f, strings.Join(samples, ", "))
 	}
 	return out
 }
@@ -268,6 +295,67 @@ func parseFor(kind, output string) (viewspec.Parse, bool) {
 	return p, true
 }
 
+// askSkip finds the header by asking which line names the columns,
+// rather than how many lines to drop. "ls -la" opens with "total 232"
+// and netstat with a sentence, and both became the header: the parse
+// kind was right and nobody asked where the table starts.
+//
+// Naming the candidate lines is what makes this answerable. A count is
+// arithmetic the judge has no reason to be good at.
+func askSkip(t *testing.T, j *classify.JevJudge, command, output string) int {
+	// -1 means there is no header at all.
+	t.Helper()
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	if len(lines) < 2 {
+		return 0
+	}
+	n := min(len(lines), 4)
+	criteria := map[string]any{
+		"none": "None of these is a header. Every line is data, as in ls -la.",
+	}
+	for i := range n {
+		criteria[strconv.Itoa(i)] = fmt.Sprintf("line %d: %s", i+1, head(lines[i], 120))
+	}
+	answers, _, ok := classify.AskOrFallback(context.Background(), j,
+		classify.State(map[string]any{"command": command, "output": head(output, 2048)}),
+		classify.Questions{
+			"header_line": {
+				Instructions: "Which of these lines names the columns of the table below it? " +
+					"Choose the first line if the output starts with its header, and a later " +
+					"one when a total, a title or a blank line comes first.",
+				Choice: &classify.ChoiceQuestion{Criteria: criteria},
+			},
+		})
+	if !ok {
+		return 0
+	}
+	if answers["header_line"].Choice == "none" {
+		return -1
+	}
+	skip, err := strconv.Atoi(answers["header_line"].Choice)
+	if err != nil || skip < 0 || skip >= n {
+		return 0
+	}
+	return skip
+}
+
+// positional names a headerless table col1..colN. The names are
+// meaningless on their own, which is why the field questions carry a
+// sample value: "col3: e.g. mohamed" is answerable where "col3" is not.
+func positional(output string) []string {
+	widest := 0
+	for _, line := range strings.Split(strings.TrimRight(output, "\n"), "\n") {
+		if n := len(strings.Fields(line)); n > widest {
+			widest = n
+		}
+	}
+	out := make([]string, min(widest, 12))
+	for i := range out {
+		out[i] = fmt.Sprintf("col%d", i+1)
+	}
+	return out
+}
+
 // run executes from the repo root, not the package directory, so a
 // sample naming a real path finds it.
 func run(command string) ([]byte, error) {
@@ -276,24 +364,27 @@ func run(command string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
-func fieldsOf(reg *viewspec.Registry, p viewspec.Parse, output string) ([]string, error) {
-	return fieldsOfRaw(p, output)
+func fieldsOfRaw(p viewspec.Parse, output string) ([]string, error) {
+	f, _, err := fieldsAndRows(p, output)
+	return f, err
 }
 
-func fieldsOfRaw(p viewspec.Parse, output string) ([]string, error) {
+// fieldsAndRows is what step 2 produces: the real field names, and
+// enough rows to show the judge what each one holds.
+func fieldsAndRows(p viewspec.Parse, output string) ([]string, []viewspec.Row, error) {
 	c, err := viewspec.Compile(viewspec.Spec{Parse: p,
-		Blocks: []viewspec.Block{{Kind: "log"}}})
+		Blocks: []viewspec.Block{{Kind: "table"}}})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	b, err := c.Bind(output)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(b.Fields()) == 0 {
-		return nil, fmt.Errorf("no fields")
+		return nil, nil, fmt.Errorf("no fields")
 	}
-	return b.Fields(), nil
+	return b.Fields(), b.Sample(3), nil
 }
 
 func drawSpec(reg *viewspec.Registry, spec viewspec.Spec, output string, width int) ([]string, error) {
