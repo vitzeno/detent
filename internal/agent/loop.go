@@ -77,9 +77,13 @@ func (s *Session) BeginGoal(ctx context.Context, goal string) (*GoalResult, erro
 		names = append(names, pr.Name)
 	}
 	t2 := time.Now()
+	// Bounded like every other path into the transcript. Unbounded, a
+	// single ps on a busy machine is 200KB, which is twice the whole
+	// transcript budget and is resent on every later propose until
+	// compaction throws it away again.
 	out := prober.Run(ctx, chosen)
 	if out != "" {
-		s.append(propose.Message{Role: propose.RoleTool, Content: out})
+		s.append(propose.Message{Role: propose.RoleTool, Content: boundStr(out)})
 	}
 	// Timed per phase because they are serial and nothing else can
 	// start until they finish: a goal's first command waits on all of

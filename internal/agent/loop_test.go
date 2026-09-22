@@ -690,3 +690,24 @@ func (p *proseProposer) Propose(context.Context, []propose.Message) (propose.Pro
 	}
 	return p.second, usage.Usage{}, p.secondErr
 }
+
+// Probe output went into the transcript unbounded while every other
+// path was capped. One ps on a busy machine is 200KB, twice the whole
+// transcript budget, resent on every later propose until compaction
+// threw it away.
+func TestBeginGoal_ProbeOutputIsBounded(t *testing.T) {
+	huge := strings.Repeat("a process line that goes on\n", 20_000)
+	s := &Session{
+		Proposer: &stubProposer{script: []propose.Proposal{{Done: true}}},
+		Confirm:  confirmFunc(func(ConfirmRequest) bool { return true }),
+		Runners:  SingleRunner{Runner: okRun(host.Result{Stdout: huge})},
+	}
+
+	_, err := s.BeginGoal(context.Background(), "look around")
+	require.NoError(t, err)
+
+	for i, m := range s.Transcript {
+		assert.LessOrEqual(t, len(m.Content), MaxTranscriptOutputBytes+64,
+			"message %d is %d bytes", i, len(m.Content))
+	}
+}
