@@ -132,7 +132,7 @@ func (m *Model) refreshViewport() {
 	switch {
 	case r.cmd.running:
 		body = strings.Join(r.cmd.live, "\n")
-	case r.cmd.ec != nil:
+	case r.drawable():
 		rendered, ok := m.viewBody(r)
 		if !ok {
 			break

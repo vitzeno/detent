@@ -124,6 +124,16 @@ func (m Model) stepLines(r *stepRow, step int) []string {
 	if r == m.focused() {
 		mark = styleRowCursor.Render("▸ ")
 	}
+	// The model speaking, not a command: no status badge, because
+	// nothing ran and there is no exit code to report.
+	if r.prose != "" {
+		note := ""
+		if k := rowKind(r); k != "" && k != KindText {
+			note = styleFaint.Render("  " + status.KindLabel(string(k)))
+		}
+		return []string{fmt.Sprintf("%s%s %s%s", mark, styleGoal.Render("❯"),
+			styleMuted.Render(layout.Truncate(plainProse(r.prose), m.blockWidth()-10)), note)}
+	}
 	// A tool row never executed a shell command, so status.Badge (which
 	// reads r.cmd.ec) doesn't apply.
 	if r.toolKind != "" {
@@ -173,10 +183,9 @@ func (m Model) goalBanner(b *goalBlock) []string {
 	case b.fatalErr != nil:
 		return wrapStyled(styleDanger, "✗ error: "+b.fatalErr.Error(), w)
 	case b.end == EndDone:
-		// Just the model's prose, dimmed and unmarked: the step rows
-		// above already carry the status and the jev line below the
-		// verdict, so a tick here is a third signal saying neither.
-		return append(wrapStyled(styleMuted, b.summary, w), m.judgeLines(b, w)...)
+		// The summary has a row of its own now, so the banner is just
+		// the verdict rather than the same words twice.
+		return m.judgeLines(b, w)
 	case b.end == EndBudget:
 		return append([]string{"  " + styleCaution.Render("⚠ step cap reached — goal not confirmed done")},
 			m.judgeLines(b, w)...)
@@ -263,4 +272,13 @@ func wrapStyled(style lipgloss.Style, text string, width int) []string {
 		out[i] = p + style.Render(l)
 	}
 	return out
+}
+
+// plainProse drops the markup a one-line row cannot render, so a
+// summary written as markdown reads as a sentence rather than as its
+// own source. The pane still draws the real thing.
+func plainProse(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimLeft(s, "#-*> \t")
+	return strings.NewReplacer("`", "", "**", "", "__", "").Replace(s)
 }

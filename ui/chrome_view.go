@@ -67,8 +67,13 @@ func (m Model) viewportHeader() string {
 			styleGoal.Render(layout.Truncate(r.command, m.layout.outputColW-24)))
 	}
 	label := "output"
-	if k := rowKind(r); k != "" {
-		label = status.KindLabel(string(k))
+	switch {
+	case r.prose != "":
+		// Not "file", whatever the judged kind was: nothing here is a
+		// file, or a command's output. It is the model talking.
+		label = "summary"
+	case rowKind(r) != "":
+		label = status.KindLabel(string(rowKind(r)))
 	}
 	mark, width := "", m.layout.outputColW-24
 	if note := viewNote(r); note != "" {

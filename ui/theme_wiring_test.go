@@ -86,7 +86,7 @@ func themedModel() Model {
 		goal: "g", res: &GoalResult{Goal: "g"}, ended: true, end: EndDone, summary: "did the thing",
 		steps: []*stepRow{{command: "ls -la", cmd: cmdState{ec: &ExecutedCommand{
 			Command: "ls -la", Result: Result{Stdout: "a\nb\n"}, SnapshotID: "s1", Post: &p,
-		}}}},
+		}}}, {prose: "did the thing"}},
 	}
 	b.judge = goalVerdict(b)
 	m.blocks = []*goalBlock{b}

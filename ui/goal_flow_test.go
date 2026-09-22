@@ -69,14 +69,17 @@ func TestGoalVerdict_ShowsInTheHistoryBanner(t *testing.T) {
 	p := PostJudgment{FromJudge: true, GoalAchieved: 0.91}
 	b := &goalBlock{
 		goal: "g", res: &GoalResult{Goal: "g"}, ended: true, end: EndDone, summary: "did it",
-		steps: []*stepRow{{command: "ls", cmd: cmdState{ec: &ExecutedCommand{Command: "ls", Post: &p}}}},
+		steps: []*stepRow{
+			{command: "ls", cmd: cmdState{ec: &ExecutedCommand{Command: "ls", Post: &p}}},
+			{prose: "did it"},
+		},
 	}
 	b.judge = goalVerdict(b)
 	m.blocks = []*goalBlock{b}
 	m.sizeViewport()
 
 	v := plain(m.View().Content)
-	assert.Contains(t, v, "did it")
+	assert.Contains(t, v, "did it", "the prose row")
 	assert.Contains(t, v, "jev")
 	assert.Contains(t, v, "0.91")
 }

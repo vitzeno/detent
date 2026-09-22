@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vitzeno/detent/version"
+	"github.com/vitzeno/detent/viewspec"
 )
 
 // Tests for view.go: rendering, sizing, and the detail-zone component
@@ -241,4 +242,70 @@ func ansiFor(t *testing.T, line, sub string) string {
 		end += e + len("\x1b[m")
 	}
 	return line[start:min(end, len(line))]
+}
+
+// Prose goes through the same judge and render-kind flow as output,
+// so a summary the model wrote as markdown is drawn as markdown
+// rather than as a wall of asterisks.
+func TestProse_IsDrawnByItsJudgedKind(t *testing.T) {
+	const said = "# Found it\n\nTwo large files under `experiments/`:\n\n- one.bin\n- two.bin\n"
+	m := testUIModel()
+	m.layout.width, m.layout.height = 120, 40
+	m.sizeViewport()
+	row := &stepRow{prose: said}
+	row.cmd.post = &PostJudgment{FromJudge: true, RenderKind: KindContent}
+	m.blocks = []*goalBlock{{goal: "g", ended: true, end: EndDone, steps: []*stepRow{row}}}
+	m.nav.cursor = 0
+	m.sizeViewport()
+
+	assert.Equal(t, KindContent, rowKind(row), "the judged kind reaches the pane")
+	b, ok := boundView(row)
+	require.True(t, ok, "prose binds like output")
+
+	drawn, err := b.Draw(viewspec.Frame{Width: 60, Paint: viewspec.Plain()})
+	require.NoError(t, err)
+	// Glamour styles word by word, so the text is read through the
+	// escapes rather than compared against them.
+	body := stripANSI(strings.Join(drawn.Lines, "\n"))
+	assert.Contains(t, body, "Found it")
+	assert.NotContains(t, body, "# Found it", "the heading is styled, not printed")
+	assert.NotContains(t, body, "- one.bin", "and the bullets are drawn")
+	assert.Contains(t, body, "one.bin")
+}
+
+// A row with nothing settled to draw stays out of the way: no view,
+// no judging, nothing for the pane to bind against.
+func TestProse_EmptySummaryMakesNoRow(t *testing.T) {
+	m := testUIModel()
+	b := &goalBlock{goal: "g", ended: true, end: EndDone}
+	assert.Nil(t, m.sayIt(b, "g", "   "), "whitespace is not a summary")
+	assert.Empty(t, b.steps)
+}
+
+// The pane names what it is showing, and a summary is not a file
+// whatever kind the judge gave it.
+func TestProse_PaneSaysSummaryNotFile(t *testing.T) {
+	m := testUIModel()
+	row := &stepRow{prose: "# Done\n\nfound it\n"}
+	row.cmd.post = &PostJudgment{FromJudge: true, RenderKind: KindContent}
+	m.blocks = []*goalBlock{{goal: "g", ended: true, steps: []*stepRow{row}}}
+	m.nav.cursor = 0
+
+	assert.Contains(t, stripANSI(m.viewportHeader()), "summary")
+	assert.NotContains(t, stripANSI(m.viewportHeader()), "file")
+}
+
+// The history row is one line, so it shows the words rather than the
+// markup they were written in. The pane draws the real thing.
+func TestProse_RowReadsAsASentence(t *testing.T) {
+	m := testUIModel()
+	m.layout.width, m.layout.height = 120, 40
+	m.sizeViewport()
+	row := &stepRow{prose: "# Found it\n\nTwo files under `experiments/`\n"}
+	m.blocks = []*goalBlock{{goal: "g", ended: true, steps: []*stepRow{row}}}
+
+	line := stripANSI(strings.Join(m.stepLines(row, 1), ""))
+	assert.Contains(t, line, "Found it")
+	assert.NotContains(t, line, "#", "no heading marker")
+	assert.NotContains(t, line, "`", "no code fences")
 }

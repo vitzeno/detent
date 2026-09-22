@@ -20,13 +20,16 @@ func Registry() *viewspec.Registry { return viewRegistry }
 // once per row, after judging, because render_kind is what prunes the
 // vocabulary the judge chooses from.
 func (m Model) generateView(r *stepRow) tea.Cmd {
-	if r == nil || r.cmd.ec == nil || r.cmd.generated {
+	if !r.drawable() || r.cmd.generated {
 		return nil
 	}
 	r.cmd.generated = true
 	sess, ctx := m.sess, m.ctx
-	command, output, kind := r.command, commandOutput(r.cmd.ec), rowKind(r)
-	exit := r.cmd.ec.Result.ExitCode
+	command, output, kind := r.command, r.text(), rowKind(r)
+	exit := 0
+	if r.cmd.ec != nil {
+		exit = r.cmd.ec.Result.ExitCode
+	}
 	return func() tea.Msg {
 		got, ok := sess.GenerateView(ctx, command, output, exit, kind)
 		if !ok && got.Source != ViewDeclined {
@@ -54,14 +57,14 @@ func (m Model) seedFromView(r *stepRow) (Model, bool) {
 // boundView resolves a row's view, binding once and caching on the
 // row. Draw runs per frame; Bind must not.
 func boundView(r *stepRow) (*viewspec.Bound, bool) {
-	if r == nil || r.cmd.running || r.cmd.ec == nil {
+	if !r.drawable() {
 		return nil, false
 	}
 	if r.cmd.viewTried {
 		return r.cmd.view, r.cmd.view != nil
 	}
 	r.cmd.viewTried = true
-	output := commandOutput(r.cmd.ec)
+	output := r.text()
 	for _, c := range fallbackChain(r, output) {
 		b, err := c.Bind(output)
 		if err != nil {
@@ -84,13 +87,13 @@ func boundView(r *stepRow) (*viewspec.Bound, bool) {
 // it does not control, and a spec that arrives broken must leave the
 // fallback exactly as it was.
 func applyView(r *stepRow, got GeneratedView) bool {
-	if r == nil || got.Spec == nil || r.cmd.ec == nil {
+	if r == nil || got.Spec == nil || !r.drawable() {
 		return false
 	}
 	c, err := viewspec.Compile(*got.Spec, viewspec.WithRegistry(viewRegistry))
 	if err == nil {
 		var b *viewspec.Bound
-		if b, err = c.Bind(commandOutput(r.cmd.ec)); err == nil {
+		if b, err = c.Bind(r.text()); err == nil {
 			r.cmd.view, r.cmd.viewTried = b, true
 			r.cmd.viewSource = got.Source
 			return true

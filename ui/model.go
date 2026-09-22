@@ -157,7 +157,12 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case judgeMsg:
 		// Same object GoalResult.Commands holds, not a UI-only copy.
-		msg.row.cmd.ec.Post = &msg.post
+		// A prose row has no ec to hang it on, so it keeps its own.
+		if msg.row.cmd.ec != nil {
+			msg.row.cmd.ec.Post = &msg.post
+		} else {
+			msg.row.cmd.post = &msg.post
+		}
 		if msg.post.Attention >= status.AttentionThreshold {
 			msg.row.cmd.expanded = true
 		}

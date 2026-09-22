@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/exp/teatest/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,12 +39,19 @@ func TestUI_EndToEnd_GoalToDone(t *testing.T) {
 	}
 	require.Len(t, fm.blocks, 1)
 	require.True(t, fm.blocks[0].ended)
-	require.Len(t, fm.blocks[0].steps, 1)
+	// The command, then what the model said about it: prose gets a row
+	// of its own so it can be selected and drawn.
+	require.Len(t, fm.blocks[0].steps, 2)
 	row := fm.blocks[0].steps[0]
 	require.NotNil(t, row.cmd.ec, "post-execute judgment must land on the row")
 	require.NotNil(t, row.cmd.ec.Post, "post-execute judgment must land on the row")
 	// Same object as GoalResult.Commands sees — not a UI-only copy.
 	require.Same(t, row.cmd.ec, fm.blocks[0].res.Commands[0])
+
+	said := fm.blocks[0].steps[1]
+	assert.NotEmpty(t, said.prose, "the model's closing words")
+	assert.Nil(t, said.cmd.ec, "nothing ran to produce them")
+	assert.NotNil(t, said.verdict(), "and they were judged like any output")
 }
 
 func TestUI_DeclineStopsGoal(t *testing.T) {

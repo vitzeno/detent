@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -25,6 +26,8 @@ import (
 // Configure a fakeDriver per test by setting its fields after
 // newFakeDriver() and before use.
 type fakeDriver struct {
+	mu sync.Mutex // GenerateView is called from several goroutines
+
 	// proposals is a script; ProposeNext walks it and repeats the last
 	// entry once exhausted.
 	proposals []Proposal
@@ -272,7 +275,11 @@ func usageModel() (Model, *fakeDriver) {
 	return m, drv
 }
 
+// Locked because two rows compose at once: a command's output and the
+// model's closing words are judged one after the other.
 func (f *fakeDriver) GenerateView(_ context.Context, _, _ string, _ int, _ RenderKind) (GeneratedView, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.generatedN++
 	if f.generated == nil {
 		return GeneratedView{}, false

@@ -68,18 +68,30 @@ func TestHistoryLines_BlankRowBetweenBlocksOnly(t *testing.T) {
 	assert.Equal(t, 1, blanks(both), "exactly one blank row between two blocks")
 }
 
-func TestGoalBanner_SummaryWraps(t *testing.T) {
+// The model's closing words get a row of their own, so history shows
+// them as one line to select rather than a paragraph wrapped into a
+// banner nobody can scroll.
+func TestProse_IsItsOwnSelectableRow(t *testing.T) {
+	const said = "a summary sentence long enough that it would have needed to wrap"
 	m := testUIModel()
-	m.layout.histColW = 40
-	b := &goalBlock{
-		ended: true, end: EndDone,
-		summary: "a summary sentence long enough that it needs to wrap across two or more lines",
-	}
-	lines := m.goalBanner(b)
-	require.Greater(t, len(lines), 1)
-	assert.Contains(t, stripANSI(lines[0]), "a summary sentence")
-	assert.True(t, strings.HasPrefix(lines[1], contPrefix),
-		"continuation lines indent under the first")
+	m.layout.width, m.layout.height = 120, 40
+	m.sizeViewport()
+	b := &goalBlock{goal: "g", ended: true, end: EndDone, summary: said,
+		steps: []*stepRow{{command: "ls"}, {prose: said}}}
+	m.blocks = []*goalBlock{b}
+
+	rows := m.rows()
+	require.Len(t, rows, 2, "the prose is a row like any other")
+	assert.Equal(t, said, rows[1].prose)
+
+	m.nav.cursor = 1
+	line := stripANSI(strings.Join(m.stepLines(rows[1], 1), "\n"))
+	assert.Contains(t, line, "a summary sentence", "and it says what was said")
+	assert.NotContains(t, line, "✔", "no status badge: nothing ran")
+	assert.Len(t, strings.Split(line, "\n"), 1, "one line, truncated, not wrapped")
+
+	// The banner stops repeating it.
+	assert.NotContains(t, stripANSI(strings.Join(m.goalBanner(b), "\n")), "a summary sentence")
 }
 
 func TestStepLines_CommandStaysTruncatedNotWrapped(t *testing.T) {

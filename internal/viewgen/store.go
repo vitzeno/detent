@@ -43,7 +43,21 @@ func (s *Store) Save(key string, spec *viewspec.Spec) error {
 	if err != nil {
 		return fmt.Errorf("viewgen: encoding spec: %w", err)
 	}
-	return os.WriteFile(s.path(key), append(raw, '\n'), 0o644)
+	// Written aside and renamed: two rows can compose at once, and a
+	// truncating write leaves half a file for the next Load to reject.
+	tmp, err := os.CreateTemp(s.Dir, ".spec-*")
+	if err != nil {
+		return fmt.Errorf("viewgen: spec temp: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(append(raw, '\n')); err != nil {
+		tmp.Close()
+		return fmt.Errorf("viewgen: writing spec: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("viewgen: writing spec: %w", err)
+	}
+	return os.Rename(tmp.Name(), s.path(key))
 }
 
 // Path is where key's spec lives, so a caller can open it in an editor.

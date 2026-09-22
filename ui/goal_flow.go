@@ -100,9 +100,10 @@ func (m Model) onPropose(msg proposeMsg) (tea.Model, tea.Cmd) {
 		m.cur.end = m.cur.res.End
 		m.cur.summary = msg.proposal.Summary
 		m.cur.judge = goalVerdict(m.cur)
+		block, goal := m.cur, m.cur.goal
 		m.cur = nil
 		m = m.backToInput()
-		return m, nil
+		return m, m.sayIt(block, goal, msg.proposal.Summary)
 	}
 	m.confirm.pending = msg.proposal
 	m.confirm.pre = msg.pre
@@ -116,6 +117,24 @@ func (m Model) onPropose(msg proposeMsg) (tea.Model, tea.Cmd) {
 	m.mode = modeConfirm
 	return m, nil
 }
+
+// sayIt gives the model's closing words a row of their own, then
+// judges them like any output. It is the answer, and a paragraph does
+// not belong wrapped into a banner nobody can scroll.
+func (m *Model) sayIt(b *goalBlock, goal, summary string) tea.Cmd {
+	if strings.TrimSpace(summary) == "" {
+		return nil
+	}
+	row := &stepRow{prose: summary}
+	b.steps = append(b.steps, row)
+	m.trackNewest()
+	return judgeCmd(m.ctx, m.sess, goal, proseCommand, Result{Stdout: summary}, row)
+}
+
+// proseCommand is what the judge is told produced this text. Naming it
+// rather than passing the goal, because nothing ran: a judge reading
+// "the model's closing summary" can weigh prose as prose.
+const proseCommand = "(the model's closing summary)"
 
 func (m Model) approve() (tea.Model, tea.Cmd) {
 	if m.cur == nil {

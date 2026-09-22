@@ -30,6 +30,11 @@ type goalBlock struct {
 type stepRow struct {
 	command string
 
+	// prose is the model's closing words rather than a command.
+	// Judged and drawn like output: the question is the same one, does
+	// this read better as something other than plain text.
+	prose string
+
 	// editPath is set at approve() time; editor fills in once the
 	// command finishes and the file is read from disk. Shared by both a
 	// command row and a tree-opened file row.
@@ -43,6 +48,33 @@ type stepRow struct {
 	tool     toolState
 }
 
+// text is what the row draws in the output pane: a command's output,
+// or the model's own words.
+func (r *stepRow) text() string {
+	if r.prose != "" {
+		return r.prose
+	}
+	if r.cmd.ec == nil {
+		return ""
+	}
+	return commandOutput(r.cmd.ec)
+}
+
+// verdict is the judgement on this row, wherever it was attached: to
+// the executed command, or to the row itself when nothing ran.
+func (r *stepRow) verdict() *PostJudgment {
+	if r.cmd.ec != nil {
+		return r.cmd.ec.Post
+	}
+	return r.cmd.post
+}
+
+// drawable reports whether there is settled text to draw. False while
+// a command streams, since live output has its own path.
+func (r *stepRow) drawable() bool {
+	return r != nil && !r.cmd.running && (r.prose != "" || r.cmd.ec != nil)
+}
+
 // cmdState holds a stepRow's fields for an executed command; zero-valued
 // on a tool row (toolKind != "").
 type cmdState struct {
@@ -51,9 +83,12 @@ type cmdState struct {
 	live      []string
 	dropped   int
 	ec        *ExecutedCommand // nil while running; judgeMsg attaches Post
-	running   bool
-	expanded  bool
-	step      StepHandle // correlates with Driver.RecordStep/JudgeResult
+	// post is where judgeMsg puts its verdict when there is no ec to
+	// hang it on, which is a prose row. Read through verdict.
+	post     *PostJudgment
+	running  bool
+	expanded bool
+	step     StepHandle // correlates with Driver.RecordStep/JudgeResult
 
 	tableCursor int // the view's selected row
 
@@ -90,8 +125,12 @@ type goalJudgement struct {
 
 // rowKind returns the judged kind, or "" while pending.
 func rowKind(r *stepRow) RenderKind {
-	if r == nil || r.cmd.running || r.cmd.ec == nil || r.cmd.ec.Post == nil {
+	if r == nil || r.cmd.running {
 		return ""
 	}
-	return r.cmd.ec.Post.RenderKind
+	p := r.verdict()
+	if p == nil {
+		return ""
+	}
+	return p.RenderKind
 }
