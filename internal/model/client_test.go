@@ -1,0 +1,136 @@
+package model
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// serve replies with body and captures the request that asked for it.
+func serve(t *testing.T, body string) (*Client, *map[string]any) {
+	t.Helper()
+	got := map[string]any{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		require.NoError(t, json.Unmarshal(raw, &got))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return &Client{BaseURL: srv.URL, Model: "m"}, &got
+}
+
+// The phase gate: two calls in one response are two Calls, and prose
+// alone is a stop.
+func TestComplete_DecodesAStep(t *testing.T) {
+	const two = `{"choices":[{"message":{"content":"looking","tool_calls":[
+		{"id":"c1","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"a.go\"}"}},
+		{"id":"c2","type":"function","function":{"name":"list_dir","arguments":"{\"path\":\".\",\"all\":true}"}}
+	]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":11,"completion_tokens":7},"model":"m"}`
+
+	c, _ := serve(t, two)
+	reply, used, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+	require.NoError(t, err)
+
+	require.Len(t, reply.Calls, 2)
+	assert.Equal(t, "looking", reply.Text, "prose alongside calls is kept")
+	assert.Equal(t, ToolCall{ID: "c1", Name: "read_file", Args: map[string]any{"path": "a.go"}}, reply.Calls[0])
+	assert.Equal(t, map[string]any{"path": ".", "all": true}, reply.Calls[1].Args)
+	assert.Equal(t, []string{"c1", "c2"}, IDs(reply.Calls))
+	assert.Equal(t, 18, used.Tokens())
+	assert.Positive(t, used.Latency)
+}
+
+func TestComplete_TextOnlyIsAStop(t *testing.T) {
+	c, _ := serve(t, `{"choices":[{"message":{"content":"three files changed"},"finish_reason":"stop"}]}`)
+	reply, _, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+	require.NoError(t, err)
+	assert.Empty(t, reply.Calls, "no calls means the Turn ends")
+	assert.Equal(t, "three files changed", reply.Text)
+}
+
+// A malformed call must survive decoding. Dropping it leaves the
+// assistant message naming an id nothing answers, and the next Step
+// fails somewhere unrelated.
+func TestComplete_KeepsCallsItCannotParse(t *testing.T) {
+	c, _ := serve(t, `{"choices":[{"message":{"tool_calls":[
+		{"id":"c1","type":"function","function":{"name":"bash","arguments":"{not json"}}
+	]}}]}`)
+	reply, _, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+	require.NoError(t, err, "a bad argument string is the model's problem, not a transport error")
+	require.Len(t, reply.Calls, 1)
+	assert.Equal(t, "c1", reply.Calls[0].ID)
+	assert.Contains(t, reply.Calls[0].Err, "not valid JSON")
+	assert.NotNil(t, reply.Calls[0].Args, "args must be usable even when empty")
+}
+
+func TestComplete_TolerantOfEndpointQuirks(t *testing.T) {
+	tests := []struct {
+		name, body string
+		check      func(*testing.T, Reply)
+	}{
+		{
+			name:  "reasoning_content when content is empty",
+			body:  `{"choices":[{"message":{"content":"","reasoning_content":"thought"}}]}`,
+			check: func(t *testing.T, r Reply) { assert.Equal(t, "thought", r.Text) },
+		},
+		{
+			name:  "openrouter reasoning field",
+			body:  `{"choices":[{"message":{"reasoning":"thought"}}]}`,
+			check: func(t *testing.T, r Reply) { assert.Equal(t, "thought", r.Text) },
+		},
+		{
+			name:  "a call with no id gets one",
+			body:  `{"choices":[{"message":{"tool_calls":[{"type":"function","function":{"name":"bash","arguments":"{}"}}]}}]}`,
+			check: func(t *testing.T, r Reply) { assert.Equal(t, "call_0", r.Calls[0].ID) },
+		},
+		{
+			name:  "empty arguments are an empty map",
+			body:  `{"choices":[{"message":{"tool_calls":[{"id":"c","type":"function","function":{"name":"list_dir","arguments":""}}]}}]}`,
+			check: func(t *testing.T, r Reply) { assert.Equal(t, map[string]any{}, r.Calls[0].Args) },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := serve(t, tt.body)
+			reply, _, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+			require.NoError(t, err)
+			tt.check(t, reply)
+		})
+	}
+}
+
+func TestComplete_SurfacesFailures(t *testing.T) {
+	t.Run("an error object beats an empty choices list", func(t *testing.T) {
+		c, _ := serve(t, `{"error":{"message":"model not found"}}`)
+		_, _, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "model not found")
+	})
+
+	t.Run("an HTML error page is bounded", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusBadGateway)
+			for range 5000 {
+				_, _ = io.WriteString(w, "<html>")
+			}
+		}))
+		defer srv.Close()
+		c := &Client{BaseURL: srv.URL}
+		_, _, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+		require.Error(t, err)
+		assert.Less(t, len(err.Error()), 500, "a big error page must not become the message")
+	})
+
+	t.Run("an empty transcript is refused before the wire", func(t *testing.T) {
+		c := &Client{BaseURL: "http://127.0.0.1:1"}
+		_, _, err := c.Complete(context.Background(), nil, nil)
+		assert.ErrorContains(t, err, "empty transcript")
+	})
+}
