@@ -55,7 +55,7 @@ func TestKinds_AreUniqueAndComplete(t *testing.T) {
 		CallProposed{}, CallAssessed{}, ApprovalAsked{}, CallStarted{},
 		OutputChunk{}, CallEnded{}, CallJudged{}, ViewReady{}, Notice{}, SessionsListed{},
 		SubmitPrompt{}, ResolveApproval{}, NoteContext{}, Abort{},
-		RequestStop{}, Continue{}, RequestRollback{}, ResetSession{}, ListSessions{},
+		RequestStop{}, Continue{}, RequestRollback{}, ResetSession{}, ListSessions{}, RenameSession{},
 	}
 	seen := map[Kind]bool{}
 	for _, e := range all {

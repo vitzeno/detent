@@ -155,3 +155,38 @@ func TestWatch_AResumedSessionDoesNotOverwriteTheFirst(t *testing.T) {
 	}
 	assert.Equal(t, []string{"before", "after"}, prompts, "both Turns survive, in order")
 }
+
+// A name is the one thing in the header a human writes, so it has to
+// survive the session being picked up again.
+func TestWatch_RenameSticksAcrossAResume(t *testing.T) {
+	s := open(t)
+	session := uuid.Must(uuid.NewV7())
+	bus := event.New()
+	stop := store.Watch(bus, s, session)
+	defer stop()
+
+	listed, unsub := bus.Subscribe(event.Only(event.SessionsListedKind))
+	defer unsub()
+
+	bus.Publish(event.SessionStarted{Session: session, Model: "m"})
+	bus.Publish(event.RenameSession{Session: session, Name: "the sandbox bug"})
+
+	select {
+	case rec := <-listed:
+		got := rec.Event.(event.SessionsListed).Sessions
+		require.Len(t, got, 1)
+		assert.Equal(t, "the sandbox bug", got[0].Name, "and it answers with the new listing")
+	case <-time.After(3 * time.Second):
+		t.Fatal("a rename went unanswered")
+	}
+
+	// The resume: a second SessionStarted for the same session.
+	bus.Publish(event.SessionStarted{Session: session, Model: "m", Resumed: 2})
+	bus.Drain(3 * time.Second)
+
+	all, err := s.Sessions()
+	require.NoError(t, err)
+	require.Len(t, all, 1)
+	assert.Equal(t, "the sandbox bug", all[0].Name,
+		"a later run describes itself, it does not rename itself")
+}

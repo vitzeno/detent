@@ -63,8 +63,6 @@ type Model struct {
 // SessionInfo is what only the wiring knows. What SessionStarted
 // carries is read off that, so a run has one description.
 type SessionInfo struct {
-	Judge string // "" when no judge is wired
-
 	// Sandbox detail for the welcome pane; empty in host mode.
 	Image   string
 	Mount   string

@@ -5,11 +5,12 @@ CREATE TABLE sessions (
   id      TEXT    PRIMARY KEY,
   started INTEGER NOT NULL,
   model   TEXT    NOT NULL,
+  judge   TEXT    NOT NULL DEFAULT '',
   sandbox INTEGER NOT NULL,
   network INTEGER NOT NULL,
-  -- resumed is how many records the latest run began from, so a
-  -- header says whether a session has been picked up again.
-  resumed INTEGER NOT NULL DEFAULT 0
+  -- resumed is how many records the latest run began from
+  resumed INTEGER NOT NULL DEFAULT 0,
+  name    TEXT    NOT NULL DEFAULT ''
 );
 
 -- The log. State is what replaying it gives you, so there is no

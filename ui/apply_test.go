@@ -321,3 +321,61 @@ func TestStatus_ReadsTheRunOffTheFact(t *testing.T) {
 	assert.Contains(t, got, "9 records")
 	assert.Equal(t, "sandbox", m.runMode())
 }
+
+// A name is how a listing stops being a wall of uuids, and it is the
+// one thing in the header a human writes.
+func TestRename_PublishesTheIntent(t *testing.T) {
+	bus := event.New()
+	asked, unsub := bus.Subscribe(event.Only(event.RenameSessionKind))
+	defer unsub()
+
+	mine := uuid.Must(uuid.NewV7())
+	m := New(context.Background(), bus, SessionInfo{})
+	m.layout.width, m.layout.height = 120, 40
+	m.apply(event.SessionStarted{Session: mine, Recorded: true})
+
+	next, cmd := m.renameSession("/rename the sandbox bug")
+	require.NotNil(t, cmd)
+	cmd()
+
+	select {
+	case rec := <-asked:
+		got := rec.Event.(event.RenameSession)
+		assert.Equal(t, mine, got.Session)
+		assert.Equal(t, "the sandbox bug", got.Name)
+	case <-time.After(2 * time.Second):
+		t.Fatal("/rename published nothing")
+	}
+	_ = next
+}
+
+// Naming a session nothing records would not keep, so say so rather
+// than appear to work.
+func TestRename_RefusedWhenNothingIsRecording(t *testing.T) {
+	bus := event.New()
+	asked, unsub := bus.Subscribe(event.Only(event.RenameSessionKind))
+	defer unsub()
+
+	m := New(context.Background(), bus, SessionInfo{})
+	m.layout.width, m.layout.height = 120, 40
+	m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Recorded: false})
+
+	next, cmd := m.renameSession("/rename doomed")
+	assert.Nil(t, cmd, "nothing is published")
+	assert.True(t, next.(Model).notice.bad, "and it says why")
+
+	select {
+	case <-asked:
+		t.Fatal("a rename was published for a session nothing records")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestRename_NeedsAName(t *testing.T) {
+	m := New(context.Background(), event.New(), SessionInfo{})
+	m.layout.width, m.layout.height = 120, 40
+	m.apply(event.SessionStarted{Recorded: true})
+	next, cmd := m.renameSession("/rename   ")
+	assert.Nil(t, cmd)
+	assert.Contains(t, next.(Model).notice.text, "usage")
+}

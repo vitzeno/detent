@@ -76,6 +76,17 @@ type ListSessions struct{ fact }
 
 func (ListSessions) Kind() Kind { return ListSessionsKind }
 
+// RenameSession gives a session a name a human will recognise. Not a
+// fact about what happened, so it is not in the log: the name is the
+// header's own, and whatever holds it answers with a fresh listing.
+type RenameSession struct {
+	fact
+	Session uuid.UUID
+	Name    string
+}
+
+func (RenameSession) Kind() Kind { return RenameSessionKind }
+
 // ResetSession forgets the transcript. The container keeps running.
 type ResetSession struct{ fact }
 

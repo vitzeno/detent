@@ -36,6 +36,7 @@ func slashCommands() []slashCmd {
 			return m.openPanel(panelStatus)
 		}},
 		{"/sessions", "list the sessions that can be resumed", Model.listSessions},
+		{"/rename", "name this session, e.g. /rename the sandbox bug", Model.renameSession},
 		{"/undo", "undo a request and everything after it, e.g. /undo 2", Model.runUndo},
 		{"/new", "forget the conversation and start over", func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.startOver()

@@ -16,6 +16,7 @@ type SessionStarted struct {
 	fact
 	Session  uuid.UUID
 	Model    string
+	Judge    string // "" when no classifier is wired
 	Sandbox  bool
 	Network  bool
 	MaxSteps int
@@ -244,7 +245,9 @@ func (SessionsListed) Kind() Kind { return SessionsListedKind }
 // Started is UTC: a time crossing the wire keeps its instant and not
 // its zone.
 type SessionSummary struct {
-	ID      uuid.UUID
+	ID uuid.UUID
+	// Name is what a human called it, "" until they do.
+	Name    string
 	Started time.Time
 	Model   string
 	Events  int

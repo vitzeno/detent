@@ -17,8 +17,8 @@ import (
 
 func (m Model) sessionBar() string {
 	jev := styleFaint.Render("jev ○ off")
-	if m.info.Judge != "" {
-		jev = styleSafe.Render("jev ● " + m.info.Judge)
+	if m.run.Judge != "" {
+		jev = styleSafe.Render("jev ● " + m.run.Judge)
 	}
 	// Segments, so the bar can shed parts rather than wrap.
 	return fitSegments([]string{

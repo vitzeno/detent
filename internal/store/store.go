@@ -45,10 +45,9 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
-// Append writes one record, keyed on the bus's ordinal, so writing
-// the same one twice is the same row. A SessionStarted also writes
-// the header, in the same transaction: the events row has a foreign
-// key to it, so neither can exist without the other.
+// Append writes one record, keyed on the bus's ordinal, so writing it
+// twice is the same row. A SessionStarted writes the header in the
+// same transaction, since the events row has a foreign key to it.
 func (s *Store) Append(session uuid.UUID, r event.Record) error {
 	payload, err := event.Encode(r.Event)
 	if err != nil {
@@ -62,7 +61,8 @@ func (s *Store) Append(session uuid.UUID, r event.Record) error {
 
 	if started, ok := r.Event.(event.SessionStarted); ok {
 		if _, err := tx.Exec(upsertSession, session.String(), r.At.UnixMilli(),
-			started.Model, started.Sandbox, started.Network, started.Resumed); err != nil {
+			started.Model, started.Judge, started.Sandbox, started.Network,
+			started.Resumed); err != nil {
 			return fmt.Errorf("store: session header: %w", err)
 		}
 	}
@@ -116,21 +116,31 @@ func (s *Store) Sessions() ([]event.SessionSummary, error) {
 	for rows.Next() {
 		var (
 			id     string
+			name   string
 			at     int64
 			model  string
 			events int
 		)
-		if err := rows.Scan(&id, &at, &model, &events); err != nil {
+		if err := rows.Scan(&id, &name, &at, &model, &events); err != nil {
 			return nil, fmt.Errorf("store: scan session: %w", err)
 		}
 		parsed, err := uuid.Parse(id)
 		if err != nil {
 			continue // not ours to offer
 		}
-		out = append(out, event.SessionSummary{ID: parsed, Model: model,
+		out = append(out, event.SessionSummary{ID: parsed, Name: name, Model: model,
 			Started: time.UnixMilli(at).UTC(), Events: events})
 	}
 	return out, rows.Err()
+}
+
+// Rename gives a session a name a human will recognise. Not derived
+// from the log, so it is the header's own and nothing replays it.
+func (s *Store) Rename(session uuid.UUID, name string) error {
+	if _, err := s.db.Exec(renameSession, name, session.String()); err != nil {
+		return fmt.Errorf("store: rename: %w", err)
+	}
+	return nil
 }
 
 // Truncate drops everything after an ordinal: undo, on disk.

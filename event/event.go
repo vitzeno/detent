@@ -67,6 +67,7 @@ const (
 	RequestRollbackKind Kind = "do.rollback"
 	ResetSessionKind    Kind = "do.reset"
 	ListSessionsKind    Kind = "do.list_sessions"
+	RenameSessionKind   Kind = "do.rename_session"
 )
 
 // IsIntent splits what someone wants from what happened. The engine
@@ -76,7 +77,7 @@ func (k Kind) IsIntent() bool { return intents[k] }
 var intents = map[Kind]bool{
 	SubmitPromptKind: true, ResolveApprovalKind: true, NoteContextKind: true,
 	AbortKind: true, RequestStopKind: true, ContinueKind: true,
-	RequestRollbackKind: true, ResetSessionKind: true, ListSessionsKind: true,
+	RequestRollbackKind: true, ResetSessionKind: true, ListSessionsKind: true, RenameSessionKind: true,
 }
 
 // fact is embedded by everything but OutputChunk.

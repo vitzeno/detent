@@ -127,7 +127,7 @@ func (m *Model) refreshViewport() {
 func (m Model) welcomePane() []string {
 	return welcome.Lines(welcome.Facts{
 		Version:  version.String(),
-		Proposer: m.run.Model, Judge: m.info.Judge, RunMode: m.runMode(),
+		Proposer: m.run.Model, Judge: m.run.Judge, RunMode: m.runMode(),
 		Image: m.info.Image, Mount: m.info.Mount,
 		Runtime: m.info.Runtime, Network: m.info.Network,
 		Goals: len(m.blocks), Commands: m.calls, Sessions: len(m.sessions),

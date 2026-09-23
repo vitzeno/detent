@@ -47,6 +47,7 @@ type Engine struct {
 
 	// How this run describes itself, for the fact published at start.
 	modelName string
+	judgeName string
 	network   bool
 	recorded  bool
 	resumed   int
@@ -123,7 +124,8 @@ func (e *Engine) Run(ctx context.Context) {
 	defer e.unsub()
 	_, mode := e.runners.Select(event.UnknownRisk())
 	e.bus.Publish(event.SessionStarted{
-		Session: e.session, Model: e.modelName, Sandbox: mode == "sandbox",
+		Session: e.session, Model: e.modelName, Judge: e.judgeName,
+		Sandbox: mode == "sandbox",
 		Network: e.network, MaxSteps: e.maxSteps,
 		Recorded: e.recorded, Resumed: e.resumed,
 	})

@@ -67,17 +67,20 @@ func (m *Model) usageLines() []string {
 // is a process rather than a keystroke; the id is here to be copied.
 func (m *Model) sessionLines() []string {
 	out := []string{styleGoal.Render("sessions"), "",
-		styleFaint.Render("  resume one with  detent -resume <id>"), ""}
+		styleFaint.Render("  resume one with  detent -resume <id or name>"), ""}
 	for _, s := range m.sessions {
 		mark := "  "
 		if s.ID == m.run.Session {
 			mark = styleGoal.Render("▸ ")
 		}
+		name := styleFaint.Render(s.Model)
+		if s.Name != "" {
+			name = styleGoal.Render(s.Name)
+		}
 		out = append(out, fmt.Sprintf("%s%s  %s  %s  %s", mark,
 			styleGoal.Render(s.ID.String()),
 			styleFaint.Render(s.Started.Local().Format("2006-01-02 15:04")),
-			styleFaint.Render(pad(countOf(s.Events, "event"), 12)),
-			styleFaint.Render(s.Model)))
+			styleFaint.Render(pad(countOf(s.Events, "event"), 12)), name))
 	}
 	if len(m.sessions) == 0 {
 		out = append(out, styleFaint.Render("  (nothing recorded yet)"))
@@ -89,7 +92,7 @@ func (m *Model) statusLines() []string {
 	rows := [][2]string{
 		{"version", version.String()},
 		{"model", m.run.Model},
-		{"judge", orNone(m.info.Judge)},
+		{"judge", orNone(m.run.Judge)},
 		{"runs in", m.runMode()},
 		{"step bound", fmt.Sprint(m.run.MaxSteps)},
 		{"", ""},

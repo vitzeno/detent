@@ -63,6 +63,22 @@ func (m Model) listSessions(string) (tea.Model, tea.Cmd) {
 	return next, m.send(event.ListSessions{})
 }
 
+// renameSession names this run so a listing shows something a human
+// recognises rather than a uuid.
+func (m Model) renameSession(input string) (tea.Model, tea.Cmd) {
+	name := strings.TrimSpace(strings.TrimPrefix(input, "/rename"))
+	if name == "" {
+		m.noteErr("usage: /rename <name>")
+		return m, nil
+	}
+	if !m.run.Recorded {
+		m.noteErr("nothing is recording this session, so a name would not keep")
+		return m, nil
+	}
+	m.noteOK("named " + name)
+	return m, m.send(event.RenameSession{Session: m.run.Session, Name: name})
+}
+
 // abortRunning stops the open request. Cancels in flight, unlike a
 // decline, which stops one call and lets the model react.
 func (m Model) abortRunning() (tea.Model, tea.Cmd) {

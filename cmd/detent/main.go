@@ -56,7 +56,7 @@ func run() error {
 	themeName := flag.String("theme", "", "color scheme: "+strings.Join(theme.Names(), ", ")+" (default: config file, else "+config.DefaultTheme+")")
 	sandboxMode := flag.String("sandbox", "", "sandbox mode: auto, host (default: config file, else auto)")
 	sandboxSocket := flag.String("sandbox-socket", "", "containerd socket path (default: config file, else OS-conventional)")
-	resume := flag.String("resume", "", "continue a stored session by id, or \"last\"")
+	resume := flag.String("resume", "", "continue a stored session by id or name, or \"last\"")
 	sessions := flag.Bool("sessions", false, "list the sessions that can be resumed, and exit")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
@@ -186,7 +186,7 @@ func run() error {
 
 	opts := []engine.Option{
 		engine.WithSessionID(sessionID),
-		engine.WithDescription(resolved.Model,
+		engine.WithDescription(resolved.Model, judgeName(resolved),
 			resolved.SandboxNetwork != sandbox.NetworkNone, events != nil),
 		engine.WithContextTokens(resolved.ContextTokens),
 		engine.WithMaxSteps(resolved.Steps),
@@ -244,12 +244,7 @@ func run() error {
 		return nil
 	}
 
-	judgeName := ""
-	if judge != nil {
-		judgeName = resolved.JevModel
-	}
 	info := ui.SessionInfo{
-		Judge: judgeName,
 		Image: resolved.SandboxImage, Mount: resolved.SandboxWorkspace,
 		Runtime: resolved.SandboxRuntime, Network: resolved.SandboxNetwork,
 	}
@@ -348,11 +343,7 @@ func openSession(resume string) (uuid.UUID, []event.Record, error) {
 
 // resolveSession takes an id or "last", because nobody remembers a uuid.
 func resolveSession(events *store.Store, want string) (uuid.UUID, error) {
-	if want != "last" {
-		id, err := uuid.Parse(want)
-		if err != nil {
-			return uuid.Nil, fmt.Errorf("%q is not a session id — try -sessions, or -resume last", want)
-		}
+	if id, err := uuid.Parse(want); err == nil {
 		return id, nil
 	}
 	all, err := events.Sessions()
@@ -362,7 +353,24 @@ func resolveSession(events *store.Store, want string) (uuid.UUID, error) {
 	if len(all) == 0 {
 		return uuid.Nil, fmt.Errorf("no sessions recorded yet")
 	}
-	return all[0].ID, nil
+	if want == "last" {
+		return all[0].ID, nil
+	}
+	for _, s := range all {
+		if strings.EqualFold(s.Name, want) {
+			return s.ID, nil
+		}
+	}
+	return uuid.Nil, fmt.Errorf("no session named %q — try -sessions, or -resume last", want)
+}
+
+// judgeName is what the session says classified it, empty when no key
+// was set and nothing did.
+func judgeName(c config.Config) string {
+	if c.JevAPIKey == "" {
+		return ""
+	}
+	return c.JevModel
 }
 
 func listSessions() error {
@@ -381,7 +389,13 @@ func listSessions() error {
 		return nil
 	}
 	for _, s := range all {
-		fmt.Printf("%s  %s  %d events\n", s.ID, s.Started.Format("2006-01-02 15:04"), s.Events)
+		name := s.Model
+		if s.Name != "" {
+			name = s.Name
+		}
+		fmt.Printf("%s  %s  %-12s %s\n", s.ID,
+			s.Started.Local().Format("2006-01-02 15:04"),
+			fmt.Sprintf("%d events", s.Events), name)
 	}
 	return nil
 }
