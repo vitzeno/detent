@@ -47,6 +47,8 @@ func run() error {
 	apiKey := flag.String("key", "", "API key (default: config file, else env; empty for local LM Studio)")
 	configPath := flag.String("config", "", "config file path (default: ./.detent.yaml, then ~/.config/detent/config.yaml)")
 	goal := flag.String("goal", "", "run one goal headlessly and exit (empty = launch the TUI)")
+	prompt := flag.String("prompt", "", "run one request through the agent loop and exit")
+	unattended := flag.Bool("unattended", false, "with -prompt, decline every flagged command instead of asking")
 	steps := flag.Int("steps", -1, "per-goal step cap, 0 = unbounded (default: config file, else unbounded)")
 	themeName := flag.String("theme", "", "color scheme: "+strings.Join(theme.Names(), ", ")+" (default: config file, else "+config.DefaultTheme+")")
 	sandboxMode := flag.String("sandbox", "", "sandbox mode: auto, host (default: config file, else auto)")
@@ -108,6 +110,8 @@ func run() error {
 	}
 	defer func() { _ = closeLog() }()
 	runners := routing.Selector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
+	// Shared by both cores while the TUI is still on the old one.
+	var container *sandbox.Container
 	// The proposer is told where commands actually run, so it writes
 	// for that OS and knows what survives. Filled in below if a sandbox
 	// is wired; until then it describes this machine.
@@ -128,7 +132,7 @@ func run() error {
 			return fmt.Errorf("%w\n\nis containerd reachable at %s? check the colima/containerd socket is up, or run with -sandbox host", err, socket)
 		}
 
-		container := sandbox.NewContainer(
+		container = sandbox.NewContainer(
 			sandbox.WithSocket(socket),
 			sandbox.WithImage(resolved.SandboxImage),
 			sandbox.WithMountPoint(resolved.SandboxWorkspace),
@@ -189,6 +193,9 @@ func run() error {
 	// pane, so the first goal does not wait for it.
 	sess.Prime(context.Background())
 
+	if *prompt != "" {
+		return runPrompt(context.Background(), *prompt, resolved, container, judge, *unattended)
+	}
 	if *goal != "" {
 		return printGoalResult(sess.RunGoal(context.Background(), *goal))
 	}

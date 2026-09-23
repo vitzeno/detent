@@ -44,6 +44,12 @@ type Engine struct {
 
 	worktreer Worktreer
 
+	// intents is subscribed in New, not Run: a caller that publishes
+	// the moment New returns must not lose it to a goroutine that has
+	// not started yet.
+	intents <-chan event.Record
+	unsub   func()
+
 	// trMu guards the transcript, which the Turn goroutine writes and
 	// a caller may read at any moment.
 	trMu sync.Mutex
@@ -100,15 +106,14 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 	}
 	// Cheapest first, the network hook last.
 	e.assessors = append([]Assessor{toolFloor{}, regexHook{}, e.repeat}, e.assessors...)
+	e.intents, e.unsub = bus.Subscribe(event.Intents())
 	return e
 }
 
 // Run is the actor loop. It reads intents and nothing else; every fact
 // it produces goes out on the bus.
 func (e *Engine) Run(ctx context.Context) {
-	intents, unsub := e.bus.Subscribe(event.Intents())
-	defer unsub()
-
+	defer e.unsub()
 	e.bus.Publish(event.SessionStarted{Session: e.session, MaxSteps: e.maxSteps})
 	done := make(chan struct{}, 1)
 
@@ -119,7 +124,7 @@ func (e *Engine) Run(ctx context.Context) {
 			return
 		case <-done:
 			e.finishTurn()
-		case rec, ok := <-intents:
+		case rec, ok := <-e.intents:
 			if !ok {
 				return
 			}

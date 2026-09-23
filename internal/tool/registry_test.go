@@ -140,13 +140,29 @@ func TestSchemas_MatchTheSpecs(t *testing.T) {
 		assert.Len(t, props, len(tl.Describe().Params))
 		assert.Equal(t, false, params["additionalProperties"])
 
+		// Strict mode requires every property in required, so an
+		// optional parameter is nullable rather than left out. An
+		// endpoint rejects the whole request otherwise, which is how
+		// this was found: by running it, not by asserting on it.
+		assert.Len(t, params["required"], len(tl.Describe().Params))
 		for _, p := range tl.Describe().Params {
 			got, ok := props[p.Name].(map[string]any)
 			require.True(t, ok, "%s.%s missing from schema", name, p.Name)
-			assert.Equal(t, p.Type, got["type"])
 			assert.NotEmpty(t, got["description"], "%s.%s has no description", name, p.Name)
+			if p.Required {
+				assert.Equal(t, p.Type, got["type"])
+			} else {
+				assert.Equal(t, []string{p.Type, "null"}, got["type"], "%s.%s is optional", name, p.Name)
+			}
 		}
 	}
+}
+
+// An explicit null is how strict mode sends an absent optional.
+func TestPrepare_TreatsNullAsAbsent(t *testing.T) {
+	c, err := Standard().Prepare("read_file", map[string]any{"path": "a.go", "max_lines": nil})
+	require.NoError(t, err)
+	assert.Equal(t, "head -n 500 -- 'a.go'", c.Command, "null means take the default")
 }
 
 func TestRegistry_RegisterOverridesWithoutDuplicating(t *testing.T) {

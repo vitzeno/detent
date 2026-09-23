@@ -85,14 +85,20 @@ func (r *Registry) Schemas() []map[string]any {
 	return out
 }
 
+// schema renders a Spec as JSON Schema. Under strict mode every
+// property must appear in required, so an optional parameter is
+// nullable rather than omitted; validate already reads an explicit
+// null as absent.
 func schema(s Spec) map[string]any {
 	props := map[string]any{}
-	var required []string
+	required := make([]string, 0, len(s.Params))
 	for _, p := range s.Params {
-		props[p.Name] = map[string]any{"type": p.Type, "description": p.Desc}
-		if p.Required {
-			required = append(required, p.Name)
+		t := any(p.Type)
+		if !p.Required {
+			t = []string{p.Type, "null"}
 		}
+		props[p.Name] = map[string]any{"type": t, "description": p.Desc}
+		required = append(required, p.Name)
 	}
 	sort.Strings(required)
 	return map[string]any{
