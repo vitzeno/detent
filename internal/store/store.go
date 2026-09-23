@@ -86,14 +86,14 @@ func (s *Store) Replay(session uuid.UUID) ([]event.Record, error) {
 }
 
 // Sessions are what can be replayed, newest first.
-func (s *Store) Sessions() ([]Session, error) {
+func (s *Store) Sessions() ([]event.SessionSummary, error) {
 	rows, err := s.db.Query(selectSessions)
 	if err != nil {
 		return nil, fmt.Errorf("store: sessions: %w", err)
 	}
 	defer rows.Close()
 
-	var out []Session
+	var out []event.SessionSummary
 	for rows.Next() {
 		var (
 			id     string
@@ -107,16 +107,9 @@ func (s *Store) Sessions() ([]Session, error) {
 		if err != nil {
 			continue // not ours to offer
 		}
-		out = append(out, Session{ID: parsed, Started: time.UnixMilli(at), Events: events})
+		out = append(out, event.SessionSummary{ID: parsed, Started: time.UnixMilli(at).UTC(), Events: events})
 	}
 	return out, rows.Err()
-}
-
-// Session is one resumable session, as a listing shows it.
-type Session struct {
-	ID      uuid.UUID
-	Started time.Time
-	Events  int
 }
 
 // Truncate drops everything after an ordinal: undo, on disk.

@@ -80,6 +80,7 @@ var codecs = map[Kind]func([]byte) (Event, error){
 	CallJudgedKind:      codec[CallJudged],
 	ViewReadyKind:       codec[ViewReady],
 	NoticeKind:          codec[Notice],
+	SessionsListedKind:  codec[SessionsListed],
 
 	SubmitPromptKind:    codec[SubmitPrompt],
 	ResolveApprovalKind: codec[ResolveApproval],
@@ -89,4 +90,5 @@ var codecs = map[Kind]func([]byte) (Event, error){
 	ContinueKind:        codec[Continue],
 	RequestRollbackKind: codec[RequestRollback],
 	ResetSessionKind:    codec[ResetSession],
+	ListSessionsKind:    codec[ListSessions],
 }

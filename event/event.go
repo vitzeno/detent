@@ -52,7 +52,8 @@ const (
 	CallJudgedKind    Kind = "call.judged"
 	ViewReadyKind     Kind = "call.view"
 
-	NoticeKind Kind = "notice"
+	NoticeKind         Kind = "notice"
+	SessionsListedKind Kind = "sessions.listed"
 )
 
 // Intents. Imperative, published by anyone.
@@ -65,6 +66,7 @@ const (
 	ContinueKind        Kind = "do.continue"
 	RequestRollbackKind Kind = "do.rollback"
 	ResetSessionKind    Kind = "do.reset"
+	ListSessionsKind    Kind = "do.list_sessions"
 )
 
 // IsIntent splits what someone wants from what happened. The engine
@@ -74,7 +76,7 @@ func (k Kind) IsIntent() bool { return intents[k] }
 var intents = map[Kind]bool{
 	SubmitPromptKind: true, ResolveApprovalKind: true, NoteContextKind: true,
 	AbortKind: true, RequestStopKind: true, ContinueKind: true,
-	RequestRollbackKind: true, ResetSessionKind: true,
+	RequestRollbackKind: true, ResetSessionKind: true, ListSessionsKind: true,
 }
 
 // fact is embedded by everything but OutputChunk.

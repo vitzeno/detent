@@ -35,6 +35,7 @@ func slashCommands() []slashCmd {
 		{"/status", "show what detent is and what it has done", func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.openPanel(panelStatus)
 		}},
+		{"/sessions", "list the sessions that can be resumed", Model.listSessions},
 		{"/undo", "undo a request and everything after it, e.g. /undo 2", Model.runUndo},
 		{"/new", "forget the conversation and start over", func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.startOver()

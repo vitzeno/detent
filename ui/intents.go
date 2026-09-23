@@ -56,6 +56,13 @@ func (m Model) answerBound(keepGoing bool) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(m.spinner.Tick, m.send(event.Continue{Turn: turn, Approved: keepGoing}))
 }
 
+// listSessions opens the panel and asks for a fresh listing, since
+// another detent may have recorded one since this started.
+func (m Model) listSessions(string) (tea.Model, tea.Cmd) {
+	next, _ := m.openPanel(panelSessions)
+	return next, m.send(event.ListSessions{})
+}
+
 // abortRunning stops the open request. Cancels in flight, unlike a
 // decline, which stops one call and lets the model react.
 func (m Model) abortRunning() (tea.Model, tea.Cmd) {

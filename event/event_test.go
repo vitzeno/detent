@@ -53,9 +53,9 @@ func TestKinds_AreUniqueAndComplete(t *testing.T) {
 		RolledBack{}, BoundReached{}, StepStarted{}, StepEnded{}, ModelText{},
 		Appended{}, Compacted{},
 		CallProposed{}, CallAssessed{}, ApprovalAsked{}, CallStarted{},
-		OutputChunk{}, CallEnded{}, CallJudged{}, ViewReady{}, Notice{},
+		OutputChunk{}, CallEnded{}, CallJudged{}, ViewReady{}, Notice{}, SessionsListed{},
 		SubmitPrompt{}, ResolveApproval{}, NoteContext{}, Abort{},
-		RequestStop{}, Continue{}, RequestRollback{}, ResetSession{},
+		RequestStop{}, Continue{}, RequestRollback{}, ResetSession{}, ListSessions{},
 	}
 	seen := map[Kind]bool{}
 	for _, e := range all {

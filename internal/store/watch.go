@@ -11,6 +11,7 @@ import (
 // Stopping waits for the last record to land, not merely to arrive.
 func Watch(bus *event.Bus, s *Store, session uuid.UUID) func() {
 	facts, unsub := bus.Subscribe(worthStoring)
+	stopAnswering := answer(bus, s)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -33,15 +34,34 @@ func Watch(bus *event.Bus, s *Store, session uuid.UUID) func() {
 		}
 	}()
 	return func() {
+		stopAnswering()
 		unsub()
 		<-done
 	}
 }
 
-// worthStoring takes the facts and skips live output. Replay has no
-// use for it: a replayed Call has already finished, so its chunks
-// have nothing to redraw, and CallEnded carries the whole output. A
-// chatty command would also be thousands of rows.
+// answer replies to ListSessions with what is on disk, so a front-end
+// can ask without reaching past the bus into a package it may not
+// import.
+func answer(bus *event.Bus, s *Store) func() {
+	asked, unsub := bus.Subscribe(event.Only(event.ListSessionsKind))
+	go func() {
+		for range asked {
+			all, err := s.Sessions()
+			if err != nil {
+				logging.For(logging.Engine).Error("could not list sessions",
+					logging.KeyReason, err.Error())
+				continue
+			}
+			bus.Publish(event.SessionsListed{Sessions: all})
+		}
+	}()
+	return unsub
+}
+
+// worthStoring skips live output: a replayed Call has already
+// finished, so its chunks have nothing to redraw, and CallEnded
+// carries the whole output anyway.
 func worthStoring(e event.Event) bool {
 	return !e.Kind().IsIntent() && e.Kind() != event.OutputChunkKind
 }

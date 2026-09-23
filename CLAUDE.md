@@ -357,7 +357,8 @@ adding a fat dependency fails with the transitive import named.
   parses the package to prove no type lacks a codec. `Watch` is the
   subscriber, wired beside `logging.Watch`; it skips `OutputChunk`
   because a replayed Call has already finished and `CallEnded` carries
-  the whole output.
+  the whole output. It also answers `ListSessions` over the bus, since
+  `ui` cannot import it to ask directly.
 
 - **`version`** — what this build calls itself, and nothing else.
 

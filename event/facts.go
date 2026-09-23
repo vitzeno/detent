@@ -226,6 +226,23 @@ type ViewReady struct {
 
 func (ViewReady) Kind() Kind { return ViewReadyKind }
 
+// SessionsListed answers ListSessions with what can be resumed.
+type SessionsListed struct {
+	fact
+	Sessions []SessionSummary
+}
+
+func (SessionsListed) Kind() Kind { return SessionsListedKind }
+
+// SessionSummary is one resumable session, as a listing shows it.
+// Started is UTC: a time crossing the wire keeps its instant and not
+// its zone.
+type SessionSummary struct {
+	ID      uuid.UUID
+	Started time.Time
+	Events  int
+}
+
 // Notice is anything to say that is not about one Call.
 type Notice struct {
 	fact

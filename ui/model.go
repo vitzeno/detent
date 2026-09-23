@@ -8,7 +8,9 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+
 	"charm.land/lipgloss/v2"
+	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 )
@@ -45,6 +47,11 @@ type Model struct {
 	// Counters for /usage and /status, folded from the stream rather
 	// than read back from anywhere.
 	calls, steps, errors, views, tokens int
+
+	// session is this run's own id, so a human can resume it later;
+	// sessions is what /sessions last heard back.
+	session  uuid.UUID
+	sessions []event.SessionSummary
 
 	welcomeFrame int
 	viewContent  string
@@ -87,7 +94,10 @@ func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, welcomeTick(), nextFact(m.facts))
+	// Asked at startup so the welcome pane can say what is resumable,
+	// and /sessions has an answer before it is opened.
+	return tea.Batch(textarea.Blink, welcomeTick(), nextFact(m.facts),
+		m.send(event.ListSessions{}))
 }
 
 // Update routes the message, then re-syncs the panes once, so no

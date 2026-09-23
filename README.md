@@ -80,6 +80,24 @@ On Linux, run containerd and point `sandbox_socket` at it.
 
 All keys are documented in [`detent.example.yaml`](detent.example.yaml)
 
+## Resuming
+
+Every session is recorded to `~/.local/state/detent/events.db`, so it
+can be replayed rather than reconstructed.
+
+```sh
+detent -sessions              # what can be resumed
+detent -resume last           # continue the most recent
+detent -resume <id>           # or a specific one
+```
+
+`/sessions` shows the same list inside the TUI, with this run's id
+marked so you can resume it later.
+
+A resumed session gets its transcript and its history back. It does
+not get the container: those checkpoints died with it, so a Turn from
+before the restart is not offered for undo.
+
 ## Logs
 
 One JSONL stream per session in `~/.local/state/detent/logs/`

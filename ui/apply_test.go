@@ -3,7 +3,9 @@ package ui
 import (
 	"context"
 	"github.com/google/uuid"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -236,4 +238,50 @@ func asRecords(facts []event.Event) []event.Record {
 		out[i] = event.Record{Ordinal: uint64(i + 1), Event: e}
 	}
 	return out
+}
+
+// /sessions asks over the bus rather than reaching into a store, so
+// ui keeps importing nothing under internal/.
+func TestSessions_AreAskedForAndFolded(t *testing.T) {
+	bus := event.New()
+	asked, unsub := bus.Subscribe(event.Only(event.ListSessionsKind))
+	defer unsub()
+
+	m := New(context.Background(), bus, SessionInfo{})
+	m.layout.width, m.layout.height = 120, 40
+	next, cmd := m.listSessions("/sessions")
+	m = next.(Model)
+	require.NotNil(t, cmd)
+	cmd()
+
+	assert.Equal(t, panelSessions, m.panel.open)
+	select {
+	case rec := <-asked:
+		assert.Equal(t, event.ListSessionsKind, rec.Event.Kind())
+	case <-time.After(2 * time.Second):
+		t.Fatal("/sessions never asked for a listing")
+	}
+
+	mine := uuid.Must(uuid.NewV7())
+	m.apply(event.SessionStarted{Session: mine})
+	m.apply(event.SessionsListed{Sessions: []event.SessionSummary{
+		{ID: mine, Started: time.Now().UTC(), Events: 12},
+		{ID: uuid.Must(uuid.NewV7()), Started: time.Now().UTC(), Events: 3},
+	}})
+
+	lines := strings.Join(m.sessionLines(), "\n")
+	assert.Contains(t, lines, mine.String())
+	assert.Contains(t, lines, "12 events")
+	assert.Contains(t, lines, "-resume", "and says how to use one")
+}
+
+// The session id is the one thing you need to resume this run later,
+// and there was no way to see it from inside the TUI.
+func TestStatus_ShowsTheSessionID(t *testing.T) {
+	m := New(context.Background(), event.New(), SessionInfo{})
+	m.layout.width, m.layout.height = 120, 40
+	mine := uuid.Must(uuid.NewV7())
+	m.apply(event.SessionStarted{Session: mine, MaxSteps: 50})
+
+	assert.Contains(t, strings.Join(m.statusLines(), "\n"), mine.String())
 }

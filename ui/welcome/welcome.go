@@ -35,6 +35,8 @@ type Facts struct {
 
 	Goals    int
 	Commands int
+	// Sessions is how many are on disk, 0 until a listing arrives.
+	Sessions int
 }
 
 // Lines renders the pane at width by height, frame advancing the
@@ -154,9 +156,7 @@ func session(f Facts) []string {
 	return []string{
 		row("so far", goal.Render(fmt.Sprintf("%s · %s",
 			plural(f.Goals, "request"), plural(f.Commands, "call")))),
-		// A placeholder, not an invented number: this needs the
-		// persistence layer to mean anything.
-		row("all time", faint.Render("— sessions · — requests   (persistence pending)")),
+		row("all time", allTime(f)),
 	}
 }
 
@@ -246,6 +246,16 @@ func centreVertically(lines []string, height int) []string {
 }
 
 // plural counts a thing without the "(s)" hedge.
+// allTime says nothing rather than zero until a listing arrives:
+// "0 sessions" would read as none recorded, not as not yet asked.
+func allTime(f Facts) string {
+	if f.Sessions == 0 {
+		return faint.Render("—")
+	}
+	return goal.Render(plural(f.Sessions, "session")) +
+		faint.Render("  resume one with /sessions")
+}
+
 func plural(n int, thing string) string {
 	if n == 1 {
 		return "1 " + thing

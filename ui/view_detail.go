@@ -130,7 +130,7 @@ func (m Model) welcomePane() []string {
 		Proposer: m.info.Model, Judge: m.info.Judge, RunMode: m.info.RunMode,
 		Image: m.info.Image, Mount: m.info.Mount,
 		Runtime: m.info.Runtime, Network: m.info.Network,
-		Goals: len(m.blocks), Commands: m.calls,
+		Goals: len(m.blocks), Commands: m.calls, Sessions: len(m.sessions),
 	}, paneInner(m.layout.outputColW), m.output.Height(), m.welcomeFrame)
 }
 

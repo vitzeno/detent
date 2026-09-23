@@ -40,6 +40,8 @@ func (m *Model) panelLines() []string {
 		return m.statusLines()
 	case panelHelp:
 		return m.helpLines()
+	case panelSessions:
+		return m.sessionLines()
 	}
 	return nil
 }
@@ -60,9 +62,32 @@ func (m *Model) usageLines() []string {
 		m.steps, status.Tokens(m.tokens))))
 }
 
+// sessionLines is what can be resumed. Read-only: resuming rebuilds
+// the transcript and rebinds the container, which is a process, not a
+// keystroke. The id is here to be copied into one.
+func (m *Model) sessionLines() []string {
+	out := []string{styleGoal.Render("sessions"), "",
+		styleFaint.Render("  resume one with  detent -resume <id>"), ""}
+	for _, s := range m.sessions {
+		mark := "  "
+		if s.ID == m.session {
+			mark = styleGoal.Render("▸ ")
+		}
+		out = append(out, fmt.Sprintf("%s%s  %s  %s", mark,
+			styleGoal.Render(s.ID.String()),
+			styleFaint.Render(s.Started.Local().Format("2006-01-02 15:04")),
+			styleFaint.Render(countOf(s.Events, "event"))))
+	}
+	if len(m.sessions) == 0 {
+		out = append(out, styleFaint.Render("  (nothing recorded yet)"))
+	}
+	return out
+}
+
 func (m *Model) statusLines() []string {
 	rows := [][2]string{
 		{"version", version.String()},
+		{"session", m.session.String()},
 		{"model", m.info.Model},
 		{"judge", orNone(m.info.Judge)},
 		{"runs in", m.info.RunMode},
@@ -99,6 +124,13 @@ func (m *Model) helpLines() []string {
 		"  "+styleFaint.Render("enter     seed the prompt from a view's selection"),
 		"  "+styleFaint.Render("esc       back out, or abort a running request"),
 		"  "+styleFaint.Render("ctrl+c    quit"))
+}
+
+func countOf(n int, thing string) string {
+	if n == 1 {
+		return "1 " + thing
+	}
+	return fmt.Sprintf("%d %ss", n, thing)
 }
 
 func orNone(s string) string {

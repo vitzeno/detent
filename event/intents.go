@@ -70,6 +70,12 @@ type RequestRollback struct {
 
 func (RequestRollback) Kind() Kind { return RequestRollbackKind }
 
+// ListSessions asks what can be resumed. Whatever holds the log
+// answers with SessionsListed.
+type ListSessions struct{ fact }
+
+func (ListSessions) Kind() Kind { return ListSessionsKind }
+
 // ResetSession forgets the transcript. The container keeps running.
 type ResetSession struct{ fact }
 

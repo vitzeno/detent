@@ -95,6 +95,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 			Attention: 0.9, GoalAchieved: 0.1, FromJudge: true},
 		ViewReady{Call: call, Spec: spec, Source: "composed"},
 		Notice{Level: "warn", Text: "careful"},
+		SessionsListed{Sessions: []SessionSummary{{ID: turn, Started: time.UnixMilli(1_700_000_000_000).UTC(), Events: 12}}},
 
 		SubmitPrompt{Text: "go"},
 		ResolveApproval{Call: call, Approved: true},
@@ -103,6 +104,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		RequestStop{Turn: turn, Reason: "met"},
 		Continue{Turn: turn, Approved: true},
 		RequestRollback{Turn: turn, RevertFiles: true},
+		ListSessions{},
 		ResetSession{},
 	}
 	require.Len(t, cases, len(codecs), "every kind needs a case here")
