@@ -11,20 +11,34 @@ import (
 
 // This package is imported by ui and by the engine alike, which is
 // what removes the translation layer between them. It can only stay
-// that way while it depends on nothing either side could disagree
-// about: the standard library, plus viewspec, which is itself stdlib
-// only and already imported by both.
-func TestPackage_DependsOnStdlibAndViewspecOnly(t *testing.T) {
+// that way while nothing it pulls in can drag either side anywhere.
+// So the rule is a property rather than a list: every non-stdlib
+// import must itself import only the standard library.
+func TestPackage_DependsOnlyOnStdlibOnlyPackages(t *testing.T) {
 	pkg, err := build.ImportDir(".", 0)
 	require.NoError(t, err)
 
-	const allowed = "github.com/vitzeno/detent/viewspec"
 	for _, imp := range pkg.Imports {
-		if imp == allowed || !strings.Contains(imp, ".") {
+		if !external(imp) {
 			continue
 		}
-		t.Errorf("event imports %q; only the standard library and %s are allowed", imp, allowed)
+		dep, err := build.Import(imp, ".", build.FindOnly|build.ImportComment)
+		require.NoError(t, err, "cannot resolve %q", imp)
+		found, err := build.ImportDir(dep.Dir, 0)
+		require.NoError(t, err, "cannot read %q", imp)
+
+		for _, sub := range found.Imports {
+			assert.False(t, external(sub),
+				"event imports %s, which imports %s; event may only depend on packages that are themselves stdlib only", imp, sub)
+		}
 	}
+}
+
+// external reports whether an import path leaves the standard
+// library. Stdlib paths have no dot in their first segment.
+func external(path string) bool {
+	first, _, _ := strings.Cut(path, "/")
+	return strings.Contains(first, ".")
 }
 
 // Every Kind must name exactly one event type, and every event type

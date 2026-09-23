@@ -189,9 +189,11 @@ routing     →  engine, sandbox
 `ui` imports **nothing** under `internal/`. That used to need a
 translation layer (`internal/resolver`) mirroring every type; now both
 sides import `event` directly and the layer is gone. `event` earns
-that by depending on almost nothing — the standard library plus
-`viewspec`, which is itself stdlib-only and already imported by both.
-`event/event_test.go` enforces it.
+that by depending on almost nothing, and the rule is a property rather
+than a list: **every non-stdlib package `event` imports must itself
+import only the standard library.** `viewspec` and `google/uuid` both
+qualify. `event/event_test.go` walks the imports and checks it, so
+adding a fat dependency fails with the transitive import named.
 
 - **`event`** — the shared vocabulary and the `Bus`. `Publish` never
   blocks, whoever is listening and however slowly, so publishing from
@@ -199,10 +201,12 @@ that by depending on almost nothing — the standard library plus
   its own queue: a lagging one grows it and drops only events that say
   they are `Lossy`, which is `OutputChunk` and nothing else. A dropped
   live line costs a redraw; a dropped `CallEnded` is a row that never
-  finishes. `Record` carries a gapless `Seq`, so a lossy subscriber can
-  tell it missed something. IDs are UUIDv7 with a counter in the bits
-  after the version, because plain v7 only orders across milliseconds
-  and a Step opens all its Calls inside one.
+  finishes. `Record` carries a gapless `Ordinal`, so a subscriber
+  that filters or drops can be told apart from one that lost
+  something. IDs are `google/uuid`'s UUIDv7,
+  whose `getV7Time` is monotonic within a millisecond as well as
+  across them, which matters because a Step mints all its Call ids
+  inside one.
 
 - **`internal/engine`** — the loop, and it drives itself. One
   goroutine, blocking and linear, reading intents and publishing
