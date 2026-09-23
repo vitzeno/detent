@@ -6,15 +6,9 @@ import (
 	"time"
 )
 
-// Bus fans Records out to subscribers. Publish never blocks, whoever
-// is listening and however slowly, because the engine must not be
-// stalled by a lagging UI — so publishing from inside a handler is
-// safe and cannot deadlock.
-//
-// Each subscriber has its own queue. A lagging one grows it, except
-// for events that say they are Lossy, which are dropped past a depth.
-// That is the whole delivery policy: live output may be lost, nothing
-// else may.
+// Bus fans Records out. Publish never blocks, so publishing from
+// inside a handler is safe. Each subscriber has its own queue; a
+// lagging one grows it and drops only Lossy events past queueDepth.
 type Bus struct {
 	mu      sync.Mutex
 	subs    map[int]*sub
@@ -51,9 +45,8 @@ func (b *Bus) Publish(e Event) {
 	}
 }
 
-// Subscribe returns a channel of matching Records and a func that
-// stops it. The channel closes once that func is called, or the Bus
-// shuts down, so a range over it terminates.
+// Subscribe returns matching Records and a func that stops them. The
+// channel closes on either, so a range over it terminates.
 func (b *Bus) Subscribe(f Filter) (<-chan Record, func()) {
 	s := newSub(f, &b.dropped)
 	b.mu.Lock()
@@ -76,8 +69,7 @@ func (b *Bus) Subscribe(f Filter) (<-chan Record, func()) {
 	}
 }
 
-// Close stops every subscription. Publishing afterwards is a no-op
-// rather than a panic: shutdown races are not worth crashing over.
+// Close stops every subscription; publishing afterwards is a no-op.
 func (b *Bus) Close() {
 	b.mu.Lock()
 	if b.shut {
@@ -97,16 +89,14 @@ func (b *Bus) Close() {
 	}
 }
 
-// Dropped is how many lossy Records never reached a subscriber. It
-// survives unsubscribe and Close, because the number is only useful
-// after the fact: non-zero means something could not keep up with live
-// output, which is worth knowing and not worth failing over.
+// Dropped counts lossy Records nobody received. Survives Close,
+// because the number is only useful afterwards.
 func (b *Bus) Dropped() uint64 { return b.dropped.Load() }
 
 // Filter reports whether a subscriber wants an Event. nil takes all.
 type Filter func(Event) bool
 
-// Only takes the named kinds and nothing else.
+// Only takes the named kinds.
 func Only(kinds ...Kind) Filter {
 	want := make(map[Kind]bool, len(kinds))
 	for _, k := range kinds {
@@ -115,13 +105,11 @@ func Only(kinds ...Kind) Filter {
 	return func(e Event) bool { return want[e.Kind()] }
 }
 
-// Intents is what the engine listens to; Facts is what a front-end does.
+// Intents is what the engine listens to, Facts what a front-end does.
 func Intents() Filter { return func(e Event) bool { return e.Kind().IsIntent() } }
 func Facts() Filter   { return func(e Event) bool { return !e.Kind().IsIntent() } }
 
-// queueDepth is where a lagging subscriber starts dropping lossy
-// events. Deep enough that an ordinary redraw pause loses nothing,
-// shallow enough that a wedged consumer cannot eat memory unbounded.
+// queueDepth: past this, a lagging subscriber drops lossy events.
 const queueDepth = 512
 
 type sub struct {
@@ -142,9 +130,7 @@ func newSub(f Filter, dropped *atomic.Uint64) *sub {
 	return s
 }
 
-// push is the non-blocking half. A full queue drops a lossy Record and
-// keeps everything else, which is what makes lifecycle delivery
-// guaranteed and live output best effort.
+// push is the non-blocking half: a full queue drops lossy, keeps the rest.
 func (s *sub) push(r Record) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -159,10 +145,8 @@ func (s *sub) push(r Record) {
 	s.cond.Signal()
 }
 
-// drain is the blocking half, and the only thing that waits on the
-// consumer. It abandons the backlog on stop: a subscriber that has
-// unsubscribed is not owed the rest, and delivering it is how the
-// goroutine leaks when nobody is reading any more.
+// drain is the only thing that waits on the consumer. It abandons the
+// backlog on stop, which is what stops the goroutine leaking.
 func (s *sub) drain() {
 	defer close(s.out)
 	for {

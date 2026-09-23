@@ -2,9 +2,8 @@ package event
 
 import "time"
 
-// Usage is what one model call cost. It lives here rather than in a
-// package of its own because StepEnded carries it and this package may
-// not import one that does.
+// Usage is what one model call cost. Here rather than its own package
+// because StepEnded carries it and this one may import neither.
 type Usage struct {
 	PromptTokens     int
 	CompletionTokens int
@@ -12,10 +11,10 @@ type Usage struct {
 	Model            string
 }
 
-// Tokens is the total, which is what a budget and a status bar both want.
+// Tokens is what a budget and a status bar both want.
 func (u Usage) Tokens() int { return u.PromptTokens + u.CompletionTokens }
 
-// Add accumulates, for a Step that had to ask twice.
+// Add accumulates, for a Step that asked twice.
 func (u Usage) Add(o Usage) Usage {
 	u.PromptTokens += o.PromptTokens
 	u.CompletionTokens += o.CompletionTokens

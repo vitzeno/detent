@@ -6,12 +6,22 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// What the engine publishes. Past tense: each says something already
-// happened and nobody is being asked anything. The one exception is
-// ApprovalAsked, which is a question the engine blocks on — see the
-// Bus doc for why that still belongs here.
+// What the engine publishes, past tense. ApprovalAsked is the one
+// question among them, correlated by Call.
 
-// A Turn is one human prompt and everything the agent did about it.
+// SessionStarted is published once; welcome and status read it.
+type SessionStarted struct {
+	fact
+	Session  ID
+	Model    string
+	Sandbox  bool
+	Network  bool
+	MaxSteps int
+}
+
+func (SessionStarted) Kind() Kind { return SessionStartedKind }
+
+// A Turn is one prompt and everything the agent did about it.
 
 type TurnStarted struct {
 	fact
@@ -22,8 +32,7 @@ type TurnStarted struct {
 
 func (TurnStarted) Kind() Kind { return TurnStartedKind }
 
-// CheckpointTaken is the Turn's one snapshot, taken before any Call
-// runs. It is the only thing a rollback restores to.
+// CheckpointTaken is the Turn's one snapshot, and all a rollback restores.
 type CheckpointTaken struct {
 	fact
 	Turn     ID
@@ -43,8 +52,7 @@ type TurnEnded struct {
 
 func (TurnEnded) Kind() Kind { return TurnEndedKind }
 
-// EndReason is how a Turn stopped. Declined is absent on purpose:
-// declining stops a Call, not a Turn.
+// EndReason is how a Turn stopped. No Declined: that stops a Call.
 type EndReason string
 
 const (
@@ -55,8 +63,7 @@ const (
 	EndError   EndReason = "error"
 )
 
-// BoundReached says the Turn hit MaxSteps and is waiting for Continue.
-// Not an ending: the Turn is paused, and a human decides.
+// BoundReached pauses the Turn at MaxSteps to ask. Not an ending.
 type BoundReached struct {
 	fact
 	Turn  ID
@@ -93,8 +100,7 @@ type StepEnded struct {
 
 func (StepEnded) Kind() Kind { return StepEndedKind }
 
-// ModelText is the model's own prose for this Step. Drawn as a row of
-// its own, and judged like any other output.
+// ModelText is the model's prose: its own row, judged like output.
 type ModelText struct {
 	fact
 	Turn, Step ID
@@ -123,8 +129,7 @@ type CallAssessed struct {
 
 func (CallAssessed) Kind() Kind { return CallAssessedKind }
 
-// ApprovalAsked is the engine blocking on a human. Whoever answers
-// publishes ResolveApproval with the same Call.
+// ApprovalAsked blocks the engine until a ResolveApproval names this Call.
 type ApprovalAsked struct {
 	fact
 	Call      ID
@@ -144,10 +149,8 @@ type CallStarted struct {
 
 func (CallStarted) Kind() Kind { return CallStartedKind }
 
-// OutputChunk is one line of live output, and the only lossy event:
-// a dropped line costs a redraw, where a dropped CallEnded is a row
-// that never finishes. Parallel Calls interleave, so a consumer must
-// route by Call rather than assume one is running.
+// OutputChunk is one live line, and the only lossy event. Parallel
+// Calls interleave, so route by Call rather than assume one is running.
 type OutputChunk struct {
 	fact
 	Call   ID
@@ -167,21 +170,18 @@ type CallEnded struct {
 
 func (CallEnded) Kind() Kind { return CallEndedKind }
 
-// Result is what a Call produced. A small mirror of capture.Result,
-// which lives under internal/ and so cannot be imported here; the
-// engine converts once.
+// Result mirrors capture.Result, which is under internal/ and so
+// unreachable from here. The engine converts once.
 type Result struct {
 	ExitCode  int
 	Stdout    string
 	Stderr    string
 	Truncated bool
-	// Err is set when the tool could not run at all, as opposed to
-	// running and failing.
+	// Err is set when the tool could not run, not when it ran and failed.
 	Err string
 }
 
-// CallJudged is the post-execution read: how it went and how to draw
-// it. Async, so it may arrive well after CallEnded.
+// CallJudged is how it went and how to draw it. Async: may land late.
 type CallJudged struct {
 	fact
 	Call         ID
@@ -194,7 +194,7 @@ type CallJudged struct {
 
 func (CallJudged) Kind() Kind { return CallJudgedKind }
 
-// ViewReady is a composed or looked-up spec for a Call's output.
+// ViewReady is a spec for a Call's output.
 type ViewReady struct {
 	fact
 	Call   ID
@@ -204,8 +204,7 @@ type ViewReady struct {
 
 func (ViewReady) Kind() Kind { return ViewReadyKind }
 
-// Notice is anything worth telling the human that is not about a
-// specific Call.
+// Notice is anything to say that is not about one Call.
 type Notice struct {
 	fact
 	Level string // info, warn, error
@@ -213,16 +212,3 @@ type Notice struct {
 }
 
 func (Notice) Kind() Kind { return NoticeKind }
-
-// SessionStarted is published once, and is where the welcome and
-// status panes get their facts.
-type SessionStarted struct {
-	fact
-	Session  ID
-	Model    string
-	Sandbox  bool
-	Network  bool
-	MaxSteps int
-}
-
-func (SessionStarted) Kind() Kind { return SessionStartedKind }

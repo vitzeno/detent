@@ -7,15 +7,12 @@ import (
 	"time"
 )
 
-// ID identifies a session, turn, step or call. UUIDv7: the leading 48
-// bits are a millisecond timestamp, so IDs sort by creation and a log
-// reads in order.
+// ID identifies a session, turn, step or call. UUIDv7, so it sorts by
+// creation.
 type ID string
 
-// NewID mints one, monotonic even within a millisecond. Plain v7 is
-// only ordered across milliseconds, and a Turn opening several Calls
-// at once lands them all in the same one; the 12 bits after the
-// version hold a counter so those still sort.
+// NewID mints one, monotonic even within a millisecond: plain v7 only
+// orders across them, and a Step opens its Calls inside one.
 func NewID() ID {
 	var b [16]byte
 	ms, seq := tick()
@@ -29,8 +26,7 @@ func NewID() ID {
 	return ID(format(b))
 }
 
-// counterBits is how many IDs one millisecond holds before borrowing
-// from the next. 4096 is far more than a Turn can produce.
+// counterBits: 4096 ids per millisecond, then borrow from the next.
 const counterBits = 12
 
 var clock struct {
@@ -49,8 +45,7 @@ func tick() (uint64, uint16) {
 	case clock.seq < 1<<counterBits-1:
 		clock.seq++
 	default:
-		// Out of counter: take the next millisecond early rather than
-		// mint an id that sorts wrong.
+		// Rather than mint one that sorts wrong.
 		clock.ms++
 		clock.seq = 0
 	}

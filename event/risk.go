@@ -2,32 +2,23 @@ package event
 
 // Risk is what the hook chain decided about one Call, before it runs.
 type Risk struct {
-	// Dangerous is the only field that gates anything: true means a
-	// human sees the Call and must approve it.
+	// Dangerous is the only field that gates anything.
 	Dangerous bool
-	// Mutability is what the Call would change: read_only,
-	// writes_workspace, system_affecting, likely_irreversible.
+	// Mutability is one of the Mut* ladder below.
 	Mutability string
-	// ScopeRisk is how far the blast radius reaches, 0 to 1. -1 when
-	// nothing answered.
+	// ScopeRisk is blast radius, 0 to 1; -1 when nothing answered.
 	ScopeRisk float64
 	Note      string
-	// FromJudge is false when only the cheap hooks spoke, so the UI
-	// never presents a heuristic as a verdict.
+	// FromJudge is false when only the cheap hooks spoke.
 	FromJudge bool
 }
 
-// UnknownRisk is the starting point of every chain: nothing known,
-// nothing claimed.
+// UnknownRisk starts every chain.
 func UnknownRisk() Risk { return Risk{ScopeRisk: -1, Mutability: ""} }
 
-// Widen folds one hook's answer into what the chain already had. It
-// only ever adds: Dangerous ORs, ScopeRisk takes the max, and a
-// Mutability may move up the ladder but never down.
-//
-// This is why a hook cannot soften a confirm even if it returns one
-// saying so. The rule is arithmetic, not a convention a test has to
-// remember to check.
+// Widen folds one hook's answer in, and only ever adds: Dangerous ORs,
+// ScopeRisk maxes, Mutability climbs. A hook cannot soften a confirm
+// even if it returns one saying so.
 func (r Risk) Widen(o Risk) Risk {
 	r.Dangerous = r.Dangerous || o.Dangerous
 	r.FromJudge = r.FromJudge || o.FromJudge
@@ -41,12 +32,10 @@ func (r Risk) Widen(o Risk) Risk {
 	return r
 }
 
-// ReadOnly reports whether this Call may run alongside its siblings.
-// Anything less certain than read_only runs alone.
+// ReadOnly is the one thing mutability still decides: parallelism.
 func (r Risk) ReadOnly() bool { return r.Mutability == MutRead }
 
-// The mutability ladder, least to most. Ordered, because Widen moves
-// up it and a string comparison would not.
+// The mutability ladder, least to most. Widen climbs it.
 const (
 	MutRead         = "read_only"
 	MutWorkspace    = "writes_workspace"
@@ -65,7 +54,7 @@ func rank(m string) int {
 	case MutIrreversible:
 		return 4
 	}
-	return 0 // unknown, so anything real outranks it
+	return 0 // unknown; anything real outranks it
 }
 
 func joinNote(a, b string) string {

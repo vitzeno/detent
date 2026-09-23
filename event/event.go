@@ -1,8 +1,6 @@
-// Package event is the vocabulary the engine and its front-ends share:
-// facts about what happened, intents about what someone wants, and the
-// Bus that carries both. Like viewspec it sits outside internal/ and
-// depends on almost nothing, because both sides import it directly —
-// that is what removes the translation layer between them.
+// Package event is the shared vocabulary: facts about what happened,
+// intents about what someone wants, and the Bus that carries both.
+// Both the engine and ui import it, so it depends on next to nothing.
 package event
 
 import "time"
@@ -10,23 +8,19 @@ import "time"
 // Event is anything the Bus carries.
 type Event interface {
 	Kind() Kind
-	// Lossy reports whether a lagging subscriber may drop this rather
-	// than let its queue grow. Live output may; nothing else may.
+	// Lossy: a lagging subscriber may drop this. Live output only.
 	Lossy() bool
 }
 
-// Record is one published Event plus what the Bus stamped on it. Seq
-// is per-bus and gapless, so a lossy subscriber can tell it missed
-// something and a persisted log replays in order.
+// Record is one Event plus what the Bus stamped on it. Seq is gapless,
+// so a lossy subscriber can tell it missed something.
 type Record struct {
 	Seq   uint64
 	At    time.Time
 	Event Event
 }
 
-// Kind names an Event. A closed set: it is the key a log query, a UI
-// reducer and a Filter all switch on, and free text matches nothing
-// reliably.
+// Kind names an Event. Closed: a log query and a reducer both key on it.
 type Kind string
 
 // Facts. Past tense, published by the engine.
@@ -67,9 +61,8 @@ const (
 	ResetSessionKind    Kind = "do.reset"
 )
 
-// IsIntent reports whether k is something someone wants rather than
-// something that happened. The engine subscribes to one side, the UI
-// to the other.
+// IsIntent splits what someone wants from what happened. The engine
+// subscribes to one side, a front-end to the other.
 func (k Kind) IsIntent() bool { return intents[k] }
 
 var intents = map[Kind]bool{
@@ -78,8 +71,7 @@ var intents = map[Kind]bool{
 	RequestRollbackKind: true, ResetSessionKind: true,
 }
 
-// fact is embedded by every event that is not lossy, which is all but
-// one of them.
+// fact is embedded by everything but OutputChunk.
 type fact struct{}
 
 func (fact) Lossy() bool { return false }
