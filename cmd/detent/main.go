@@ -56,12 +56,17 @@ func run() error {
 	themeName := flag.String("theme", "", "color scheme: "+strings.Join(theme.Names(), ", ")+" (default: config file, else "+config.DefaultTheme+")")
 	sandboxMode := flag.String("sandbox", "", "sandbox mode: auto, host (default: config file, else auto)")
 	sandboxSocket := flag.String("sandbox-socket", "", "containerd socket path (default: config file, else OS-conventional)")
+	resume := flag.String("resume", "", "continue a stored session by id, or \"last\"")
+	sessions := flag.Bool("sessions", false, "list the sessions that can be resumed, and exit")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Println("detent", version.String())
 		return nil
+	}
+	if *sessions {
+		return listSessions()
 	}
 
 	fileCfg, err := config.Load(*configPath)
@@ -101,15 +106,20 @@ func run() error {
 		pinged <- model.Ping(context.Background(), resolved.BaseURL, resolved.APIKey)
 	}()
 
-	sessionID := uuid.Must(uuid.NewV7())
+	// A resumed session keeps its id, so its records continue the same
+	// log rather than starting a second one beside it.
+	sessionID, restore, err := openSession(*resume)
+	if err != nil {
+		return err
+	}
 	// A session that cannot log is still a session: Setup says so and
 	// carries on discarding.
-	closeLog, err := logging.Setup(logging.Options{
+	closeLog, logErr := logging.Setup(logging.Options{
 		Dir: resolved.LogDir, Session: sessionID.String(),
 		Level: resolved.LogLevel, Bodies: resolved.LogBodies,
 	})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	if logErr != nil {
+		fmt.Fprintln(os.Stderr, logErr)
 	}
 	defer func() { _ = closeLog() }()
 	runners := routing.Selector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
@@ -187,7 +197,12 @@ func run() error {
 	}
 
 	bus := event.New()
+	// Seeded before anything publishes, or a new record lands on an
+	// ordinal already on disk. The replay itself never goes on the
+	// bus: it would be stored a second time.
+	bus.Resume(engine.Resumable(restore))
 	eng := engine.New(bus, client, tool.Standard(), runners, opts...)
+	eng.Restore(restore)
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 
@@ -238,7 +253,7 @@ func run() error {
 	}
 	// Altscreen is declared by ui.Model.View, not set here — under
 	// Bubble Tea v2 terminal state is a property of what's rendered.
-	p := tea.NewProgram(ui.New(ctx, bus, info))
+	p := tea.NewProgram(ui.New(ctx, bus, info).Restore(restore))
 	_, err = p.Run()
 	return err
 }
@@ -300,4 +315,71 @@ func views(mode string, judge *classify.JevJudge) *viewgen.Generator {
 		g.Judge = judge
 	}
 	return g
+}
+
+// openSession picks the session to run: a stored one to continue, or
+// a new one. The records come back for the engine and the UI to
+// rebuild themselves from.
+func openSession(resume string) (uuid.UUID, []event.Record, error) {
+	if resume == "" {
+		return uuid.Must(uuid.NewV7()), nil, nil
+	}
+	events, err := store.Open(store.DefaultPath())
+	if err != nil {
+		return uuid.Nil, nil, err
+	}
+	defer events.Close()
+
+	id, err := resolveSession(events, resume)
+	if err != nil {
+		return uuid.Nil, nil, err
+	}
+	records, err := events.Replay(id)
+	if err != nil {
+		return uuid.Nil, nil, err
+	}
+	if len(records) == 0 {
+		return uuid.Nil, nil, fmt.Errorf("session %s has nothing recorded", id)
+	}
+	return id, records, nil
+}
+
+// resolveSession takes an id or "last", because nobody remembers a uuid.
+func resolveSession(events *store.Store, want string) (uuid.UUID, error) {
+	if want != "last" {
+		id, err := uuid.Parse(want)
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("%q is not a session id — try -sessions, or -resume last", want)
+		}
+		return id, nil
+	}
+	all, err := events.Sessions()
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if len(all) == 0 {
+		return uuid.Nil, fmt.Errorf("no sessions recorded yet")
+	}
+	return all[0].ID, nil
+}
+
+func listSessions() error {
+	events, err := store.Open(store.DefaultPath())
+	if err != nil {
+		return err
+	}
+	defer events.Close()
+
+	all, err := events.Sessions()
+	if err != nil {
+		return err
+	}
+	if len(all) == 0 {
+		fmt.Println("no sessions recorded yet")
+		return nil
+	}
+	for _, s := range all {
+		fmt.Printf("%s  %s  %d events\n", s.ID, s.Started.Format("2006-01-02 15:04"), s.Events)
+	}
+	return nil
 }

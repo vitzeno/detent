@@ -23,6 +23,17 @@ type Bus struct {
 
 func New() *Bus { return &Bus{subs: map[int]*sub{}} }
 
+// Resume continues a stored session's ordinals, so a record published
+// now cannot land on one already on disk. Call it before anything
+// publishes; a replay never goes on the bus itself.
+func (b *Bus) Resume(from uint64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if from > b.ordinal {
+		b.ordinal = from
+	}
+}
+
 // Publish stamps e and hands it to every interested subscriber.
 func (b *Bus) Publish(e Event) {
 	if e == nil {

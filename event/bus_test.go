@@ -254,3 +254,19 @@ func TestBus_DrainGivesUpRatherThanHanging(t *testing.T) {
 // testID makes a deterministic uuid from a readable name, so a test
 // can still say "c1" and mean it.
 func testID(name string) uuid.UUID { return uuid.NewSHA1(uuid.Nil, []byte(name)) }
+
+// A resumed session mints ordinals in a fresh process, so without
+// continuing from the stored ones it would overwrite them.
+func TestBus_ResumeContinuesTheOrdinals(t *testing.T) {
+	b := New()
+	b.Resume(41)
+	ch, stop := b.Subscribe(nil)
+	defer stop()
+
+	b.Publish(Notice{Text: "after a restart"})
+	assert.EqualValues(t, 42, drainN(t, ch, 1)[0].Ordinal)
+
+	b.Resume(7)
+	b.Publish(Notice{Text: "cannot go backwards"})
+	assert.EqualValues(t, 43, drainN(t, ch, 1)[0].Ordinal)
+}

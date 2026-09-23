@@ -36,6 +36,8 @@ make fmt-check     # fail if anything isn't gofmt'd
 
 Run one request headlessly: `./bin/detent -prompt "..."`, with
 `-unattended` to decline every flagged Call instead of asking.
+`-sessions` lists what can be resumed and `-resume <id>` (or
+`-resume last`) continues one.
 
 Run a single package's tests: `go test ./internal/engine/...`
 Run a single test: `go test ./ui/ -run TestApply`

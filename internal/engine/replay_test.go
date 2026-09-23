@@ -9,6 +9,7 @@ import (
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/model"
+	"github.com/vitzeno/detent/internal/tool"
 )
 
 // rebuild is what a resume does: replay the appends in order and do
@@ -83,4 +84,37 @@ func firstPrompt(tr *transcript) string {
 		}
 	}
 	return ""
+}
+
+// Restore is what a resume does to the engine: the transcript comes
+// back and the next Turn carries on numbering.
+func TestRestore_RebuildsTheTranscriptAndTheTurnCount(t *testing.T) {
+	r := newRig(t, []model.Reply{
+		{Text: "one", Calls: []event.ToolCall{bashCall("c1", "ls")}},
+	})
+	r.run("first request")
+	r.run("second request")
+
+	live := r.eng.Transcript()
+	records := asRecords(r.of(event.AppendedKind), r.of(event.TurnStartedKind))
+
+	fresh := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}})
+	fresh.Restore(records)
+
+	assert.Equal(t, live, fresh.Transcript(), "the transcript comes back whole")
+	assert.Equal(t, 2, fresh.turns, "and the next Turn is numbered 3")
+}
+
+// asRecords puts facts back in publish order, the way a store hands
+// them over.
+func asRecords(groups ...[]event.Event) []event.Record {
+	var out []event.Record
+	var n uint64
+	for _, g := range groups {
+		for _, e := range g {
+			n++
+			out = append(out, event.Record{Ordinal: n, Event: e})
+		}
+	}
+	return out
 }

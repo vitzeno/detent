@@ -217,3 +217,18 @@ func renderArgs(tool string, args map[string]any) string {
 // maxLiveLines bounds what one running call keeps on screen; the rest
 // is counted away and the full output arrives with CallEnded.
 const maxLiveLines = 200
+
+// Restore rebuilds history from a stored session: a loop over apply
+// and nothing else. CheckpointTaken is skipped because its snapshot
+// died with the container, and undoable is set from that fact alone.
+func (m Model) Restore(records []event.Record) Model {
+	for _, r := range records {
+		if r.Event.Kind() == event.CheckpointTakenKind {
+			continue
+		}
+		m.apply(r.Event)
+	}
+	m.trackNewest()
+	m.backToInput()
+	return m
+}

@@ -191,3 +191,49 @@ func TestApply_UnknownIdsAreIgnored(t *testing.T) {
 	)
 	assert.Empty(t, m.blocks)
 }
+
+// The design's central claim: a front-end that is a projection needs
+// no second code path to rebuild one. Restore is a loop over apply.
+func TestRestore_RebuildsHistoryFromTheStream(t *testing.T) {
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	facts := []event.Event{
+		event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Model: "m", MaxSteps: 50},
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "count the files"},
+		event.CheckpointTaken{Turn: turn, Snapshot: "gone-with-the-container"},
+		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "ls"}},
+		event.CallEnded{Call: call, Result: event.Result{Stdout: "a.go\n"}},
+		event.CallJudged{Call: call, Status: "clean_success", RenderKind: "file_listing", FromJudge: true},
+		event.ModelText{Turn: turn, Text: "one file"},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: "one file",
+			Usage: event.Usage{PromptTokens: 20, CompletionTokens: 5}},
+	}
+
+	m := New(context.Background(), event.New(), SessionInfo{})
+	m.layout.width, m.layout.height = 120, 40
+	m = m.Restore(asRecords(facts))
+
+	require.Len(t, m.blocks, 1)
+	b := m.blocks[0]
+	assert.Equal(t, "count the files", b.prompt)
+	assert.True(t, b.ended)
+	assert.Equal(t, event.EndDone, b.end)
+	require.Len(t, b.rows, 2, "the call and the model's words")
+	assert.Equal(t, "ls", b.rows[0].command)
+	assert.Equal(t, "file_listing", b.rows[0].kind())
+
+	assert.Equal(t, 1, m.calls)
+	assert.Equal(t, 25, m.tokens)
+	assert.True(t, m.Idle(), "a restored session is not mid-request")
+
+	// The checkpoint died with the container, so this Turn is not
+	// offered for undo.
+	assert.False(t, b.undoable, "a resumed Turn has no checkpoint to restore")
+}
+
+func asRecords(facts []event.Event) []event.Record {
+	out := make([]event.Record, len(facts))
+	for i, e := range facts {
+		out[i] = event.Record{Ordinal: uint64(i + 1), Event: e}
+	}
+	return out
+}

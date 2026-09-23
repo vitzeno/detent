@@ -114,3 +114,42 @@ func TestWatch_AnUnwritableStoreDoesNotBlockTheSession(t *testing.T) {
 	bus.Drain(time.Second)
 	stop()
 }
+
+// Two processes, one session: the second must continue the ordinals
+// rather than mint 1 again, or INSERT OR REPLACE silently overwrites
+// what the first one recorded.
+func TestWatch_AResumedSessionDoesNotOverwriteTheFirst(t *testing.T) {
+	s := open(t)
+	session := uuid.Must(uuid.NewV7())
+
+	first := event.New()
+	stopFirst := store.Watch(first, s, session)
+	first.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "before"})
+	first.Publish(event.TurnEnded{Reason: event.EndDone})
+	first.Drain(3 * time.Second)
+	stopFirst()
+
+	stored, err := s.Replay(session)
+	require.NoError(t, err)
+	require.Len(t, stored, 2)
+
+	// The restart.
+	second := event.New()
+	second.Resume(stored[len(stored)-1].Ordinal)
+	stopSecond := store.Watch(second, s, session)
+	second.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 2, Prompt: "after"})
+	second.Drain(3 * time.Second)
+	stopSecond()
+
+	got, err := s.Replay(session)
+	require.NoError(t, err)
+	require.Len(t, got, 3, "the new record joins the old ones rather than replacing one")
+
+	var prompts []string
+	for _, r := range got {
+		if v, ok := r.Event.(event.TurnStarted); ok {
+			prompts = append(prompts, v.Prompt)
+		}
+	}
+	assert.Equal(t, []string{"before", "after"}, prompts, "both Turns survive, in order")
+}
