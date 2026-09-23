@@ -1,0 +1,96 @@
+package event
+
+import (
+	"encoding/json"
+	"fmt"
+	"reflect"
+
+	"github.com/google/uuid"
+)
+
+// Encoding lives here rather than in a store, so adding an event type
+// means editing one file. A store that held its own list would decode
+// every old record and silently drop the new one.
+
+// Encode is an event's own fields as JSON. The Kind travels beside it,
+// not inside, because a reader needs it to choose the type.
+func Encode(e Event) ([]byte, error) { return json.Marshal(e) }
+
+// Decode rebuilds an event from its Kind and payload.
+func Decode(k Kind, payload []byte) (Event, error) {
+	decode, ok := codecs[k]
+	if !ok {
+		return nil, fmt.Errorf("event: no type registered for kind %q", k)
+	}
+	return decode(payload)
+}
+
+// Kinds are every kind that can be decoded, which is every kind there
+// is: Registered below is the one list, and the tests read it.
+func Kinds() []Kind {
+	out := make([]Kind, 0, len(codecs))
+	for k := range codecs {
+		out = append(out, k)
+	}
+	return out
+}
+
+// Subject is which Turn and Call a fact is about, so a store can lift
+// them out as columns. Read off the fields rather than switched on,
+// because a switch is a second list to keep in step.
+func Subject(e Event) (turn, call uuid.UUID) {
+	v := reflect.ValueOf(e)
+	if v.Kind() != reflect.Struct {
+		return turn, call
+	}
+	read := func(name string) (out uuid.UUID) {
+		f := v.FieldByName(name)
+		if f.IsValid() && f.Type() == reflect.TypeOf(out) {
+			out = f.Interface().(uuid.UUID)
+		}
+		return out
+	}
+	return read("Turn"), read("Call")
+}
+
+func codec[T Event](payload []byte) (Event, error) {
+	var v T
+	if err := json.Unmarshal(payload, &v); err != nil {
+		return nil, fmt.Errorf("event: decode %T: %w", v, err)
+	}
+	return v, nil
+}
+
+// codecs is the closed set, and the only place a new event type has
+// to be added for it to survive a round trip.
+var codecs = map[Kind]func([]byte) (Event, error){
+	SessionStartedKind:  codec[SessionStarted],
+	TurnStartedKind:     codec[TurnStarted],
+	TurnEndedKind:       codec[TurnEnded],
+	CheckpointTakenKind: codec[CheckpointTaken],
+	RolledBackKind:      codec[RolledBack],
+	BoundReachedKind:    codec[BoundReached],
+	StepStartedKind:     codec[StepStarted],
+	StepEndedKind:       codec[StepEnded],
+	ModelTextKind:       codec[ModelText],
+	AppendedKind:        codec[Appended],
+	CompactedKind:       codec[Compacted],
+	CallProposedKind:    codec[CallProposed],
+	CallAssessedKind:    codec[CallAssessed],
+	ApprovalAskedKind:   codec[ApprovalAsked],
+	CallStartedKind:     codec[CallStarted],
+	OutputChunkKind:     codec[OutputChunk],
+	CallEndedKind:       codec[CallEnded],
+	CallJudgedKind:      codec[CallJudged],
+	ViewReadyKind:       codec[ViewReady],
+	NoticeKind:          codec[Notice],
+
+	SubmitPromptKind:    codec[SubmitPrompt],
+	ResolveApprovalKind: codec[ResolveApproval],
+	NoteContextKind:     codec[NoteContext],
+	AbortKind:           codec[Abort],
+	RequestStopKind:     codec[RequestStop],
+	ContinueKind:        codec[Continue],
+	RequestRollbackKind: codec[RequestRollback],
+	ResetSessionKind:    codec[ResetSession],
+}
