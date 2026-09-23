@@ -256,3 +256,48 @@ func TestTruncate_IgnoresAMarkCompactionAteAsWellAsOneTooLarge(t *testing.T) {
 	tr.truncate(tr.mark() + 100)
 	assert.Len(t, tr.messages(), n, "and neither does one past the end")
 }
+
+// A mark is only valid against the compaction it was taken under, so a
+// rebuild that never compacts is the one that resolves old marks.
+// Persistence depends on this.
+func TestReplay_UncompactedRebuildResolvesOldMarks(t *testing.T) {
+	big := strings.Repeat("x", 2000)
+
+	build := func() (*transcript, int) {
+		tr := &transcript{}
+		var mark int
+		for i := range 8 {
+			if i == 4 {
+				mark = tr.mark()
+			}
+			tr.user("request")
+			c := call(string(rune('a'+i)), "bash")
+			tr.step(model.Reply{Text: big, Calls: []model.ToolCall{c}},
+				map[string]string{c.ID: big})
+		}
+		return tr, mark
+	}
+
+	orig, mark := build()
+	require.True(t, orig.compact(context.Background(), 6000, nil))
+	orig.truncate(mark)
+
+	// The replay: same appends, never compacted.
+	replayed, replayMark := build()
+	require.Equal(t, mark, replayMark)
+	require.Zero(t, replayed.dropped)
+	replayed.truncate(replayMark)
+
+	assert.Equal(t, lastAppend(orig), lastAppend(replayed),
+		"an uncompacted rebuild must end at the same append")
+	t.Logf("orig: dropped=%d len=%d | replayed: dropped=%d len=%d",
+		orig.dropped, len(orig.messages()), replayed.dropped, len(replayed.messages()))
+}
+
+func lastAppend(tr *transcript) string {
+	m := tr.messages()
+	if len(m) == 0 {
+		return ""
+	}
+	return string(m[len(m)-1].Role) + ":" + m[len(m)-1].CallID
+}
