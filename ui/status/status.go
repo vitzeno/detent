@@ -135,10 +135,8 @@ type Notice struct {
 	Bad  bool
 }
 
-// Bar renders the bottom status line: spinner plus phase when busy,
-// contextual keys, and a one-shot notice. The notice is styled on its
-// own rather than folded into keys, so success and failure are told
-// apart by colour and a ✓/✗ mark, not by reading the wording.
+// Bar renders the bottom line: spinner and phase when busy, keys,
+// and a one-shot notice styled so outcome reads without the wording.
 func Bar(spinner, phase, keys string, n Notice, waiting bool) string {
 	line := hint.Render(keys)
 	if n.Text != "" {

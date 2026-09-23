@@ -94,7 +94,7 @@ func TestWelcome_CentresVertically(t *testing.T) {
 // status bar, which truncates first when the window is narrow.
 func TestLines_ShowsTheVersion(t *testing.T) {
 	got := Lines(Facts{
-		Version: "9.9.9", Proposer: "m", RunMode: "host", Views: "saved",
+		Version: "9.9.9", Proposer: "m", RunMode: "host",
 	}, 90, 30, 0)
 	assert.Contains(t, strings.Join(got, "\n"), "9.9.9")
 }

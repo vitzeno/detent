@@ -27,10 +27,8 @@ func newPrompt() prompt {
 	ta.Placeholder = "describe a goal, e.g. what is listening on port 3000?"
 	ta.CharLimit = 4000
 	ta.ShowLineNumbers = false
-	// Enter submits the goal, so a literal newline moves off it rather
-	// than doing both. shift+enter is what other harnesses bind and
-	// only reaches us on a terminal that speaks the Kitty protocol;
-	// alt+enter and ctrl+j stay bound for everywhere else.
+	// Enter submits, so a newline moves off it. shift+enter needs the
+	// Kitty protocol; the other two work everywhere.
 	ta.KeyMap.InsertNewline = key.NewBinding(
 		key.WithKeys("shift+enter", "alt+enter", "ctrl+j"),
 		key.WithHelp("shift+enter", "newline"),
@@ -48,9 +46,8 @@ func newPrompt() prompt {
 	return prompt{input: ta}
 }
 
-// applyInputTheme keeps the input in the app's palette and strips the
-// editor-style chrome (cursor line highlight) that suits a document
-// but not a one-shot prompt.
+// applyInputTheme keeps the input in the app's palette and strips
+// the document chrome that suits an editor but not a prompt.
 func applyInputTheme(ta *textarea.Model) {
 	plain := lipgloss.NewStyle()
 	s := ta.Styles()
@@ -132,10 +129,9 @@ func (p prompt) IsExactCommand() bool { return exactSlash(p.input.Value()) }
 // name a key that actually works there.
 func (p *prompt) SetRichKeys(ok bool) { p.richKeys = ok }
 
-// NewlineKey names the binding to advertise for a literal newline.
-// All three stay bound either way — this only decides which one to
-// print, since on a terminal without the Kitty protocol shift+enter
-// is physically indistinguishable from enter and would be a lie.
+// NewlineKey is which binding to advertise. All three stay bound;
+// without the Kitty protocol shift+enter is indistinguishable from
+// enter, so printing it would be a lie.
 func (p prompt) NewlineKey() string {
 	if p.richKeys {
 		return "shift+enter"

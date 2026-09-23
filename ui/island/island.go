@@ -15,10 +15,8 @@ import (
 	"github.com/vitzeno/detent/ui/theme"
 )
 
-// Render wraps title and lines in a bordered island height content
-// lines tall (title included) and width columns wide. Short content
-// pads with blanks; long content truncates. An empty title renders no
-// title line and all height lines stay content.
+// Render wraps lines in a bordered island height tall and width
+// wide, padding or truncating to fit. An empty title renders none.
 func Render(title string, active bool, lines []string, width, height int) string {
 	width = max(10, width)
 	inner := width - 4 // border plus padding on both sides

@@ -93,7 +93,7 @@ func TestProse_IsItsOwnSelectableRow(t *testing.T) {
 	assert.Equal(t, said, rows[1].prose)
 
 	m.nav.cursor = 1
-	line := stripANSI(strings.Join(m.stepLines(rows[1], 1), "\n"))
+	line := stripANSI(strings.Join(m.rowLines(rows[1]), "\n"))
 	assert.Contains(t, line, "a summary sentence")
 	assert.NotContains(t, line, "✔", "no status badge: nothing ran")
 	assert.Len(t, strings.Split(line, "\n"), 1, "one line, truncated, not wrapped")
@@ -163,4 +163,27 @@ func TestPanels_AllDraw(t *testing.T) {
 			assert.NotEmpty(t, panelName(k))
 		}
 	}
+}
+
+// A call a human had to approve must not read like `ls` afterwards.
+func TestHistory_FlaggedCallsAreMarked(t *testing.T) {
+	turn, call := event.NewID(), event.NewID()
+	m := sized(t, 120, 40,
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "clean"},
+		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "rm -rf build"}},
+		event.CallAssessed{Call: call, Risk: event.Risk{Dangerous: true, Note: "recursive delete"}},
+		event.CallEnded{Call: call, Result: event.Result{}},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone})
+
+	line := stripANSI(strings.Join(m.rowLines(m.rows()[0]), ""))
+	assert.Contains(t, line, "!", "a flagged call carries a mark")
+
+	// And an ordinary one does not.
+	turn2, call2 := event.NewID(), event.NewID()
+	m = sized(t, 120, 40,
+		event.TurnStarted{Turn: turn2, N: 1, Prompt: "look"},
+		event.CallProposed{Call: call2, Tool: "bash", Args: map[string]any{"command": "ls"}},
+		event.CallEnded{Call: call2, Result: event.Result{}},
+		event.TurnEnded{Turn: turn2, Reason: event.EndDone})
+	assert.NotContains(t, stripANSI(strings.Join(m.rowLines(m.rows()[0]), "")), "!")
 }

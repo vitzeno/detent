@@ -12,13 +12,11 @@ import (
 // The output pane: what the focused row's component renders into
 // it, and the viewport refresh that keeps it in step.
 
-// detailLines renders the focused row's component: editor takes
-// priority when present, then a table for tabular output, else the
-// scrolling viewport.
+// detailLines renders the focused row: a pending question first,
+// else the scrolling viewport.
 func (m Model) detailLines() []string {
-	// A pending rollback takes the pane: its file list is the thing
-	// being reviewed, and it can run to hundreds of paths. The confirm
-	// box below stays small and asks the question.
+	// The undo list is what is being reviewed and can run to hundreds
+	// of paths; the box below stays small and asks.
 	if m.mode == modeUndo {
 		return strings.Split(m.output.View(), "\n")
 	}

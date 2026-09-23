@@ -60,9 +60,9 @@ func (m Model) handlePaste(text string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// keyOwner names who owns a keystroke; handleKey computes exactly one.
-// Editing and modeSaveConfirm aren't keyOwner values — both take over
-// every key unconditionally and short-circuit before owner() runs.
+// keyOwner names who owns a keystroke; handleKey computes exactly
+// one. The undo and bound questions are not owners: both take every
+// key and short-circuit before owner() runs.
 type keyOwner int
 
 const (
@@ -149,11 +149,8 @@ func (m Model) undoKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// editorKey owns every key while editing: esc leaves edit mode without
-// touching disk, ctrl+s opens the diff confirm, everything else goes to
-// the textarea.
-// inputKey gives a focused idle input every keystroke — typing must
-// never trigger navigation. Only pgup/pgdn and enter bypass the input.
+// inputKey gives a focused idle input every keystroke: typing must
+// never trigger navigation. Only pgup/pgdn and enter bypass it.
 func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if next, cmd, handled := m.slashKey(msg); handled {
 		return next, cmd
@@ -169,8 +166,8 @@ func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// busyKey narrows a focused waiting input to slash entry: plain goals
-// can't start mid-run, but /abort and /quit stay reachable.
+// busyKey narrows a waiting input to slash entry, so /abort and
+// /quit stay reachable while a request runs.
 func (m Model) busyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if next, cmd, handled := m.slashKey(msg); handled {
 		return next, cmd
@@ -266,9 +263,9 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// onEscape backs out of the innermost thing first: an open dropdown,
-// then a running goal, then the output pane. esc is intercepted before
-// owner() runs, so anything wanting it has to be handled here.
+// onEscape backs out of the innermost thing first: dropdown, then a
+// running request, then the output pane. Intercepted before owner(),
+// so anything wanting esc is handled here.
 func (m Model) onEscape() (tea.Model, tea.Cmd) {
 	if m.mode == modeConfirm {
 		return m.decline()

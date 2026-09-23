@@ -17,10 +17,8 @@ func (m Model) View() tea.View {
 	v := tea.NewView(m.baseView())
 	v.AltScreen = true
 	v.KeyboardEnhancements = tea.KeyboardEnhancements{}
-	// The palette only works against a ground it was picked for: the
-	// light theme's near-black text is invisible on a dark terminal.
-	// Painting it ourselves means the theme decides both. Restored on
-	// exit by the terminal, and ignored by one that can't do it.
+	// The palette only works against the ground it was picked for, so
+	// the theme decides both.
 	v.BackgroundColor = theme.Background
 	return v
 }
@@ -51,10 +49,8 @@ func (m Model) baseView() string {
 	return b.String()
 }
 
-// historyWindow returns the visible slice of history and the scroll
-// offset it settled on. Pure, so View can call it directly on its
-// throwaway copy; Update stores the offset back. Entries flatten to
-// lines first, since expanded rows and banners span several each.
+// historyWindow returns the visible slice and the offset it settled
+// on. Pure, so View can call it on its throwaway copy.
 func (m Model) historyWindow() (window []string, offset int) {
 	entries, cursorEntry := m.historyLines()
 	var lines []string

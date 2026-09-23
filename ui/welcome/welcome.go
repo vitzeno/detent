@@ -27,10 +27,6 @@ type Facts struct {
 	Proposer string
 	Judge    string // "" when no judge is wired
 	RunMode  string // "host" or "sandbox"
-	// Views is "saved" or "generate": whether a model may author a
-	// spec the pane has none for.
-	Views string
-
 	// Sandbox wiring; empty in host mode.
 	Image   string
 	Mount   string
@@ -144,20 +140,14 @@ func models(f Facts, width int) []string {
 	return []string{
 		row("proposes", goal.Render(value(f.Proposer, width))),
 		row("judges risk", judge),
-		row("draws output", views(f)),
+		row("draws output", views()),
 	}
 }
 
-// views states what the output pane may do, and says plainly when a
-// model is allowed to author the framing a human will read.
-func views(f Facts) string {
-	switch f.Views { //nolint:gocritic // one case plus a default
-	case "generate":
-		return goal.Render("generated") +
-			faint.Render("  a model writes views for output nothing covers")
-	}
-	return goal.Render("built-in, shipped and saved") +
-		faint.Render("  set views: generate to author new ones")
+// views says where the output pane's framing comes from.
+func views() string {
+	return goal.Render("built-in and shipped") +
+		faint.Render("  composed views land with the judge")
 }
 
 func session(f Facts) []string {

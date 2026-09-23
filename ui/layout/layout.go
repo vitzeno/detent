@@ -10,12 +10,9 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// Split divides total among len(weights) shares proportional to each
-// weight, each guaranteed at least min. A share below min gets floored
-// to min and removed from the weighted pool; what that took gets
-// re-split among what's left, so shares still sum to exactly total as
-// long as total >= min*len(weights). Below that, every share still
-// gets min and the sum can exceed total.
+// Split divides total proportionally to weights, each share at least
+// min. A floored share leaves the pool and what it took is re-split,
+// so shares sum to total while total >= min*len(weights).
 func Split(total int, weights []int, min int) []int {
 	if len(weights) == 0 {
 		return nil

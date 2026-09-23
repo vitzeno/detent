@@ -11,7 +11,7 @@ import (
 	"github.com/vitzeno/detent/ui/status"
 )
 
-// The history pane: one entry per goal block, each with its steps
+// The history pane: one block per request, each with its calls
 // under it. Everything here is pure — View calls it on a throwaway
 // copy of Model, so nothing may write back.
 
@@ -20,7 +20,6 @@ import (
 // past. Pure, so View can call it on its throwaway copy.
 func (m Model) historyLines() (lines []string, cursorEntry int) {
 	rows := m.rows()
-	step := 0 // counts across the whole session, not per goal
 	for bi, b := range m.blocks {
 		if bi > 0 {
 			lines = append(lines, "")
@@ -34,8 +33,7 @@ func (m Model) historyLines() (lines []string, cursorEntry int) {
 			if len(rows) > 0 && r == rows[m.cursorClamped()] {
 				cursorEntry = len(lines) + len(block)
 			}
-			step++
-			block = append(block, m.stepLines(r, step)...)
+			block = append(block, m.rowLines(r)...)
 			if r.expanded {
 				block = append(block, previewLines(r, m.blockWidth()-6)...)
 			}
@@ -61,10 +59,8 @@ const railWidth = 2
 func (m Model) blockWidth() int { return max(12, m.layout.histColW-4-railWidth) }
 
 // railed draws a block's rows against a coloured bar spanning all of
-// them. A divider only marks where blocks meet; a rail marks how far
-// one reaches, so the grouping reads from any row rather than only
-// from the edges — and its colour says how the goal went without
-// having to reach the banner at the bottom.
+// them. A divider marks where blocks meet; a rail marks how far one
+// reaches, and its colour says how the request went.
 func (m Model) railed(b *turnBlock, block []string) []string {
 	bar := m.railStyle(b).Render("┃") + " "
 	out := make([]string, len(block))
@@ -107,12 +103,9 @@ func (m *Model) cursorClamped() int {
 	return m.nav.cursor
 }
 
-// step is this row's 1-based position in the session, what
-// /rollback's argument targets, shown as a dim marker on any step
-// that ran sandboxed. Session-wide, not per goal: numbering restarted
-// each goal meant every row read "#1" and the number a human typed
-// addressed a different step from the one they were pointing at.
-func (m Model) stepLines(r *callRow, step int) []string {
+// rowLines draws one row: the model's words, or a call with its
+// badge and command.
+func (m Model) rowLines(r *callRow) []string {
 	mark := "  "
 	if r == m.focused() {
 		mark = styleRowCursor.Render("▸ ")
@@ -144,14 +137,14 @@ func (m Model) stepLines(r *callRow, step int) []string {
 		}
 	}
 	icon, detail := status.Badge(s, m.spinner.View())
-	_ = step
+	// A call a human had to approve must not read like `ls`.
+	if r.risk.Dangerous {
+		icon = styleDanger.Render("!") + icon
+	}
 
-	// Truncated not wrapped: a command is often one unbreakable token
-	// with no good place to break. The budget is measured from the
-	// pieces rather than guessed at, because the detail text varies
-	// and a fixed allowance overflowed the pane by a column.
-	// Measured from the pieces, since the detail varies. Where there
-	// is no room for both, the command wins.
+	// Truncated, not wrapped: a command is often one unbreakable
+	// token. Measured from the pieces, since the detail varies; where
+	// there is no room for both, the command wins.
 	head := lipgloss.Width(stripStyle(mark)) + lipgloss.Width(icon) + 1
 	tail := "· " + detail
 	if m.blockWidth()-head-1-lipgloss.Width(tail) < minCommandCells {
@@ -264,7 +257,7 @@ func wrapPlain(s string, width int) []string {
 
 // wrapStyled styles each physical line; the first gets prefix, every
 // continuation gets contPrefix, so a multi-line banner indents like a
-// wrapped goal or command.
+// wrapped prompt or command.
 func wrapStyled(style lipgloss.Style, text string, width int) []string {
 	lines := wrapPlain(text, width)
 	out := make([]string, len(lines))

@@ -1,6 +1,3 @@
-// Package ui is a full-screen TUI: an output pane and a history pane
-// over an input bar. It subscribes to the bus and publishes intents,
-// so it imports no harness package at all.
 package ui
 
 import (
@@ -230,13 +227,6 @@ func (m *Model) trackNewest() {
 		return
 	}
 	m.nav.cursor = len(m.rows()) - 1
-}
-
-func plural(n int, one string) string {
-	if n == 1 {
-		return one
-	}
-	return one + "s"
 }
 
 // Idle and RowCount expose just enough for a wiring test in

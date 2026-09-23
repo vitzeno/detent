@@ -15,7 +15,7 @@ import (
 func Registry() *viewspec.Registry { return viewRegistry }
 
 // seedFromView puts a row's on_enter command in the prompt as
-// editable text. It does not run: from there it is an ordinary goal.
+// editable text. It does not run: from there it is an ordinary prompt.
 func (m Model) seedFromView(r *callRow) (Model, bool) {
 	b, ok := boundView(r)
 	if !ok {
@@ -74,15 +74,10 @@ func bindSpec(spec viewspec.Spec, output string) (*viewspec.Bound, bool) {
 	return nil, false
 }
 
-// fallbackChain is what a row draws from with no judge involved: the
-// spec for whatever shape the output was judged to be, then the raw
-// bytes. A composed spec arrives later and replaces it.
-//
-// markdown.Wants is the one heuristic here, and it is ui's own layer
-// rather than a rule the judge never learned: this chain runs before
-// anything is judged and with no Driver at all, the same way
-// heuristicPost classifies when Jev is absent. The judge is offered
-// markdown too, under file_content.
+// fallbackChain is what a row draws with no judge involved: the spec
+// for its judged shape, then raw bytes. A composed spec replaces it
+// when one arrives. markdown.Wants is the one heuristic, and it runs
+// only before anything has been judged.
 func fallbackChain(r *callRow, output string) []*viewspec.Compiled {
 	var chain []*viewspec.Compiled
 	kind := r.kind()

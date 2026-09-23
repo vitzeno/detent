@@ -11,7 +11,7 @@ import (
 // carries its handler, so listed and dispatchable can't drift apart.
 
 // slashCmd is one available command. run receives the whole input
-// line, so a command can take an argument (/rollback 2).
+// line, so a command can take an argument (/undo 2).
 type slashCmd struct {
 	Name string
 	Desc string

@@ -14,10 +14,8 @@ type Theme struct {
 	Safe, Caution, Danger                     color.Color
 	TextPrimary, TextMuted, TextFaint, Border color.Color
 
-	// Background is what the terminal is painted before anything is
-	// drawn on it. Without one the palette has to hope the terminal
-	// already matches — a light theme's near-black text is invisible
-	// on a dark terminal.
+	// Background is painted before anything else, so the palette does
+	// not have to hope the terminal already matches.
 	Background color.Color
 
 	// Markdown names the glamour style the prose pane renders with.

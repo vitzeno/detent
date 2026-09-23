@@ -53,7 +53,7 @@ func (m *Model) apply(ev event.Event) {
 
 	case event.CallStarted:
 		if r := m.row(v.Call); r != nil {
-			r.running, r.runner = true, v.Runner
+			r.running = true
 		}
 
 	case event.OutputChunk:
@@ -117,7 +117,7 @@ func (m *Model) addCall(v event.CallProposed) {
 		return
 	}
 	m.cur.rows = append(m.cur.rows, &callRow{
-		id: v.Call, tool: v.Tool, command: renderArgs(v.Tool, v.Args),
+		id: v.Call, command: renderArgs(v.Tool, v.Args),
 	})
 	m.trackNewest()
 }

@@ -4,591 +4,276 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-detent is a TUI harness that pairs a small/local LLM (via any OpenAI-compatible
-`/chat/completions` endpoint — LM Studio by default, OpenRouter or OpenAI also
-work) with a human. The model proposes one shell command at a time toward a
-stated goal. There is no closed capability registry — the model can propose
-arbitrary `sh -c` commands, and the safety story rests entirely on the
-Dangerous flag, not on structural/typed restrictions.
+detent is a TUI harness pairing a model with a human at the terminal.
+You state a request; the agent calls tools until it has answered,
+publishing everything it does on a bus the front-end subscribes to.
 
-A command flagged Dangerous is shown to a human, who reads the literal text
-and must explicitly approve it; every other command runs straight through
-with no confirm at all. Dangerous comes from a second, optional model —
-TypeSafe's Jev — classifying mutability and scope risk before execution
-(also driving result-status/render-kind classification after execution), OR'd
-with `FlagDanger`, a regex backstop (`internal/agent/risk.go`). Without a
-`jev_api_key` configured, only the regex backstop applies and rows fall back
-to heuristics for post-execution rendering. Widening what counts as Dangerous
-(e.g. also confirming `writes_workspace`-tier commands, not just
-`system_affecting`/`likely_irreversible`) is a one-line change in the
-`pre.Dangerous` check in both `internal/agent/loop.go` and
-`ui/goal_flow.go`'s `onPropose`.
+There is no closed capability registry. `bash` is one of the tools, so
+the model can run anything, and the safety story rests entirely on the
+Dangerous flag rather than on structural restriction. A Call flagged
+Dangerous is shown to a human who reads the literal command and must
+approve it; everything else runs straight through.
+
+Dangerous comes from a **hook chain** (`internal/engine/hooks.go`),
+cheapest first: each tool's declared mutability, a regex backstop, a
+repeat check, then TypeSafe's Jev over the network. The chain folds
+every answer with `event.Risk.Widen`, which takes a max and ORs
+Dangerous, so **a hook can widen a verdict and never narrow it** —
+arithmetic, not a convention. Widening what counts as Dangerous means
+registering one more `Assessor`.
 
 ## Commands
 
 ```sh
 make build         # go build -o bin/detent ./cmd/detent
 make install       # build, then copy it to go env GOBIN (or GOPATH/bin)
-                   # PREFIX=/usr/local/bin with sudo for a system-wide one
 make run           # launch the TUI (go run, no build step)
-make run-headless GOAL="..."   # run one goal headlessly and exit
 make test          # go test ./...
 make vet           # go vet ./...
 make fmt           # gofmt -w .
 make fmt-check     # fail if anything isn't gofmt'd
 ```
 
-Run a single package's tests: `go test ./internal/propose/...`
-Run a single test: `go test ./internal/agent/ -run TestSession_RunGoal`
+Run one request headlessly: `./bin/detent -prompt "..."`, with
+`-unattended` to decline every flagged Call instead of asking.
 
-CI (`.github/workflows/ci.yaml`) runs the same three things on every push
-and PR: `go test -race -cover` on ubuntu and macos, gofmt/vet/`go mod
-tidy`, and a five-target cross-build with `CGO_ENABLED=0`. Windows is
-cross-built but never tested, since every command goes through `sh -c`
-and the sandbox talks to containerd over a unix socket. The containerd
-tests skip themselves in CI; rollback is covered locally against colima.
-Keeping `CGO_ENABLED=0` green is what makes a pure-Go SQLite driver the
-only option when persistence lands.
+Run a single package's tests: `go test ./internal/engine/...`
+Run a single test: `go test ./ui/ -run TestApply`
+
+Two tests reach outside the process and skip by default:
+`go test ./internal/model/ -run TestLive` with `DETENT_LIVE=1` checks
+that the endpoint really does tool calling, and the containerd tests
+skip themselves when no daemon answers.
+
+CI (`.github/workflows/ci.yaml`) runs `go test -race -cover` on ubuntu
+and macos, gofmt/vet/`go mod tidy`, and a five-target cross-build with
+`CGO_ENABLED=0`. Windows is cross-built but never tested, since every
+command goes through `sh -c` and the sandbox talks to containerd over
+a unix socket. Keeping `CGO_ENABLED=0` green is what makes a pure-Go
+SQLite driver the only option when persistence lands.
 
 ## Configuration
 
-Precedence: flags > environment > config file > built-ins. Config file is
-`./.detent.yaml` (repo-local, gitignored) or `~/.config/detent/config.yaml`;
-see `detent.example.yaml` for every key. Relevant env vars: `DETENT_BASE_URL`,
-`DETENT_MODEL`, `DETENT_API_KEY` (falls back to `OPENROUTER_API_KEY` then
-`OPENAI_API_KEY`), `TYPESAFE_API_KEY` (enables the Jev judge), `DETENT_CONTEXT_TOKENS`
-(transcript budget; unset or unparseable falls through to the next
-layer rather than zeroing it), `DETENT_THEME`
-(one of `ui/theme.Themes`' names: `dark`, `light`, `solarized`,
-`dracula`). A `.env` in the repo root is also loaded at startup
-(`cmd/detent/main.go` `loadDotenv`), real env vars always win over it.
+Precedence: flags > environment > config file > built-ins. Config file
+is `./.detent.yaml` (repo-local, gitignored) or
+`~/.config/detent/config.yaml`; see `detent.example.yaml` for every
+key. Relevant env vars: `DETENT_BASE_URL`, `DETENT_MODEL`,
+`DETENT_API_KEY` (falls back to `OPENROUTER_API_KEY` then
+`OPENAI_API_KEY`), `TYPESAFE_API_KEY` (enables the Jev hook),
+`DETENT_CONTEXT_TOKENS`, `DETENT_THEME` (one of `ui/theme.Themes`'
+names). A `.env` in the repo root is also loaded at startup, and real
+env vars always win over it.
 
-At startup `main.go` pings the proposer's `/models` endpoint and fails fast
-with a clear message if it's unreachable — don't remove this, it's the
-difference between a useful error and a raw dial failure on the first goal.
-It also applies the theme before building the TUI: `theme.Apply` sets the
-active colors, `ui.RefreshStyles` rebuilds every style already baked from
-the old ones.
+At startup `main.go` pings the endpoint's `/models` and fails fast
+with a clear message — don't remove it, it's the difference between a
+useful error and a raw dial failure on the first request. It also
+applies the theme before building the TUI: `theme.Apply` sets the
+colors, `ui.RefreshStyles` rebuilds every style baked from the old
+ones.
+
+## The vocabulary
+
+Everything is named for one of four scopes, and using the wrong word
+is how a bug gets written:
+
+| Term | Is | Unit of |
+| ---- | -- | ------- |
+| Session | process lifetime, one message log | the transcript |
+| **Turn** | one human prompt and all the agent did about it | **undo**, the history block |
+| **Step** | one model round trip | **the transcript's atom**, compaction |
+| **Call** | one tool invocation | the row, approval, parallelism |
+
+A Step holds zero or more Calls; a Turn holds Steps until the model
+stops asking for tools. Steps are never shown — a human does not think
+in model round trips.
+
+### The transcript's atom is a Step
+
+One assistant message carrying N `tool_calls` plus the N `tool`
+messages answering them are **indivisible**. Endpoints reject a
+`tool_calls` message whose answers are missing, and reject a `tool`
+message answering nothing. Three mechanisms depend on it:
+
+- **Abort** must still emit a result for every Call that never ran, or
+  the failure surfaces on the *next* Step, far from its cause.
+- **Compaction** moves whole Steps and never half of one.
+- **`NoteContext`** lands between Steps, never inside one.
+
+`internal/engine/transcript.go` is the only place that mutates the log,
+which is what keeps this true.
+
+### Undo is per Turn
+
+One checkpoint, taken before the first Call runs, and the Turn is the
+only rollback target. Not per Call: a forty-call Turn would mean forty
+containerd snapshots, and "undo call #23" is not a thought anyone has.
+Rolling back truncates the transcript to where that prompt landed,
+which is a whole number of Steps by construction.
 
 ## Architecture
 
-Package dependency flow — `ui` and `agent` never import each other;
-`resolver` is the only package that imports both:
+One bus carries everything. Facts are past tense and come from the
+engine; intents are imperative and come from anyone. An extension
+listens, publishes, or both — there is no second mechanism.
 
 ```
-cmd/detent  →  ui, resolver, agent, classify, config, routing, propose (Ping only)
-resolver    →  ui (Driver + DTOs), agent, propose, host, usage, fileio, viewgen
-ui          →  its own subpackages (editor, welcome, render, status,
-                markdown, theme, island, tree, layout) + viewspec, views,
-                version, logging
+cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless
+ui          →  event, viewspec, views, version, logging + its own subpackages
+engine      →  event, tool, model, capture, classify (via an interface)
+tool        →  event
+model       →  event
+event       →  the standard library, plus viewspec
 viewspec    →  the standard library, nothing else
-views       →  viewspec           (the specs detent ships, data only)
-version     →  nothing at all
-logging     →  the standard library, nothing else
-agent       →  propose, host, classify, usage, viewgen (render kinds)
-viewgen     →  classify, usage, views, viewspec, logging
-config      →  agent, classify, propose, sandbox (for their defaults only)
+views       →  viewspec
+logging     →  the standard library
+config      →  engine, model, classify, sandbox (for their defaults only)
 host        →  capture
-sandbox     →  capture (never host or agent)
-routing     →  agent, sandbox
+sandbox     →  capture (never host or engine)
+routing     →  engine, sandbox
 ```
 
-- **`internal/propose`** — `OpenAIProposer`, the reference implementation of
-  `agent.Proposer` (`Propose(ctx, []Message) (Proposal, usage.Usage,
-  error)` — the interface lives in `agent`, its one consumer, not here;
-  `propose` exports only the data types and the implementation). `Message.Role` mirrors
-  chat-completions roles (`user`/`assistant`/`tool`) deliberately: the whole
-  design is one persistent, growing transcript, not disconnected per-goal
-  requests — a new goal is just another `RoleUser` message appended to the
-  same slice. `RoleTool` messages (command output fed back) are sent over the
-  wire as role `"user"`, not `"tool"` — see the comment in `encoding.go`
-  `toWireMessage`: hosted endpoints reject a bare `tool` role without a
-  `tool_call_id`, and this keeps the adapter portable across any
-  OpenAI-compatible backend. `Proposal.Command` is empty iff `Done` is true;
-  `parseProposal` enforces that invariant when decoding the model's JSON.
-  `prompt.go`'s `Environment` is what the system prompt says about
-  where commands actually run — OS/arch, working directory, sandboxed,
-  network, undoable. `cmd/detent` fills it from the wiring it just
-  did; the zero value falls back to `LocalEnvironment()`, this
-  process's own machine. That fallback is only right unsandboxed:
-  describing detent's own macOS while commands run in an Ubuntu
-  container is how BSD flags end up in a Linux container.
+`ui` imports **nothing** under `internal/`. That used to need a
+translation layer (`internal/resolver`) mirroring every type; now both
+sides import `event` directly and the layer is gone. `event` earns
+that by depending on almost nothing — the standard library plus
+`viewspec`, which is itself stdlib-only and already imported by both.
+`event/event_test.go` enforces it.
 
-- **`internal/capture`** — the bounded-output-capture primitives shared
-  by every command backend: `Result`, `StreamEvent`, `MaxOutputBytes`,
-  and `ScanCapped` (reads a stream line by line, capping it and
-  emitting a `StreamEvent` per line). Has no `exec.Cmd`/containerd
-  knowledge of its own — `host` feeds it `os/exec` pipes, `sandbox`
-  feeds it a polling file reader (see below). `host.Result`/
-  `host.StreamEvent`/`host.MaxOutputBytes` are aliases onto this
-  package's own (`internal/host/types.go`), so every existing
-  `host.Result` reference elsewhere is unaffected by the split.
+- **`event`** — the shared vocabulary and the `Bus`. `Publish` never
+  blocks, whoever is listening and however slowly, so publishing from
+  inside a handler is safe and cannot deadlock. Each subscriber has
+  its own queue: a lagging one grows it and drops only events that say
+  they are `Lossy`, which is `OutputChunk` and nothing else. A dropped
+  live line costs a redraw; a dropped `CallEnded` is a row that never
+  finishes. `Record` carries a gapless `Seq`, so a lossy subscriber can
+  tell it missed something. IDs are UUIDv7 with a counter in the bits
+  after the version, because plain v7 only orders across milliseconds
+  and a Step opens all its Calls inside one.
+
+- **`internal/engine`** — the loop, and it drives itself. One
+  goroutine, blocking and linear, reading intents and publishing
+  facts; `Run` is the actor and `runTurn` reads top to bottom. That is
+  what lets front-ends subscribe rather than call, and why there is
+  one loop instead of a blocking one for headless and a shattered one
+  for the TUI. `New` subscribes to intents, not `Run`, so a caller
+  that publishes the moment it returns cannot lose the intent.
+  `Abort` is handled in `dispatch` rather than queued to the Turn: a
+  blocked Call never reaches a boundary, and the inbox is only drained
+  at one. Read-only Calls run concurrently, capped; anything else runs
+  serially in the order asked. A declined Call returns a result saying
+  so and its siblings still run — **declining stops a Call, not a
+  Turn.** `MaxSteps` defaults to 50 and is soft: hitting it publishes
+  `BoundReached` and waits, because a human is watching and stopping
+  dead is worse than asking.
+
+- **`internal/tool`** — the closed set a model may call, each lowered
+  to one shell command so the sandbox stays the only executor. A Tool
+  is pure: `args → command`, which is why the whole layer tests with
+  no I/O. `bash` is not privileged — same registry, same schema, same
+  hook chain. If it ever needs a code path the others don't have, the
+  registry is wrong. Every bad call comes back as a **tool result**,
+  never a Go error: an unregistered name, arguments failing the
+  schema, a hallucinated parameter. The model reads it and corrects
+  itself, which is the entire point of a loop. Under `strict: true`
+  every property must appear in `required`, so an optional parameter
+  is nullable rather than omitted — found by running it, not by
+  asserting on it.
+
+- **`internal/model`** — the tool-calling client. `Complete` is one
+  Step. A call whose `arguments` will not parse is **kept**, with
+  `Err` set: the assistant message already named that id, so dropping
+  it leaves the transcript owing an answer. `Environment` is what the
+  prompt says about where commands run — describing this process while
+  they run in a container is how BSD flags end up in a Linux one.
+
+- **`internal/capture`** — the bounded-output primitives every backend
+  shares: `Result`, `StreamEvent`, `MaxOutputBytes`, `ScanCapped`. No
+  `exec.Cmd` or containerd knowledge of its own.
 
 - **`internal/host`** — the only place `exec.Command` is called, all in
-  one file (`shell.go`). `Shell.Run` executes via `sh -c` with a bounded
-  timeout and per-stream output cap (`MaxOutputBytes`); a non-zero exit
-  is a `Result`, not a Go `error`. It also takes a `chan<- StreamEvent`
-  for live output (nil is fine — Run just skips sending) and closes it
-  once output ends, instead of taking a callback. `Shell{}` is the
-  unsandboxed default `agent.Runner`.
+  `shell.go`. A non-zero exit is a `Result`, not an error.
 
-- **`internal/sandbox`** — `Container`, a session-scoped
-  containerd-backed `agent.Runner` (one persistent container per
-  session, not per command, so filesystem state accumulates across
-  commands and can be checkpointed). Imports `capture`, never `host`
-  or `agent` — `Run`'s signature is already spelled in `capture`'s
-  types, which is what lets it satisfy `agent.Runner` structurally.
-  Output is captured by shell-redirecting into files inside the
-  workspace bind mount and polling them (`tail.go`), not via
-  containerd's own `cio` FIFO streaming: a FIFO needs the shim and the
-  reader on the same kernel, which doesn't hold once the daemon runs
-  inside a VM (colima, on macOS). `Snapshot`/`Rollback` (`snapshot.go`)
-  map onto containerd's `Prepare`/`Commit` vocabulary and use plain
-  `string` checkpoint IDs for the same reason; `routing.WrapSandbox`
-  adapts that string to `agent.SnapshotID` when wiring
-  `agent.Snapshotter`. **A rollback does not revert the workspace** —
-  that's a bind mount to the user's real directory, deliberately not
-  part of the snapshot, so only container state outside it is
-  restored (`TestContainer_RollbackLeavesTheWorkspaceAlone` pins
-  this). Checkpoints are held by a per-session containerd **lease**
-  (`snapshot.go`'s `pin`): the GC keeps a snapshot only while a
-  container or lease references it, so without one a rollback orphans
-  every later checkpoint and the next GC pass sweeps them — rollback
-  then works exactly once
-  (`TestContainer_CheckpointsSurviveGarbageCollection`). Networking is
-  a posture, `sandbox.NetworkHost` (the default) or `NetworkNone`:
-  host drops the network namespace so the container inherits the
-  containerd daemon's, which on macOS is the colima VM's and on Linux
-  is the machine's. `DefaultImage` still carries git/curl so goals
-  work under `NetworkNone` too. Real containerd daemon required
-  for its own tests (`container_test.go`), skipped when unreachable.
+- **`internal/sandbox`** — `Container`, a session-scoped containerd
+  Runner, one per session so filesystem state accumulates. Imports
+  `capture`, never `host` or `engine`, which is what lets it satisfy
+  `engine.Runner` and `engine.Snapshotter` **structurally** — no
+  adapter needed, since its checkpoints were already plain strings.
+  Output is captured by shell-redirecting into files and polling them
+  (`tail.go`), not containerd's FIFO streaming: a FIFO needs the shim
+  and the reader on the same kernel, which stops holding once the
+  daemon runs inside a VM. **A rollback does not revert the
+  workspace** — that is a bind mount to the user's real directory,
+  deliberately outside the snapshot. Checkpoints are held by a
+  per-session lease; without one the GC sweeps them and rollback works
+  exactly once.
 
-- **`internal/worktree`** — checkpoints the human's own working
-  directory, which the container snapshot never covers: `/workspace`
-  is a bind mount from outside it, and that's where a goal does its
-  real work. Git plumbing against a scratch `GIT_INDEX_FILE`, so
-  `add -A`/`write-tree` capture tracked *and* untracked files without
-  touching the user's index, branch or stash — and `.gitignore` is
-  honoured for free, which is both correct (build output isn't state)
-  and what keeps a per-step capture cheap. `agent.Session` records one
-  per sandboxed step (`ExecutedCommand.Worktree`), `PlanRollback`
-  reports what a restore would change, and `Rollback`'s `revertFiles`
-  decides whether it happens — the UI asks first, because the
-  workspace can hold edits detent never made. `markUnseen` flags paths
-  that changed after the last checkpoint: nothing detent ran accounts
-  for those, so reverting them destroys work it never made, and the
-  confirm says so in as many words. Its default answer is the
-  non-destructive one, and the file list takes the output pane rather
-  than the modal — a wide-reaching goal touches more paths than a box
-  can hold, and a list you can't read to the end isn't one you can
-  approve.
+- **`internal/worktree`** — checkpoints the human's own directory,
+  which the container snapshot never covers. Git plumbing against a
+  scratch `GIT_INDEX_FILE`, so it captures tracked *and* untracked
+  files without touching the index, branch or stash — and `.gitignore`
+  is honoured for free.
 
-- **`internal/routing`** — `Selector`, the `agent.RunnerSelector`
-  `cmd/detent` wires: host vs. sandbox per command, deliberately dumb
-  for v1 (a global toggle; `PreJudgment` is threaded through but
-  unused, ready for a Jev-informed rule later). `WrapSandbox` is the
-  other half — see above. Imports `agent` and `sandbox`; neither
-  imports it back, so it's the one place allowed to bridge them.
+- **`internal/classify`** — `JevJudge`, the HTTP adapter, and
+  `RiskJudge`, which adapts it to the engine's hook chain. It answers;
+  it never decides, because `Widen` folds its answer with everyone
+  else's.
 
-- **`internal/agent`** — the propose → confirm → execute → judge loop,
-  one goal at a time, over a single `Session.Transcript`
-  (`[]propose.Message` shared across every goal in the session). Has no
-  idea `ui` or `resolver` exist. `interfaces.go` declares every interface
-  `agent` consumes: `Proposer`, `Judge`, `Confirmer`, `Runner` — the last
-  taking a `chan<- host.StreamEvent` directly (may be nil) rather than a
-  callback. Unlike `Judge` (nil just disables judging), `Proposer`/`Run`
-  have no auto-default: `BeginGoal` fails loud if either is nil, the same
-  way `Confirm` fails the whole session closed. `host.Shell` runs
-  commands directly on the host, unsandboxed, and is wired explicitly by
-  `cmd/detent/main.go` — a future sandboxed `Runner` is a wiring choice
-  there, not a hidden fallback inside `agent`. Declared at the consumer,
-  not the producer — `propose` and `classify` ship only data types and
-  implementations. `probe` declares its own identically-shaped `Judge`,
-  since it sits below `agent` and can't import it back. `options.go`
-  holds `Option`/`With*`/`New`, same split as `propose`. `session.go`
-  holds the `Session` struct and result/record types. `loop.go` holds
-  `RunGoal` (blocking, the headless `-goal` path, fails closed without
-  `Confirm`) plus the non-blocking primitives `resolver` drives on the
-  TUI's behalf instead — `BeginGoal`/`ProposeNext`/`RecordStep`/
-  `Execute`/`JudgeResult` — since Bubble Tea's async `Update` loop
-  can't sit inside a blocking callback. `record.go` holds the
-  `Record*` family that closes a goal (or notes a standalone action).
-  `snapshot.go` holds `Snapshot`/`Rollback`: `Rollback(res, N)` undoes
-  step N of that goal **and everything after it**, restoring the checkpoint from
-  before N ran — the one after N-1, or `GoalResult.Baseline` (captured
-  in `BeginGoal`) when N is the first step. Naming a step the user can
-  see and having it disappear is the point; restoring *to* a step
-  instead would make `/rollback <last>` a no-op.
-
-  `compact.go` keeps the transcript under `Session.ContextTokens`
-  (`DefaultContextTokens` when unset, `context_tokens` in config),
-  since every propose call resends all of it. The budget is stated in
-  tokens because that's the unit the status bar and `/usage` already
-  show; `BytesPerToken` converts it to what `transcriptBytes` can
-  actually count, and is a ceiling to stay under rather than an
-  accounting of what the endpoint bills. It runs in `BeginGoal` only —
-  a goal boundary is the one place the model doesn't need the turns
-  being dropped, and it happens *before* the new goal is appended so
-  the fresh ask can't be what goes. Because compaction rewrites the
-  front of the slice, `TranscriptMark`/`BaselineMark` count **appends**
-  (`Session.seq`), not slice positions; `Session.index` converts one
-  back, and `Rollback` errors rather than restoring a container to a
-  state the transcript can no longer describe. The invariant to hold
-  onto: `seq - dropped == len(Transcript)`. A nil `Summarizer` is fine
-  — the dropped turns become a note saying they're gone.
-
-  `judge.go` holds both judgment paths:
-  `judgePre` (mutability + scope risk, before confirm) and `judgePost`
-  (result status + render kind + attention + goal-achieved, after
-  execution), each with a heuristic fallback when no Judge is wired, plus
-  the `NewPreJudgment`/`NewPostJudgment` constructors that centralize
-  their `-1` ("unknown") sentinel defaults. `risk.go`'s `FlagDanger` is a
-  regex safety net that only ever adds confirm emphasis
-  (`Dangerous`/`RiskNote`) — it must never suppress or soften a confirm.
-
-- **`internal/classify`** — `jev.go` holds `JevJudge`, the HTTP adapter
-  for TypeSafe's Jev; `options.go` holds its `Option`/`With*`/
-  `NewJevJudge`, same split as `propose`/`agent`. `judge.go` holds the
-  question/answer vocabulary types (`State`, `Questions`, `Answers`,
-  `Usage`) every `Judge` implementation speaks. A different classifier is
-  a new type implementing `agent.Judge`'s `Ask` method — nothing here
-  needs to change, since classify doesn't own that interface.
-  `ChoiceQuestion.Criteria` is `map[string]any` (structured `{what, not_for}`
-  objects work better than flattened strings — validated in early spikes) and
-  `ScoreQuestion.Levels` is an ordered `[]string` (index = level), matching
-  Jev's real wire API.
-
-- **`internal/resolver`** — the translation layer between `ui`'s
-  vocabulary and the core harness's: `Resolver` wraps `*agent.Session` and
-  implements `ui.Driver`, translating every value each way in `convert.go`
-  (`stream.go`'s `relayEvents` does the same for `StreamEvent`, via one
-  goroutine per `Execute` call that ranges agent's channel and forwards
-  translated events onto `ui`'s, dropping under backpressure rather than
-  blocking the running command). It's the
-  only package importing both `ui` and `agent` — neither of them may
-  import it back. `cmd/detent` wires `resolver.New(sess)` into `ui.New`;
-  the headless `-goal` path talks to `*agent.Session` directly and never
-  touches `resolver`/`ui` at all. `ReadFile`/`SaveFile` also wrap
-  `internal/fileio`'s `Read`/`Write` here, so `ui` never imports `fileio`
-  either. `GoalResult`/`StepHandle`'s `Ref any` field is how a `ui.Driver`
-  caller's handle round-trips back to the live `*agent.GoalResult`/
-  `*usage.Step` resolver needs on the next call — an opaque token `ui`
-  only ever threads through, never inspects.
-
-- **`ui`** — the Bubble Tea TUI, decoupled from the core harness
-  entirely: it imports nothing under `internal/*` — only its own
-  subpackages and `viewspec`, which is likewise outside `internal/`
-  and depends on nothing. That independence is why it sits outside `internal/`
-  and is importable on its own: everything it needs arrives through
-  `Driver` and `SessionInfo`, so it never reaches into the harness.
-  `driver.go` declares `Driver` (the narrow surface the UI
-  needs) plus every DTO its methods use (`Proposal`, `PreJudgment`,
-  `PostJudgment`, `ExecutedCommand`, `GoalResult`, `Result`, `Usage`,
-  `GoalStats`/`StepStats`, `RenderKind`/`EndReason` and their constants) —
-  flat mirrors of `agent`'s/`usage`'s/`propose`'s/`host`'s own types,
-  owned by `ui` so a change to any of those doesn't ripple into `ui`
-  directly; `internal/resolver` is the one thing that imports both sides
-  to translate between them. `model.go` holds `Model`, `stepRow`/
-  `goalBlock`, and the top-level `Update` dispatcher — which routes the
-  message and then re-syncs the panes **once**, so no handler has to
-  remember to refresh anything. What history shows is derived per
-  render by `historyWindow`; the only scroll state kept is its offset.
-  `trackNewest` separates two things a new row does: history scrolls to
-  the bottom whatever the human was doing, since that is what history
-  is for, while the cursor moves only when nobody is reading the output
-  pane, because moving it swaps the output out from under them.
-  `prompt.go` owns the input box and its slash dropdown together, so
-  nothing else reaches into the textarea or the match list.
-  `slash.go` is the slash-command registry, and each entry carries its
-  own handler so a command can't be listed without working or work
-  without being listed; the dropdown scrolls once the registry
-  outgrows `maxSlashRows`, its window derived from the cursor rather
-  than stored beside it. It is a function rather than a var because
-  `/help` draws the registry and the registry contains `/help`, which
-  as a package-level variable is an initialisation cycle.
-  `panel.go` holds the pages about the session rather than about a
-  step: `/usage`, `/status`, `/help`. A panel is an overlay, not a
-  block, so opening one leaves history alone; filing `/usage` as a row
-  put it where the running goal's own row belongs, which is exactly
-  what you are looking at when you ask a long goal how it is going.
-  They draw through the viewport, so length is scrolling rather than a
-  cap: `/usage` showed eight goals and ten steps and counted the rest
-  away. The input keeps focus while a goal runs
-  (`owner()` returns `ownerBusy`), which is what makes `/abort`
-  typeable mid-run — blurring it sent every key down the history
-  branch and `busyKey` was unreachable. `welcome_view.go` is derived state, not a mode:
-  it shows whenever no row is focused, which is why `/new` only has to
-  drop the blocks to bring it back.
-  `goal_flow.go`
-  sequences propose → confirm → execute → judge as `tea.Cmd`s (`approve`/
-  `decline` call `Driver.RecordStep` once rather than touching usage
-  bookkeeping themselves — `ui` has no way to reach `usage.Step`'s
-  mutators at all now); `tool_flow.go`/`exec_flow.go`/`save_flow.go`
-  handle the slash-command, streaming, and file-save flows the same way;
-  `keys.go` decides what a keystroke means and `nav.go` what it does.
-  Pasted text is a `tea.PasteMsg`, not a key, so `handlePaste` routes
-  it beside `handleKey` and by the same rule: to whoever owns text
-  entry, and dropped everywhere else, since a paste into history has
-  nowhere to land. Bracketed paste is on by default in Bubble Tea v2;
-  what was missing was a case for the message.
-  `esc` and `tab` are intercepted in `handleKey` before `owner()`
-  dispatches, so anything wanting either has to be handled there —
-  `onEscape` backs out of the innermost thing first (dropdown, then a
-  running goal, then the output pane). Quitting is `ctrl+c` or
-  `/quit` only; no bare letter ends a session.
-  Anything producing display strings from `Model` state lives in a
-  `_view.go` file: `view.go` composes the screen, `layout_view.go`
-  does the sizing maths, `chrome_view.go` the bars and pane headers,
-  `detail_view.go` the output pane, plus `history_view.go`,
-  `confirm_view.go` and `usage_view.go`. The `#N` marker on a step
-  counts across the **session**, not within its goal, and `/rollback N`
-  resolves that number back to the goal that owns it
-  (`findStep`/`truncateFrom`): numbering per goal made every row read
-  "#1" and the argument silently addressed the last goal instead of
-  the step being pointed at. History draws each goal as a
-  block against a coloured rail (`railed`/`railStyle`) rather than
-  separating them with a divider: a rail marks how far a block
-  reaches, not just where two meet, and its colour carries the
-  outcome. Every width a block renders at comes off `blockWidth`,
-  which subtracts the rail gutter —
-  `TestHistory_RowsFitThePane` is what stops one overflowing.
-
-  What can leave the package is what takes values rather than a
-  `Model` — Go keeps a method in its receiver's package, so the ~80
-  `func (m Model)` ones can only move by first becoming their own
-  type, the way `prompt` did. Sub-packages: `welcome` (the boot pane,
-  handed a `welcome.Facts` so it reads nothing of the harness),
-  `render` (diff colouring for the save confirm; the output pane's own
-  transforms live in `viewspec`), `status` (usage/timing formatting — switches on the same
-  Status*/RenderKind string values `ui.PostJudgment` carries,
-  duplicated as literals rather than importing anything to get them),
-  `markdown` (glamour wrapper),
-  `layout` (`Split` and `Truncate`), `theme`, `tree`, and `island`.
-  Each owns its own styles off `theme` and is rebuilt by
-  `ui.RefreshStyles`; `editor` wraps a `textarea` around content the
-  caller already read (it doesn't read files itself, only diffs
-  in-memory content via `go-udiff` directly).
-
-- **`viewspec`** — the view interpreter, outside `internal/` like `ui`
-  and stricter: it imports **only the standard library**, enforced by
-  `TestPackage_DependsOnStdlibOnly`. A `Spec` says how to read a
-  command's output (`Parse`, a named-capture regexp or column map) and
-  how to draw what was read (`Blocks`, a flat list over a closed widget
-  vocabulary). Eight parse kinds — `lines`, `columns`, `fixed` (slices
-  at the header's own offsets, for multi-word headings like
-  `CONTAINER ID`), `delimited`, `pairs`, `indent` (leading whitespace
-  becomes a depth), `json`, `none` — and thirty widgets, each in its
-  own `widget_*.go`. Structure: `text`, `table`, `list`, `keyvalue`,
-  `tree`, `flow` (ls-style columns), `dots` (a status glyph per row).
-  Quantities: `meter`, `bar`, `gauge` (a fixed 0 to 100 scale, where
-  `bar`'s relative one flattens a disk at 90% beside one at 95%),
-  `stack`, `diverge`, `delta`, `histogram` (the only widget that
-  aggregates, since a spec carries no data and a count is data),
-  `boxplot`, `sparkline`, `series` (one sparkline per group on one
-  shared scale), `scatter` (braille, 2x4 dots per cell), `heatmap`,
-  `badges`, `stat` (one number drawn three rows tall). Time: `gantt`
-  (start plus length) and `timeline` (a moment, no length), both
-  reading clock times, dates, Go durations or bare numbers through
-  `instant`. Raw: `log`, `errors`, `json`, `diff`, `code`. Plus the
-  containers `row` and `panel`. Numbers are read by `number`, not
-  `strconv.ParseFloat`, which rejected every column `df` prints: `45%`,
-  `1.2G` and `1,024` all came back 0 and drew an empty bar rather than
-  an error anyone could see. Registering a widget is half the job:
-  `internal/viewgen/kinds.go` decides which render kinds may draw with
-  it, and one missing from every `Kind.Widgets` list is never offered
-  to the model. That list is also a latency knob, worth watching as it
-  grows: every offered widget carries a `widget_guide` entry into the
-  schema and structured decoding runs over the whole of it. Measured
-  against OpenRouter, a propose call costs 1.5 to 1.9s and one view
-  candidate 18 to 37s, so a long list is paid for on every generation
-  and again in candidates that come back naming the wrong number of
-  columns. Generation is cached per command shape, so the cost is per
-  shape rather than per step, but the first one is felt. `widgets.go` is only the registry table and
-  `widget_shared.go` what more than one widget needs. They stay in
-  `viewspec` rather than a sub-package because a widget's `Draw` takes
-  `Block`, `Data` and `Frame`, so the sub-package would import
-  `viewspec` while `Standard()` imported it back.
-  A `row` lays its `Panes` side by side and a `panel` frames its one
-  pane in a border, nesting capped at one level so the schema stays
-  finite — a recursive `$ref` is where strict mode's backend
-  portability gets thin. Both are drawn by the **interpreter** rather
-  than a widget: `Widget.Draw` is handed a Block and Data, never the
-  registry, so it could not resolve its children's widgets.
-  The registry extends leaves; layout is geometry and belongs to the
-  interpreter. Three calls priced by frequency: `Compile` once per spec,
-  `Bind` once per output, `Draw` per frame — `Painter` is on `Frame`,
-  not `Compiled`, so the first two are pure data and test with no
-  styling at all. `Frame.Width` is filled by every widget;
-  `Frame.Height` says how tall the pane is for the ones that can grow
-  into it (`scatter` trades height for resolution, four dot rows a
-  line) and **clips nothing**, because windowing is the caller's job
-  and clipping is what would stop a long view scrolling.
-  A widget must implement `Widget`; `Validator`, `Selector`,
-  `Described` and `Container` are optional and found by type assertion,
-  so a consumer registering one is not made to write methods it has no
-  use for. `Container` is how a kind holds blocks instead of drawing
-  data: it says what pane shape it accepts, how wide to draw each one,
-  and how to assemble them once the interpreter has resolved and drawn
-  the children (which a Widget cannot do, never seeing the registry).
-  `row` and `panel` are two implementations rather than two names the
-  interpreter knows, so a third layout is a registration.
-  Its `Arrange` reports where each pane's first line landed rather than
-  one offset, because how far a pane moved depends on the panes above
-  it in anything that stacks.
-  `Selector` is the load-bearing one: only a kind that can say which
-  line the cursor is on may carry `on_enter`, checked in `checkBlock`,
-  because accepting it elsewhere drew a spec that looked right and did
-  nothing when the human pressed enter.
-  It declares `Painter`, `Widget` and `Extractor`
-  because it calls them; `ui/painter.go` and `ui/views.go` implement and
-  register them. `Registry.Schema()` describes the registered vocabulary
-  as JSON Schema, so generation can't drift from what will actually
-  draw; each widget's own `Describe` carries structured
-  `{what, not_for, examples}` criteria into a `widget_guide`, for the
-  calibration reason `internal/agent/judge.go` states at nine options. Any unresolved binding fails the **whole** view (`BindError`)
-  and the caller falls down its spec chain — a table with one silently
-  empty column is worse than plain text. It runs nothing:
-  `Bound.Action` returns an `on_enter` template with `{field}`
-  substituted, and `ui`'s `enter` seeds the prompt with it. A view
-  carries its provenance (`shipped`/`saved`/`generated`) across the
-  Driver in `ui.GeneratedView`. `viewportHeader` names only what a
-  model had a hand in (`saved`, `generated`) plus `generate declined`,
-  which is otherwise indistinguishable from never having tried;
-  `built-in` and `shipped` are detent's own work and draw without
-  comment, since naming them on every row was noise. The pane always
-  draws from a spec, so there is no "off": `views: saved` draws only
-  from specs that already exist, `views: generate` also authors one
-  when nothing covers the output. Only `generate` ever writes a spec,
-  which is why `saved` alone never grows the set. `Generate` asks the
-  model before falling back to a shipped spec, so shipping one is a
-  floor rather than a ceiling. A spec that already exists still has to
-  bind against the real output before it is used: the key is the
-  command's first word, so `ps` and `ps aux` share one, and an
-  unchecked seed matched, drew nothing, and blocked generation behind
-  itself. `Generator.usable` is that check, and it logs either way,
-  because a silent lookup is why the logs said nothing at all. Three guards keep a spec from
-  drawing nothing in silence: `ui`'s `TestBoundView_AlwaysYieldsSomethingDrawable`
-  binds and draws every render kind against empty, ragged and
-  header-only output; `viewgen`'s seed tests refuse a shipped spec that
-  has no sample of its own command's output to bind against; and both
-  `boundView` and `applyView` now log the drop, since the pane falling
-  back looks identical to the pane having nothing to say.
-
-  **There is one render path.** Every row draws from a spec, and the
-  spec comes from exactly one of five places, tried in this order:
-
-  | | Where | Cost |
-  | --- | --- | --- |
-  | saved | `~/.local/state/detent/views/`, composed on an earlier run | ~1ms |
-  | composed | the judge, this run, then written to disk | ~660ms |
-  | shipped | `views.ForCommand(normalised)` | 0 |
-  | by shape | `views.ForKind(render_kind)` | 0 |
-  | raw | `views.Raw("log")` | 0 |
-
-  The first three are `viewgen`, behind the Driver. The last two are
-  `ui`'s own chain in `fallbackChain`, which needs no Driver at all, so
-  the pane is never blank while the judge is answering. A composed view
-  replaces what is already drawn when it arrives.
-
-  So `render_kind` renders nothing — it *chooses a prebuilt spec* and
-  *prunes the vocabulary* a composed one may use, which is why
-  `styledBody`'s switch and `focusedTable` are gone. `Draw` returns a
-  `Render` carrying `CursorLine`, which `refreshViewport` uses to
-  scroll to the selection, so a composed view scrolls like any other
-  output. `ui/tabular` was `focusedTable`'s engine and is deleted; a
-  richer table is a widget registered over the built-in, not a second
-  path.
-
-  **Nothing is trusted without binding.** Saved, shipped and composed
-  specs all bind against the real output before use (`usable`), because
-  a key match is not a guarantee: `ps` and `ps aux` share one key and
-  print different columns, so a spec that bound nowhere still sat in
-  front of composition, silently. `applyView` binds once more on the
-  `ui` side, since a Driver hands over a `Spec` and not a `Bound`.
-
-- **`logging`** — the structured log, outside `internal/` like `ui` and
-  `viewspec` so anything may import it; stdlib only (`log/slog`), so no
-  package's import rules break. **One JSONL stream per session**
-  (`~/.local/state/detent/logs/<session>.jsonl`), never one file per
-  component: the unit anyone investigates is a *step*, and a step
-  crosses four or five components, so splitting by component would make
-  filtering easy and correlating impossible. A `component` field gives
-  the split for free and keeps the join. `events.go` is the closed
-  vocabulary: an `event` name is a record's primary key, since a query
-  cannot match free text reliably. Correlation rides the context
-  (`WithGoal`/`WithStep`), so a mark set once upstream reaches every
-  record beneath it and `step` is the same number the UI shows.
-  `Body` withholds prompts, replies and output unless `log_bodies` is
-  set, because they carry secrets and bulk. `viewspec` deliberately
-  does not log: it returns typed errors and the caller records them,
-  which is what keeps it embeddable.
+- **`internal/headless`** — one prompt on a terminal, no TUI. A bus
+  subscriber like any front-end, which is what makes it a fair test of
+  the engine's interface.
 
 - **`internal/viewgen`** — writes a spec by asking the judge closed
-  questions and assembling the answers. It does not ask a model to
-  write JSON; that path existed, ran 31s median against 300ms here, and
+  questions and assembling the answers, rather than asking a model to
+  write JSON. That path existed, ran 31s median against 300ms, and
   could name a widget, a role or a field that did not exist. All three
-  happened. None is representable from a list the program built.
+  happened; none is representable from a list the program built.
 
-  `Compose` is four questions in a fixed order, and the order is the
-  whole design: each step narrows what the next can be wrong about.
+- **`ui`** — the TUI, and nothing but a projection of the event
+  stream. `apply.go` folds facts in and is the one place it learns
+  anything; `intents.go` publishes and is the one place it asks for
+  anything. Seven `tea.Cmd` constructors and eight message types
+  collapsed to one of each, so a test drives it with a sequence of
+  events and no harness at all. See `ui/doc.go` for the file map.
+  Rendering lives in `view_*.go` because Go keeps a method in its
+  receiver's package: those are all `func (m Model)`, so a subpackage
+  would need Model's state passed as values first.
 
-  1. **which line is the header** (`header`) — the candidate lines are
-     quoted, plus `none` for a bare listing like `ls -la`. "How many
-     lines to skip" is arithmetic; naming the lines is a choice.
-  2. **which parse kind** (`parseKind`) — eight options, with the
-     located header in the state, because `columns` and `fixed` differ
-     only in whether the header's own names contain spaces. `honour`
-     then treats the header as fact and the kind as a preference: where
-     the chosen kind cannot read that header, the kind gives way, tried
-     against the interpreter rather than argued about. netstat is why.
-  3. **run the extractor** — now the field names are real rather than
-     guessed, and `Bound.Sample` gives values to show alongside them.
-  4. **body and summary widget, then a field per slot** — two batched
-     calls. The widgets are whatever `prune` allows for this render
-     kind, split into body and summary by each widget's own
-     `Describe().Summarises`. The fields are what step 3 produced.
+- **`viewspec`** — the view interpreter, outside `internal/` and
+  stricter than anything else: it imports **only the standard
+  library**, enforced by `TestPackage_DependsOnStdlibOnly`. A `Spec`
+  says how to read a command's output (`Parse`) and how to draw what
+  was read (`Blocks`, over a closed widget vocabulary). Eight parse
+  kinds and thirty widgets, each in its own `widget_*.go`. Numbers are
+  read by `number`, not `strconv.ParseFloat`, which rejected every
+  column `df` prints: `45%`, `1.2G` and `1,024` all came back 0 and
+  drew an empty bar rather than an error anyone could see. Three calls
+  priced by frequency: `Compile` once per spec, `Bind` once per
+  output, `Draw` per frame — `Painter` is on `Frame`, not `Compiled`,
+  so the first two are pure data and test with no styling at all.
+  `Frame.Height` says how tall the pane is for widgets that can grow
+  into it and **clips nothing**, because clipping is what would stop a
+  long view scrolling. A widget must implement `Widget`; `Validator`,
+  `Selector`, `Described` and `Container` are optional and found by
+  type assertion. `Selector` is load-bearing: only a kind that can say
+  which line the cursor is on may carry `on_enter`, because accepting
+  it elsewhere drew a spec that looked right and did nothing when the
+  human pressed enter.
 
-  `lines` is the one parse that carries a pattern, and it is fixed
-  (`wholeLine`): one field holding the line. A pattern naming three
-  parts is the single thing a choice cannot express, so output needing
-  one draws plainly rather than wrongly. `on_enter` is gone from
-  composed specs for the same reason: a command template is free text.
-  Saved and shipped specs still carry one.
+- **`logging`** — the structured log, stdlib only so anything may
+  import it. **One JSONL stream per session**, never one file per
+  component: the unit anyone investigates is a step, and a step
+  crosses four or five components, so splitting by component would
+  make filtering easy and correlating impossible. `events.go` is the
+  closed vocabulary; an event name is a record's primary key, since a
+  query cannot match free text reliably. `Body` withholds prompts,
+  replies and output unless `log_bodies` is set.
 
-  **Composition needs a judge.** It is the only way a spec gets written
-  now, so `views: generate` without a `jev_api_key` is rejected at
-  startup rather than quietly behaving as `saved`.
-
-- **`version`** — what this build calls itself, and nothing else, so
-  anything may import it. `Number` is the release and is overridable
-  with `-ldflags`; `String` adds the revision the linker stamped in
-  plus `-dirty`, because a binary built from a dirty tree should not
-  claim to be a tagged release. The welcome pane shows it under the
-  name and `-version` prints it.
-
-- **`views`** — every spec detent ships, in one place: the ones keyed
-  by a command's normalised name (`ForCommand`) and the ones keyed by
-  the shape its output was judged to have (`ForKind`). They were two
-  maps in two packages that could not see each other, and had started
-  to overlap: the `table` shape spec and the shipped `ps` spec are
-  nearly the same thing, and the `ps` one had already drifted, written
-  for plain `ps` and drawing nothing for `ps aux`. It imports
+- **`views`** — every spec detent ships, keyed by command name
+  (`ForCommand`) and by judged output shape (`ForKind`). Imports
   `viewspec` and nothing else, which is what lets both `ui` and
-  `viewgen` read it without either importing the other. `ForCommand`
-  returns a copy, so two rows drawing the same shipped spec cannot
-  edit each other's.
+  `viewgen` read it without either importing the other.
 
-- **`internal/usage`** — timing and token accounting (`Tracker` → `Goal` →
-  `Step`), independent of everything else; `agent` attaches measurements
-  to it directly, `resolver` translates it into `ui`'s own `GoalStats`/
-  `StepStats`/`Snapshot` for the `/usage` overlay and status bar — `ui`
-  never sees a `usage.*` type.
-
-- **`internal/config`** — `Load` (file) and `Resolve` (layers flags > env >
-  file > built-ins, field by field via `Config.apply`). Both `propose` and
-  `config` independently declare the same LM Studio defaults
-  (`http://localhost:1234/v1`, `prism-ml/bonsai-27b`) — that duplication is
-  intentional so `propose` has no dependency on `config`.
+- **`version`** — what this build calls itself, and nothing else.
 
 ### Adding or changing a widget
 
@@ -601,7 +286,7 @@ which, because three of them fail *silently* when missed. Adding
 | the widget exists and draws | `viewspec/widget_<name>.go` | compile error |
 | what it is for, and whether it summarises | its own `Describe()` | **absent from every choice list** |
 | which output shapes may use it | `internal/viewgen/kinds.go` | **never offered** |
-| anything needing more than stdlib | registered in `ui/views.go` | n/a |
+| anything needing more than stdlib | registered in `ui/spec.go` | n/a |
 
 `Describe()` is optional so a consumer can register a plain function as
 a widget, which is right; the cost is that a widget without one is
@@ -624,69 +309,36 @@ two-layer split `render_kind` already has: a heuristic when no judge
 has spoken, the judge's answer when one has. `fallbackChain` runs
 before anything is judged and with no Driver at all.
 
-### Keeping `ui` and `agent` in sync
-
-`ui`'s DTOs (`ui/driver.go`) are hand-mirrored from `agent`'s/
-`usage`'s/`propose`'s/`host`'s own types, not aliases of them — that's
-the whole point of the split, but it means nothing forces a change on
-one side to reach the other. Two different failure modes, two different
-defenses:
-
-- **Interface-shape drift** (a `Driver` method added, removed, or its
-  signature changed) — the compiler catches this for you. `resolver.go`
-  has `var _ ui.Driver = (*Resolver)(nil)`, so `Resolver` fails to build
-  until every method exists with the right signature; `ui/testutil_test.go`'s
-  `fakeDriver` has to satisfy the same interface, so `ui`'s own tests
-  won't build either until its fake is updated too. No discipline
-  required here — just fix the compile errors in the order they appear.
-- **Field-level drift** (`agent` grows a field nothing forces you to
-  surface) — this one compiles fine either way, so it's on you. The
-  rule: whenever a change touches a type in `agent`/`usage`/`propose`/
-  `host` that has a mirror in `ui/driver.go`, go decide on purpose in
-  `internal/resolver/convert.go` whether the new data should cross the
-  boundary — don't let it be discovered later as "why isn't X showing in
-  the UI." `internal/resolver/driver_test.go` drives a real
-  `*agent.Session` through a real `*Resolver` and asserts on the DTOs
-  that come out — run it right after any `agent` change, before touching
-  `ui` at all, as the fastest signal the translation still holds.
-
 ### Adding a new feature
 
-Start from what the feature actually is, and touch only the layers it
-needs:
+Start from what the feature actually is:
 
-- **Pure UI** (a keybinding, a different rendering of data a DTO already
-  carries, a new dialog) — `ui` only.
-- **Pure core logic** (a new probe, a heuristic tweak, a proposer
-  change) — `internal/agent` only, with `agent`'s own tests. It doesn't
-  need to reach `ui` until something is meant to surface there.
-- **Anything crossing the boundary** (new judgment data, a new Driver
-  capability, a new terminal state) — follow the ripple top-down, one
-  layer at a time, each with its own test before moving to the next:
-  1. `agent` — add the field/method; prove it in `internal/agent`'s own tests.
-  2. `resolver/convert.go` (and `driver.go` if it's a new method) —
-     mirror the change; add/extend a case in `driver_test.go` proving it
-     survives the round trip through a real `*agent.Session`.
-  3. `ui/driver.go` — add the field to the matching DTO, or the new
-     method to `Driver` (which forces `fakeDriver` to implement it too —
-     the compiler won't let this step be skipped).
-  4. `ui` — wire the real code to use the new data/method; add a test
-     against `fakeDriver` in whichever `_test.go` file already covers
-     that flow.
+- **Pure UI** (a keybinding, a different rendering of data an event
+  already carries) — `ui` only. Drive `apply` with events; no harness
+  is needed.
+- **Pure engine** (a new hook, a bound, a loop rule) —
+  `internal/engine` only, with its own tests.
+- **A new tool** — `internal/tool`: one file, a `Spec`, and a `Lower`.
+  Nothing else changes.
+- **Anything crossing the boundary** (new data a front-end must see) —
+  add the field to the fact in `event`, publish it in `engine`, fold
+  it in `ui/apply.go`. Three edits, each provable on its own, and the
+  compiler catches the first two.
 
-  Six small, mechanical edits beat one tangled one: a mistake in step 1
-  shows up as an `agent` test failure, not a mysterious blank field
-  three layers away in the TUI.
+There is no DTO mirror to keep in step any more. The thing that
+replaced it is the rule that `event` may import nothing but the
+standard library and `viewspec` — break that and the boundary is back.
 
 ## Conventions
 
-- Tests use `testify` (`require`/`assert`) with table-driven cases — follow
-  the existing pattern in `internal/propose/openai_test.go` (`httptest`-backed)
-  and `internal/agent/*_test.go` for new tests in those packages.
+- Tests use `testify` (`require`/`assert`) with table-driven cases —
+  follow `internal/model/client_test.go` (`httptest`-backed),
+  `internal/engine/engine_test.go` (a bus rig) and `ui/apply_test.go`
+  (events in, state out).
 - An interface found by type assertion gets a compile-time assertion
   beside the implementation (`var _ Selector = gaugeWidget{}`), because
   a renamed method otherwise degrades silently instead of failing the
-  build: `agent.Snapshotter` losing its name removes rollback entirely,
+  build: `engine.Snapshotter` losing its name removes rollback entirely,
   and a widget losing `Validate` simply stops validating. One proved by
   an argument, a struct field or a return type needs no assertion and
   should not get one.
@@ -694,8 +346,8 @@ needs:
   documents or section numbers.
 - `docs/` is gitignored — planning documents live there but are never
   committed to the repo.
-- Confirm is conditional on `PreJudgment.Dangerous`, not universal — see the
-  `Confirmer` doc comment in `internal/agent/session.go`. A nil `Confirmer`
-  still fails the whole session closed even for an all-safe goal, since
-  relying on "it happens not to be called" isn't a substitute for wiring
-  one at all.
+- Confirm is conditional on `event.Risk.Dangerous`, not universal. A
+  Call nobody answers blocks its Turn rather than running, which is
+  the right way round: the approval gate fails closed.
+- Comments are one line by default, two when load-bearing, three only
+  for a package doc or an invariant the design rests on.

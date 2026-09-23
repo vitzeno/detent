@@ -19,7 +19,7 @@ type turnBlock struct {
 	summary string
 	used    event.Usage
 
-	// undoable is set once a checkpoint lands, so /rollback offers
+	// undoable is set once a checkpoint lands, so /undo offers
 	// only what it can actually restore.
 	undoable bool
 	err      string
@@ -28,14 +28,12 @@ type turnBlock struct {
 // callRow is one tool call, or the model's own words. Exactly one of
 // tool and prose is set.
 type callRow struct {
-	id   event.ID
-	tool string
+	id event.ID
 	// command is what the human reads: the tool's arguments, rendered.
 	command string
 	prose   string
 
 	risk    event.Risk
-	runner  string
 	running bool
 	live    []string
 	dropped int

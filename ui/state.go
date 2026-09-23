@@ -55,8 +55,8 @@ const (
 	panelHelp
 )
 
-// undoState is a rollback waiting on the human to say whether their
-// own files go back with the container.
+// undoState is an undo waiting on the human to say whether their own
+// files go back with the container.
 type undoState struct {
 	target *turnBlock
 }
