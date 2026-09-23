@@ -24,10 +24,8 @@ type transcript struct {
 	// protect is where the open Turn began. Compaction never drops
 	// from here on: the model cannot work a request it cannot see.
 	protect int
-	// dropped is how far compaction has shifted the front. A mark
-	// counts appends rather than slice positions, because compaction
-	// rewrites the front and an index would move under a Turn that
-	// still wants to be undone.
+	// dropped is how far compaction has shifted the front, so a mark
+	// can count appends rather than positions that move under it.
 	dropped int
 }
 
@@ -71,11 +69,8 @@ func (t *transcript) messages() []model.Message { return t.msgs }
 // so it stays valid however much the front is rewritten.
 func (t *transcript) mark() int { return len(t.msgs) + t.dropped }
 
-// truncate rewinds to a mark, for a rollback. Marks are taken at Turn
-// boundaries, so this cannot land inside a Step.
-// truncate rewinds to a mark. Compaction may have dropped everything
-// the mark named, which is not an error: there is simply nothing left
-// to undo to, so the transcript is left alone.
+// truncate rewinds to a mark, taken at a Turn boundary so it cannot
+// land inside a Step. A mark compaction has eaten is a no-op.
 func (t *transcript) truncate(to int) {
 	at := to - t.dropped
 	if at < 0 || at > len(t.msgs) {

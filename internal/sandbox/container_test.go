@@ -341,10 +341,8 @@ func TestContainer_RunHandlesMultilineCommands(t *testing.T) {
 	assert.Equal(t, "err\n", res.Stderr)
 }
 
-// Parallel Calls are the norm now: the engine runs read-only ones
-// together. A container holds one task and one spec, so without
-// serialising, the second command overwrote the first's spec and the
-// first polled output files nothing had written — exit 0, no bytes,
+// The engine runs read-only Calls together. Unserialised, they
+// overwrote each other's spec and returned exit 0 with no output,
 // which the model read as a command that printed nothing.
 func TestContainer_ConcurrentRunsDoNotCrossContaminate(t *testing.T) {
 	c := newTestContainer(t)

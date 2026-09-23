@@ -54,12 +54,10 @@ const defaultSnapshotter = "overlayfs"
 // doesn't default it for us the way some client versions do.
 const defaultRuntime = "io.containerd.runc.v2"
 
-// Container is a session-scoped containerd-backed agent.Runner,
-// satisfied structurally: it imports neither host nor agent.
-//
-// An isolated bridge network would need CNI, which go-cni can't drive
-// from macOS — it needs a netns on the daemon's kernel, same problem
-// as the cio FIFOs.
+// Container is a session-scoped containerd Runner, satisfied
+// structurally: it imports neither host nor engine. An isolated
+// bridge network would need CNI, which go-cni cannot drive from
+// macOS.
 type Container struct {
 	socket     string
 	namespace  string
@@ -77,12 +75,9 @@ type Container struct {
 	fifoDir   string // client-side dir for cio's stdio FIFOs
 	sessionID string
 
-	// running serialises Run. A container holds one task at a time
-	// and one spec, so two concurrent commands raced: the second
-	// overwrote the first's spec, then failed to create the task, and
-	// the first polled output files nothing had written. It returned
-	// exit 0 and no bytes, which reads as a command that printed
-	// nothing rather than one that never ran.
+	// running serialises Run: one task and one spec per container, so
+	// parallel commands overwrote each other's and returned exit 0
+	// with no output.
 	running sync.Mutex
 }
 
@@ -182,12 +177,10 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 // own subdirectory of stdout/stderr capture files (see Run).
 const sandboxOutputDir = ".detent-sandbox"
 
-// Run creates a fresh task per command against the container's
-// current snapshot, so filesystem state carries over between them.
-// One at a time: see the running mutex.
-// Output is shell-redirected into the workspace mount, not captured
-// via containerd's cio: its FIFOs need the shim and reader on the
-// same kernel, not true once the daemon runs in a VM.
+// Run creates a task per command against the container's current
+// snapshot, one at a time, so filesystem state carries over. Output
+// is shell-redirected into the workspace mount rather than captured
+// via cio, whose FIFOs need the shim and reader on one kernel.
 func (c *Container) Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error) {
 	if c.container == nil {
 		return capture.Result{}, fmt.Errorf("sandbox: Start not called")
@@ -215,11 +208,9 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 	if err != nil {
 		return capture.Result{}, fmt.Errorf("sandbox: read spec: %w", err)
 	}
-	// exec redirects this shell and then gets out of the way, so the
-	// command keeps its own line structure. Wrapping it as
-	// "( cmd ) >out 2>err" glued that tail onto the command's last
-	// line, which broke every heredoc — a terminator has to be alone
-	// on its line — and any other multi-line script with it.
+	// exec redirects then gets out of the way, so the command keeps
+	// its own line structure. "( cmd ) >out" glued that tail onto the
+	// last line and broke every heredoc.
 	spec.Process.Args = []string{"sh", "-c",
 		fmt.Sprintf("exec >%s 2>%s\n%s\n",
 			shellQuote(containerOutPath), shellQuote(containerErrPath), command)}

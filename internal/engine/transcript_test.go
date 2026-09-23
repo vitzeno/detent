@@ -206,9 +206,8 @@ func TestUnitEnd_GroupsAnAssistantWithItsAnswers(t *testing.T) {
 	assert.Equal(t, 5, unitEnd(msgs, 9), "past the end is the end")
 }
 
-// A mark has to survive compaction: it names a Turn a human may still
-// undo, and compaction rewrites the front underneath it. Counting
-// slice positions made every earlier mark point somewhere else.
+// A mark names a Turn a human may still undo, and compaction rewrites
+// the front underneath it. Slice positions moved; appends do not.
 func TestMark_SurvivesCompaction(t *testing.T) {
 	var tr transcript
 	big := strings.Repeat("x", 3000)
@@ -237,8 +236,8 @@ func TestMark_SurvivesCompaction(t *testing.T) {
 	assert.NotContains(t, text, "second request", "the undone Turn must be gone")
 }
 
-// Compaction can drop everything a mark named. Undoing to it is then
-// a no-op rather than a truncation to the wrong place.
+// A mark compaction has eaten is a no-op, not a truncation to the
+// wrong place.
 func TestTruncate_IgnoresAMarkCompactionAteAsWellAsOneTooLarge(t *testing.T) {
 	var tr transcript
 	big := strings.Repeat("x", 4000)
