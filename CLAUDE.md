@@ -71,6 +71,60 @@ applies the theme before building the TUI: `theme.Apply` sets the
 colors, `ui.RefreshStyles` rebuilds every style baked from the old
 ones.
 
+### The sandbox VM
+
+`sandbox_mode: auto` needs colima running with a containerd socket at
+`~/.colima/default/containerd.sock`. The runtime does not matter:
+colima forwards that socket whether it was started with `--runtime
+docker` or `--runtime containerd`.
+
+**Kubernetes must be off for detent's profile.** k3s inside the VM
+costs about a core continuously and detent never uses it. Worse, on a
+small VM it cannot reach a steady state at all: one seen here had
+`cpu: 16, memory: 1` with k8s on, pegged the host at 1094% CPU, and
+could not be stopped gracefully because `colima stop` shells in over
+ssh and the guest could not answer. `colima stop --force` is the way
+out of that.
+
+Sane starting point on a 12-core machine:
+
+```sh
+colima start --cpu 6 --memory 8 --disk 30 --kubernetes=false
+```
+
+#### Swapping with a project that does want k8s
+
+The cluster lives on the VM disk at `/var/lib/rancher/k3s` and
+**survives being disabled** — `--kubernetes=false` stops the service,
+it does not reset it. `colima kubernetes reset` is the one that
+destroys it.
+
+Two ways round, depending on whether you want both at once:
+
+```sh
+# Toggle, one VM, ~30s each way. The cluster comes back as it was.
+colima stop && colima start --kubernetes=false   # for detent
+colima stop && colima start --kubernetes         # back to k8s
+```
+
+```sh
+# Or keep them apart: leave the cluster in the default profile and
+# give detent its own VM. Nothing to swap, start whichever you need.
+colima start --profile detent --cpu 6 --memory 8 --kubernetes=false
+```
+
+The second needs detent pointed at that profile's socket, since
+`defaultSandboxSocket()` only knows the default one:
+
+```yaml
+# .detent.yaml
+sandbox_socket: ~/.colima/detent/containerd.sock
+```
+
+Two VMs means two disk images and two lots of RAM when both run, so it
+buys convenience with resources. `kubectl` follows the profile: the
+default one is context `colima`, a named one is `colima-<profile>`.
+
 ## The vocabulary
 
 Everything is named for one of four scopes, and using the wrong word
