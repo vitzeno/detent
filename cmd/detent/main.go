@@ -27,6 +27,7 @@ import (
 	"github.com/vitzeno/detent/internal/model"
 	"github.com/vitzeno/detent/internal/routing"
 	"github.com/vitzeno/detent/internal/sandbox"
+	"github.com/vitzeno/detent/internal/store"
 	"github.com/vitzeno/detent/internal/tool"
 	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/logging"
@@ -190,12 +191,17 @@ func run() error {
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 
-	// Subscribers, wired before Run so nothing published at startup is
-	// missed. Each is independent: dropping one costs its own feature
-	// and nothing else.
-	// Registered first so it runs last: Drain empties the bus, then
-	// this waits for the final record to reach disk.
+	// Wired before Run so nothing published at startup is missed, and
+	// deferred first so they run last: Drain empties the bus, then
+	// these wait for the final record to land.
 	defer logging.Watch(bus)()
+	if events, err := store.Open(store.DefaultPath()); err != nil {
+		// A session that cannot be recorded is still a session.
+		fmt.Fprintln(os.Stderr, err)
+	} else {
+		defer events.Close()
+		defer store.Watch(bus, events, sessionID)()
+	}
 	if judge != nil {
 		judgepkg.Watch(bus, judge)
 		views(resolved.Views, judge).Watch(bus)
@@ -282,10 +288,9 @@ func loadDotenv(path string) {
 	}
 }
 
-// views wires the composer. Composition is the only way a spec gets
-// written now, and the judge is what writes it, so views: generate
-// without a jev key has nothing to compose with; run() rejects that
-// combination rather than silently drawing from saved specs only.
+// views wires the composer. The judge is what writes a spec, so
+// views: generate without a jev key has nothing to compose with and
+// run() rejects that rather than quietly drawing from saved only.
 func views(mode string, judge *classify.JevJudge) *viewgen.Generator {
 	g := &viewgen.Generator{
 		Registry: ui.Registry(),

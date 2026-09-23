@@ -5,6 +5,8 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +21,11 @@ type Store struct{ db *sql.DB }
 // Open creates the database if it is not there. ":memory:" works, for
 // a test that wants no file.
 func Open(path string) (*Store, error) {
+	if dir := filepath.Dir(path); dir != "." && path != ":memory:" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, fmt.Errorf("store: %w", err)
+		}
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
@@ -128,4 +135,13 @@ func nullable(id uuid.UUID) any {
 		return nil
 	}
 	return id.String()
+}
+
+// DefaultPath is where a session's events go, beside the logs.
+func DefaultPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".local", "state", "detent", "events.db")
 }

@@ -352,7 +352,10 @@ adding a fat dependency fails with the transitive import named.
   migration cannot be recorded as done. Encoding is **not** here: a
   store holding its own type list would decode every old record and
   silently drop a new one, so `event/codec.go` owns it and a test
-  parses the package to prove no type lacks a codec.
+  parses the package to prove no type lacks a codec. `Watch` is the
+  subscriber, wired beside `logging.Watch`; it skips `OutputChunk`
+  because a replayed Call has already finished and `CallEnded` carries
+  the whole output.
 
 - **`version`** — what this build calls itself, and nothing else.
 
