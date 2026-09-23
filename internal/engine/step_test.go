@@ -15,7 +15,7 @@ import (
 // order the model asked. Mutability decides parallelism and, now that
 // checkpointing is per Turn, nothing else.
 func TestStep_ReadOnlyCallsRunTogether(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []model.ToolCall{
+	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
 		readCall("c1", "a.go"), readCall("c2", "b.go"), readCall("c3", "c.go"),
 	}}})
 	r.runner.mu.Lock()
@@ -32,7 +32,7 @@ func TestStep_ReadOnlyCallsRunTogether(t *testing.T) {
 }
 
 func TestStep_WritesRunOneAtATime(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []model.ToolCall{
+	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
 		bashCall("c1", "touch a"), bashCall("c2", "touch b"), bashCall("c3", "touch c"),
 	}}})
 	r.run("make three files")
@@ -41,7 +41,7 @@ func TestStep_WritesRunOneAtATime(t *testing.T) {
 }
 
 func TestStep_CapsHowManyCallsOneStepMayAskFor(t *testing.T) {
-	var calls []model.ToolCall
+	var calls []event.ToolCall
 	for i := range 6 {
 		calls = append(calls, readCall(string(rune('a'+i)), "f.go"))
 	}
@@ -53,7 +53,7 @@ func TestStep_CapsHowManyCallsOneStepMayAskFor(t *testing.T) {
 
 	var refused int
 	for _, m := range r.eng.Transcript() {
-		if m.Role == model.RoleTool && contains(m.Content, "at most 3 calls") {
+		if m.Role == event.RoleTool && contains(m.Content, "at most 3 calls") {
 			refused++
 		}
 	}
@@ -61,7 +61,7 @@ func TestStep_CapsHowManyCallsOneStepMayAskFor(t *testing.T) {
 }
 
 func TestStep_ParallelismIsCapped(t *testing.T) {
-	var calls []model.ToolCall
+	var calls []event.ToolCall
 	for i := range 8 {
 		calls = append(calls, readCall(string(rune('a'+i)), "f.go"))
 	}
@@ -83,7 +83,7 @@ func TestStep_ParallelismIsCapped(t *testing.T) {
 // Only a Dangerous Call is shown. Everything else runs straight
 // through, which is the harness's whole posture.
 func TestStep_OnlyDangerousCallsAreShown(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []model.ToolCall{
+	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
 		bashCall("c1", "ls -la"), readCall("c2", "a.go"),
 	}}})
 	r.run("look around")
@@ -92,7 +92,7 @@ func TestStep_OnlyDangerousCallsAreShown(t *testing.T) {
 }
 
 func TestStep_ApprovalLetsADangerousCallThrough(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []model.ToolCall{bashCall("c1", "rm -rf build")}}})
+	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "rm -rf build")}}})
 	r.bus.Publish(event.SubmitPrompt{Text: "clean"})
 
 	asked := r.await(event.ApprovalAskedKind).(event.ApprovalAsked)

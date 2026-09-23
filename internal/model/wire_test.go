@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"github.com/vitzeno/detent/event"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,11 +13,11 @@ import (
 // one tool message per id. Endpoints reject either half alone, so this
 // is the shape the whole rewrite depends on.
 func TestEncode_AStepIsAnAssistantPlusItsAnswers(t *testing.T) {
-	call := ToolCall{ID: "c1", Name: "read_file", Args: map[string]any{"path": "a.go"}}
-	step := []Message{
-		{Role: RoleUser, Content: "read a.go"},
-		{Role: RoleAssistant, Content: "reading", Calls: []ToolCall{call}},
-		Answer(call, "package main"),
+	call := event.ToolCall{ID: "c1", Name: "read_file", Args: map[string]any{"path": "a.go"}}
+	step := []event.Message{
+		{Role: event.RoleUser, Content: "read a.go"},
+		{Role: event.RoleAssistant, Content: "reading", Calls: []event.ToolCall{call}},
+		event.Answer(call, "package main"),
 	}
 
 	c, got := serve(t, `{"choices":[{"message":{"content":"done"}}]}`)
@@ -48,9 +49,9 @@ func TestEncode_AStepIsAnAssistantPlusItsAnswers(t *testing.T) {
 // an endpoint starts rejecting the whole transcript.
 func TestEncode_FieldsStayOnTheirOwnRole(t *testing.T) {
 	c, got := serve(t, `{"choices":[{"message":{"content":"ok"}}]}`)
-	_, _, err := c.Complete(context.Background(), []Message{
-		{Role: RoleUser, Content: "hi"},
-		{Role: RoleAssistant, Content: "prose, no calls"},
+	_, _, err := c.Complete(context.Background(), []event.Message{
+		{Role: event.RoleUser, Content: "hi"},
+		{Role: event.RoleAssistant, Content: "prose, no calls"},
 	}, nil)
 	require.NoError(t, err)
 
@@ -66,7 +67,7 @@ func TestComplete_SendsToolsAndTheSystemPrompt(t *testing.T) {
 	c, got := serve(t, `{"choices":[{"message":{"content":"ok"}}]}`)
 	c.Env = Environment{OS: "linux", Arch: "arm64", Dir: "/workspace", Sandboxed: true, Undoable: true}
 
-	_, _, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, schemas)
+	_, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, schemas)
 	require.NoError(t, err)
 
 	assert.Len(t, (*got)["tools"], 1)
@@ -84,7 +85,7 @@ func TestComplete_SendsToolsAndTheSystemPrompt(t *testing.T) {
 // endpoints treat its presence as a demand to call something.
 func TestComplete_OmitsToolsWhenThereAreNone(t *testing.T) {
 	c, got := serve(t, `{"choices":[{"message":{"content":"ok"}}]}`)
-	_, _, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+	_, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 	require.NoError(t, err)
 	assert.NotContains(t, *got, "tools")
 }

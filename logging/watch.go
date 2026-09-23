@@ -2,6 +2,7 @@ package logging
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"log/slog"
 
 	"github.com/vitzeno/detent/event"
@@ -61,6 +62,18 @@ func describe(e event.Event) (slog.Level, []any) {
 	case event.StepEnded:
 		return slog.LevelInfo, []any{KeyTurn, v.Turn, KeyStep, v.Step, "calls", v.Calls,
 			"tokens", v.Usage.Tokens(), KeyMS, v.Usage.Latency.Milliseconds()}
+	case event.Appended:
+		// A prompt or a note belongs to no Step, and a zero uuid in
+		// the field is worse than no field.
+		out := []any{KeyTurn, v.Turn, "messages", len(v.Messages)}
+		if v.Step != uuid.Nil {
+			out = append(out, KeyStep, v.Step)
+		}
+		return slog.LevelDebug, out
+	case event.Compacted:
+		// Info, not Debug: compaction rewrites the front of the
+		// transcript and used to tell nobody at all.
+		return slog.LevelInfo, []any{KeyTurn, v.Turn, "dropped", v.Dropped, "note", Body(v.Note)}
 	case event.ModelText:
 		return slog.LevelDebug, []any{KeyStep, v.Step, "text", Body(v.Text)}
 	case event.CallProposed:

@@ -38,6 +38,11 @@ const (
 	StepEndedKind   Kind = "step.ended"
 	ModelTextKind   Kind = "step.text"
 
+	// The transcript, which is derived rather than carried by the
+	// facts above, so replay needs its own record of it.
+	AppendedKind  Kind = "transcript.appended"
+	CompactedKind Kind = "transcript.compacted"
+
 	CallProposedKind  Kind = "call.proposed"
 	CallAssessedKind  Kind = "call.assessed"
 	ApprovalAskedKind Kind = "call.approval"

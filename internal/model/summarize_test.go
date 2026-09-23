@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"github.com/vitzeno/detent/event"
 	"strings"
 	"testing"
 
@@ -10,13 +11,13 @@ import (
 )
 
 func TestSummarize_FlattensStepsAndAsksForProse(t *testing.T) {
-	call := ToolCall{ID: "c1", Name: "bash", Args: map[string]any{"command": "go test ./..."}}
+	call := event.ToolCall{ID: "c1", Name: "bash", Args: map[string]any{"command": "go test ./..."}}
 	c, got := serve(t, `{"choices":[{"message":{"content":"  tests pass  "}}]}`)
 
-	out, err := c.Summarize(context.Background(), []Message{
-		{Role: RoleUser, Content: "run the tests"},
-		{Role: RoleAssistant, Calls: []ToolCall{call}},
-		Answer(call, "ok 12 packages"),
+	out, err := c.Summarize(context.Background(), []event.Message{
+		{Role: event.RoleUser, Content: "run the tests"},
+		{Role: event.RoleAssistant, Calls: []event.ToolCall{call}},
+		event.Answer(call, "ok 12 packages"),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "tests pass", out, "trimmed")
@@ -34,7 +35,7 @@ func TestSummarize_FlattensStepsAndAsksForProse(t *testing.T) {
 func TestSummarize_BoundsWhatItReturns(t *testing.T) {
 	huge := strings.Repeat("x", MaxSummaryBytes*2)
 	c, _ := serve(t, `{"choices":[{"message":{"content":"`+huge+`"}}]}`)
-	out, err := c.Summarize(context.Background(), []Message{{Role: RoleUser, Content: "go"}})
+	out, err := c.Summarize(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}})
 	require.NoError(t, err)
 	assert.Len(t, out, MaxSummaryBytes, "a summary that grew unbounded defeats the compaction asking for it")
 }

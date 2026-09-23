@@ -19,13 +19,13 @@ import (
 type fakeModel struct {
 	mu      sync.Mutex
 	replies []model.Reply
-	seen    [][]model.Message
+	seen    [][]event.Message
 }
 
-func (f *fakeModel) Complete(_ context.Context, msgs []model.Message, _ []map[string]any) (model.Reply, event.Usage, error) {
+func (f *fakeModel) Complete(_ context.Context, msgs []event.Message, _ []map[string]any) (model.Reply, event.Usage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.seen = append(f.seen, append([]model.Message(nil), msgs...))
+	f.seen = append(f.seen, append([]event.Message(nil), msgs...))
 	if len(f.replies) == 0 {
 		return model.Reply{Text: "finished", Stop: "stop"}, event.Usage{PromptTokens: 1}, nil
 	}
@@ -34,7 +34,7 @@ func (f *fakeModel) Complete(_ context.Context, msgs []model.Message, _ []map[st
 	return r, event.Usage{PromptTokens: 1, CompletionTokens: 1}, nil
 }
 
-func (f *fakeModel) lastSent() []model.Message {
+func (f *fakeModel) lastSent() []event.Message {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.seen) == 0 {
@@ -234,12 +234,12 @@ func (r *rig) run(prompt string) event.TurnEnded {
 	return r.awaitNth(event.TurnEndedKind, n).(event.TurnEnded)
 }
 
-func bashCall(id, cmd string) model.ToolCall {
-	return model.ToolCall{ID: id, Name: "bash", Args: map[string]any{"command": cmd}}
+func bashCall(id, cmd string) event.ToolCall {
+	return event.ToolCall{ID: id, Name: "bash", Args: map[string]any{"command": cmd}}
 }
 
-func readCall(id, path string) model.ToolCall {
-	return model.ToolCall{ID: id, Name: "read_file", Args: map[string]any{"path": path}}
+func readCall(id, path string) event.ToolCall {
+	return event.ToolCall{ID: id, Name: "read_file", Args: map[string]any{"path": path}}
 }
 
 // answered checks the phase gate on a finished engine.
@@ -247,7 +247,7 @@ func answered(t *testing.T, e *Engine) {
 	t.Helper()
 	wellFormed(t, e.Transcript())
 	for _, m := range e.Transcript() {
-		if m.Role == model.RoleTool {
+		if m.Role == event.RoleTool {
 			require.NotEmpty(t, m.Content, "an answer may not be empty")
 		}
 	}

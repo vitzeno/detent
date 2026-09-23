@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"github.com/vitzeno/detent/event"
 	"strings"
 )
 
@@ -11,13 +12,13 @@ import (
 const MaxSummaryBytes = 2 * 1024
 
 // Summarize condenses Steps into a factual record, for compaction.
-func (c *Client) Summarize(ctx context.Context, msgs []Message) (string, error) {
+func (c *Client) Summarize(ctx context.Context, msgs []event.Message) (string, error) {
 	if len(msgs) == 0 {
 		return "", nil
 	}
-	req := []Message{
-		{Role: RoleSystem, Content: summaryPrompt},
-		{Role: RoleUser, Content: transcriptText(msgs)},
+	req := []event.Message{
+		{Role: event.RoleSystem, Content: summaryPrompt},
+		{Role: event.RoleUser, Content: transcriptText(msgs)},
 	}
 	wire := make([]wireMessage, 0, len(req))
 	for _, m := range req {
@@ -52,20 +53,20 @@ Reply with plain prose under 200 words. No preamble, no headings, no JSON.`
 
 // transcriptText flattens Steps for the summarizer, naming tool calls
 // rather than restating their arguments.
-func transcriptText(msgs []Message) string {
+func transcriptText(msgs []event.Message) string {
 	var b strings.Builder
 	for _, m := range msgs {
 		switch m.Role {
-		case RoleUser:
+		case event.RoleUser:
 			fmt.Fprintf(&b, "Human: %s\n", m.Content)
-		case RoleAssistant:
+		case event.RoleAssistant:
 			if m.Content != "" {
 				fmt.Fprintf(&b, "Agent: %s\n", m.Content)
 			}
 			for _, c := range m.Calls {
 				fmt.Fprintf(&b, "Agent ran %s(%s)\n", c.Name, argsText(c.Args))
 			}
-		case RoleTool:
+		case event.RoleTool:
 			fmt.Fprintf(&b, "Result: %s\n", m.Content)
 		}
 	}

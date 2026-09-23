@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"github.com/vitzeno/detent/event"
 	"strings"
 
 	"github.com/vitzeno/detent/internal/model"
@@ -20,7 +21,7 @@ const (
 // transcript is the model's input. Its atom is a Step, which nothing
 // may split, so every mutation lives here.
 type transcript struct {
-	msgs []model.Message
+	msgs []event.Message
 	// protect is where the open Turn began. Compaction never drops
 	// from here on: the model cannot work a request it cannot see.
 	protect int
@@ -32,38 +33,48 @@ type transcript struct {
 // step appends one Step atomically: the assistant message, then one
 // answer per call in order. Missing answers are filled rather than
 // skipped, because a call nothing answers breaks the next Step.
-func (t *transcript) step(reply model.Reply, answers map[string]string) {
-	t.msgs = append(t.msgs, model.Message{
-		Role: model.RoleAssistant, Content: reply.Text, Calls: reply.Calls,
-	})
+func (t *transcript) step(reply model.Reply, answers map[string]string) []event.Message {
+	added := []event.Message{{
+		Role: event.RoleAssistant, Content: reply.Text, Calls: reply.Calls,
+	}}
 	for _, c := range reply.Calls {
 		body, ok := answers[c.ID]
 		if !ok {
 			body = "This call did not run."
 		}
-		t.msgs = append(t.msgs, model.Answer(c, bound(body)))
+		added = append(added, event.Answer(c, bound(body)))
 	}
+	t.msgs = append(t.msgs, added...)
+	return added
 }
 
 // say appends the model's prose for a Step that called nothing.
-func (t *transcript) say(text string) {
-	if strings.TrimSpace(text) != "" {
-		t.msgs = append(t.msgs, model.Message{Role: model.RoleAssistant, Content: text})
+func (t *transcript) say(text string) []event.Message {
+	if strings.TrimSpace(text) == "" {
+		return nil
 	}
+	return t.add(event.Message{Role: event.RoleAssistant, Content: text})
 }
 
 // user opens a Turn and protects everything from here on.
-func (t *transcript) user(prompt string) {
+func (t *transcript) user(prompt string) []event.Message {
 	t.protect = len(t.msgs)
-	t.msgs = append(t.msgs, model.Message{Role: model.RoleUser, Content: prompt})
+	return t.add(event.Message{Role: event.RoleUser, Content: prompt})
 }
 
 // note is a NoteContext: a message with no tool run.
-func (t *transcript) note(text string) {
-	t.msgs = append(t.msgs, model.Message{Role: model.RoleUser, Content: text})
+func (t *transcript) note(text string) []event.Message {
+	return t.add(event.Message{Role: event.RoleUser, Content: text})
 }
 
-func (t *transcript) messages() []model.Message { return t.msgs }
+// add appends and reports what it appended, which is what a caller
+// publishes so a replay can put the same thing back.
+func (t *transcript) add(m event.Message) []event.Message {
+	t.msgs = append(t.msgs, m)
+	return []event.Message{m}
+}
+
+func (t *transcript) messages() []event.Message { return t.msgs }
 
 // mark names a position that survives compaction. Counted in appends,
 // so it stays valid however much the front is rewritten.
@@ -84,7 +95,7 @@ func (t *transcript) reset() { t.msgs, t.protect, t.dropped = nil, 0, 0 }
 
 func (t *transcript) bytes() int { return msgBytes(t.msgs) }
 
-func msgBytes(msgs []model.Message) int {
+func msgBytes(msgs []event.Message) int {
 	n := 0
 	for _, m := range msgs {
 		n += len(m.Content)
@@ -98,31 +109,31 @@ func msgBytes(msgs []model.Message) int {
 // Summarizer condenses dropped Steps. Nil means they become a note
 // saying they are gone.
 type Summarizer interface {
-	Summarize(ctx context.Context, msgs []model.Message) (string, error)
+	Summarize(ctx context.Context, msgs []event.Message) (string, error)
 }
 
 // compact drops whole Steps off the front until the transcript fits.
 // Whole, because half a Step is a transcript no endpoint accepts.
-func (t *transcript) compact(ctx context.Context, budgetTokens int, s Summarizer) bool {
+func (t *transcript) compact(ctx context.Context, budgetTokens int, s Summarizer) (dropped int, note string) {
 	budget := budgetTokens * BytesPerToken
 	if budgetTokens <= 0 {
 		budget = DefaultContextTokens * BytesPerToken
 	}
 	if t.bytes() <= budget {
-		return false
+		return 0, ""
 	}
 	cut := t.cutPoint(budget)
 	if cut == 0 {
-		return false
+		return 0, ""
 	}
-	dropped := t.msgs[:cut]
-	note := fmt.Sprintf("[%d earlier messages were dropped to stay in budget]", len(dropped))
+	gone := t.msgs[:cut]
+	note = fmt.Sprintf("[%d earlier messages were dropped to stay in budget]", len(gone))
 	if s != nil {
-		if sum, err := s.Summarize(ctx, dropped); err == nil && sum != "" {
+		if sum, err := s.Summarize(ctx, gone); err == nil && sum != "" {
 			note = "[earlier steps, summarised]\n" + sum
 		}
 	}
-	rest := append([]model.Message{{Role: model.RoleUser, Content: note}}, t.msgs[cut:]...)
+	rest := append([]event.Message{{Role: event.RoleUser, Content: note}}, t.msgs[cut:]...)
 	t.msgs = rest
 	// cut messages became one note, so everything after shifts by
 	// cut-1 and every outstanding mark must shift with it.
@@ -131,7 +142,7 @@ func (t *transcript) compact(ctx context.Context, budgetTokens int, s Summarizer
 	if t.protect < 1 {
 		t.protect = 1
 	}
-	return true
+	return cut, note
 }
 
 // cutPoint is the first unit boundary bringing the tail under budget,
@@ -156,15 +167,15 @@ func (t *transcript) cutPoint(budget int) int {
 
 // unitEnd returns the index just past the unit starting at i. An
 // assistant message owns the tool messages that answer it.
-func unitEnd(msgs []model.Message, i int) int {
+func unitEnd(msgs []event.Message, i int) int {
 	if i >= len(msgs) {
 		return len(msgs)
 	}
 	end := i + 1
-	if msgs[i].Role != model.RoleAssistant {
+	if msgs[i].Role != event.RoleAssistant {
 		return end
 	}
-	for end < len(msgs) && msgs[end].Role == model.RoleTool {
+	for end < len(msgs) && msgs[end].Role == event.RoleTool {
 		end++
 	}
 	return end

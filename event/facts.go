@@ -110,6 +110,27 @@ type ModelText struct {
 
 func (ModelText) Kind() Kind { return ModelTextKind }
 
+// Appended is what went into the transcript, verbatim. Rebuilding it
+// from CallEnded would mean reproducing formatResult forever.
+type Appended struct {
+	fact
+	Turn, Step uuid.UUID
+	Messages   []Message
+}
+
+func (Appended) Kind() Kind { return AppendedKind }
+
+// Compacted says the front of the transcript was replaced by one note.
+// Dropped counts the messages that went.
+type Compacted struct {
+	fact
+	Turn    uuid.UUID
+	Dropped int
+	Note    string
+}
+
+func (Compacted) Kind() Kind { return CompactedKind }
+
 // A Call is one tool invocation.
 
 type CallProposed struct {

@@ -51,6 +51,7 @@ func TestKinds_AreUniqueAndComplete(t *testing.T) {
 	all := []Event{
 		SessionStarted{}, TurnStarted{}, TurnEnded{}, CheckpointTaken{},
 		RolledBack{}, BoundReached{}, StepStarted{}, StepEnded{}, ModelText{},
+		Appended{}, Compacted{},
 		CallProposed{}, CallAssessed{}, ApprovalAsked{}, CallStarted{},
 		OutputChunk{}, CallEnded{}, CallJudged{}, ViewReady{}, Notice{},
 		SubmitPrompt{}, ResolveApproval{}, NoteContext{}, Abort{},

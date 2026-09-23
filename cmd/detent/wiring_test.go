@@ -23,7 +23,7 @@ import (
 
 type stubModel struct{ replies []model.Reply }
 
-func (s *stubModel) Complete(context.Context, []model.Message, []map[string]any) (model.Reply, event.Usage, error) {
+func (s *stubModel) Complete(context.Context, []event.Message, []map[string]any) (model.Reply, event.Usage, error) {
 	if len(s.replies) == 0 {
 		return model.Reply{Text: "done", Stop: "stop"}, event.Usage{}, nil
 	}
@@ -49,7 +49,7 @@ func TestWiring_TypingReachesTheEngineAndComesBack(t *testing.T) {
 	bus := event.New()
 	eng := engine.New(bus, &stubModel{replies: []model.Reply{{
 		Text:  "looking",
-		Calls: []model.ToolCall{{ID: "c1", Name: "bash", Args: map[string]any{"command": "ls"}}},
+		Calls: []event.ToolCall{{ID: "c1", Name: "bash", Args: map[string]any{"command": "ls"}}},
 	}}}, tool.Standard(), stubSelector{})
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"github.com/vitzeno/detent/event"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,8 +51,8 @@ func TestLive_ToolCallsRoundTrip(t *testing.T) {
 	}}
 
 	// 1. Does it call a tool at all?
-	first, used, err := c.Complete(ctx, []Message{
-		{Role: RoleUser, Content: "List what is in the current directory. Use the tool."},
+	first, used, err := c.Complete(ctx, []event.Message{
+		{Role: event.RoleUser, Content: "List what is in the current directory. Use the tool."},
 	}, tools)
 	require.NoError(t, err)
 	t.Logf("step 1: %d calls, %d tokens, %v, finish=%q", len(first.Calls), used.Tokens(), used.Latency, first.Stop)
@@ -64,17 +65,17 @@ func TestLive_ToolCallsRoundTrip(t *testing.T) {
 
 	// 2. Does it accept the answer back? This is the half the old
 	// adapter avoided by sending tool results as role "user".
-	second, used2, err := c.Complete(ctx, []Message{
-		{Role: RoleUser, Content: "List what is in the current directory. Use the tool."},
-		{Role: RoleAssistant, Content: first.Text, Calls: first.Calls},
-		Answer(call, "go.mod\ngo.sum\nREADME.md"),
+	second, used2, err := c.Complete(ctx, []event.Message{
+		{Role: event.RoleUser, Content: "List what is in the current directory. Use the tool."},
+		{Role: event.RoleAssistant, Content: first.Text, Calls: first.Calls},
+		event.Answer(call, "go.mod\ngo.sum\nREADME.md"),
 	}, tools)
 	require.NoError(t, err, "the endpoint rejected a tool result; see the compatibility note in AGENT_PLAN.md")
 	t.Logf("step 2: %d calls, %d tokens, %v, finish=%q", len(second.Calls), used2.Tokens(), used2.Latency, second.Stop)
 	assert.NotEmpty(t, second.Text+joinNames(second.Calls), "the endpoint answered with nothing at all")
 }
 
-func joinNames(calls []ToolCall) string {
+func joinNames(calls []event.ToolCall) string {
 	var s string
 	for _, c := range calls {
 		s += c.Name

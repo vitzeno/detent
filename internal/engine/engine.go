@@ -63,7 +63,7 @@ type Engine struct {
 
 // Completer is one model round trip: a Step.
 type Completer interface {
-	Complete(ctx context.Context, msgs []model.Message, tools []map[string]any) (model.Reply, event.Usage, error)
+	Complete(ctx context.Context, msgs []event.Message, tools []map[string]any) (model.Reply, event.Usage, error)
 }
 
 // Runner executes one command. host.Shell and sandbox.Container both
@@ -198,10 +198,10 @@ func (e *Engine) notice(level, text string) {
 
 // Transcript copies the message log; the Turn goroutine owns the
 // original while one is running.
-func (e *Engine) Transcript() []model.Message {
+func (e *Engine) Transcript() []event.Message {
 	e.trMu.Lock()
 	defer e.trMu.Unlock()
-	return append([]model.Message(nil), e.tr.messages()...)
+	return append([]event.Message(nil), e.tr.messages()...)
 }
 
 // Session is this engine's id.

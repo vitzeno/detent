@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"encoding/json"
+	"github.com/vitzeno/detent/event"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -35,21 +36,21 @@ func TestComplete_DecodesAStep(t *testing.T) {
 	]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":11,"completion_tokens":7},"model":"m"}`
 
 	c, _ := serve(t, two)
-	reply, used, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+	reply, used, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 	require.NoError(t, err)
 
 	require.Len(t, reply.Calls, 2)
 	assert.Equal(t, "looking", reply.Text, "prose alongside calls is kept")
-	assert.Equal(t, ToolCall{ID: "c1", Name: "read_file", Args: map[string]any{"path": "a.go"}}, reply.Calls[0])
+	assert.Equal(t, event.ToolCall{ID: "c1", Name: "read_file", Args: map[string]any{"path": "a.go"}}, reply.Calls[0])
 	assert.Equal(t, map[string]any{"path": ".", "all": true}, reply.Calls[1].Args)
-	assert.Equal(t, []string{"c1", "c2"}, IDs(reply.Calls))
+	assert.Equal(t, []string{"c1", "c2"}, event.CallIDs(reply.Calls))
 	assert.Equal(t, 18, used.Tokens())
 	assert.Positive(t, used.Latency)
 }
 
 func TestComplete_TextOnlyIsAStop(t *testing.T) {
 	c, _ := serve(t, `{"choices":[{"message":{"content":"three files changed"},"finish_reason":"stop"}]}`)
-	reply, _, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+	reply, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 	require.NoError(t, err)
 	assert.Empty(t, reply.Calls, "no calls means the Turn ends")
 	assert.Equal(t, "three files changed", reply.Text)
@@ -62,7 +63,7 @@ func TestComplete_KeepsCallsItCannotParse(t *testing.T) {
 	c, _ := serve(t, `{"choices":[{"message":{"tool_calls":[
 		{"id":"c1","type":"function","function":{"name":"bash","arguments":"{not json"}}
 	]}}]}`)
-	reply, _, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+	reply, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 	require.NoError(t, err, "a bad argument string is the model's problem, not a transport error")
 	require.Len(t, reply.Calls, 1)
 	assert.Equal(t, "c1", reply.Calls[0].ID)
@@ -99,7 +100,7 @@ func TestComplete_TolerantOfEndpointQuirks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c, _ := serve(t, tt.body)
-			reply, _, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+			reply, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 			require.NoError(t, err)
 			tt.check(t, reply)
 		})
@@ -109,7 +110,7 @@ func TestComplete_TolerantOfEndpointQuirks(t *testing.T) {
 func TestComplete_SurfacesFailures(t *testing.T) {
 	t.Run("an error object beats an empty choices list", func(t *testing.T) {
 		c, _ := serve(t, `{"error":{"message":"model not found"}}`)
-		_, _, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+		_, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "model not found")
 	})
@@ -123,7 +124,7 @@ func TestComplete_SurfacesFailures(t *testing.T) {
 		}))
 		defer srv.Close()
 		c := &Client{BaseURL: srv.URL}
-		_, _, err := c.Complete(context.Background(), []Message{{Role: RoleUser, Content: "go"}}, nil)
+		_, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 		require.Error(t, err)
 		assert.Less(t, len(err.Error()), 500, "a big error page must not become the message")
 	})

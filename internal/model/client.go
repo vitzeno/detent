@@ -34,12 +34,12 @@ type Client struct {
 
 // Complete is one Step. tools is the registry's schemas; nil asks for
 // prose alone.
-func (c *Client) Complete(ctx context.Context, msgs []Message, tools []map[string]any) (Reply, event.Usage, error) {
+func (c *Client) Complete(ctx context.Context, msgs []event.Message, tools []map[string]any) (Reply, event.Usage, error) {
 	if len(msgs) == 0 {
 		return Reply{}, event.Usage{}, fmt.Errorf("model: empty transcript")
 	}
 	wire := make([]wireMessage, 0, len(msgs)+1)
-	wire = append(wire, wireMessage{Role: string(RoleSystem), Content: c.systemPrompt()})
+	wire = append(wire, wireMessage{Role: string(event.RoleSystem), Content: c.systemPrompt()})
 	for _, m := range msgs {
 		wire = append(wire, encode(m))
 	}

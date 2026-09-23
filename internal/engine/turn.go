@@ -63,7 +63,7 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 	t.mark = e.trDo(func() int { return e.tr.mark() })
 	e.bus.Publish(event.TurnStarted{Turn: t.id, N: t.n, Prompt: t.prompt})
 	e.checkpoint(ctx, t)
-	e.trLock(func() { e.tr.user(t.prompt) })
+	e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.user(t.prompt) })
 
 	var total event.Usage
 	limit := e.maxSteps
@@ -85,13 +85,10 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 			}
 			limit += e.maxSteps
 		}
-		notes := t.takeNotes()
-		e.trLock(func() {
-			for _, note := range notes {
-				e.tr.note(note)
-			}
-			e.tr.compact(ctx, e.contextTokens, e.summarizer)
-		})
+		for _, note := range t.takeNotes() {
+			e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(note) })
+		}
+		e.compact(ctx, t)
 
 		stepID := uuid.Must(uuid.NewV7())
 		e.bus.Publish(event.StepStarted{Turn: t.id, Step: stepID, N: step})
@@ -113,12 +110,12 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 
 		// No calls means the model is finished asking.
 		if len(reply.Calls) == 0 {
-			e.trLock(func() { e.tr.say(reply.Text) })
+			e.appended(t.id, stepID, func() []event.Message { return e.tr.say(reply.Text) })
 			e.endTurn(t, event.EndDone, reply.Text, total)
 			return
 		}
 		answers := e.runStep(ctx, t, stepID, reply)
-		e.trLock(func() { e.tr.step(reply, answers) })
+		e.appended(t.id, stepID, func() []event.Message { return e.tr.step(reply, answers) })
 	}
 }
 
@@ -127,12 +124,8 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 // it means the next Turn never hears it.
 func (e *Engine) endTurn(t *turnState, why event.EndReason, summary string, used event.Usage) {
 	t.drain()
-	if notes := t.takeNotes(); len(notes) > 0 {
-		e.trLock(func() {
-			for _, n := range notes {
-				e.tr.note(n)
-			}
-		})
+	for _, n := range t.takeNotes() {
+		e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(n) })
 	}
 	e.bus.Publish(event.TurnEnded{Turn: t.id, Reason: why, Summary: summary, Usage: used})
 }
@@ -224,6 +217,29 @@ func (e *Engine) snapshotter() (Snapshotter, bool) {
 	r, _ := e.runners.Select(event.UnknownRisk())
 	s, ok := r.(Snapshotter)
 	return s, ok
+}
+
+// appended mutates the transcript and publishes what went in, so a
+// replay can put the same thing back rather than reproduce the
+// formatting that produced it.
+func (e *Engine) appended(turn, step uuid.UUID, fn func() []event.Message) {
+	var added []event.Message
+	e.trLock(func() { added = fn() })
+	if len(added) > 0 {
+		e.bus.Publish(event.Appended{Turn: turn, Step: step, Messages: added})
+	}
+}
+
+// compact publishes what it replaced, because compaction rewrites the
+// front and a replay that could not see it would rebuild a different
+// transcript.
+func (e *Engine) compact(ctx context.Context, t *turnState) {
+	var dropped int
+	var note string
+	e.trLock(func() { dropped, note = e.tr.compact(ctx, e.contextTokens, e.summarizer) })
+	if dropped > 0 {
+		e.bus.Publish(event.Compacted{Turn: t.id, Dropped: dropped, Note: note})
+	}
 }
 
 // trLock runs fn holding the transcript lock. Never used around

@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/vitzeno/detent/event"
 )
 
 // The chat-completions shapes. Where the rewrite stops working around
@@ -56,7 +57,7 @@ type wireResponse struct {
 	} `json:"error"`
 }
 
-func encode(m Message) wireMessage {
+func encode(m event.Message) wireMessage {
 	w := wireMessage{Role: string(m.Role), Content: m.Content, ToolCallID: m.CallID}
 	for _, c := range m.Calls {
 		wc := wireToolCall{ID: c.ID, Type: "function"}
@@ -89,8 +90,8 @@ func decode(r wireResponse) (Reply, error) {
 
 // decodeCall keeps a call whose arguments would not parse. Dropping it
 // would leave the assistant message naming an id nothing answers.
-func decodeCall(wc wireToolCall, i int) ToolCall {
-	c := ToolCall{ID: wc.ID, Name: wc.Function.Name}
+func decodeCall(wc wireToolCall, i int) event.ToolCall {
+	c := event.ToolCall{ID: wc.ID, Name: wc.Function.Name}
 	if c.ID == "" {
 		c.ID = fmt.Sprintf("call_%d", i) // some endpoints omit it
 	}

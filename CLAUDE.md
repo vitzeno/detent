@@ -238,7 +238,10 @@ adding a fat dependency fails with the transitive import named.
   asserting on it.
 
 - **`internal/model`** — the tool-calling client. `Complete` is one
-  Step. A call whose `arguments` will not parse is **kept**, with
+  Step. The transcript's own types (`Message`, `ToolCall`, `Role`)
+  live in `event`, not here: `event.Appended` carries them and `model`
+  imports `event` already, so the other direction is a cycle. Same
+  reasoning as `event.Usage`. A call whose `arguments` will not parse is **kept**, with
   `Err` set: the assistant message already named that id, so dropping
   it leaves the transcript owing an answer. `Environment` is what the
   prompt says about where commands run — describing this process while

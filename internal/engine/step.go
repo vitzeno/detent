@@ -56,7 +56,7 @@ func (e *Engine) runStep(ctx context.Context, t *turnState, step uuid.UUID, repl
 // which is what keeps the transcript well formed.
 type callPlan struct {
 	id     uuid.UUID
-	call   model.ToolCall
+	call   event.ToolCall
 	cmd    string
 	risk   event.Risk
 	answer string

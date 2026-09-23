@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"github.com/vitzeno/detent/event"
 	"strings"
 	"testing"
 
@@ -14,19 +15,19 @@ import (
 // wellFormed is the invariant the whole rewrite rests on: every
 // tool_call id has exactly one answer, and no tool message answers a
 // call that was never made.
-func wellFormed(t *testing.T, msgs []model.Message) {
+func wellFormed(t *testing.T, msgs []event.Message) {
 	t.Helper()
 	for i := 0; i < len(msgs); i++ {
 		m := msgs[i]
-		if m.Role == model.RoleTool {
+		if m.Role == event.RoleTool {
 			t.Fatalf("message %d is a tool result with no assistant before it", i)
 		}
-		if m.Role != model.RoleAssistant || len(m.Calls) == 0 {
+		if m.Role != event.RoleAssistant || len(m.Calls) == 0 {
 			continue
 		}
-		want := model.IDs(m.Calls)
+		want := event.CallIDs(m.Calls)
 		var got []string
-		for j := i + 1; j < len(msgs) && msgs[j].Role == model.RoleTool; j++ {
+		for j := i + 1; j < len(msgs) && msgs[j].Role == event.RoleTool; j++ {
 			got = append(got, msgs[j].CallID)
 			i = j
 		}
@@ -34,14 +35,14 @@ func wellFormed(t *testing.T, msgs []model.Message) {
 	}
 }
 
-func call(id, name string) model.ToolCall {
-	return model.ToolCall{ID: id, Name: name, Args: map[string]any{}}
+func call(id, name string) event.ToolCall {
+	return event.ToolCall{ID: id, Name: name, Args: map[string]any{}}
 }
 
 // The gate: whatever goes wrong in a Step, the transcript that comes
 // out must still be one the next Step can be built on.
 func TestStep_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
-	calls := []model.ToolCall{call("c1", "bash"), call("c2", "read_file"), call("c3", "write_file")}
+	calls := []event.ToolCall{call("c1", "bash"), call("c2", "read_file"), call("c3", "write_file")}
 	reply := model.Reply{Text: "working", Calls: calls}
 
 	tests := []struct {
@@ -95,7 +96,7 @@ func TestStep_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
 func TestStep_BoundsAHugeResult(t *testing.T) {
 	var tr transcript
 	tr.user("go")
-	tr.step(model.Reply{Calls: []model.ToolCall{call("c1", "bash")}},
+	tr.step(model.Reply{Calls: []event.ToolCall{call("c1", "bash")}},
 		map[string]string{"c1": strings.Repeat("x", MaxResultBytes*3)})
 
 	got := tr.messages()[2].Content
@@ -112,12 +113,13 @@ func TestCompact_MovesWholeStepsOnly(t *testing.T) {
 		tr.user("request " + string(rune('a'+turn)))
 		for step := range 3 {
 			c := call(string(rune('a'+turn))+string(rune('0'+step)), "bash")
-			tr.step(model.Reply{Text: big, Calls: []model.ToolCall{c}},
+			tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}},
 				map[string]string{c.ID: big})
 		}
 	}
 	before := tr.bytes()
-	require.True(t, tr.compact(context.Background(), 4, nil), "should have been over a 4-token budget")
+	dropped, _ := tr.compact(context.Background(), 4, nil)
+	require.Positive(t, dropped, "should have been over a 4-token budget")
 
 	assert.Less(t, tr.bytes(), before)
 	wellFormed(t, tr.messages()[1:]) // [0] is the dropped-messages note
@@ -132,11 +134,11 @@ func TestCompact_NeverDropsTheOpenTurn(t *testing.T) {
 	for range 5 {
 		tr.user("old request")
 		c := call("old", "bash")
-		tr.step(model.Reply{Text: big, Calls: []model.ToolCall{c}}, map[string]string{c.ID: big})
+		tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, map[string]string{c.ID: big})
 	}
 	tr.user("THE OPEN REQUEST")
 	c := call("live", "bash")
-	tr.step(model.Reply{Text: big, Calls: []model.ToolCall{c}}, map[string]string{c.ID: big})
+	tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, map[string]string{c.ID: big})
 
 	tr.compact(context.Background(), 1, nil) // impossible budget
 
@@ -150,7 +152,7 @@ func TestCompact_NeverDropsTheOpenTurn(t *testing.T) {
 
 type stubSummarizer struct{ out string }
 
-func (s stubSummarizer) Summarize(context.Context, []model.Message) (string, error) {
+func (s stubSummarizer) Summarize(context.Context, []event.Message) (string, error) {
 	return s.out, nil
 }
 
@@ -160,16 +162,17 @@ func TestCompact_UsesASummarizerWhenWired(t *testing.T) {
 	for range 6 {
 		tr.user("old")
 		c := call("c", "bash")
-		tr.step(model.Reply{Text: big, Calls: []model.ToolCall{c}}, map[string]string{c.ID: big})
+		tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, map[string]string{c.ID: big})
 	}
-	tr.compact(context.Background(), 2, stubSummarizer{out: "cloned the repo, tests pass"})
+	_, _ = tr.compact(context.Background(), 2, stubSummarizer{out: "cloned the repo, tests pass"})
 	assert.Contains(t, tr.messages()[0].Content, "cloned the repo, tests pass")
 }
 
 func TestCompact_NoOpWhenUnderBudget(t *testing.T) {
 	var tr transcript
 	tr.user("small")
-	assert.False(t, tr.compact(context.Background(), DefaultContextTokens, nil))
+	dropped, _ := tr.compact(context.Background(), DefaultContextTokens, nil)
+	assert.Zero(t, dropped)
 	assert.Len(t, tr.messages(), 1)
 }
 
@@ -179,12 +182,12 @@ func TestTruncate_LeavesAWellFormedTranscript(t *testing.T) {
 	var tr transcript
 	tr.user("first")
 	c1 := call("c1", "bash")
-	tr.step(model.Reply{Calls: []model.ToolCall{c1}}, map[string]string{c1.ID: "ok"})
+	tr.step(model.Reply{Calls: []event.ToolCall{c1}}, map[string]string{c1.ID: "ok"})
 
 	at := tr.mark()
 	tr.user("second")
 	c2 := call("c2", "bash")
-	tr.step(model.Reply{Calls: []model.ToolCall{c2}}, map[string]string{c2.ID: "ok"})
+	tr.step(model.Reply{Calls: []event.ToolCall{c2}}, map[string]string{c2.ID: "ok"})
 
 	tr.truncate(at)
 	wellFormed(t, tr.messages())
@@ -193,12 +196,12 @@ func TestTruncate_LeavesAWellFormedTranscript(t *testing.T) {
 }
 
 func TestUnitEnd_GroupsAnAssistantWithItsAnswers(t *testing.T) {
-	msgs := []model.Message{
-		{Role: model.RoleUser},
-		{Role: model.RoleAssistant, Calls: []model.ToolCall{call("a", "x"), call("b", "y")}},
-		{Role: model.RoleTool, CallID: "a"},
-		{Role: model.RoleTool, CallID: "b"},
-		{Role: model.RoleAssistant},
+	msgs := []event.Message{
+		{Role: event.RoleUser},
+		{Role: event.RoleAssistant, Calls: []event.ToolCall{call("a", "x"), call("b", "y")}},
+		{Role: event.RoleTool, CallID: "a"},
+		{Role: event.RoleTool, CallID: "b"},
+		{Role: event.RoleAssistant},
 	}
 	assert.Equal(t, 1, unitEnd(msgs, 0), "a user message is its own unit")
 	assert.Equal(t, 4, unitEnd(msgs, 1), "an assistant owns its answers")
@@ -214,16 +217,17 @@ func TestMark_SurvivesCompaction(t *testing.T) {
 
 	tr.user("first request")
 	c1 := call("c1", "bash")
-	tr.step(model.Reply{Text: big, Calls: []model.ToolCall{c1}}, map[string]string{c1.ID: big})
+	tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c1}}, map[string]string{c1.ID: big})
 
 	// The Turn a human would undo.
 	target := tr.mark()
 	tr.user("second request")
 	c2 := call("c2", "bash")
-	tr.step(model.Reply{Text: big, Calls: []model.ToolCall{c2}}, map[string]string{c2.ID: big})
+	tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c2}}, map[string]string{c2.ID: big})
 
 	before := len(tr.messages())
-	require.True(t, tr.compact(context.Background(), 2, nil), "should have compacted")
+	dropped, _ := tr.compact(context.Background(), 2, nil)
+	require.Positive(t, dropped, "should have compacted")
 	require.Less(t, len(tr.messages()), before, "the front moved")
 
 	tr.truncate(target)
@@ -244,10 +248,10 @@ func TestTruncate_IgnoresAMarkCompactionAteAsWellAsOneTooLarge(t *testing.T) {
 	for range 6 {
 		tr.user("old")
 		c := call("c", "bash")
-		tr.step(model.Reply{Text: big, Calls: []model.ToolCall{c}}, map[string]string{c.ID: big})
+		tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, map[string]string{c.ID: big})
 	}
 	stale := 1 // a mark from the very start
-	tr.compact(context.Background(), 1, nil)
+	_, _ = tr.compact(context.Background(), 1, nil)
 
 	n := len(tr.messages())
 	tr.truncate(stale)
@@ -272,14 +276,15 @@ func TestReplay_UncompactedRebuildResolvesOldMarks(t *testing.T) {
 			}
 			tr.user("request")
 			c := call(string(rune('a'+i)), "bash")
-			tr.step(model.Reply{Text: big, Calls: []model.ToolCall{c}},
+			tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}},
 				map[string]string{c.ID: big})
 		}
 		return tr, mark
 	}
 
 	orig, mark := build()
-	require.True(t, orig.compact(context.Background(), 6000, nil))
+	dropped, _ := orig.compact(context.Background(), 6000, nil)
+	require.Positive(t, dropped)
 	orig.truncate(mark)
 
 	// The replay: same appends, never compacted.

@@ -134,7 +134,7 @@ func TestDescribe_ReadsAsASentence(t *testing.T) {
 func repeatReplies(n int) []model.Reply {
 	out := make([]model.Reply, 0, n)
 	for i := range n {
-		out = append(out, model.Reply{Calls: []model.ToolCall{bashCall(string(rune('a'+i)), "git log -1")}})
+		out = append(out, model.Reply{Calls: []event.ToolCall{bashCall(string(rune('a'+i)), "git log -1")}})
 	}
 	return out
 }
