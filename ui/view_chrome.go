@@ -98,8 +98,13 @@ func (m Model) viewportHeader() string {
 		mark = styleFaint.Render(" " + viewSourceMark + " " + note)
 		width -= len(note) + 3
 	}
-	return fmt.Sprintf("%s %s%s — %s", paneMark(active), paneLabel(label, active), mark,
-		styleGoal.Render(layout.Truncate(r.command, width)))
+	head := fmt.Sprintf("%s %s%s", paneMark(active), paneLabel(label, active), mark)
+	// Prose has no command, and a dash with nothing after it reads as
+	// a truncation.
+	if r.command == "" {
+		return head
+	}
+	return head + " — " + styleGoal.Render(layout.Truncate(r.command, width))
 }
 
 // viewSourceMark precedes anything worth saying about how the pane

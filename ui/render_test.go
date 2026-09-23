@@ -188,3 +188,59 @@ func TestHistory_FlaggedCallsAreMarked(t *testing.T) {
 		event.TurnEnded{Turn: turn2, Reason: event.EndDone})
 	assert.NotContains(t, stripANSI(strings.Join(m.rowLines(m.rows()[0]), "")), "!")
 }
+
+// A summary is prose, and the pane is where the whole of it is meant
+// to be readable. Truncating there loses the tail to an ellipsis.
+func TestSummary_WrapsInTheOutputPane(t *testing.T) {
+	const said = "The build failed because the containerd socket was not reachable, " +
+		"so every call fell back to the host shell and the snapshot was never taken."
+	turn, evs := oneTurn("why did it fail", "make build", "boom\n")
+	m := sized(t, 120, 40, append(evs[:len(evs)-1],
+		event.ModelText{Turn: turn, Text: said},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: said})...)
+
+	require.Len(t, m.rows(), 2)
+	m.nav.cursor = 1
+	m.refreshViewport()
+
+	inner := paneInner(m.layout.outputColW)
+	body := stripANSI(m.viewContent)
+	for i, l := range strings.Split(body, "\n") {
+		assert.LessOrEqual(t, lipgloss.Width(l), inner, "line %d overflows: %q", i, l)
+	}
+	assert.Contains(t, strings.Join(strings.Fields(body), " "), "snapshot was never taken",
+		"the tail of the summary must survive")
+	assert.Greater(t, len(strings.Split(body, "\n")), 1, "wrapped, not truncated to one line")
+
+	for i, l := range strings.Split(m.baseView(), "\n") {
+		assert.LessOrEqual(t, lipgloss.Width(stripANSI(l)), m.layout.width,
+			"screen line %d overflows: %q", i, stripANSI(l))
+	}
+}
+
+// Markdown, because the model writes markdown: a row shows the sentence
+// with its markup stripped, and the pane draws the real thing.
+func TestSummary_RendersAsMarkdownAndScrolls(t *testing.T) {
+	said := "## What I found\n\n" +
+		strings.Repeat("The containerd socket was not reachable, so every call fell back "+
+			"to the host shell and no snapshot was taken. ", 40) +
+		"\n\n- `colima status` says the VM is stopped\n"
+	turn, evs := oneTurn("why did it fail", "make build", "boom\n")
+	m := sized(t, 120, 40, append(evs[:len(evs)-1],
+		event.ModelText{Turn: turn, Text: said},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: said})...)
+
+	m.nav.cursor = 1
+	m.refreshViewport()
+	body := stripANSI(m.viewContent)
+	assert.NotContains(t, m.viewportHeader(), "—", "prose has no command, so no dangling dash")
+
+	assert.Contains(t, body, "\u2022", "a list renders as a list, not as its source")
+	assert.NotContains(t, body, "`colima status`", "inline code loses its backticks")
+
+	require.Greater(t, len(strings.Split(body, "\n")), m.output.Height(),
+		"the fixture must be taller than the pane for scrolling to mean anything")
+	m.nav.focus = focusOutput
+	m.output.ScrollDown(3)
+	assert.Equal(t, 3, m.output.YOffset(), "the pane scrolls through the rest")
+}

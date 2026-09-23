@@ -79,6 +79,11 @@ func bindSpec(spec viewspec.Spec, output string) (*viewspec.Bound, bool) {
 // when one arrives. markdown.Wants is the one heuristic, and it runs
 // only before anything has been judged.
 func fallbackChain(r *callRow, output string) []*viewspec.Compiled {
+	// The model's own words are a document, not bytes a command
+	// printed: they wrap and scroll rather than losing their tail.
+	if r.prose != "" {
+		return []*viewspec.Compiled{compiledMarkdown, compiledPlain}
+	}
 	var chain []*viewspec.Compiled
 	kind := r.kind()
 	if kind == "file_content" && markdown.Wants(r.command, output) {
@@ -114,7 +119,9 @@ func (w *markdownWidget) Draw(_ viewspec.Block, d viewspec.Data, f viewspec.Fram
 	}
 	rendered, err := markdown.Render(d.Raw, f.Width)
 	if err != nil {
-		rendered = d.Raw
+		// Wrapped, not raw: falling back must not reintroduce the
+		// overflow this widget is here to avoid.
+		rendered = strings.Join(wrapPlain(d.Raw, f.Width), "\n")
 	}
 	w.raw, w.width = d.Raw, f.Width
 	w.out = strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")
