@@ -1,4 +1,5 @@
-// cmd/detent runs the full-screen TUI, or one goal headlessly with -goal.
+// cmd/detent runs the full-screen TUI, or one request headlessly with
+// -prompt. It wires the engine, the bus, and whichever front-end.
 package main
 
 import (
@@ -6,7 +7,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,19 +15,19 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/vitzeno/detent/internal/agent"
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/config"
+	"github.com/vitzeno/detent/internal/engine"
+	"github.com/vitzeno/detent/internal/headless"
 	"github.com/vitzeno/detent/internal/host"
-	"github.com/vitzeno/detent/internal/propose"
-	"github.com/vitzeno/detent/internal/resolver"
+	"github.com/vitzeno/detent/internal/model"
 	"github.com/vitzeno/detent/internal/routing"
 	"github.com/vitzeno/detent/internal/sandbox"
-	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/internal/tool"
 	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/ui"
-	"github.com/vitzeno/detent/ui/status"
 	"github.com/vitzeno/detent/ui/theme"
 	"github.com/vitzeno/detent/version"
 )
@@ -43,13 +43,12 @@ func run() error {
 	loadDotenv(".env")
 
 	baseURL := flag.String("url", "", "OpenAI-compatible base URL (default: config file, else LM Studio local)")
-	model := flag.String("model", "", "model name (default: config file, else "+config.DefaultModel+")")
+	modelName := flag.String("model", "", "model name (default: config file, else "+config.DefaultModel+")")
 	apiKey := flag.String("key", "", "API key (default: config file, else env; empty for local LM Studio)")
 	configPath := flag.String("config", "", "config file path (default: ./.detent.yaml, then ~/.config/detent/config.yaml)")
-	goal := flag.String("goal", "", "run one goal headlessly and exit (empty = launch the TUI)")
 	prompt := flag.String("prompt", "", "run one request through the agent loop and exit")
 	unattended := flag.Bool("unattended", false, "with -prompt, decline every flagged command instead of asking")
-	steps := flag.Int("steps", -1, "per-goal step cap, 0 = unbounded (default: config file, else unbounded)")
+	steps := flag.Int("steps", -1, "steps per request before it asks to continue (default: config file)")
 	themeName := flag.String("theme", "", "color scheme: "+strings.Join(theme.Names(), ", ")+" (default: config file, else "+config.DefaultTheme+")")
 	sandboxMode := flag.String("sandbox", "", "sandbox mode: auto, host (default: config file, else auto)")
 	sandboxSocket := flag.String("sandbox-socket", "", "containerd socket path (default: config file, else OS-conventional)")
@@ -66,7 +65,7 @@ func run() error {
 		return err
 	}
 	flagCfg := config.Config{
-		BaseURL: *baseURL, Model: *model, APIKey: *apiKey, Theme: *themeName,
+		BaseURL: *baseURL, Model: *modelName, APIKey: *apiKey, Theme: *themeName,
 		SandboxMode: *sandboxMode, SandboxSocket: *sandboxSocket,
 	}
 	resolved := config.Resolve(fileCfg, flagCfg, *steps)
@@ -95,10 +94,10 @@ func run() error {
 	// was ~270ms of the time before anything drew.
 	pinged := make(chan error, 1)
 	go func() {
-		pinged <- propose.Ping(context.Background(), resolved.BaseURL, resolved.APIKey)
+		pinged <- model.Ping(context.Background(), resolved.BaseURL, resolved.APIKey)
 	}()
 
-	sessionID := agent.NewSessionID()
+	sessionID := string(event.NewID())
 	// A session that cannot log is still a session: Setup says so and
 	// carries on discarding.
 	closeLog, err := logging.Setup(logging.Options{
@@ -110,12 +109,10 @@ func run() error {
 	}
 	defer func() { _ = closeLog() }()
 	runners := routing.Selector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
-	// Shared by both cores while the TUI is still on the old one.
 	var container *sandbox.Container
-	// The proposer is told where commands actually run, so it writes
-	// for that OS and knows what survives. Filled in below if a sandbox
-	// is wired; until then it describes this machine.
-	env := propose.LocalEnvironment()
+	// The model is told where commands actually run, so it writes for
+	// that OS and knows what survives.
+	env := model.LocalEnvironment()
 	if resolved.SandboxMode == "auto" {
 		socket := resolved.SandboxSocket
 		if socket == "" {
@@ -143,11 +140,12 @@ func run() error {
 			return fmt.Errorf("sandbox: starting container: %w", err)
 		}
 		defer container.Close(context.Background())
-		runners.SandboxRunner = routing.WrapSandbox(container)
+		runners.Sandbox = container
 
 		// The container is Linux whatever this machine is, starts in
-		// the mount point rather than here, and checkpoints each step.
-		env = propose.Environment{
+		// the mount point rather than here, and the whole request is
+		// checkpointed together.
+		env = model.Environment{
 			OS: "linux", Arch: runtime.GOARCH, Dir: resolved.SandboxWorkspace,
 			Sandboxed: true,
 			Network:   resolved.SandboxNetwork == sandbox.NetworkHost,
@@ -160,157 +158,66 @@ func run() error {
 			err, resolved.BaseURL, resolved.Model)
 	}
 
-	proposer := propose.New(
-		propose.WithBaseURL(resolved.BaseURL),
-		propose.WithModel(resolved.Model),
-		propose.WithAPIKey(resolved.APIKey),
-		propose.WithHeaders(resolved.Headers),
-		propose.WithEnvironment(env),
-	)
+	client := &model.Client{
+		BaseURL: resolved.BaseURL, Model: resolved.Model, APIKey: resolved.APIKey,
+		Headers: resolved.Headers, Env: env,
+	}
 
-	sessOpts := []agent.Option{
-		agent.WithID(sessionID),
-		agent.WithRunners(runners),
-		agent.WithContextTokens(resolved.ContextTokens),
+	opts := []engine.Option{
+		engine.WithSessionID(event.ID(sessionID)),
+		engine.WithContextTokens(resolved.ContextTokens),
+		engine.WithMaxSteps(resolved.Steps),
 		// The same endpoint compacts its own history when it outgrows
 		// that budget.
-		agent.WithSummarizer(proposer),
-		agent.WithStepBudget(resolved.Steps),
-		agent.WithRiskThreshold(resolved.RiskThreshold),
-		agent.WithStats(usage.New()),
+		engine.WithSummarizer(client),
 	}
 	// No judge without a key: TYPESAFE_API_KEY env or jev_api_key file.
 	var judge *classify.JevJudge
 	if resolved.JevAPIKey != "" {
 		judge = classify.NewJevJudge(resolved.JevAPIKey,
 			classify.WithModel(resolved.JevModel),
-			classify.WithEndpoint(resolved.JevEndpoint),
-		)
-		sessOpts = append(sessOpts, agent.WithJudge(judge))
+			classify.WithEndpoint(resolved.JevEndpoint))
+		opts = append(opts, engine.WithJudge(
+			classify.RiskJudge{Asker: judge, Threshold: resolved.RiskThreshold},
+			resolved.RiskThreshold))
 	}
-	sess := agent.New(proposer, headlessConfirmer{}, sessOpts...)
-	// Look at the machine now, while the human is reading the welcome
-	// pane, so the first goal does not wait for it.
-	sess.Prime(context.Background())
+
+	bus := event.New()
+	eng := engine.New(bus, client, tool.Standard(), runners, opts...)
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	go eng.Run(ctx)
 
 	if *prompt != "" {
-		return runPrompt(context.Background(), *prompt, resolved, container, judge, *unattended)
-	}
-	if *goal != "" {
-		return printGoalResult(sess.RunGoal(context.Background(), *goal))
+		approve := headless.Approver(nil)
+		if *unattended {
+			approve = headless.AutoDecline
+		}
+		reason := headless.Run(ctx, bus, *prompt, approve)
+		fmt.Printf("\nrequest ended: %s\n", reason)
+		if reason == event.EndError {
+			return fmt.Errorf("the request failed")
+		}
+		return nil
 	}
 
 	judgeName := ""
-	if sess.Judge != nil {
+	if judge != nil {
 		judgeName = resolved.JevModel
 	}
 	// The effective mode, not the configured one: "auto" still reports
 	// host when no sandbox ended up wired.
-	_, runMode := runners.Select(agent.PreJudgment{})
+	_, runMode := runners.Select(event.UnknownRisk())
 	info := ui.SessionInfo{
-		Proposer: resolved.Model, Judge: judgeName, RunMode: runMode,
-		Views: resolved.Views,
+		Model: resolved.Model, Judge: judgeName, RunMode: runMode,
 		Image: resolved.SandboxImage, Mount: resolved.SandboxWorkspace,
 		Runtime: resolved.SandboxRuntime, Network: resolved.SandboxNetwork,
 	}
-	drv := resolver.New(sess)
-	drv.Views = views(resolved.Views, judge)
 	// Altscreen is declared by ui.Model.View, not set here — under
 	// Bubble Tea v2 terminal state is a property of what's rendered.
-	p := tea.NewProgram(ui.New(context.Background(), drv, info))
+	p := tea.NewProgram(ui.New(ctx, bus, info))
 	_, err = p.Run()
 	return err
-}
-
-func printGoalResult(res agent.GoalResult, err error) error {
-	if err != nil {
-		fmt.Printf("error: %s\n", err)
-	}
-	fmt.Printf("goal %q ended: %s\n", res.Goal, res.End)
-	for i, c := range res.Commands {
-		fmt.Printf("  %d. %s — %s\n", i+1, c.Command, c.Result.Summary())
-	}
-	if len(res.Commands) == 0 {
-		fmt.Println("  (nothing ran)")
-	}
-	if res.Summary != "" {
-		fmt.Printf("summary: %s\n", res.Summary)
-	}
-	printUsage(res.Stats)
-	return err
-}
-
-// printUsage renders the goal's measured phases plus session rollups.
-func printUsage(g *usage.Goal) {
-	if g == nil || len(g.Steps) == 0 {
-		return
-	}
-	fmt.Println("\nusage:")
-	for i, s := range g.Steps {
-		fmt.Printf("  %d. %s · propose %s/%s · dwell %s · exec %s",
-			i+1, s.Command,
-			status.Dur(s.Propose), status.Tokens(s.ProposerPrompt+s.ProposerComplete),
-			status.Dur(s.Dwell), status.Dur(s.Exec))
-		if s.ExitCode >= 0 {
-			fmt.Printf("/%d", s.ExitCode)
-		}
-		if s.HasPost {
-			fmt.Printf(" · judge %s/%s", status.Dur(s.JudgePre+s.JudgePost),
-				status.Tokens(s.JudgePrompt+s.JudgeComplete))
-		}
-		fmt.Println()
-	}
-	fmt.Printf("  goal machine %s · session %s\n", status.Dur(g.MachineTime()), status.Dur(g.Duration()))
-}
-
-// headlessConfirmer implements agent.Confirmer for the -goal CLI path:
-// read the decision from stdin, same shape as the TUI's own confirm
-// modal but rendered as plain text.
-type headlessConfirmer struct{}
-
-func (headlessConfirmer) Confirm(req agent.ConfirmRequest) bool {
-	fmt.Printf("\ngoal: %q\n", req.Goal)
-	if len(req.History) == 0 {
-		fmt.Println("done so far: (nothing yet)")
-	} else {
-		fmt.Println("done so far:")
-		for i, h := range req.History {
-			fmt.Printf("  %d. %s — %s\n", i+1, h.Command, h.Result.Summary())
-		}
-	}
-	header := "next:"
-	if req.Dangerous {
-		header = "next — !! LOOK TWICE !!"
-	}
-	fmt.Printf("\n%s\n  %s\n", header, req.Command)
-	if req.Rationale != "" {
-		fmt.Printf("why: %s\n", req.Rationale)
-	}
-	if req.Mutability != "" {
-		fmt.Printf("scope: %s\n", req.Mutability)
-	}
-	if req.RunMode != "" {
-		fmt.Printf("runs in: %s\n", req.RunMode)
-	}
-	if req.Dangerous {
-		fmt.Printf("flagged: %s\n", req.RiskNote)
-	}
-	fmt.Printf("step %d", req.Step)
-	if req.StepBudget > 0 {
-		fmt.Printf(" of %d", req.StepBudget)
-	}
-	fmt.Printf(" · goal %d of this session done\n", req.GoalsDone)
-	fmt.Print("[y] run   [n] stop goal: ")
-
-	reader := bufio.NewReader(os.Stdin)
-	line, err := reader.ReadString('\n')
-	if err != nil && err != io.EOF {
-		// Stdin gone or unreadable: treat as decline, but say so rather
-		// than silently falling through — this is the approval gate for
-		// potentially dangerous commands.
-		fmt.Fprintf(os.Stderr, "detent: reading confirm response: %v (treating as decline)\n", err)
-	}
-	return strings.TrimSpace(strings.ToLower(line)) == "y"
 }
 
 // defaultSandboxSocket returns the OS-conventional containerd socket

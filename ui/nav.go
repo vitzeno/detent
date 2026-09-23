@@ -11,23 +11,12 @@ import (
 // outputNav moves inside the detail component: the view's own
 // selection when it draws one, viewport lines otherwise.
 func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
-	if r := m.focused(); r != nil && !r.cmd.running {
+	if r := m.focused(); r != nil && !r.running {
 		if b, ok := boundView(r); ok {
 			if n, ok := b.SelectableRows(); ok && n > 0 {
-				r.cmd.tableCursor = min(max(r.cmd.tableCursor+d, 0), n-1)
+				r.tableCursor = min(max(r.tableCursor+d, 0), n-1)
 				return m, nil
 			}
-		}
-		switch r.toolKind {
-		case "tree":
-			if r.tool.tree != nil {
-				if d < 0 {
-					r.tool.tree.Up()
-				} else {
-					r.tool.tree.Down()
-				}
-			}
-			return m, nil
 		}
 	}
 	if d < 0 {

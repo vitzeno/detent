@@ -3,8 +3,6 @@ package ui
 import (
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/ui/markdown"
 	"github.com/vitzeno/detent/views"
@@ -16,54 +14,32 @@ import (
 // composer, so the judge is offered exactly what will draw.
 func Registry() *viewspec.Registry { return viewRegistry }
 
-// generateView asks the Driver for a view, off the Update loop. Fired
-// once per row, after judging, because render_kind is what prunes the
-// vocabulary the judge chooses from.
-func (m Model) generateView(r *stepRow) tea.Cmd {
-	if !r.drawable() || r.cmd.generated {
-		return nil
-	}
-	r.cmd.generated = true
-	sess, ctx := m.sess, m.ctx
-	command, output, kind := r.command, r.text(), rowKind(r)
-	exit := 0
-	if r.cmd.ec != nil {
-		exit = r.cmd.ec.Result.ExitCode
-	}
-	return func() tea.Msg {
-		got, ok := sess.GenerateView(ctx, command, output, exit, kind)
-		if !ok && got.Source != ViewDeclined {
-			return nil
-		}
-		return viewMsg{row: r, view: got}
-	}
-}
-
 // seedFromView puts a row's on_enter command in the prompt as
 // editable text. It does not run: from there it is an ordinary goal.
-func (m Model) seedFromView(r *stepRow) (Model, bool) {
+func (m Model) seedFromView(r *callRow) (Model, bool) {
 	b, ok := boundView(r)
 	if !ok {
 		return m, false
 	}
-	command, ok := b.Action(viewspec.Frame{Cursor: r.cmd.tableCursor})
+	command, ok := b.Action(viewspec.Frame{Cursor: r.tableCursor})
 	if !ok {
 		return m, false
 	}
 	m.prompt.SetValue(command)
-	return m.backToInput(), true
+	m.backToInput()
+	return m, true
 }
 
 // boundView resolves a row's view, binding once and caching on the
 // row. Draw runs per frame; Bind must not.
-func boundView(r *stepRow) (*viewspec.Bound, bool) {
+func boundView(r *callRow) (*viewspec.Bound, bool) {
 	if !r.drawable() {
 		return nil, false
 	}
-	if r.cmd.viewTried {
-		return r.cmd.view, r.cmd.view != nil
+	if r.viewTried {
+		return r.view, r.view != nil
 	}
-	r.cmd.viewTried = true
+	r.viewTried = true
 	output := r.text()
 	for _, c := range fallbackChain(r, output) {
 		b, err := c.Bind(output)
@@ -72,41 +48,30 @@ func boundView(r *stepRow) (*viewspec.Bound, bool) {
 			// It is still the only trace that a kind's own rendering
 			// was dropped, which used to leave no trace at all.
 			logging.For(logging.UI).Debug("a built-in view could not draw this output",
-				logging.KeyEvent, logging.ViewInvalid, "kind", string(rowKind(r)),
-				"source", string(ViewBuiltin), logging.KeyReason, err.Error())
+				logging.KeyEvent, logging.ViewInvalid, "kind", string(r.kind()),
+				"source", string("built-in"), logging.KeyReason, err.Error())
 			continue
 		}
-		r.cmd.view, r.cmd.viewSource = b, ViewBuiltin
+		r.view, r.viewSource = b, "built-in"
 		return b, true
 	}
 	return nil, false
 }
 
-// applyView swaps in a composed spec. A Driver hands over a Spec and
-// not a Bound, so this binds it again: ui accepts data from a Driver
-// it does not control, and a spec that arrives broken must leave the
-// fallback exactly as it was.
-func applyView(r *stepRow, got GeneratedView) bool {
-	if r == nil || got.Spec == nil || !r.drawable() {
-		return false
-	}
-	c, err := viewspec.Compile(*got.Spec, viewspec.WithRegistry(viewRegistry))
+// bindSpec binds a spec the engine sent. It binds again rather than
+// trusting: ui accepts data it does not control, and a spec arriving
+// broken must leave the fallback exactly as it was.
+func bindSpec(spec viewspec.Spec, output string) (*viewspec.Bound, bool) {
+	c, err := viewspec.Compile(spec, viewspec.WithRegistry(viewRegistry))
 	if err == nil {
 		var b *viewspec.Bound
-		if b, err = c.Bind(r.text()); err == nil {
-			r.cmd.view, r.cmd.viewTried = b, true
-			r.cmd.viewSource = got.Source
-			return true
+		if b, err = c.Bind(output); err == nil {
+			return b, true
 		}
 	}
-	// cmd/detent hands the composer this very registry, and it binds
-	// every spec before handing one over, so this should be
-	// unreachable. It is warned rather than dropped because reaching
-	// it means something is genuinely wrong, not merely unlucky.
-	logging.For(logging.UI).Warn("a fitted view could not draw this output",
-		logging.KeyEvent, logging.ViewInvalid, "source", string(got.Source),
-		logging.KeyReason, err.Error())
-	return false
+	logging.For(logging.UI).Warn("a view could not draw this output",
+		logging.KeyEvent, logging.ViewInvalid, logging.KeyReason, err.Error())
+	return nil, false
 }
 
 // fallbackChain is what a row draws from with no judge involved: the
@@ -118,10 +83,10 @@ func applyView(r *stepRow, got GeneratedView) bool {
 // anything is judged and with no Driver at all, the same way
 // heuristicPost classifies when Jev is absent. The judge is offered
 // markdown too, under file_content.
-func fallbackChain(r *stepRow, output string) []*viewspec.Compiled {
+func fallbackChain(r *callRow, output string) []*viewspec.Compiled {
 	var chain []*viewspec.Compiled
-	kind := rowKind(r)
-	if kind == KindContent && markdown.Wants(r.command, output) {
+	kind := r.kind()
+	if kind == "file_content" && markdown.Wants(r.command, output) {
 		chain = append(chain, compiledMarkdown)
 	}
 	if c, ok := compiledFallback[kind]; ok {
@@ -189,13 +154,12 @@ var (
 	compiledPlain = compileAll(map[string]viewspec.Spec{"p": views.Raw("log")})["p"]
 )
 
-// byKind reads the shipped shape specs under ui's own RenderKind,
-// which mirrors viewgen's strings the way every other DTO here does.
-func byKind() map[RenderKind]viewspec.Spec {
-	out := map[RenderKind]viewspec.Spec{}
+// byKind is the shipped spec per judged output shape.
+func byKind() map[string]viewspec.Spec {
+	out := map[string]viewspec.Spec{}
 	for _, kind := range views.Kinds() {
 		if spec, ok := views.ForKind(kind); ok {
-			out[RenderKind(kind)] = spec
+			out[kind] = spec
 		}
 	}
 	return out
@@ -209,17 +173,6 @@ func compileAll[K comparable](in map[K]viewspec.Spec) map[K]*viewspec.Compiled {
 		if c, err := viewspec.Compile(spec, viewspec.WithRegistry(viewRegistry)); err == nil {
 			out[key] = c
 		}
-	}
-	return out
-}
-
-func commandOutput(ec *ExecutedCommand) string {
-	out := ec.Result.Stdout
-	if ec.Result.Stderr != "" {
-		if out != "" && !strings.HasSuffix(out, "\n") {
-			out += "\n"
-		}
-		out += ec.Result.Stderr
 	}
 	return out
 }

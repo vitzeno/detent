@@ -3,10 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
-	"time"
 
-	"github.com/vitzeno/detent/ui/editor"
-	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/welcome"
 	"github.com/vitzeno/detent/version"
 	"github.com/vitzeno/detent/viewspec"
@@ -22,24 +19,16 @@ func (m Model) detailLines() []string {
 	// A pending rollback takes the pane: its file list is the thing
 	// being reviewed, and it can run to hundreds of paths. The confirm
 	// box below stays small and asks the question.
-	if m.mode == modeRollbackConfirm {
+	if m.mode == modeUndo {
 		return strings.Split(m.output.View(), "\n")
 	}
 	// A panel is a page about the session, drawn through the viewport
 	// so it scrolls however long it runs.
-	if m.panel.open() {
+	if m.panel.open != panelNone {
 		return strings.Split(m.output.View(), "\n")
 	}
 	if m.showWelcome() {
 		return m.welcomePane()
-	}
-	if r := m.focused(); r != nil {
-		if r.editor != nil {
-			return m.editorLines(r.editor)
-		}
-		if r.toolKind == "tree" {
-			return r.tool.tree.View(paneInner(m.layout.outputColW), m.output.Height())
-		}
 	}
 	return strings.Split(m.output.View(), "\n")
 }
@@ -47,7 +36,7 @@ func (m Model) detailLines() []string {
 // viewBody draws the row's view whole. Height says how tall the pane
 // is so a plot can grow into it; nothing clips to it, so the viewport
 // still windows the result and a view scrolls like any other output.
-func (m Model) viewBody(r *stepRow) (viewspec.Render, bool) {
+func (m Model) viewBody(r *callRow) (viewspec.Render, bool) {
 	b, ok := boundView(r)
 	if !ok {
 		return viewspec.Render{}, false
@@ -56,7 +45,7 @@ func (m Model) viewBody(r *stepRow) (viewspec.Render, bool) {
 		Width:   paneInner(m.layout.outputColW),
 		Height:  m.output.Height(),
 		Focused: m.nav.focus == focusOutput,
-		Cursor:  r.cmd.tableCursor,
+		Cursor:  r.tableCursor,
 		Paint:   painter{},
 	})
 	if err != nil {
@@ -95,31 +84,14 @@ func helpLines() []string {
 	return lines
 }
 
-func (m Model) editorLines(e *editor.Model) []string {
-	if e.Err() != nil {
-		return []string{styleDanger.Render(e.View())} // "could not open <path>: <err>"
-	}
-	e.Resize(paneInner(m.layout.outputColW), m.output.Height())
-	lines := strings.Split(e.View(), "\n")
-	if e.Truncated() {
-		lines = append(lines, styleCaution.Render(fmt.Sprintf("… file truncated at %d bytes", e.MaxBytes())))
-	}
-	return lines
-}
-
 func (m *Model) refreshViewport() {
-	t0 := time.Now()
-	defer func() {
-		m.perf.uiPrep += time.Since(t0)
-		m.perf.uiPreps++
-	}()
 	_, m.nav.histOffset = m.historyWindow()
-	if m.panel.open() {
+	if m.panel.open != panelNone {
 		m.setViewContent(strings.Join(m.panelLines(), "\n"))
 		return
 	}
-	if m.mode == modeRollbackConfirm {
-		m.setViewContent(m.rollbackFileLines())
+	if m.mode == modeUndo {
+		m.setViewContent(m.undoLines())
 		return
 	}
 	r := m.focused()
@@ -130,8 +102,8 @@ func (m *Model) refreshViewport() {
 	var body string
 	cursor := -1
 	switch {
-	case r.cmd.running:
-		body = strings.Join(r.cmd.live, "\n")
+	case r.running:
+		body = strings.Join(r.live, "\n")
 	case r.drawable():
 		rendered, ok := m.viewBody(r)
 		if !ok {
@@ -144,7 +116,7 @@ func (m *Model) refreshViewport() {
 		return
 	}
 	m.setViewContent(body)
-	if r.cmd.running {
+	if r.running {
 		m.output.GotoBottom()
 	}
 	if cursor >= 0 {
@@ -155,39 +127,13 @@ func (m *Model) refreshViewport() {
 // welcomePane hands the boot pane the facts it reports, so nothing in
 // ui/welcome reaches into Model.
 func (m Model) welcomePane() []string {
-	snap := m.sess.UsageSnapshot()
 	return welcome.Lines(welcome.Facts{
 		Version:  version.String(),
-		Proposer: m.info.Proposer, Judge: m.info.Judge, RunMode: m.info.RunMode,
-		Views: m.info.Views,
+		Proposer: m.info.Model, Judge: m.info.Judge, RunMode: m.info.RunMode,
 		Image: m.info.Image, Mount: m.info.Mount,
 		Runtime: m.info.Runtime, Network: m.info.Network,
-		Goals: snap.Goals, Commands: snap.Commands, MachineTime: snap.MachineTime(),
+		Goals: len(m.blocks), Commands: m.calls,
 	}, paneInner(m.layout.outputColW), m.output.Height(), m.welcomeFrame)
-}
-
-// rollbackFileLines is every path a revert would touch, in full. The
-// viewport scrolls it, so a goal that rewrote a whole tree is still
-// reviewable rather than cut off at an arbitrary count.
-func (m Model) rollbackFileLines() string {
-	width := paneInner(m.layout.outputColW)
-	var b strings.Builder
-	for i, f := range m.rollback.files {
-		if i > 0 {
-			b.WriteString("\n")
-		}
-		mark, style := "restore", styleDiffAdd
-		if f.Removed {
-			mark, style = "delete ", styleDiffDel
-		}
-		note := ""
-		if f.Unseen {
-			note = styleDanger.Render("  ⚠ not detent's")
-		}
-		b.WriteString(" " + style.Render(mark) + " " +
-			styleGoal.Render(layout.Truncate(f.Path, width-24)) + note)
-	}
-	return b.String()
 }
 
 // showWelcome reports whether the output pane has nothing of its own

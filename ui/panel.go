@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"runtime"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -11,174 +10,118 @@ import (
 	"github.com/vitzeno/detent/version"
 )
 
-// Panels: read-only pages about the session, not about a step. They
-// take the output pane without touching history, and the viewport
-// draws them, so a long one scrolls rather than being capped.
+// The read-only pages about the session rather than one call. An
+// overlay, not a block, so opening one leaves history alone.
 
-const (
-	panelUsage  = "usage"
-	panelStatus = "status"
-	panelHelp   = "help"
-)
-
-// panelState is the open panel, or the zero value for none. cursor and
-// expand belong to usage, the only panel with rows to move through.
-type panelState struct {
-	kind   string
-	cursor int
-	expand int
-}
-
-func (p panelState) open() bool { return p.kind != "" }
-
-// openPanel replaces whatever panel was open, so /usage after /status
-// swaps rather than stacking.
-func (m Model) openPanel(kind string) (tea.Model, tea.Cmd) {
-	m.panel = panelState{kind: kind, expand: -1}
+func (m Model) openPanel(k panelKind) (tea.Model, tea.Cmd) {
+	m.panel.open = k
 	m.nav.focus = focusOutput
-	// Filled here rather than left to the next refresh: opening a
-	// panel is what should show it, and a caller that renders without
-	// updating first would otherwise see the pane it replaced.
-	m.setViewContent(strings.Join(m.panelLines(), "\n"))
 	m.output.GotoTop()
 	return m, nil
 }
 
-func (m Model) closePanel() Model {
-	m.panel = panelState{}
+func (m *Model) closePanel() bool {
+	if m.panel.open == panelNone {
+		return false
+	}
+	m.panel.open = panelNone
 	m.nav.focus = focusInput
-	return m
+	m.prompt.Focus()
+	return true
 }
 
-// panelKey routes a keystroke to the open panel. Only usage takes one;
-// everything else scrolls, which the caller does.
-func (m Model) panelKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
-	if m.panel.kind != panelUsage {
-		return m, nil, false
-	}
-	switch msg.String() {
-	case "up", "k":
-		if m.panel.cursor > 0 {
-			m.panel.cursor--
-		}
-		return m, nil, true
-	case "down", "j":
-		if m.panel.cursor < len(m.sess.Tracker())-1 {
-			m.panel.cursor++
-		}
-		return m, nil, true
-	case "enter", " ":
-		if m.panel.expand == m.panel.cursor {
-			m.panel.expand = -1
-		} else {
-			m.panel.expand = m.panel.cursor
-		}
-		return m, nil, true
-	}
-	return m, nil, false
-}
-
-// panelLines is what the open panel draws. Whole, not windowed: the
-// viewport does that.
-func (m Model) panelLines() []string {
-	switch m.panel.kind {
+// panelLines draws the open page, through the viewport, so length is
+// scrolling rather than a cap.
+func (m *Model) panelLines() []string {
+	switch m.panel.open {
 	case panelUsage:
-		return m.usageLines(m.panel.cursor, m.panel.expand)
+		return m.usageLines()
 	case panelStatus:
 		return m.statusLines()
 	case panelHelp:
-		return helpLines()
+		return m.helpLines()
 	}
 	return nil
 }
 
-// statusLines is what detent is right now: the build, what it talks
-// to, where commands run, what the session has done. The welcome pane
-// answers this before anything has run; /status answers it after.
-func (m Model) statusLines() []string {
-	snap := m.sess.UsageSnapshot()
-	var out []string
-	// Padded before styling: a width verb counts the escape bytes in a
-	// rendered string, so styling first left every label unaligned.
-	add := func(label, value string) {
-		out = append(out, "  "+styleFaint.Render(fmt.Sprintf("%-14s", label))+" "+value)
+func (m *Model) usageLines() []string {
+	out := []string{styleGoal.Render("usage"), ""}
+	for _, b := range m.blocks {
+		head := fmt.Sprintf("  %s  %s", styleFaint.Render(fmt.Sprintf("#%d", b.n)),
+			truncCell(b.prompt, m.layout.outputColW-30))
+		out = append(out, head)
+		out = append(out, styleFaint.Render(fmt.Sprintf("      %d call(s) · %s tok · %s",
+			len(b.rows), status.Tokens(b.used.Tokens()), b.end)))
 	}
-	head := func(s string) {
-		out = append(out, "", styleBrand.Render(s))
+	if len(m.blocks) == 0 {
+		out = append(out, styleFaint.Render("  (nothing yet)"))
 	}
+	return append(out, "", styleFaint.Render(fmt.Sprintf("  %d step(s) · %s tok total",
+		m.steps, status.Tokens(m.tokens))))
+}
 
-	out = append(out, styleBrand.Render("detent ")+styleGoal.Render(version.String()))
-
-	head("models")
-	add("proposer", styleGoal.Render(m.info.Proposer))
-	if m.info.Judge == "" {
-		add("judge", styleFaint.Render("none, so rows fall back to heuristics"))
-	} else {
-		add("judge", styleGoal.Render(m.info.Judge))
+func (m *Model) statusLines() []string {
+	rows := [][2]string{
+		{"version", version.String()},
+		{"model", m.info.Model},
+		{"judge", orNone(m.info.Judge)},
+		{"runs in", m.info.RunMode},
+		{"step bound", fmt.Sprint(m.info.MaxSteps)},
+		{"", ""},
+		{"requests", fmt.Sprint(len(m.blocks))},
+		{"steps", fmt.Sprint(m.steps)},
+		{"calls", fmt.Sprint(m.calls)},
+		{"errors", fmt.Sprint(m.errors)},
+		{"views drawn", fmt.Sprint(m.views)},
+		{"tokens", status.Tokens(m.tokens)},
 	}
-
-	head("where commands run")
-	if m.info.RunMode == "sandbox" {
-		add("mode", styleSafe.Render("● sandboxed, in containerd"))
-		add("image", styleGoal.Render(m.info.Image))
-		add("workspace", styleGoal.Render(m.info.Mount))
-		add("network", styleGoal.Render(m.info.Network))
-	} else {
-		add("mode", styleCaution.Render("⚠ on this host, unsandboxed"))
+	out := []string{styleGoal.Render("status"), ""}
+	for _, r := range rows {
+		if r[0] == "" {
+			out = append(out, "")
+			continue
+		}
+		out = append(out, fmt.Sprintf("  %s  %s", styleFaint.Render(pad(r[0], 12)), r[1]))
 	}
-	add("machine", styleGoal.Render(fmt.Sprintf("%s/%s · %d cpu",
-		runtime.GOOS, runtime.GOARCH, runtime.NumCPU())))
-
-	head("this session")
-	add("goals", styleGoal.Render(fmt.Sprintf("%d", snap.Goals)))
-	add("commands", styleGoal.Render(fmt.Sprintf("%d", snap.Commands)))
-	add("declined", styleGoal.Render(fmt.Sprintf("%d", snap.Declined)))
-	add("failed", countStyle(m.counts.failed))
-	add("machine time", styleGoal.Render(status.Dur(snap.MachineTime())))
-	add("your time", styleGoal.Render(status.Dur(snap.Dwell)))
-	add("tokens", styleGoal.Render(fmt.Sprintf("%s proposer · %s judge",
-		status.Tokens(snap.ProposerTokens), status.Tokens(snap.JudgeTokens))))
-
-	head("views")
-	add("mode", styleGoal.Render(m.info.Views))
-	add("composed", styleGoal.Render(fmt.Sprintf("%d", m.counts.composed)))
-	add("reused", styleGoal.Render(fmt.Sprintf("%d saved · %d shipped",
-		m.counts.saved, m.counts.shipped)))
-	add("declined", styleGoal.Render(fmt.Sprintf("%d", m.counts.viewDeclined)))
-
 	return out
 }
 
-// countStyle draws a count of things that went wrong, in the colour
-// that means it. Zero is not a warning.
-func countStyle(n int) string {
-	if n == 0 {
-		return styleGoal.Render("0")
+func (m *Model) helpLines() []string {
+	out := []string{styleGoal.Render("commands"), ""}
+	for _, c := range slashCommands() {
+		out = append(out, fmt.Sprintf("  %s  %s", styleGoal.Render(pad(c.Name, 12)),
+			styleFaint.Render(c.Desc)))
 	}
-	return styleDanger.Render(fmt.Sprintf("%d", n))
+	return append(out, "", styleGoal.Render("keys"), "",
+		"  "+styleFaint.Render("tab       move between input, history and output"),
+		"  "+styleFaint.Render("↑ ↓       move the cursor, or scroll the output"),
+		"  "+styleFaint.Render("space     expand a call's output inline"),
+		"  "+styleFaint.Render("enter     seed the prompt from a view's selection"),
+		"  "+styleFaint.Render("esc       back out, or abort a running request"),
+		"  "+styleFaint.Render("ctrl+c    quit"))
 }
 
-// counters are what /status reports beyond what usage tracks. Counted
-// in the pane, not viewgen: one spec may be composed once and drawn
-// for several rows.
-type counters struct {
-	failed       int
-	composed     int
-	saved        int
-	shipped      int
-	viewDeclined int
+func orNone(s string) string {
+	if s == "" {
+		return styleFaint.Render("(none)")
+	}
+	return s
 }
 
-// countView records where a row's view came from, once per row.
-func (m *Model) countView(src ViewSource) {
-	switch src {
-	case ViewGenerated:
-		m.counts.composed++
-	case ViewSaved:
-		m.counts.saved++
-	case ViewShipped:
-		m.counts.shipped++
-	case ViewDeclined:
-		m.counts.viewDeclined++
+func pad(s string, n int) string {
+	if len(s) >= n {
+		return s
 	}
+	return s + strings.Repeat(" ", n-len(s))
+}
+
+func truncCell(s string, w int) string {
+	if w < 8 {
+		w = 8
+	}
+	r := []rune(strings.Join(strings.Fields(s), " "))
+	if len(r) <= w {
+		return string(r)
+	}
+	return string(r[:w-1]) + "…"
 }

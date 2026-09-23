@@ -14,7 +14,6 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/vitzeno/detent/ui/layout"
-	"github.com/vitzeno/detent/ui/status"
 	"github.com/vitzeno/detent/ui/theme"
 )
 
@@ -38,9 +37,8 @@ type Facts struct {
 	Runtime string // "" means containerd's own default
 	Network string // "host" shares the containerd daemon's network
 
-	Goals       int
-	Commands    int
-	MachineTime time.Duration
+	Goals    int
+	Commands int
 }
 
 // Lines renders the pane at width by height, frame advancing the
@@ -89,7 +87,7 @@ func banner(f Facts, width, frame int, compact bool) []string {
 		// Checkpointing is a sandbox thing; on the host the
 		// environment section below carries the correction rather than
 		// the tagline hedging it.
-		centreLine(faint.Render("one command at a time, every step checkpointed and undoable"), width),
+		centreLine(faint.Render("an agent at your terminal, every request checkpointed and undoable"), width),
 	)
 }
 
@@ -153,7 +151,7 @@ func models(f Facts, width int) []string {
 // views states what the output pane may do, and says plainly when a
 // model is allowed to author the framing a human will read.
 func views(f Facts) string {
-	switch f.Views {
+	switch f.Views { //nolint:gocritic // one case plus a default
 	case "generate":
 		return goal.Render("generated") +
 			faint.Render("  a model writes views for output nothing covers")
@@ -164,11 +162,11 @@ func views(f Facts) string {
 
 func session(f Facts) []string {
 	return []string{
-		row("so far", goal.Render(fmt.Sprintf("%s · %s · %s",
-			plural(f.Goals, "goal"), plural(f.Commands, "command"), status.Dur(f.MachineTime)))),
-		// Placeholders, not invented numbers: these need the
+		row("so far", goal.Render(fmt.Sprintf("%s · %s",
+			plural(f.Goals, "request"), plural(f.Commands, "call")))),
+		// A placeholder, not an invented number: this needs the
 		// persistence layer to mean anything.
-		row("all time", faint.Render("— sessions · — goals   (persistence pending)")),
+		row("all time", faint.Render("— sessions · — requests   (persistence pending)")),
 	}
 }
 
@@ -177,12 +175,12 @@ func examples(width int) []string {
 	out := make([]string, 0, 4)
 	for _, e := range []string{
 		"what is listening on port 3000?",
-		"find the biggest files in this directory",
-		"why does the build fail?",
+		"find the biggest files in this directory and delete the logs",
+		"why does the build fail? fix it if you can",
 	} {
 		out = append(out, "  "+faint.Render("›")+" "+goal.Render(value(e, width)))
 	}
-	return append(out, "    "+hint.Render("or a slash command: /tree, /usage, /rollback, /help"))
+	return append(out, "    "+hint.Render("or a slash command: /status, /usage, /undo, /help"))
 }
 
 // section titles a group. The rule is short on purpose: four

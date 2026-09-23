@@ -79,8 +79,7 @@ func handle(bus *event.Bus, ev event.Event, approve Approver) (event.EndReason, 
 	case event.ApprovalAsked:
 		bus.Publish(event.ResolveApproval{Call: v.Call, Approved: approve(v)})
 	case event.BoundReached:
-		// Unattended, the bound is where it stops. A human watching
-		// would be asked; nobody is.
+		// Unattended, the bound is where it stops.
 		fmt.Printf("\nstopped after %d steps\n", v.Steps)
 		bus.Publish(event.Continue{Turn: v.Turn, Approved: false})
 	case event.Notice:

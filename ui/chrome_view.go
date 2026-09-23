@@ -2,6 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"strings"
+
+	"charm.land/lipgloss/v2"
 
 	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/status"
@@ -17,63 +20,78 @@ func (m Model) sessionBar() string {
 	if m.info.Judge != "" {
 		jev = styleSafe.Render("jev ● " + m.info.Judge)
 	}
-	goals := 0
-	for _, b := range m.blocks {
-		if b.ended && b.tool == "" {
-			goals++
+	// Segments, so the bar can shed parts rather than wrap.
+	return fitSegments([]string{
+		styleBrand.Render("◆ detent " + version.Number),
+		styleFaint.Render(m.info.Model),
+		styleFaint.Render(fmt.Sprintf("· %d request(s) · %d call(s)", len(m.blocks), m.calls)),
+		styleFaint.Render(status.Tokens(m.tokens) + " tok"),
+		runModeBadge(m.info.RunMode),
+		jev,
+	}, m.layout.width)
+}
+
+// fitSegments drops the least useful first: name, run mode and judge
+// are what a human checks. lipgloss.Width ignores styling, which is
+// why this works after rendering.
+func fitSegments(segs []string, width int) string {
+	keep := make([]bool, len(segs))
+	for i := range keep {
+		keep[i] = true
+	}
+	for _, drop := range []int{3, 2, 1} {
+		if joinedWidth(segs, keep) <= width {
+			break
+		}
+		keep[drop] = false
+	}
+	var parts []string
+	for i, s := range segs {
+		if keep[i] {
+			parts = append(parts, s)
 		}
 	}
-	if m.cur != nil {
-		goals++
+	return strings.Join(parts, "  ")
+}
+
+func joinedWidth(segs []string, keep []bool) int {
+	n, first := 0, true
+	for i, s := range segs {
+		if !keep[i] {
+			continue
+		}
+		if !first {
+			n += 2
+		}
+		first = false
+		n += lipgloss.Width(s)
 	}
-	snap := m.sess.UsageSnapshot()
-	usage := styleFaint.Render(fmt.Sprintf("⏱ %s · %stok",
-		status.Dur(snap.MachineTime()), status.Tokens(snap.ProposerTokens+snap.JudgeTokens)))
-	return fmt.Sprintf("%s %s · %d goal(s) · %d cmd(s)  %s  %s  %s",
-		styleBrand.Render("◆ detent "+version.Number), styleFaint.Render(m.info.Proposer),
-		goals, m.totalCmds, usage, runModeBadge(m.info.RunMode), jev)
+	return n
 }
 
 // viewportHeader names what the output pane is currently showing: a
 // file being edited, a tool, or a command's output by judged kind.
 func (m Model) viewportHeader() string {
 	active := m.nav.focus == focusOutput
-	if m.mode == modeRollbackConfirm {
-		return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel("reverting", active),
-			styleGoal.Render(plural(len(m.rollback.files), "file")))
+	if m.mode == modeUndo {
+		return fmt.Sprintf("%s %s", paneMark(active), paneLabel("undoing", active))
 	}
-	if m.panel.open() {
-		return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(m.panel.kind, active),
+	if m.panel.open != panelNone {
+		return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(panelName(m.panel.open), active),
 			styleFaint.Render("esc to close"))
 	}
 	r := m.focused()
 	if r == nil {
 		return fmt.Sprintf("%s %s", paneMark(active), paneLabel("detent", active))
 	}
-	if r.editor != nil && r.editor.Err() == nil {
-		label := "file"
-		if m.save.editing {
-			label = "editing — ctrl+s save"
-		}
-		dirty := ""
-		if r.editor.Dirty() {
-			dirty = styleCaution.Render(" ●")
-		}
-		return fmt.Sprintf("%s %s — %s%s", paneMark(active), paneLabel(label, active),
-			styleGoal.Render(layout.Truncate(r.editor.Path, m.layout.outputColW-28)), dirty)
-	}
-	if r.toolKind != "" {
-		return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(r.toolKind, active),
-			styleGoal.Render(layout.Truncate(r.command, m.layout.outputColW-24)))
-	}
 	label := "output"
 	switch {
 	case r.prose != "":
-		// Not "file", whatever the judged kind was: nothing here is a
-		// file, or a command's output. It is the model talking.
+		// Not the judged kind: nothing here is a file or a command's
+		// output. It is the model talking.
 		label = "summary"
-	case rowKind(r) != "":
-		label = status.KindLabel(string(rowKind(r)))
+	case r.kind() != "":
+		label = status.KindLabel(r.kind())
 	}
 	mark, width := "", m.layout.outputColW-24
 	if note := viewNote(r); note != "" {
@@ -88,20 +106,28 @@ func (m Model) viewportHeader() string {
 // was drawn.
 const viewSourceMark = "✦"
 
-// viewNote is what the header says about the drawing, and usually it
-// says nothing. Only framing a model had a hand in is worth a word,
-// plus an attempt that came to nothing, since that is otherwise
-// indistinguishable from never having tried. detent's own renderings
-// are the baseline and naming them on every row was just noise.
-func viewNote(r *stepRow) string {
-	if r.cmd.viewDeclined {
-		return "generate declined"
-	}
-	switch r.cmd.viewSource {
-	case ViewGenerated, ViewSaved:
-		return string(r.cmd.viewSource)
+// viewNote says how the pane was drawn, and usually says nothing.
+// Only framing a model had a hand in is worth a word; detent's own
+// renderings are the baseline and naming them on every row was noise.
+func viewNote(r *callRow) string {
+	switch r.viewSource {
+	case "composed", "saved":
+		return r.viewSource
 	}
 	return ""
+}
+
+// panelName is what the header calls an open page.
+func panelName(k panelKind) string {
+	switch k {
+	case panelUsage:
+		return "usage"
+	case panelStatus:
+		return "status"
+	case panelHelp:
+		return "help"
+	}
+	return "detent"
 }
 
 func (m Model) historyHeader() string {
@@ -113,8 +139,8 @@ func (m Model) statusLine() string {
 	if m.waiting {
 		phase = "thinking…"
 		for _, b := range m.blocks {
-			for _, r := range b.steps {
-				if r.cmd.running {
+			for _, r := range b.rows {
+				if r.running {
 					phase = "running…"
 				}
 			}
@@ -127,23 +153,20 @@ func (m Model) statusLine() string {
 // statusHint mirrors handleKey's owner() so the hint never falls out of
 // sync with what actually routes the keystroke.
 func (m Model) statusHint() string {
-	if m.mode == modeSaveConfirm {
-		return "[y/enter] save · [n] keep editing"
+	if m.mode == modeUndo {
+		return "[n/enter] container only · [y] revert your files too · [esc] cancel"
 	}
-	if m.mode == modeRollbackConfirm {
-		return "[n/enter] container only · [y] revert your files too · [↑/↓] scroll · [esc] cancel"
-	}
-	if m.save.editing {
-		return "[ctrl+s] save · [esc] done editing"
+	if m.mode == modeBound {
+		return "[y/enter] keep going · [n] stop here"
 	}
 	switch m.owner() {
 	case ownerConfirm:
-		return "[y/enter] run · [n] stop goal"
+		return "[y/enter] run · [n] skip this call"
 	case ownerOutput:
 		// Must match onEscape's actual behavior (keys.go): it aborts a
 		// running command here instead of stepping back to history.
 		esc := "[esc] history"
-		if m.abort != nil {
+		if m.cur != nil {
 			esc = "[esc] abort"
 		}
 		return "[tab] input · [↑/↓] inside · " + esc
@@ -151,7 +174,7 @@ func (m Model) statusHint() string {
 		// esc aborts from here too, and saying so is the difference
 		// between a human knowing they can stop a run and thinking
 		// they can't.
-		if m.abort != nil {
+		if m.cur != nil {
 			return "[esc] abort · [tab] output · [↑/↓] move · [space] expand"
 		}
 		return "[tab] output · [↑/↓] move · [space] expand · [enter] expand"

@@ -5,10 +5,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/vitzeno/detent/ui/render"
 	"github.com/vitzeno/detent/ui/status"
 	"github.com/vitzeno/detent/ui/theme"
-	"github.com/vitzeno/detent/ui/tree"
 	"github.com/vitzeno/detent/ui/welcome"
 )
 
@@ -98,9 +96,7 @@ func RefreshStyles() {
 		BorderForeground(accent).
 		Padding(1, 2)
 
-	tree.RefreshStyles()
 	status.RefreshStyles()
-	render.RefreshStyles()
 	welcome.RefreshStyles()
 }
 

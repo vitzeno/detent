@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vitzeno/detent/internal/usage"
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/viewspec"
 )
@@ -112,7 +112,7 @@ type Result struct {
 	Key    string
 	Source Source
 	Fit    float64
-	Usage  usage.Usage
+	Usage  event.Usage
 }
 
 // Source says who authored the spec being drawn.
@@ -156,8 +156,8 @@ func (g *Generator) registry() *viewspec.Registry {
 	return viewspec.Standard()
 }
 
-func add(a, b usage.Usage) usage.Usage {
-	return usage.Usage{
+func add(a, b event.Usage) event.Usage {
+	return event.Usage{
 		PromptTokens:     a.PromptTokens + b.PromptTokens,
 		CompletionTokens: a.CompletionTokens + b.CompletionTokens,
 		Latency:          a.Latency + b.Latency,

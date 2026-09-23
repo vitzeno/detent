@@ -1,7 +1,6 @@
-// Package ui is a full-screen dynamic TUI: an output pane and a
-// history pane over an input bar, driven by one Model. It imports
-// nothing under internal/ — internal/resolver translates between this
-// package's DTOs (driver.go) and the harness's own types.
+// Package ui is a full-screen TUI: an output pane and a history pane
+// over an input bar. It subscribes to the bus and publishes intents,
+// so it imports no harness package at all.
 package ui
 
 import (
@@ -14,16 +13,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/vitzeno/detent/ui/status"
-	"github.com/vitzeno/detent/ui/welcome"
+	"github.com/vitzeno/detent/event"
 )
 
-// Model is the TUI state. The screen is three zones — an output pane,
-// a history pane, and the input bar — over one flat list of goal
-// blocks; blocks.go holds those, messages.go what arrives about them.
+// Model is a projection of the event stream: apply.go folds facts in,
+// and every key publishes an intent.
 type Model struct {
-	sess Driver
-	ctx  context.Context
+	bus *event.Bus
+	ctx context.Context
 
 	info SessionInfo
 
@@ -31,75 +28,69 @@ type Model struct {
 	output  viewport.Model
 	spinner spinner.Model
 
-	blocks []*goalBlock
-	cur    *goalBlock
+	blocks []*turnBlock
+	cur    *turnBlock
 
 	mode    mode
 	waiting bool
-	abort   context.CancelFunc
 
-	nav navState
+	// asking and bound are the two questions the engine can put to a
+	// human. Both are answered by publishing, never by calling.
+	asking *event.ApprovalAsked
+	bound  *event.BoundReached
 
-	// panel is the open read-only page, if any: usage, status, help.
-	// Not part of blocks, so opening one leaves history alone.
-	panel    panelState
-	counts   counters
-	layout   layoutState
-	confirm  confirmState
-	save     saveState
-	rollback rollbackState
-	perf     perfState
+	nav    navState
+	panel  panelState
+	layout layoutState
+	notice noticeState
+	undo   undoState
 
-	streamCh chan StreamEvent
+	// Counters for /usage and /status, folded from the stream rather
+	// than read back from anywhere.
+	calls, steps, errors, views, tokens int
 
-	// welcomeFrame advances the boot pane's detent animation; it only
-	// ticks while that pane is the thing on screen.
 	welcomeFrame int
+	viewContent  string
 
-	notice noticeState // one-shot status flash
-
-	viewContent string // last rendered viewport content, avoids scroll resets
-
-	totalCmds int
+	// facts is the subscription. Re-armed by nextFact after each one,
+	// which is what keeps ordering without a second goroutine.
+	facts <-chan event.Record
 }
 
-// SessionInfo is what the session bar reports about this run. Grouped
-// rather than passed as three bare strings, which read identically at
-// a call site and so swap silently.
+// SessionInfo is what the session bar reports about this run.
 type SessionInfo struct {
-	Proposer string
-	Judge    string // "" when no judge is wired
-	RunMode  string // "host" or "sandbox"
-	// Views is "saved" or "generate".
-	Views string
+	Model   string
+	Judge   string // "" when no judge is wired
+	RunMode string // host or sandbox
 
 	// Sandbox facts for the welcome pane; empty in host mode.
-	Image   string
-	Mount   string
-	Runtime string // "" means containerd's own default
-	Network string // sandbox.Network* — "host" shares the daemon's network
+	Image    string
+	Mount    string
+	Runtime  string
+	Network  string
+	MaxSteps int
 }
 
-// New builds the TUI over sess.
-func New(ctx context.Context, sess Driver, info SessionInfo) Model {
+// New builds the TUI over bus. It subscribes immediately, so nothing
+// published between here and the first Update is lost.
+func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(accent)
 
+	facts, _ := bus.Subscribe(event.Facts())
 	return Model{
-		sess:     sess,
-		ctx:      ctx,
-		info:     info,
-		prompt:   newPrompt(),
-		output:   viewport.New(),
-		spinner:  sp,
-		streamCh: make(chan StreamEvent, streamBufSize),
-		nav:      navState{follow: true},
+		bus: bus, ctx: ctx, info: info,
+		prompt:  newPrompt(),
+		output:  viewport.New(),
+		spinner: sp,
+		nav:     navState{follow: true},
+		facts:   facts,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, welcomeTick())
+	return tea.Batch(textarea.Blink, welcomeTick(), nextFact(m.facts))
 }
 
 // Update routes the message, then re-syncs the panes once, so no
@@ -114,9 +105,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return updated, cmd
 }
 
-// route hands each message to the flow that owns it: keys.go for
-// keystrokes, goal_flow.go for the propose→confirm→execute→judge
-// sequence, exec_flow/save_flow/rollback_flow for the rest.
 func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -130,8 +118,6 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handlePaste(msg.Content)
 
 	case tea.KeyboardEnhancementsMsg:
-		// The terminal answered our request; only now do we know
-		// whether shift+enter is a key of its own here.
 		m.prompt.SetRichKeys(msg.SupportsKeyDisambiguation())
 		return m, nil
 
@@ -143,45 +129,15 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
-	case beginGoalMsg:
-		return m.onBeginGoal(msg)
-
-	case proposeMsg:
-		return m.onPropose(msg)
-
-	case StreamEvent:
-		return m.onStream(msg)
-
-	case execDoneMsg:
-		return m.onExecDone(msg)
-
-	case judgeMsg:
-		// Same object GoalResult.Commands holds, not a UI-only copy.
-		// A prose row has no ec to hang it on, so it keeps its own.
-		if msg.row.cmd.ec != nil {
-			msg.row.cmd.ec.Post = &msg.post
-		} else {
-			msg.row.cmd.post = &msg.post
+	// Eight message types and seven command constructors collapsed to
+	// one of each: the UI learns everything the same way.
+	case factMsg:
+		m.apply(msg.Event)
+		var cmd tea.Cmd
+		if m.waiting {
+			cmd = m.spinner.Tick
 		}
-		if msg.post.Attention >= status.AttentionThreshold {
-			msg.row.cmd.expanded = true
-		}
-		// render_kind is known now, which is what prunes the vocabulary
-		// a generated view may draw from.
-		return m, m.generateView(msg.row)
-
-	case viewMsg:
-		if !applyView(msg.row, msg.view) && msg.view.Source == ViewDeclined {
-			msg.row.cmd.viewDeclined = true
-		}
-		m.countView(msg.view.Source)
-		return m, nil
-
-	case saveDoneMsg:
-		return m.onSaveDone(msg)
-
-	case rollbackDoneMsg:
-		return m.onRollbackDone(msg)
+		return m, tea.Batch(cmd, nextFact(m.facts))
 
 	case welcomeTickMsg:
 		if !m.showWelcome() {
@@ -196,35 +152,78 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// rows flattens every block's steps into the one list the cursor
+// send publishes an intent. Every key that changes what the engine is
+// doing goes through here, and nothing else reaches it.
+func (m Model) send(ev event.Event) tea.Cmd {
+	return func() tea.Msg {
+		m.bus.Publish(ev)
+		return nil
+	}
+}
+
+// factMsg carries one fact into the update loop.
+type factMsg struct{ event.Event }
+
+type welcomeTickMsg struct{}
+
+// welcomeTick advances the boot pane's animation, and only while that
+// pane is what is on screen.
+func welcomeTick() tea.Cmd {
+	return tea.Tick(welcomeFrameEvery, func(time.Time) tea.Msg { return welcomeTickMsg{} })
+}
+
+const welcomeFrameEvery = 90 * time.Millisecond
+
+// nextFact waits for the next fact. One command, re-armed each time,
+// in place of a constructor per pipeline stage.
+func nextFact(facts <-chan event.Record) tea.Cmd {
+	return func() tea.Msg {
+		rec, ok := <-facts
+		if !ok {
+			return nil
+		}
+		return factMsg{rec.Event}
+	}
+}
+
+// rows flattens every block's calls into the one list the cursor
 // indexes into.
-func (m *Model) rows() []*stepRow {
-	var out []*stepRow
+func (m Model) rows() []*callRow {
+	var out []*callRow
 	for _, b := range m.blocks {
-		out = append(out, b.steps...)
+		out = append(out, b.rows...)
 	}
 	return out
 }
 
-// focused is the row the cursor is on, clamping the cursor if rows
-// have come or gone since it was last set.
-func (m *Model) focused() *stepRow {
+func (m Model) focused() *callRow {
 	rows := m.rows()
-	if len(rows) == 0 {
+	if m.nav.cursor < 0 || m.nav.cursor >= len(rows) {
 		return nil
-	}
-	if m.nav.cursor < 0 {
-		m.nav.cursor = 0
-	}
-	if m.nav.cursor >= len(rows) {
-		m.nav.cursor = len(rows) - 1
 	}
 	return rows[m.nav.cursor]
 }
 
-// trackNewest brings the newest row into view. History scrolls to the
-// bottom whatever the human was doing; the cursor moves only when
-// nobody is in the output pane, since moving it swaps what they read.
+// blockOf finds which block a row index falls in, for the rail.
+func (m Model) blockOf(i int) *turnBlock {
+	n := 0
+	for _, b := range m.blocks {
+		if i < n+len(b.rows) {
+			return b
+		}
+		n += len(b.rows)
+	}
+	return nil
+}
+
+func (m *Model) backToInput() {
+	m.mode = modeInput
+	m.nav.focus = focusInput
+	m.prompt.Focus()
+}
+
+// trackNewest scrolls history whatever the human was doing, but moves
+// the cursor only when nobody is reading the output pane.
 func (m *Model) trackNewest() {
 	m.nav.follow = true
 	if m.nav.focus == focusOutput {
@@ -233,91 +232,14 @@ func (m *Model) trackNewest() {
 	m.nav.cursor = len(m.rows()) - 1
 }
 
-// welcomeTick re-arms itself only while the welcome pane is showing,
-// so an idle animation never outlives the screen it belongs to.
-func welcomeTick() tea.Cmd {
-	return tea.Tick(welcome.TickRate, func(time.Time) tea.Msg { return welcomeTickMsg{} })
+func plural(n int, one string) string {
+	if n == 1 {
+		return one
+	}
+	return one + "s"
 }
 
-const (
-	maxLiveLines  = 1000
-	streamBufSize = 2048
-)
-
-// mode is which of the three input states the bottom zone is in.
-type mode int
-
-const (
-	modeInput mode = iota
-	modeConfirm
-	modeSaveConfirm     // diff confirm for a direct editor save, see saveConfirmBox
-	modeRollbackConfirm // asks before reverting the human's own files
-)
-
-// focusPane is which zone the arrow keys act in.
-type focusPane int
-
-const (
-	focusInput focusPane = iota
-	focusHistory
-	focusOutput
-)
-
-// navState is history/output navigation. histOffset is the only
-// scroll state kept: what's visible is derived per render by
-// historyWindow, so there is no cache to keep in step.
-type navState struct {
-	cursor int
-	follow bool
-	focus  focusPane
-
-	histHeight int
-	histOffset int
-}
-
-// layoutState is the body row's pane widths, recomputed by sizeViewport.
-type layoutState struct {
-	width, height int
-	outputColW    int
-	histColW      int
-}
-
-// confirmState is the propose→confirm handoff.
-type confirmState struct {
-	pending Proposal
-	pre     PreJudgment
-	use     Usage
-	shownAt time.Time // starts the dwell clock
-}
-
-// saveState is the direct-editor-write confirm flow.
-type saveState struct {
-	editing bool
-	row     *stepRow
-}
-
-// rollbackState is a rollback waiting on the human to say whether
-// their own files go back with the container.
-type rollbackState struct {
-	target *goalBlock
-	local  int
-	step   int
-	files  []FileChange
-}
-
-// perfState is UI-prep cost, measured around viewport refreshes.
-type perfState struct {
-	uiPrep  time.Duration
-	uiPreps int
-}
-
-// noticeState is the one-shot status flash: text and outcome in one
-// value so they can't disagree. Set it via noteOK/noteErr.
-type noticeState struct {
-	text string
-	bad  bool
-}
-
-func (m *Model) noteOK(text string)  { m.notice = noticeState{text: text} }
-func (m *Model) noteErr(text string) { m.notice = noticeState{text: text, bad: true} }
-func (m *Model) clearNotice()        { m.notice = noticeState{} }
+// Idle and RowCount expose just enough for a wiring test in
+// cmd/detent, which cannot reach unexported state.
+func (m Model) Idle() bool    { return m.cur == nil && !m.waiting }
+func (m Model) RowCount() int { return len(m.rows()) }

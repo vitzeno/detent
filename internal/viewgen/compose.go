@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/classify"
-	"github.com/vitzeno/detent/internal/usage"
 	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/viewspec"
 )
@@ -75,7 +75,7 @@ type composer struct {
 	req   Request
 	log   logger
 	asked int
-	used  usage.Usage
+	used  event.Usage
 }
 
 // run is the pipeline, and the order is the point. The header decides
@@ -261,7 +261,7 @@ func (c *composer) askState(ctx context.Context, state map[string]any,
 			"question", len(qs))
 		return nil, false
 	}
-	c.used = add(c.used, usage.Usage{
+	c.used = add(c.used, event.Usage{
 		PromptTokens: u.InputTokens, CompletionTokens: u.OutputTokens, Model: u.Model})
 	return answers, true
 }

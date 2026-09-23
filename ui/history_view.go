@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"github.com/vitzeno/detent/event"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -26,32 +27,28 @@ func (m Model) historyLines() (lines []string, cursorEntry int) {
 		}
 		var block []string
 
-		// A tool block has no goal text of its own — its one step
-		// already says what it is.
-		if b.tool == "" {
-			for _, gl := range wrapPlain(b.goal, m.blockWidth()) {
-				block = append(block, styleGoal.Render(gl))
-			}
+		for _, gl := range wrapPlain(b.prompt, m.blockWidth()) {
+			block = append(block, styleGoal.Render(gl))
 		}
-		for _, r := range b.steps {
+		for _, r := range b.rows {
 			if len(rows) > 0 && r == rows[m.cursorClamped()] {
 				cursorEntry = len(lines) + len(block)
 			}
 			step++
 			block = append(block, m.stepLines(r, step)...)
-			if r.cmd.expanded {
+			if r.expanded {
 				block = append(block, previewLines(r, m.blockWidth()-6)...)
 			}
 		}
-		if b.ended && b.tool == "" {
-			block = append(block, m.goalBanner(b)...)
+		if b.ended {
+			block = append(block, m.turnBanner(b)...)
 		} else if b == m.cur && m.waiting && !anyRunning(b) {
 			block = append(block, fmt.Sprintf("  %s %s", m.spinner.View(), styleFaint.Render("thinking…")))
 		}
 		lines = append(lines, m.railed(b, block)...)
 	}
 	if len(lines) == 0 {
-		lines = append(lines, styleFaint.Render("  no goals yet — describe one below"))
+		lines = append(lines, styleFaint.Render("  nothing yet — ask for something below"))
 	}
 	return lines, cursorEntry
 }
@@ -68,7 +65,7 @@ func (m Model) blockWidth() int { return max(12, m.layout.histColW-4-railWidth) 
 // one reaches, so the grouping reads from any row rather than only
 // from the edges — and its colour says how the goal went without
 // having to reach the banner at the bottom.
-func (m Model) railed(b *goalBlock, block []string) []string {
+func (m Model) railed(b *turnBlock, block []string) []string {
 	bar := m.railStyle(b).Render("┃") + " "
 	out := make([]string, len(block))
 	for i, l := range block {
@@ -77,24 +74,20 @@ func (m Model) railed(b *goalBlock, block []string) []string {
 	return out
 }
 
-// railStyle colours the rail by outcome: accent while the goal is
+// railStyle colours the rail by outcome: accent while the request is
 // still running, then whatever it came to.
-func (m Model) railStyle(b *goalBlock) lipgloss.Style {
+func (m Model) railStyle(b *turnBlock) lipgloss.Style {
 	switch {
 	case b == m.cur && !b.ended:
 		return styleRowCursor
-	case b.tool != "":
-		return styleFaint
-	case b.fatalErr != nil:
-		return styleDanger
-	case b.end == EndDone && b.judge.scored && b.judge.score < partlyMetBelow:
-		return styleCaution
-	case b.end == EndDone:
-		return styleSafe
-	case b.end == EndDeclined:
-		return styleMuted
 	case !b.ended:
 		return styleRowCursor
+	case b.err != "" || b.end == event.EndError:
+		return styleDanger
+	case b.end == event.EndDone:
+		return styleSafe
+	case b.end == event.EndStopped:
+		return styleSafe
 	default:
 		return styleCaution
 	}
@@ -119,7 +112,7 @@ func (m *Model) cursorClamped() int {
 // that ran sandboxed. Session-wide, not per goal: numbering restarted
 // each goal meant every row read "#1" and the number a human typed
 // addressed a different step from the one they were pointing at.
-func (m Model) stepLines(r *stepRow, step int) []string {
+func (m Model) stepLines(r *callRow, step int) []string {
 	mark := "  "
 	if r == m.focused() {
 		mark = styleRowCursor.Render("▸ ")
@@ -128,105 +121,116 @@ func (m Model) stepLines(r *stepRow, step int) []string {
 	// nothing ran and there is no exit code to report.
 	if r.prose != "" {
 		note := ""
-		if k := rowKind(r); k != "" && k != KindText {
-			note = styleFaint.Render("  " + status.KindLabel(string(k)))
+		if k := r.kind(); k != "" && k != "text" {
+			note = styleFaint.Render("  " + status.KindLabel(k))
 		}
 		return []string{fmt.Sprintf("%s%s %s%s", mark, styleGoal.Render("❯"),
 			styleMuted.Render(layout.Truncate(plainProse(r.prose), m.blockWidth()-10)), note)}
 	}
-	// A tool row never executed a shell command, so status.Badge (which
-	// reads r.cmd.ec) doesn't apply.
-	if r.toolKind != "" {
-		cmd := layout.Truncate(r.command, m.blockWidth()-4)
-		return []string{fmt.Sprintf("%s%s %s", mark, styleMuted.Render("○"), cmd)}
-	}
 	s := status.Row{}
-	if r.cmd.running {
+	switch {
+	case r.running:
 		s.Running = true
-		s.LiveLines = len(r.cmd.live)
-		s.Dropped = r.cmd.dropped
-	} else if r.cmd.ec != nil {
+		s.LiveLines = len(r.live)
+		s.Dropped = r.dropped
+	case r.result != nil:
 		s.HasResult = true
-		s.ExitCode = r.cmd.ec.Result.ExitCode
-		s.Summary = r.cmd.ec.Result.Summary()
-		if r.cmd.ec.Post != nil {
+		s.ExitCode = r.result.ExitCode
+		s.Summary = resultSummary(r.result)
+		if r.post != nil {
 			s.Judged = true
-			s.Status = r.cmd.ec.Post.Status
-			s.Attention = r.cmd.ec.Post.Attention
+			s.Status = r.post.status
+			s.Attention = r.post.attention
 		}
 	}
 	icon, detail := status.Badge(s, m.spinner.View())
-
-	checkpoint := ""
-	if r.cmd.ec != nil && r.cmd.ec.SnapshotID != "" {
-		checkpoint = styleFaint.Render(fmt.Sprintf(" #%d", step))
-	}
+	_ = step
 
 	// Truncated not wrapped: a command is often one unbreakable token
-	// with no good place to break.
-	cmd := layout.Truncate(r.command, m.blockWidth()-24)
-	return []string{fmt.Sprintf("%s%s %s %s%s", mark, icon, cmd, styleMuted.Render("· "+detail), checkpoint)}
+	// with no good place to break. The budget is measured from the
+	// pieces rather than guessed at, because the detail text varies
+	// and a fixed allowance overflowed the pane by a column.
+	// Measured from the pieces, since the detail varies. Where there
+	// is no room for both, the command wins.
+	head := lipgloss.Width(stripStyle(mark)) + lipgloss.Width(icon) + 1
+	tail := "· " + detail
+	if m.blockWidth()-head-1-lipgloss.Width(tail) < minCommandCells {
+		cmd := layout.Truncate(r.command, m.blockWidth()-head)
+		return []string{fmt.Sprintf("%s%s %s", mark, icon, cmd)}
+	}
+	cmd := layout.Truncate(r.command, m.blockWidth()-head-1-lipgloss.Width(tail))
+	return []string{fmt.Sprintf("%s%s %s %s", mark, icon, cmd, styleMuted.Render(tail))}
 }
 
-func anyRunning(b *goalBlock) bool {
-	for _, r := range b.steps {
-		if r.cmd.running {
+// minCommandCells is what layout.Truncate will not go below.
+const minCommandCells = 4
+
+// stripStyle measures what a styled string occupies, since a row's
+// budget is cells and ANSI is bytes.
+func stripStyle(s string) string {
+	out := make([]rune, 0, len(s))
+	var inEsc bool
+	for _, r := range s {
+		switch {
+		case r == 0x1b:
+			inEsc = true
+		case inEsc && (r == 'm' || r == 'K'):
+			inEsc = false
+		case !inEsc:
+			out = append(out, r)
+		}
+	}
+	return string(out)
+}
+
+func anyRunning(b *turnBlock) bool {
+	for _, r := range b.rows {
+		if r.running {
 			return true
 		}
 	}
 	return false
 }
 
-func (m Model) goalBanner(b *goalBlock) []string {
+// turnBanner is the one line under a finished block. The model's own
+// words have a row of their own, so this is the outcome alone.
+func (m Model) turnBanner(b *turnBlock) []string {
 	w := m.blockWidth() - 2
-	switch {
-	case b.fatalErr != nil:
-		return wrapStyled(styleDanger, "✗ error: "+b.fatalErr.Error(), w)
-	case b.end == EndDone:
-		// The summary has a row of its own now, so the banner is just
-		// the verdict rather than the same words twice.
-		return m.judgeLines(b, w)
-	case b.end == EndBudget:
-		return append([]string{"  " + styleCaution.Render("⚠ step cap reached — goal not confirmed done")},
-			m.judgeLines(b, w)...)
-	case b.end == EndDeclined:
-		return []string{"  " + styleMuted.Render(fmt.Sprintf("✗ declined — %d command(s) ran", len(b.steps)))}
-	case b.end == EndAborted:
-		return []string{"  " + styleCaution.Render(fmt.Sprintf("⚠ aborted — %d command(s) ran", len(b.steps)))}
-	default:
-		return []string{"  " + styleMuted.Render("ended: "+string(b.end))}
-	}
-}
-
-// judgeLines reports Jev's read on the goal whatever it says. Speaking
-// up only to disagree made silence mean both "it agrees" and "nothing
-// judged this" — the two things a second opinion exists to separate.
-func (m Model) judgeLines(b *goalBlock, width int) []string {
-	if !b.judge.scored {
+	ran := fmt.Sprintf("%d call(s)", len(b.rows))
+	switch b.end {
+	case event.EndDone:
 		return nil
+	case event.EndStopped:
+		return []string{"  " + styleFaint.Render("✓ stopped early — "+ran)}
+	case event.EndBound:
+		return []string{"  " + styleCaution.Render("⚠ step bound reached — "+ran)}
+	case event.EndAborted:
+		return []string{"  " + styleCaution.Render("⚠ aborted — "+ran)}
+	case event.EndError:
+		return wrapStyled(styleDanger, "✗ error: "+b.err, w)
 	}
-	// Only a verdict worth acting on gets a mark. Agreement is the
-	// expected case, and flagging it crowds out the two that aren't.
-	mark, style, word := "", styleSafe, "goal met"
-	switch {
-	case b.judge.score < unmetBelow:
-		mark, style, word = "⚠ ", styleCaution, "goal looks unmet"
-	case b.judge.score < partlyMetBelow:
-		mark, style, word = "~ ", styleCaution, "goal only partly met"
-	}
-	return wrapStyled(style, fmt.Sprintf("%sjev · %s (%.2f)", mark, word, b.judge.score), width)
+	return []string{"  " + styleMuted.Render("ended: "+string(b.end))}
 }
 
-// Where Jev's goal-achieved score stops meaning "done".
-const (
-	unmetBelow     = 0.5
-	partlyMetBelow = 0.8
-)
+// resultSummary is the short form a row shows beside its badge.
+func resultSummary(r *event.Result) string {
+	if r.Err != "" {
+		return r.Err
+	}
+	out := outputOf(r)
+	if out == "" {
+		return "no output"
+	}
+	if i := strings.IndexByte(out, '\n'); i >= 0 {
+		out = out[:i]
+	}
+	return out
+}
 
-func previewLines(r *stepRow, width int) []string {
-	src := r.cmd.live
-	if r.cmd.ec != nil {
-		src = strings.Split(strings.TrimSuffix(r.cmd.ec.Result.Stdout+r.cmd.ec.Result.Stderr, "\n"), "\n")
+func previewLines(r *callRow, width int) []string {
+	src := r.live
+	if r.result != nil {
+		src = strings.Split(strings.TrimSuffix(outputOf(r.result), "\n"), "\n")
 	}
 	var out []string
 	for i, l := range src {

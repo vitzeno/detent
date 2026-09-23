@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/vitzeno/detent/event"
 )
 
 // Keystroke routing. handleKey computes exactly one owner for each
@@ -14,14 +16,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
 		return m, tea.Quit
 	}
-	if m.mode == modeSaveConfirm {
-		return m.saveConfirmKey(msg)
+	if m.mode == modeUndo {
+		return m.undoKey(msg)
 	}
-	if m.mode == modeRollbackConfirm {
-		return m.rollbackConfirmKey(msg)
-	}
-	if m.save.editing {
-		return m.editorKey(msg)
+	if m.mode == modeBound {
+		return m.boundKey(msg)
 	}
 	switch msg.String() {
 	case "esc":
@@ -48,12 +47,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // meaning, so it is dropped rather than going somewhere surprising.
 func (m Model) handlePaste(text string) (tea.Model, tea.Cmd) {
 	if text == "" {
-		return m, nil
-	}
-	if m.save.editing {
-		if r := m.focused(); r != nil && r.editor != nil {
-			r.editor.Paste(text)
-		}
 		return m, nil
 	}
 	if m.mode != modeInput {
@@ -107,6 +100,17 @@ func (m Model) onTab() (tea.Model, tea.Cmd) {
 	return m.toggleFocus()
 }
 
+// boundKey answers the step bound. The engine is paused, waiting.
+func (m Model) boundKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y", "enter":
+		return m.answerBound(true)
+	case "n", "N", "esc":
+		return m.answerBound(false)
+	}
+	return m, nil
+}
+
 func (m Model) confirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y", "enter":
@@ -117,18 +121,18 @@ func (m Model) confirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// rollbackConfirmKey owns every key while the rollback confirm is up:
-// three outcomes, none of them implicit.
-func (m Model) rollbackConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+// undoKey owns every key while the undo question is up: three
+// outcomes, none of them implicit.
+func (m Model) undoKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
-		return m.confirmRollback()
+		return m.confirmUndo(true)
 	case "n", "N", "enter":
 		// enter takes the safe branch: the destructive answer has to
 		// be typed deliberately.
-		return m.declineRollback()
+		return m.confirmUndo(false)
 	case "esc":
-		return m.cancelRollback()
+		return m.cancelUndo()
 	case "up":
 		m.output.ScrollUp(1)
 		return m, nil
@@ -145,38 +149,9 @@ func (m Model) rollbackConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) saveConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "y", "Y", "enter":
-		return m.confirmSave()
-	case "n", "N", "esc":
-		return m.cancelSave()
-	}
-	return m, nil
-}
-
 // editorKey owns every key while editing: esc leaves edit mode without
 // touching disk, ctrl+s opens the diff confirm, everything else goes to
 // the textarea.
-func (m Model) editorKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	r := m.focused()
-	if r == nil || r.editor == nil {
-		m.save.editing = false
-		return m, nil
-	}
-	switch msg.String() {
-	case "esc":
-		r.editor.Blur()
-		m.save.editing = false
-		return m, nil
-	case "ctrl+s":
-		return m.startSave()
-	}
-	var cmd tea.Cmd
-	*r.editor, cmd = r.editor.Update(msg)
-	return m, cmd
-}
-
 // inputKey gives a focused idle input every keystroke — typing must
 // never trigger navigation. Only pgup/pgdn and enter bypass the input.
 func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -185,7 +160,7 @@ func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	switch msg.String() {
 	case "enter":
-		return m.startGoal()
+		return m.submit()
 	case "pgup", "pgdown":
 		return m.scrollViewport(msg.String())
 	}
@@ -232,7 +207,7 @@ func (m Model) slashKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		// without running. Completing on enter meant every command
 		// took two presses, which is not how the dropdown reads.
 		m.prompt.Accept()
-		next, cmd := m.startGoal()
+		next, cmd := m.submit()
 		return next, cmd, true
 	}
 	return m, nil, false
@@ -240,12 +215,6 @@ func (m Model) slashKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 
 // outputKey acts inside the detail component instead of moving rows.
 func (m Model) outputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	// A panel owns its own keys where it has any; the rest scroll.
-	if m.panel.open() {
-		if next, cmd, handled := m.panelKey(msg); handled {
-			return next, cmd
-		}
-	}
 	switch msg.String() {
 	case "up":
 		return m.outputNav(-1)
@@ -259,19 +228,12 @@ func (m Model) outputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter", "v", "space":
 		if r := m.focused(); r != nil {
-			if r.editor != nil {
-				m.save.editing = true
-				return m, r.editor.Focus()
-			}
 			if msg.String() == "enter" {
 				if nm, ok := m.seedFromView(r); ok {
 					return nm, nil
 				}
 			}
-			if r.toolKind == "tree" {
-				return m.openTreeSelection(r)
-			}
-			r.cmd.expanded = !r.cmd.expanded
+			r.expanded = !r.expanded
 		}
 		return m, nil
 	}
@@ -289,13 +251,13 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "pgup", "pgdown":
 		return m.scrollViewport(msg.String())
 	case "enter":
-		if r := m.focused(); r != nil && !r.cmd.running {
-			r.cmd.expanded = !r.cmd.expanded
+		if r := m.focused(); r != nil && !r.running {
+			r.expanded = !r.expanded
 		}
 		return m, nil
 	case "v", "space":
 		if r := m.focused(); r != nil {
-			r.cmd.expanded = !r.cmd.expanded
+			r.expanded = !r.expanded
 		}
 		return m, nil
 	}
@@ -315,18 +277,17 @@ func (m Model) onEscape() (tea.Model, tea.Cmd) {
 		m.prompt.Close()
 		return m, nil
 	}
-	if m.panel.open() {
-		return m.closePanel(), nil
+	if m.closePanel() {
+		return m, nil
 	}
 	// Idle esc in the output pane steps back to history; a running
-	// command still aborts.
-	if m.nav.focus == focusOutput && m.abort == nil {
+	// request still aborts.
+	if m.nav.focus == focusOutput && m.cur == nil {
 		m.nav.focus = focusHistory
 		return m, nil
 	}
-	if m.abort != nil {
-		m.abort()
-		m.abort = nil
+	if m.cur != nil {
+		return m, m.send(event.Abort{Turn: m.cur.id})
 	}
 	return m, nil
 }

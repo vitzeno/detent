@@ -12,23 +12,23 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/vitzeno/detent/internal/agent"
 	"github.com/vitzeno/detent/internal/classify"
-	"github.com/vitzeno/detent/internal/propose"
+	"github.com/vitzeno/detent/internal/engine"
+	"github.com/vitzeno/detent/internal/model"
 	"github.com/vitzeno/detent/internal/sandbox"
 )
 
 // Defaults: local LM Studio server, bonsai for now, pinned Jev. Aliased
 // from propose rather than redeclared, so the two can't silently drift.
 const (
-	DefaultBaseURL = propose.DefaultBaseURL
-	DefaultModel   = propose.DefaultModel
+	DefaultBaseURL = model.DefaultBaseURL
+	DefaultModel   = model.DefaultModel
 )
 
 // DefaultContextTokens is aliased for the same reason. Unlike Steps, 0
 // is not a meaningful value here — an unbounded transcript is the bug
 // compaction exists to fix — so a plain default is enough.
-const DefaultContextTokens = agent.DefaultContextTokens
+const DefaultContextTokens = engine.DefaultContextTokens
 
 // DefaultSandboxWorkspace is the in-container mount point, not the
 // host source (always os.Getwd(); see sandbox.Container).

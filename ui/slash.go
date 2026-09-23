@@ -26,18 +26,19 @@ func slashCommands() []slashCmd {
 		{"/quit", "quit detent", func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}},
-		{"/abort", "abort the running command", Model.abortRunning},
-		{"/tree", "browse files and directories", func(m Model, _ string) (tea.Model, tea.Cmd) {
-			return m.openTreeTool()
+		{"/abort", "stop the running request", func(m Model, _ string) (tea.Model, tea.Cmd) {
+			return m.abortRunning()
 		}},
-		{"/usage", "show usage and timings", func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{"/usage", "show what this session has cost", func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.openPanel(panelUsage)
 		}},
 		{"/status", "show what detent is and what it has done", func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.openPanel(panelStatus)
 		}},
-		{"/rollback", "undo a step and everything after it, e.g. /rollback 2", Model.runRollback},
-		{"/new", "clear the session and start over", Model.startOver},
+		{"/undo", "undo a request and everything after it, e.g. /undo 2", Model.runUndo},
+		{"/new", "forget the conversation and start over", func(m Model, _ string) (tea.Model, tea.Cmd) {
+			return m.startOver()
+		}},
 		{"/help", "show slash commands", func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.openPanel(panelHelp)
 		}},
@@ -132,4 +133,25 @@ func slashMoreLine(n, start, end int) string {
 		return ""
 	}
 	return "    " + styleFaint.Render(strings.Join(parts, " · "))
+}
+
+func (m Model) runSlash(input string) (tea.Model, tea.Cmd) {
+	c, ok := lookupSlash(input)
+	if !ok {
+		m.noteErr("unknown command " + input + " (try /help)")
+		return m, nil
+	}
+	next, cmd := c.run(m, input)
+	// A command that opened a question has not finished, so it has not
+	// succeeded either: its outcome comes once it is answered.
+	if nm, isModel := next.(Model); isModel && nm.notice.text == "" && nm.mode == modeInput {
+		nm.noteOK(c.Name)
+		return nm, cmd
+	}
+	return next, cmd
+}
+
+func (m Model) acceptSlash() (tea.Model, tea.Cmd) {
+	m.prompt.Accept()
+	return m, nil
 }
