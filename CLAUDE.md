@@ -343,6 +343,17 @@ adding a fat dependency fails with the transitive import named.
   `viewspec` and nothing else, which is what lets both `ui` and
   `viewgen` read it without either importing the other.
 
+- **`internal/store`** — a session's events on disk, so it can be
+  replayed rather than reconstructed. Speaks `event.Record` and knows
+  nothing about the engine. One append-only table; the schema lives in
+  `migrations/*.sql`, embedded, versioned by SQLite's own
+  `PRAGMA user_version` rather than a migration library. Each file
+  applies in one transaction with its version bump, so a half-applied
+  migration cannot be recorded as done. Encoding is **not** here: a
+  store holding its own type list would decode every old record and
+  silently drop a new one, so `event/codec.go` owns it and a test
+  parses the package to prove no type lacks a codec.
+
 - **`version`** — what this build calls itself, and nothing else.
 
 ### Adding or changing a widget

@@ -25,9 +25,9 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
-	if _, err := db.Exec(schema); err != nil {
+	if err := migrate(db); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("store: schema: %w", err)
+		return nil, err
 	}
 	return &Store{db: db}, nil
 }
