@@ -3,6 +3,8 @@ package model
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,20 +16,21 @@ import (
 // speaks the protocol; this one proves the endpoint does, which is the
 // single external unknown in the plan.
 //
-// Run it against whatever you actually use:
+// Reads .detent.yaml, so it uses whatever the harness itself would:
 //
-//	DETENT_LIVE=1 DETENT_BASE_URL=... DETENT_MODEL=... DETENT_API_KEY=... \
-//	  go test ./internal/model/ -run TestLive -v
+//	DETENT_LIVE=1 go test ./internal/model/ -run TestLive -v
 func TestLive_ToolCallsRoundTrip(t *testing.T) {
 	if os.Getenv("DETENT_LIVE") == "" {
 		t.Skip("set DETENT_LIVE=1 to run against a real endpoint")
 	}
+	cfg := liveConfig(t)
 	c := &Client{
-		BaseURL: os.Getenv("DETENT_BASE_URL"),
-		Model:   os.Getenv("DETENT_MODEL"),
-		APIKey:  os.Getenv("DETENT_API_KEY"),
+		BaseURL: cfg["base_url"],
+		Model:   cfg["model"],
+		APIKey:  cfg["api_key"],
 		Env:     LocalEnvironment(),
 	}
+	t.Logf("endpoint %s, model %s", c.baseURL(), c.model())
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	require.NoError(t, Ping(ctx, c.baseURL(), c.APIKey))
@@ -77,4 +80,42 @@ func joinNames(calls []ToolCall) string {
 		s += c.Name
 	}
 	return s
+}
+
+// liveConfig reads the few keys this test needs out of .detent.yaml.
+// A real parser would mean importing internal/config, which phase 4
+// rewrites; the env var still wins, for pointing at something else.
+func liveConfig(t *testing.T) map[string]string {
+	t.Helper()
+	dir, err := os.Getwd()
+	require.NoError(t, err)
+
+	var raw []byte
+	for range 4 {
+		if b, err := os.ReadFile(filepath.Join(dir, ".detent.yaml")); err == nil {
+			raw = b
+			break
+		}
+		dir = filepath.Dir(dir)
+	}
+	require.NotNil(t, raw, "no .detent.yaml found above the test directory")
+
+	out := map[string]string{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if line = strings.TrimSpace(line); line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		v, _, _ = strings.Cut(v, " #")
+		out[strings.TrimSpace(k)] = strings.Trim(strings.TrimSpace(v), `"'`)
+	}
+	for _, k := range []string{"base_url", "model", "api_key"} {
+		if env := os.Getenv("DETENT_" + strings.ToUpper(k)); env != "" {
+			out[k] = env
+		}
+	}
+	return out
 }
