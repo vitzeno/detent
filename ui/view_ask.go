@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/layout"
 )
 
@@ -20,7 +21,7 @@ func (m Model) confirmBox() string {
 	w := m.layout.width - 4
 	var b strings.Builder
 	b.WriteString(styleDanger.Render("!! look twice") + "\n")
-	for _, line := range wrapPlain(renderArgs(a.Tool, a.Args), w) {
+	for _, line := range wrapPlain(event.Command(a.Tool, a.Args), w) {
 		b.WriteString("  " + styleGoal.Render(line) + "\n")
 	}
 	if a.Rationale != "" {

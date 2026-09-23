@@ -1,9 +1,13 @@
 package logging_test
 
 import (
-	"github.com/google/uuid"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -111,3 +115,57 @@ func TestWatch_WithholdsBodiesUnlessAsked(t *testing.T) {
 // testID makes a deterministic uuid from a readable name, so a test
 // can still say "c1" and mean it.
 func testID(name string) uuid.UUID { return uuid.NewSHA1(uuid.Nil, []byte(name)) }
+
+// The log is what you ask "what did it actually run", and it could
+// only answer "bash". The command rides through Body like any content.
+func TestWatch_RecordsTheCommand(t *testing.T) {
+	dir := t.TempDir()
+	closer, err := logging.Setup(logging.Options{Dir: dir, Session: "c", Level: "debug", Bodies: true})
+	require.NoError(t, err)
+
+	bus := event.New()
+	stop := logging.Watch(bus)
+	call := uuid.Must(uuid.NewV7())
+	args := map[string]any{"command": "rm -rf build"}
+	bus.Publish(event.CallProposed{Call: call, Tool: "bash", Args: args})
+	bus.Publish(event.ApprovalAsked{Call: call, Tool: "bash", Args: args, Rationale: "recursive delete"})
+
+	require.Eventually(t, func() bool { return len(records(t, dir, "c")) == 2 },
+		2*time.Second, 10*time.Millisecond)
+	stop()
+	require.NoError(t, closer())
+
+	by := map[string]map[string]any{}
+	for _, r := range records(t, dir, "c") {
+		by[r[logging.KeyEvent].(string)] = r
+	}
+	assert.Equal(t, "rm -rf build", by["call.proposed"]["command"])
+	assert.Equal(t, "rm -rf build", by["call.approval"]["command"],
+		"this record exists because a human read that string")
+	assert.Equal(t, "recursive delete", by["call.approval"][logging.KeyReason])
+}
+
+// slog writes its own "level", so a second one is not an extra field:
+// it silently replaces the first for every reader.
+func TestWatch_NeverWritesTwoLevelKeys(t *testing.T) {
+	dir := t.TempDir()
+	closer, err := logging.Setup(logging.Options{Dir: dir, Session: "n", Level: "debug"})
+	require.NoError(t, err)
+
+	bus := event.New()
+	stop := logging.Watch(bus)
+	bus.Publish(event.Notice{Level: "info", Text: "named test"})
+
+	require.Eventually(t, func() bool { return len(records(t, dir, "n")) == 1 },
+		2*time.Second, 10*time.Millisecond)
+	stop()
+	require.NoError(t, closer())
+
+	raw, err := os.ReadFile(filepath.Join(dir, "n.jsonl"))
+	require.NoError(t, err)
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		assert.Equal(t, 1, strings.Count(line, `"level":`), "duplicate level key: %s", line)
+	}
+	assert.Equal(t, "INFO", records(t, dir, "n")[0]["level"])
+	assert.Equal(t, "info", records(t, dir, "n")[0]["severity"])
+}

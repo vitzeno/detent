@@ -78,13 +78,19 @@ func describe(e event.Event) (slog.Level, []any) {
 	case event.ModelText:
 		return slog.LevelDebug, []any{KeyStep, v.Step, "text", Body(v.Text)}
 	case event.CallProposed:
-		return slog.LevelInfo, []any{KeyCall, v.Call, KeyStep, v.Step, "tool", v.Tool}
+		// The command, not just the tool: 27 of 30 calls are bash, and
+		// a log that cannot say what ran cannot answer anything.
+		return slog.LevelInfo, []any{KeyCall, v.Call, KeyStep, v.Step, "tool", v.Tool,
+			"command", Body(event.Command(v.Tool, v.Args))}
 	case event.CallAssessed:
 		return slog.LevelInfo, []any{KeyCall, v.Call, "dangerous", v.Risk.Dangerous,
 			"mutability", v.Risk.Mutability, "scope_risk", v.Risk.ScopeRisk,
 			"from_judge", v.Risk.FromJudge, KeyReason, v.Risk.Note}
 	case event.ApprovalAsked:
-		return slog.LevelInfo, []any{KeyCall, v.Call, "tool", v.Tool}
+		// The same string the human was shown, since what they approved
+		// is the whole of what this record is for.
+		return slog.LevelInfo, []any{KeyCall, v.Call, "tool", v.Tool,
+			"command", Body(event.Command(v.Tool, v.Args)), KeyReason, v.Rationale}
 	case event.CallStarted:
 		return slog.LevelDebug, []any{KeyCall, v.Call, "runner", v.Runner}
 	case event.CallEnded:
@@ -100,7 +106,9 @@ func describe(e event.Event) (slog.Level, []any) {
 	case event.ViewReady:
 		return slog.LevelDebug, []any{KeyCall, v.Call, "source", v.Source}
 	case event.Notice:
-		return level(v.Level == "error" || v.Level == "warn"), []any{"level", v.Level, "text", v.Text}
+		// severity, not level: slog writes its own "level" key, and two
+		// in one object means the last one silently wins.
+		return level(v.Level == "error" || v.Level == "warn"), []any{"severity", v.Level, "text", v.Text}
 	}
 	return slog.LevelDebug, nil
 }

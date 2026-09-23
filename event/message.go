@@ -1,5 +1,12 @@
 package event
 
+import (
+	"fmt"
+	"maps"
+	"slices"
+	"strings"
+)
+
 // The transcript's vocabulary. Here rather than in the model client
 // for the reason Usage is: a fact carries it, and this package may
 // import neither side.
@@ -47,4 +54,22 @@ func CallIDs(calls []ToolCall) []string {
 		out[i] = c.ID
 	}
 	return out
+}
+
+// Command renders a call the way a human is shown it: bash as its own
+// command, anything else as tool(k=v), which truncates better than JSON.
+func Command(tool string, args map[string]any) string {
+	if tool == "bash" {
+		if c, ok := args["command"].(string); ok {
+			return c
+		}
+	}
+	parts := make([]string, 0, len(args))
+	for _, k := range slices.Sorted(maps.Keys(args)) {
+		if args[k] == nil {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%v", k, args[k]))
+	}
+	return tool + " " + strings.Join(parts, " ")
 }

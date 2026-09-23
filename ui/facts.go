@@ -1,10 +1,9 @@
 package ui
 
 import (
-	"fmt"
-	"github.com/google/uuid"
-	"sort"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/status"
@@ -121,7 +120,7 @@ func (m *Model) addCall(v event.CallProposed) {
 		return
 	}
 	m.cur.rows = append(m.cur.rows, &callRow{
-		id: v.Call, command: renderArgs(v.Tool, v.Args),
+		id: v.Call, command: event.Command(v.Tool, v.Args),
 	})
 	m.trackNewest()
 }
@@ -192,29 +191,6 @@ func (m *Model) row(id uuid.UUID) *callRow {
 		}
 	}
 	return nil
-}
-
-// renderArgs is what a row shows: bash as its own command, everything
-// else as tool(k=v), which survives truncation better than JSON.
-func renderArgs(tool string, args map[string]any) string {
-	if tool == "bash" {
-		if c, ok := args["command"].(string); ok {
-			return c
-		}
-	}
-	keys := make([]string, 0, len(args))
-	for k := range args {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	parts := make([]string, 0, len(keys))
-	for _, k := range keys {
-		if args[k] == nil {
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("%s=%v", k, args[k]))
-	}
-	return tool + " " + strings.Join(parts, " ")
 }
 
 // maxLiveLines bounds what one running call keeps on screen; the rest
