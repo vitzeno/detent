@@ -76,6 +76,14 @@ type Container struct {
 	workspace string // host directory bind-mounted in; always os.Getwd()
 	fifoDir   string // client-side dir for cio's stdio FIFOs
 	sessionID string
+
+	// running serialises Run. A container holds one task at a time
+	// and one spec, so two concurrent commands raced: the second
+	// overwrote the first's spec, then failed to create the task, and
+	// the first polled output files nothing had written. It returned
+	// exit 0 and no bytes, which reads as a command that printed
+	// nothing rather than one that never ran.
+	running sync.Mutex
 }
 
 // Start connects to the daemon and creates the session's container,
@@ -176,6 +184,7 @@ const sandboxOutputDir = ".detent-sandbox"
 
 // Run creates a fresh task per command against the container's
 // current snapshot, so filesystem state carries over between them.
+// One at a time: see the running mutex.
 // Output is shell-redirected into the workspace mount, not captured
 // via containerd's cio: its FIFOs need the shim and reader on the
 // same kernel, not true once the daemon runs in a VM.
@@ -183,6 +192,8 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 	if c.container == nil {
 		return capture.Result{}, fmt.Errorf("sandbox: Start not called")
 	}
+	c.running.Lock()
+	defer c.running.Unlock()
 
 	// Session-scoped, not shared directly: recreating the same
 	// directory path across back-to-back containers on a virtiofs

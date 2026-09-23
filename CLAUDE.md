@@ -255,7 +255,14 @@ that by depending on almost nothing — the standard library plus
   Output is captured by shell-redirecting into files and polling them
   (`tail.go`), not containerd's FIFO streaming: a FIFO needs the shim
   and the reader on the same kernel, which stops holding once the
-  daemon runs inside a VM. **A rollback does not revert the
+  daemon runs inside a VM. **`Run` is serialised by a mutex.** A
+  container holds one task and one spec, so parallel Calls raced: the
+  second overwrote the first's spec, then failed to create the task,
+  and the first polled output files nothing had written — returning
+  exit 0 and no bytes, which reads as a command that printed nothing
+  rather than one that never ran. Restoring real parallelism means
+  one long-lived task and `task.Exec` per Call, which is what
+  containerd's exec model is for. **A rollback does not revert the
   workspace** — that is a bind mount to the user's real directory,
   deliberately outside the snapshot. Checkpoints are held by a
   per-session lease; without one the GC sweeps them and rollback works

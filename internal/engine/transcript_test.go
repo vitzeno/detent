@@ -205,3 +205,55 @@ func TestUnitEnd_GroupsAnAssistantWithItsAnswers(t *testing.T) {
 	assert.Equal(t, 5, unitEnd(msgs, 4), "prose with no calls stands alone")
 	assert.Equal(t, 5, unitEnd(msgs, 9), "past the end is the end")
 }
+
+// A mark has to survive compaction: it names a Turn a human may still
+// undo, and compaction rewrites the front underneath it. Counting
+// slice positions made every earlier mark point somewhere else.
+func TestMark_SurvivesCompaction(t *testing.T) {
+	var tr transcript
+	big := strings.Repeat("x", 3000)
+
+	tr.user("first request")
+	c1 := call("c1", "bash")
+	tr.step(model.Reply{Text: big, Calls: []model.ToolCall{c1}}, map[string]string{c1.ID: big})
+
+	// The Turn a human would undo.
+	target := tr.mark()
+	tr.user("second request")
+	c2 := call("c2", "bash")
+	tr.step(model.Reply{Text: big, Calls: []model.ToolCall{c2}}, map[string]string{c2.ID: big})
+
+	before := len(tr.messages())
+	require.True(t, tr.compact(context.Background(), 2, nil), "should have compacted")
+	require.Less(t, len(tr.messages()), before, "the front moved")
+
+	tr.truncate(target)
+	wellFormed(t, tr.messages())
+
+	var text string
+	for _, m := range tr.messages() {
+		text += m.Content + "\n"
+	}
+	assert.NotContains(t, text, "second request", "the undone Turn must be gone")
+}
+
+// Compaction can drop everything a mark named. Undoing to it is then
+// a no-op rather than a truncation to the wrong place.
+func TestTruncate_IgnoresAMarkCompactionAteAsWellAsOneTooLarge(t *testing.T) {
+	var tr transcript
+	big := strings.Repeat("x", 4000)
+	for range 6 {
+		tr.user("old")
+		c := call("c", "bash")
+		tr.step(model.Reply{Text: big, Calls: []model.ToolCall{c}}, map[string]string{c.ID: big})
+	}
+	stale := 1 // a mark from the very start
+	tr.compact(context.Background(), 1, nil)
+
+	n := len(tr.messages())
+	tr.truncate(stale)
+	assert.Len(t, tr.messages(), n, "a mark that no longer exists changes nothing")
+
+	tr.truncate(tr.mark() + 100)
+	assert.Len(t, tr.messages(), n, "and neither does one past the end")
+}

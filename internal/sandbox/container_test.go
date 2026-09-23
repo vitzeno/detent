@@ -4,13 +4,15 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"github.com/containerd/containerd/leases"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/containerd/containerd/leases"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -337,4 +339,39 @@ func TestContainer_RunHandlesMultilineCommands(t *testing.T) {
 	assert.Equal(t, 7, res.ExitCode)
 	assert.Equal(t, "out\n", res.Stdout)
 	assert.Equal(t, "err\n", res.Stderr)
+}
+
+// Parallel Calls are the norm now: the engine runs read-only ones
+// together. A container holds one task and one spec, so without
+// serialising, the second command overwrote the first's spec and the
+// first polled output files nothing had written — exit 0, no bytes,
+// which the model read as a command that printed nothing.
+func TestContainer_ConcurrentRunsDoNotCrossContaminate(t *testing.T) {
+	c := newTestContainer(t)
+
+	const n = 6
+	type got struct {
+		want string
+		res  capture.Result
+		err  error
+	}
+	out := make([]got, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			want := fmt.Sprintf("marker-%d", i)
+			res, err := c.Run(context.Background(), "echo "+want, nil)
+			out[i] = got{want: want, res: res, err: err}
+		}()
+	}
+	wg.Wait()
+
+	for i, g := range out {
+		require.NoError(t, g.err, "call %d failed", i)
+		assert.Equal(t, 0, g.res.ExitCode, "call %d", i)
+		assert.Equal(t, g.want, strings.TrimSpace(g.res.Stdout),
+			"call %d got another command's output, or none", i)
+	}
 }

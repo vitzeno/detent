@@ -24,6 +24,11 @@ type transcript struct {
 	// protect is where the open Turn began. Compaction never drops
 	// from here on: the model cannot work a request it cannot see.
 	protect int
+	// dropped is how far compaction has shifted the front. A mark
+	// counts appends rather than slice positions, because compaction
+	// rewrites the front and an index would move under a Turn that
+	// still wants to be undone.
+	dropped int
 }
 
 // step appends one Step atomically: the assistant message, then one
@@ -61,18 +66,26 @@ func (t *transcript) note(text string) {
 }
 
 func (t *transcript) messages() []model.Message { return t.msgs }
-func (t *transcript) mark() int                 { return len(t.msgs) }
+
+// mark names a position that survives compaction. Counted in appends,
+// so it stays valid however much the front is rewritten.
+func (t *transcript) mark() int { return len(t.msgs) + t.dropped }
 
 // truncate rewinds to a mark, for a rollback. Marks are taken at Turn
 // boundaries, so this cannot land inside a Step.
+// truncate rewinds to a mark. Compaction may have dropped everything
+// the mark named, which is not an error: there is simply nothing left
+// to undo to, so the transcript is left alone.
 func (t *transcript) truncate(to int) {
-	if to >= 0 && to <= len(t.msgs) {
-		t.msgs = t.msgs[:to]
-		t.protect = min(t.protect, to)
+	at := to - t.dropped
+	if at < 0 || at > len(t.msgs) {
+		return
 	}
+	t.msgs = t.msgs[:at]
+	t.protect = min(t.protect, at)
 }
 
-func (t *transcript) reset() { t.msgs, t.protect = nil, 0 }
+func (t *transcript) reset() { t.msgs, t.protect, t.dropped = nil, 0, 0 }
 
 func (t *transcript) bytes() int { return msgBytes(t.msgs) }
 
@@ -116,6 +129,9 @@ func (t *transcript) compact(ctx context.Context, budgetTokens int, s Summarizer
 	}
 	rest := append([]model.Message{{Role: model.RoleUser, Content: note}}, t.msgs[cut:]...)
 	t.msgs = rest
+	// cut messages became one note, so everything after shifts by
+	// cut-1 and every outstanding mark must shift with it.
+	t.dropped += cut - 1
 	t.protect = t.protect - cut + 1
 	if t.protect < 1 {
 		t.protect = 1
