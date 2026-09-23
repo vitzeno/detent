@@ -121,7 +121,18 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 	}
 }
 
+// endTurn flushes anything still queued before closing. A correction
+// typed as the last Step finished has nowhere else to go, and losing
+// it means the next Turn never hears it.
 func (e *Engine) endTurn(t *turnState, why event.EndReason, summary string, used event.Usage) {
+	t.drain()
+	if notes := t.takeNotes(); len(notes) > 0 {
+		e.trLock(func() {
+			for _, n := range notes {
+				e.tr.note(n)
+			}
+		})
+	}
 	e.bus.Publish(event.TurnEnded{Turn: t.id, Reason: why, Summary: summary, Usage: used})
 }
 
