@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/vitzeno/detent/event"
@@ -17,7 +18,7 @@ func Watch(bus *event.Bus) func() {
 		defer close(done)
 		for rec := range facts {
 			level, fields := describe(rec.Event)
-			log.Log(nil, level, string(rec.Event.Kind()),
+			log.Log(context.TODO(), level, string(rec.Event.Kind()),
 				append([]any{KeyEvent, string(rec.Event.Kind()), KeySeq, rec.Seq}, fields...)...)
 		}
 	}()
