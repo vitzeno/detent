@@ -207,8 +207,7 @@ func run() error {
 
 	bus := event.New()
 	// Seeded before anything publishes, or a new record lands on an
-	// ordinal already on disk. The replay itself never goes on the
-	// bus: it would be stored a second time.
+	// ordinal already on disk. The replay never goes on the bus.
 	bus.Resume(engine.Resumable(restore))
 	eng := engine.New(bus, client, tool.Standard(), runners, opts...)
 	eng.Restore(restore)

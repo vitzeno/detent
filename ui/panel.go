@@ -63,9 +63,8 @@ func (m *Model) usageLines() []string {
 		m.steps, status.Tokens(m.tokens))))
 }
 
-// sessionLines is what can be resumed. Read-only: resuming rebuilds
-// the transcript and rebinds the container, which is a process, not a
-// keystroke. The id is here to be copied into one.
+// sessionLines is what can be resumed. Read-only, because resuming
+// is a process rather than a keystroke; the id is here to be copied.
 func (m *Model) sessionLines() []string {
 	out := []string{styleGoal.Render("sessions"), "",
 		styleFaint.Render("  resume one with  detent -resume <id>"), ""}
@@ -74,10 +73,11 @@ func (m *Model) sessionLines() []string {
 		if s.ID == m.run.Session {
 			mark = styleGoal.Render("▸ ")
 		}
-		out = append(out, fmt.Sprintf("%s%s  %s  %s", mark,
+		out = append(out, fmt.Sprintf("%s%s  %s  %s  %s", mark,
 			styleGoal.Render(s.ID.String()),
 			styleFaint.Render(s.Started.Local().Format("2006-01-02 15:04")),
-			styleFaint.Render(countOf(s.Events, "event"))))
+			styleFaint.Render(pad(countOf(s.Events, "event"), 12)),
+			styleFaint.Render(s.Model)))
 	}
 	if len(m.sessions) == 0 {
 		out = append(out, styleFaint.Render("  (nothing recorded yet)"))
@@ -131,8 +131,8 @@ func (m *Model) helpLines() []string {
 		"  "+styleFaint.Render("ctrl+c    quit"))
 }
 
-// recording says plainly when nothing is writing this session down,
-// because the alternative is finding out when you try to resume it.
+// recording says so when nothing is writing this down, because the
+// alternative is finding out at resume time.
 func recording(run event.SessionStarted) string {
 	if run.Recorded {
 		return styleSafe.Render("● yes") + styleFaint.Render("  resumable")

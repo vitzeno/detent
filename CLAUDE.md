@@ -350,8 +350,12 @@ adding a fat dependency fails with the transitive import named.
 
 - **`internal/store`** — a session's events on disk, so it can be
   replayed rather than reconstructed. Speaks `event.Record` and knows
-  nothing about the engine. One append-only table; the schema lives in
-  `migrations/*.sql`, embedded, versioned by SQLite's own
+  nothing about the engine. A `sessions` header and an append-only
+  `events` log with a foreign key between them: the header is written
+  once from `SessionStarted` so it cannot drift, while a `turns` table
+  would be a mutable aggregate over several facts and would. The
+  schema lives in `migrations/*.sql`, embedded, versioned by SQLite's
+  own
   `PRAGMA user_version` rather than a migration library. Each file
   applies in one transaction with its version bump, so a half-applied
   migration cannot be recorded as done. Encoding is **not** here: a

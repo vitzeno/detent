@@ -170,9 +170,8 @@ func session(f Facts) []string {
 	return append(out, row("all time", allTime(f)))
 }
 
-// sessionID is what you would type after -resume, so it is shown
-// whole. A session nothing records says so instead: finding out at
-// resume time is too late.
+// sessionID is what you type after -resume, so it is shown whole. A
+// session nothing records says so instead.
 func sessionID(f Facts) string {
 	if !f.Recorded {
 		return caution.Render("⚠ not being recorded") +

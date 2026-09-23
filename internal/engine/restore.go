@@ -4,10 +4,8 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Restore rebuilds a session from its stored facts. It never
-// compacts: a mark is only valid against the compaction it was taken
-// under, so a rebuild with no cut point is the one that resolves the
-// marks a stored Turn still holds.
+// Restore rebuilds a session from its stored facts, never compacting:
+// a mark only resolves against a rebuild with no cut point.
 func (e *Engine) Restore(records []event.Record) {
 	e.resumed = len(records)
 	e.trLock(func() {

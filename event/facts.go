@@ -246,6 +246,7 @@ func (SessionsListed) Kind() Kind { return SessionsListedKind }
 type SessionSummary struct {
 	ID      uuid.UUID
 	Started time.Time
+	Model   string
 	Events  int
 }
 

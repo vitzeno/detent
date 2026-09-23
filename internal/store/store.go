@@ -30,6 +30,12 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
+	// Off by default in SQLite, and per connection, so the pool has
+	// to be told rather than the database.
+	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: enable foreign keys: %w", err)
+	}
 	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, err
@@ -40,19 +46,32 @@ func Open(path string) (*Store, error) {
 func (s *Store) Close() error { return s.db.Close() }
 
 // Append writes one record, keyed on the bus's ordinal, so writing
-// the same one twice is the same row.
+// the same one twice is the same row. A SessionStarted also writes
+// the header, in the same transaction: the events row has a foreign
+// key to it, so neither can exist without the other.
 func (s *Store) Append(session uuid.UUID, r event.Record) error {
 	payload, err := event.Encode(r.Event)
 	if err != nil {
 		return fmt.Errorf("store: encode %s: %w", r.Event.Kind(), err)
 	}
-	turn, call := event.Subject(r.Event)
-	_, err = s.db.Exec(insert, session.String(), r.Ordinal, r.At.UnixMilli(),
-		string(r.Event.Kind()), nullable(turn), nullable(call), payload)
+	tx, err := s.db.Begin()
 	if err != nil {
+		return fmt.Errorf("store: append: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // a committed tx rolls back to nothing
+
+	if started, ok := r.Event.(event.SessionStarted); ok {
+		if _, err := tx.Exec(upsertSession, session.String(), r.At.UnixMilli(),
+			started.Model, started.Sandbox, started.Network, started.Resumed); err != nil {
+			return fmt.Errorf("store: session header: %w", err)
+		}
+	}
+	turn, call := event.Subject(r.Event)
+	if _, err := tx.Exec(insert, session.String(), r.Ordinal, r.At.UnixMilli(),
+		string(r.Event.Kind()), nullable(turn), nullable(call), payload); err != nil {
 		return fmt.Errorf("store: append %s: %w", r.Event.Kind(), err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // Replay is a session's records in publish order. Whole rather than
@@ -98,16 +117,18 @@ func (s *Store) Sessions() ([]event.SessionSummary, error) {
 		var (
 			id     string
 			at     int64
+			model  string
 			events int
 		)
-		if err := rows.Scan(&id, &at, &events); err != nil {
+		if err := rows.Scan(&id, &at, &model, &events); err != nil {
 			return nil, fmt.Errorf("store: scan session: %w", err)
 		}
 		parsed, err := uuid.Parse(id)
 		if err != nil {
 			continue // not ours to offer
 		}
-		out = append(out, event.SessionSummary{ID: parsed, Started: time.UnixMilli(at).UTC(), Events: events})
+		out = append(out, event.SessionSummary{ID: parsed, Model: model,
+			Started: time.UnixMilli(at).UTC(), Events: events})
 	}
 	return out, rows.Err()
 }

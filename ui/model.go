@@ -60,9 +60,8 @@ type Model struct {
 	facts <-chan event.Record
 }
 
-// SessionInfo is what only the wiring knows. Everything a
-// SessionStarted already carries is read off that instead, so there
-// is one description of a run rather than two.
+// SessionInfo is what only the wiring knows. What SessionStarted
+// carries is read off that, so a run has one description.
 type SessionInfo struct {
 	Judge string // "" when no judge is wired
 

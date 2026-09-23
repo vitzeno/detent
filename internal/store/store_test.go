@@ -25,6 +25,15 @@ func rec(n uint64, e event.Event) event.Record {
 	return event.Record{Ordinal: n, At: time.UnixMilli(1_700_000_000_000 + int64(n)), Event: e}
 }
 
+// begin writes the header a session starts with. Events reference it,
+// so nothing can be appended before it, which is true of a real
+// session too: SessionStarted is always ordinal 1.
+func begin(t *testing.T, s *store.Store, session uuid.UUID) {
+	t.Helper()
+	require.NoError(t, s.Append(session, rec(1,
+		event.SessionStarted{Session: session, Model: "m", Recorded: true})))
+}
+
 // The gate: a record written now must come back later as the same
 // record, for every kind there is.
 func TestStore_RoundTripsEveryKind(t *testing.T) {
@@ -64,13 +73,14 @@ func TestStore_RoundTripsEveryKind(t *testing.T) {
 func TestStore_ReplaysInOrdinalOrder(t *testing.T) {
 	s := open(t)
 	session := uuid.Must(uuid.NewV7())
-	for _, n := range []uint64{5, 1, 4, 2, 3} {
+	begin(t, s, session)
+	for _, n := range []uint64{6, 2, 5, 3, 4} {
 		require.NoError(t, s.Append(session, rec(n, event.Notice{Text: "x"})))
 	}
 	got, err := s.Replay(session)
 	require.NoError(t, err)
 
-	require.Len(t, got, 5)
+	require.Len(t, got, 6)
 	for i, r := range got {
 		assert.EqualValues(t, i+1, r.Ordinal)
 	}
@@ -79,13 +89,15 @@ func TestStore_ReplaysInOrdinalOrder(t *testing.T) {
 func TestStore_KeepsSessionsApart(t *testing.T) {
 	s := open(t)
 	a, b := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	require.NoError(t, s.Append(a, rec(1, event.Notice{Text: "mine"})))
-	require.NoError(t, s.Append(b, rec(1, event.Notice{Text: "theirs"})))
+	begin(t, s, a)
+	begin(t, s, b)
+	require.NoError(t, s.Append(a, rec(2, event.Notice{Text: "mine"})))
+	require.NoError(t, s.Append(b, rec(2, event.Notice{Text: "theirs"})))
 
 	got, err := s.Replay(a)
 	require.NoError(t, err)
-	require.Len(t, got, 1, "an ordinal is per session, so both rows are ordinal 1")
-	assert.Equal(t, "mine", got[0].Event.(event.Notice).Text)
+	require.Len(t, got, 2, "an ordinal is per session, so both sessions have a 2")
+	assert.Equal(t, "mine", got[1].Event.(event.Notice).Text)
 }
 
 // Writing the same ordinal twice is the same row: a store that
@@ -93,13 +105,14 @@ func TestStore_KeepsSessionsApart(t *testing.T) {
 func TestStore_AppendIsIdempotent(t *testing.T) {
 	s := open(t)
 	session := uuid.Must(uuid.NewV7())
-	r := rec(1, event.Notice{Text: "once"})
+	begin(t, s, session)
+	r := rec(2, event.Notice{Text: "once"})
 	require.NoError(t, s.Append(session, r))
 	require.NoError(t, s.Append(session, r))
 
 	got, err := s.Replay(session)
 	require.NoError(t, err)
-	assert.Len(t, got, 1)
+	assert.Len(t, got, 2)
 }
 
 // Undoing a Turn is truncating the log, the same thing it means in
@@ -107,7 +120,8 @@ func TestStore_AppendIsIdempotent(t *testing.T) {
 func TestStore_TruncateDropsWhatCameAfter(t *testing.T) {
 	s := open(t)
 	session := uuid.Must(uuid.NewV7())
-	for n := uint64(1); n <= 6; n++ {
+	begin(t, s, session)
+	for n := uint64(2); n <= 6; n++ {
 		require.NoError(t, s.Append(session, rec(n, event.Notice{Text: "x"})))
 	}
 	require.NoError(t, s.Truncate(session, 3))
@@ -121,9 +135,11 @@ func TestStore_TruncateDropsWhatCameAfter(t *testing.T) {
 func TestStore_ListsSessionsNewestFirst(t *testing.T) {
 	s := open(t)
 	older, newer := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	require.NoError(t, s.Append(older, rec(1, event.Notice{Text: "a"})))
+	require.NoError(t, s.Append(older, event.Record{Ordinal: 1,
+		At: time.UnixMilli(1_000), Event: event.SessionStarted{Session: older, Model: "old-model"}}))
 	require.NoError(t, s.Append(older, rec(2, event.Notice{Text: "b"})))
-	require.NoError(t, s.Append(newer, rec(9, event.Notice{Text: "c"})))
+	require.NoError(t, s.Append(newer, event.Record{Ordinal: 1,
+		At: time.UnixMilli(9_000), Event: event.SessionStarted{Session: newer, Model: "new-model"}}))
 
 	got, err := s.Sessions()
 	require.NoError(t, err)
@@ -131,6 +147,7 @@ func TestStore_ListsSessionsNewestFirst(t *testing.T) {
 	assert.Equal(t, newer, got[0].ID, "newest first")
 	assert.Equal(t, older, got[1].ID)
 	assert.Equal(t, 2, got[1].Events)
+	assert.Equal(t, "old-model", got[1].Model, "the header says which model ran")
 	assert.False(t, got[0].Started.IsZero())
 }
 
@@ -139,7 +156,8 @@ func TestStore_ListsSessionsNewestFirst(t *testing.T) {
 func TestStore_ReplayShowsWhereToResumeFrom(t *testing.T) {
 	s := open(t)
 	session := uuid.Must(uuid.NewV7())
-	for n := uint64(1); n <= 4; n++ {
+	begin(t, s, session)
+	for n := uint64(2); n <= 4; n++ {
 		require.NoError(t, s.Append(session, rec(n, event.Notice{Text: "x"})))
 	}
 	got, err := s.Replay(session)
@@ -153,4 +171,66 @@ func TestStore_EmptyReplayIsNotAnError(t *testing.T) {
 	got, err := s.Replay(uuid.Must(uuid.NewV7()))
 	require.NoError(t, err)
 	assert.Empty(t, got)
+}
+
+// The header is what makes a listing cheap and a session's own facts
+// queryable, rather than buried in a payload.
+func TestStore_TheHeaderIsWrittenWithTheFirstEvent(t *testing.T) {
+	s := open(t)
+	session := uuid.Must(uuid.NewV7())
+	require.NoError(t, s.Append(session, event.Record{
+		Ordinal: 1, At: time.UnixMilli(5_000),
+		Event: event.SessionStarted{Session: session, Model: "a-model",
+			Sandbox: true, Network: true, Recorded: true},
+	}))
+
+	got, err := s.Sessions()
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "a-model", got[0].Model)
+	assert.Equal(t, time.UnixMilli(5_000).UTC(), got[0].Started)
+	assert.Equal(t, 1, got[0].Events)
+}
+
+// Nothing may be written against a session that does not exist. The
+// events row has a foreign key, so a log without its header is a
+// shape the database refuses rather than one a reader discovers.
+func TestStore_RefusesAnEventWithNoSession(t *testing.T) {
+	s := open(t)
+	err := s.Append(uuid.Must(uuid.NewV7()), rec(1, event.Notice{Text: "orphan"}))
+	assert.ErrorContains(t, err, "FOREIGN KEY")
+}
+
+// A resumed session keeps the clock it started on and only says it
+// was picked up again.
+func TestStore_ResumingKeepsTheOriginalStart(t *testing.T) {
+	s := open(t)
+	session := uuid.Must(uuid.NewV7())
+	first := event.SessionStarted{Session: session, Model: "m"}
+	require.NoError(t, s.Append(session, event.Record{
+		Ordinal: 1, At: time.UnixMilli(1_000), Event: first}))
+
+	again := first
+	again.Resumed = 12
+	require.NoError(t, s.Append(session, event.Record{
+		Ordinal: 2, At: time.UnixMilli(9_000), Event: again}))
+
+	got, err := s.Sessions()
+	require.NoError(t, err)
+	require.Len(t, got, 1, "one session, picked up twice")
+	assert.Equal(t, time.UnixMilli(1_000).UTC(), got[0].Started,
+		"the header keeps the clock it started on")
+}
+
+// A header and its first event go in together, so a failure cannot
+// leave a session listed with nothing in it.
+func TestStore_AFailedAppendLeavesNoHeader(t *testing.T) {
+	s := open(t)
+	session := uuid.Must(uuid.NewV7())
+	// Ordinal 1 twice in one call is impossible, so force the failure
+	// after the header write by closing the database mid-flight.
+	require.NoError(t, s.Close())
+
+	err := s.Append(session, rec(1, event.SessionStarted{Session: session}))
+	require.Error(t, err)
 }

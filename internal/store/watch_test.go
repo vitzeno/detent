@@ -51,6 +51,7 @@ func TestWatch_SkipsLiveOutputAndIntents(t *testing.T) {
 	bus := event.New()
 	stop := store.Watch(bus, s, session)
 
+	bus.Publish(event.SessionStarted{Session: session, Model: "m"})
 	call := uuid.Must(uuid.NewV7())
 	for range 50 {
 		bus.Publish(event.OutputChunk{Call: call, Line: "noise"})
@@ -64,8 +65,8 @@ func TestWatch_SkipsLiveOutputAndIntents(t *testing.T) {
 
 	got, err := s.Replay(session)
 	require.NoError(t, err)
-	require.Len(t, got, 1, "only the fact worth replaying")
-	assert.Equal(t, event.CallEndedKind, got[0].Event.Kind())
+	require.Len(t, got, 2, "the header and the one fact worth replaying")
+	assert.Equal(t, event.CallEndedKind, got[1].Event.Kind())
 }
 
 // Stopping must wait for the last write, not merely for the last
@@ -77,17 +78,17 @@ func TestWatch_StopWaitsForTheLastWrite(t *testing.T) {
 	bus := event.New()
 	stop := store.Watch(bus, s, session)
 
+	bus.Publish(event.SessionStarted{Session: session, Model: "m"})
 	const n = 200
-	for i := range n {
+	for range n {
 		bus.Publish(event.Notice{Text: "x", Level: "info"})
-		_ = i
 	}
 	bus.Drain(5 * time.Second)
 	stop()
 
 	got, err := s.Replay(session)
 	require.NoError(t, err)
-	assert.Len(t, got, n, "everything published before the stop must be on disk")
+	assert.Len(t, got, n+1, "everything published before the stop must be on disk")
 }
 
 // A database that cannot be written must not wedge the bus: the
@@ -124,6 +125,7 @@ func TestWatch_AResumedSessionDoesNotOverwriteTheFirst(t *testing.T) {
 
 	first := event.New()
 	stopFirst := store.Watch(first, s, session)
+	first.Publish(event.SessionStarted{Session: session, Model: "m"})
 	first.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "before"})
 	first.Publish(event.TurnEnded{Reason: event.EndDone})
 	first.Drain(3 * time.Second)
@@ -131,7 +133,7 @@ func TestWatch_AResumedSessionDoesNotOverwriteTheFirst(t *testing.T) {
 
 	stored, err := s.Replay(session)
 	require.NoError(t, err)
-	require.Len(t, stored, 2)
+	require.Len(t, stored, 3)
 
 	// The restart.
 	second := event.New()
@@ -143,7 +145,7 @@ func TestWatch_AResumedSessionDoesNotOverwriteTheFirst(t *testing.T) {
 
 	got, err := s.Replay(session)
 	require.NoError(t, err)
-	require.Len(t, got, 3, "the new record joins the old ones rather than replacing one")
+	require.Len(t, got, 4, "the new record joins the old ones rather than replacing one")
 
 	var prompts []string
 	for _, r := range got {
