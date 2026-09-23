@@ -134,7 +134,7 @@ func (m Model) historyHeader() string {
 	return fmt.Sprintf("%s %s", paneMark(m.nav.focus == focusHistory), paneLabel("history", m.nav.focus == focusHistory))
 }
 
-func (m Model) statusLine() string {
+func (m Model) statusBar() string {
 	phase := "idle"
 	if m.waiting {
 		phase = "thinking…"

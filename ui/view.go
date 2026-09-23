@@ -36,7 +36,7 @@ func (m Model) baseView() string {
 	b.WriteString("\n")
 	b.WriteString(layout.Row(outputBlock, historyBlock))
 	b.WriteString("\n")
-	b.WriteString(m.statusLine() + "\n")
+	b.WriteString(m.statusBar() + "\n")
 
 	switch m.mode {
 	case modeConfirm:

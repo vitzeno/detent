@@ -76,10 +76,10 @@ func (m Model) cancelUndo() (tea.Model, tea.Cmd) {
 
 // undoLines shows what goes, in the pane rather than a modal: a list
 // you cannot read to the end is not one you can approve.
-func (m *Model) undoLines() string {
+func (m *Model) undoLines() []string {
 	b := m.undo.target
 	if b == nil {
-		return ""
+		return nil
 	}
 	var out []string
 	out = append(out, styleCaution.Render(fmt.Sprintf("undo request #%d", b.n)), "",
@@ -91,8 +91,8 @@ func (m *Model) undoLines() string {
 		}
 		out = append(out, "  "+styleMuted.Render(truncCell(r.command, m.layout.outputColW-6)))
 	}
-	return strings.Join(append(out, "",
+	return append(out, "",
 		styleFaint.Render("  The container goes back either way."),
-		styleFaint.Render("  Your own files only go back if you say so — this request"),
-		styleFaint.Render("  may have touched work detent never made.")), "\n")
+		styleFaint.Render("  Your own files only go back if you say so — this"),
+		styleFaint.Render("  request may have touched work detent never made."))
 }

@@ -89,7 +89,7 @@ func (m *Model) refreshViewport() {
 		return
 	}
 	if m.mode == modeUndo {
-		m.setViewContent(m.undoLines())
+		m.setViewContent(strings.Join(m.undoLines(), "\n"))
 		return
 	}
 	r := m.focused()

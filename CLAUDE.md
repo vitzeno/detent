@@ -233,10 +233,16 @@ that by depending on almost nothing — the standard library plus
   anything; `intents.go` publishes and is the one place it asks for
   anything. Seven `tea.Cmd` constructors and eight message types
   collapsed to one of each, so a test drives it with a sequence of
-  events and no harness at all. See `ui/doc.go` for the file map.
-  Rendering lives in `view_*.go` because Go keeps a method in its
-  receiver's package: those are all `func (m Model)`, so a subpackage
-  would need Model's state passed as values first.
+  events and no harness at all. `ui/doc.go` is the file map and the
+  naming rules; read it before adding a file.
+
+  **A thing leaves `ui` when it stops needing Model.** That is why
+  `island`, `layout`, `markdown`, `status`, `theme` and `welcome` are
+  subpackages and nothing else is: they take values and return
+  strings. The compiler enforces it, since a subpackage importing
+  `ui` would be an import cycle. Rendering could go the same way once
+  Model's state is passed to it as values — worth doing if a second
+  front-end ever wants the same drawing, not for one.
 
 - **`viewspec`** — the view interpreter, outside `internal/` and
   stricter than anything else: it imports **only the standard
