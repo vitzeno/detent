@@ -234,3 +234,59 @@ func TestStore_AFailedAppendLeavesNoHeader(t *testing.T) {
 	err := s.Append(session, rec(1, event.SessionStarted{Session: session}))
 	require.Error(t, err)
 }
+
+// -resume resolves an id, then "last", then a name. A name that
+// collides with either is one nobody can type, so it is refused when
+// it is set rather than discovered when the resume quietly does
+// something else.
+func TestRename_RefusesANameNobodyCouldUse(t *testing.T) {
+	s := open(t)
+	session := uuid.Must(uuid.NewV7())
+	begin(t, s, session)
+
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"last", "newest session"},
+		{"LAST", "newest session"},
+		{uuid.Must(uuid.NewV7()).String(), "reads as a session id"},
+		{"   ", "cannot be blank"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.ErrorContains(t, s.Rename(session, tt.name), tt.want)
+		})
+	}
+	assert.NoError(t, s.Rename(session, "the sandbox bug"), "an ordinary name is fine")
+}
+
+// Two sessions with one name makes -resume <name> ambiguous, and
+// picking the newest silently is the worst of the options.
+func TestRename_RefusesANameAlreadyTaken(t *testing.T) {
+	s := open(t)
+	first, second := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	begin(t, s, first)
+	begin(t, s, second)
+
+	require.NoError(t, s.Rename(first, "the sandbox bug"))
+	assert.ErrorContains(t, s.Rename(second, "the sandbox bug"), "already called")
+
+	// Renaming to what it already is stays fine.
+	assert.NoError(t, s.Rename(first, "the sandbox bug"))
+	assert.NoError(t, s.Rename(second, "something else"))
+}
+
+// Unnamed is the normal state, and any number of sessions share it.
+func TestRename_ManySessionsMayBeUnnamed(t *testing.T) {
+	s := open(t)
+	for range 3 {
+		begin(t, s, uuid.Must(uuid.NewV7()))
+	}
+	got, err := s.Sessions()
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	for _, g := range got {
+		assert.Empty(t, g.Name)
+	}
+}

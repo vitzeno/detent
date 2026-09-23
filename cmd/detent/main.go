@@ -341,7 +341,9 @@ func openSession(resume string) (uuid.UUID, []event.Record, error) {
 	return id, records, nil
 }
 
-// resolveSession takes an id or "last", because nobody remembers a uuid.
+// resolveSession reads an id, then "last", then a name, because
+// nobody remembers a uuid. That order is why store.Rename refuses a
+// name shaped like either of the first two: it would never be read.
 func resolveSession(events *store.Store, want string) (uuid.UUID, error) {
 	if id, err := uuid.Parse(want); err == nil {
 		return id, nil
@@ -353,7 +355,7 @@ func resolveSession(events *store.Store, want string) (uuid.UUID, error) {
 	if len(all) == 0 {
 		return uuid.Nil, fmt.Errorf("no sessions recorded yet")
 	}
-	if want == "last" {
+	if strings.EqualFold(want, store.ReservedName) {
 		return all[0].ID, nil
 	}
 	for _, s := range all {
@@ -361,7 +363,7 @@ func resolveSession(events *store.Store, want string) (uuid.UUID, error) {
 			return s.ID, nil
 		}
 	}
-	return uuid.Nil, fmt.Errorf("no session named %q — try -sessions, or -resume last", want)
+	return uuid.Nil, fmt.Errorf("no session named %q — try -sessions, or -resume %s", want, store.ReservedName)
 }
 
 // judgeName is what the session says classified it, empty when no key

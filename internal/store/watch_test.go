@@ -190,3 +190,38 @@ func TestWatch_RenameSticksAcrossAResume(t *testing.T) {
 	assert.Equal(t, "the sandbox bug", all[0].Name,
 		"a later run describes itself, it does not rename itself")
 }
+
+// A rename says whether it took, because the UI cannot know and must
+// not guess: it claimed success before the store had spoken.
+func TestWatch_RenameSaysWhetherItTook(t *testing.T) {
+	s := open(t)
+	session := uuid.Must(uuid.NewV7())
+	bus := event.New()
+	stop := store.Watch(bus, s, session)
+	defer stop()
+
+	said, unsub := bus.Subscribe(event.Only(event.NoticeKind))
+	defer unsub()
+	bus.Publish(event.SessionStarted{Session: session, Model: "m"})
+
+	next := func(t *testing.T) event.Notice {
+		t.Helper()
+		select {
+		case rec := <-said:
+			return rec.Event.(event.Notice)
+		case <-time.After(3 * time.Second):
+			t.Fatal("a rename went unanswered")
+			return event.Notice{}
+		}
+	}
+
+	bus.Publish(event.RenameSession{Session: session, Name: "the sandbox bug"})
+	got := next(t)
+	assert.Equal(t, "info", got.Level)
+	assert.Contains(t, got.Text, "the sandbox bug")
+
+	bus.Publish(event.RenameSession{Session: session, Name: store.ReservedName})
+	got = next(t)
+	assert.Equal(t, "error", got.Level)
+	assert.Contains(t, got.Text, "newest session")
+}

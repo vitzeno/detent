@@ -7,10 +7,9 @@ import (
 	"github.com/vitzeno/detent/logging"
 )
 
-// Watch records every fact and answers the questions ui cannot ask
-// directly, since it may not import this package. One subscription,
-// not two: the bus delivers in order, so a rename cannot overtake the
-// header it updates. Stopping waits for the last write.
+// Watch records every fact and answers what ui cannot ask directly.
+// One subscription, not two: the bus delivers in order, so a rename
+// cannot overtake the header it updates.
 func Watch(bus *event.Bus, s *Store, session uuid.UUID) func() {
 	records, unsub := bus.Subscribe(wanted)
 	done := make(chan struct{})
@@ -44,10 +43,13 @@ func Watch(bus *event.Bus, s *Store, session uuid.UUID) func() {
 func (s *Store) serve(bus *event.Bus, e event.Event) bool {
 	switch v := e.(type) {
 	case event.RenameSession:
+		// Answered either way, and said rather than logged: the human
+		// just typed it, and only this knows whether it took.
 		if err := s.Rename(v.Session, v.Name); err != nil {
-			logging.For(logging.Engine).Error("could not rename", logging.KeyReason, err.Error())
+			bus.Publish(event.Notice{Level: "error", Text: err.Error()})
 			return true
 		}
+		bus.Publish(event.Notice{Level: "info", Text: "named " + v.Name})
 	case event.ListSessions:
 	default:
 		return false

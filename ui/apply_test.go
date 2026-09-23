@@ -379,3 +379,14 @@ func TestRename_NeedsAName(t *testing.T) {
 	assert.Nil(t, cmd)
 	assert.Contains(t, next.(Model).notice.text, "usage")
 }
+
+// The UI must not claim a rename worked: only the store knows, and
+// its reply is what the human should read.
+func TestRename_ClaimsNothing(t *testing.T) {
+	m := New(context.Background(), event.New(), SessionInfo{})
+	m.layout.width, m.layout.height = 120, 40
+	m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Recorded: true})
+
+	next, _ := m.renameSession("/rename the sandbox bug")
+	assert.Empty(t, next.(Model).notice.text, "the store says whether it took")
+}

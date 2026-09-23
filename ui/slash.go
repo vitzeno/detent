@@ -16,6 +16,9 @@ type slashCmd struct {
 	Name string
 	Desc string
 	run  func(m Model, input string) (tea.Model, tea.Cmd)
+	// answers is set when the command's outcome comes back over the
+	// bus, so nothing here should pre-empt it.
+	answers bool
 }
 
 // slashCommands is a function, not a var: /help draws the registry and
@@ -23,25 +26,26 @@ type slashCmd struct {
 // initialisation cycle.
 func slashCommands() []slashCmd {
 	return []slashCmd{
-		{"/quit", "quit detent", func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/quit", Desc: "quit detent", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}},
-		{"/abort", "stop the running request", func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/abort", Desc: "stop the running request", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.abortRunning()
 		}},
-		{"/usage", "show what this session has cost", func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/usage", Desc: "show what this session has cost", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.openPanel(panelUsage)
 		}},
-		{"/status", "show what detent is and what it has done", func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/status", Desc: "show what detent is and what it has done", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.openPanel(panelStatus)
 		}},
-		{"/sessions", "list the sessions that can be resumed", Model.listSessions},
-		{"/rename", "name this session, e.g. /rename the sandbox bug", Model.renameSession},
-		{"/undo", "undo a request and everything after it, e.g. /undo 2", Model.runUndo},
-		{"/new", "forget the conversation and start over", func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/sessions", Desc: "list the sessions that can be resumed", run: Model.listSessions},
+		{Name: "/rename", Desc: "name this session, e.g. /rename the sandbox bug",
+			run: Model.renameSession, answers: true},
+		{Name: "/undo", Desc: "undo a request and everything after it, e.g. /undo 2", run: Model.runUndo},
+		{Name: "/new", Desc: "forget the conversation and start over", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.startOver()
 		}},
-		{"/help", "show slash commands", func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/help", Desc: "show slash commands", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.openPanel(panelHelp)
 		}},
 	}
@@ -144,9 +148,9 @@ func (m Model) runSlash(input string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	next, cmd := c.run(m, input)
-	// A command that opened a question has not finished, so it has not
-	// succeeded either: its outcome comes once it is answered.
-	if nm, isModel := next.(Model); isModel && nm.notice.text == "" && nm.mode == modeInput {
+	// Nothing is claimed for a command that has not finished: one that
+	// opened a question, or one whose reply comes over the bus.
+	if nm, isModel := next.(Model); isModel && nm.notice.text == "" && nm.mode == modeInput && !c.answers {
 		nm.noteOK(c.Name)
 		return nm, cmd
 	}

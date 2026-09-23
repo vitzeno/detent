@@ -32,3 +32,7 @@ CREATE TABLE events (
 );
 
 CREATE INDEX events_turn ON events (session, turn);
+
+-- A name has to pick out one session or -resume <name> is ambiguous.
+-- Partial, because "" means unnamed and any number of those is fine.
+CREATE UNIQUE INDEX sessions_name ON sessions (name) WHERE name != '';

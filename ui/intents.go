@@ -75,7 +75,8 @@ func (m Model) renameSession(input string) (tea.Model, tea.Cmd) {
 		m.noteErr("nothing is recording this session, so a name would not keep")
 		return m, nil
 	}
-	m.noteOK("named " + name)
+	// No claim of success: only the store knows whether the name took,
+	// and it says so either way.
 	return m, m.send(event.RenameSession{Session: m.run.Session, Name: name})
 }
 

@@ -89,6 +89,16 @@ func (b *Bus) Subscribe(f Filter) (<-chan Record, func()) {
 func (b *Bus) Drain(timeout time.Duration) {
 	b.mu.Lock()
 	b.shut = true
+	b.mu.Unlock()
+	b.Settle(timeout)
+	b.Close()
+}
+
+// Settle waits up to timeout for every subscriber to receive what is
+// queued, without shutting anything, so it orders one thing after
+// another rather than only ending a session.
+func (b *Bus) Settle(timeout time.Duration) {
+	b.mu.Lock()
 	subs := make([]*sub, 0, len(b.subs))
 	for _, s := range b.subs {
 		subs = append(subs, s)
@@ -101,7 +111,6 @@ func (b *Bus) Drain(timeout time.Duration) {
 			time.Sleep(time.Millisecond)
 		}
 	}
-	b.Close()
 }
 
 // Close stops every subscription; publishing afterwards is a no-op.

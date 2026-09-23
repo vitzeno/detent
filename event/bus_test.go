@@ -3,6 +3,7 @@ package event
 import (
 	"github.com/google/uuid"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -269,4 +270,30 @@ func TestBus_ResumeContinuesTheOrdinals(t *testing.T) {
 	b.Resume(7)
 	b.Publish(Notice{Text: "cannot go backwards"})
 	assert.EqualValues(t, 43, drainN(t, ch, 1)[0].Ordinal)
+}
+
+// Settle is Drain without the shutdown: useful for ordering one thing
+// after another, where Drain would stop the bus for good.
+func TestBus_SettleDeliversThenCarriesOn(t *testing.T) {
+	b := New()
+	defer b.Close()
+	ch, stop := b.Subscribe(nil)
+	defer stop()
+
+	var got atomic.Int64
+	go func() {
+		for range ch {
+			got.Add(1)
+		}
+	}()
+
+	for range 50 {
+		b.Publish(Notice{Text: "before"})
+	}
+	b.Settle(3 * time.Second)
+	assert.EqualValues(t, 50, got.Load(), "everything published so far has been received")
+
+	b.Publish(Notice{Text: "after"})
+	b.Settle(3 * time.Second)
+	assert.EqualValues(t, 51, got.Load(), "and the bus still works")
 }

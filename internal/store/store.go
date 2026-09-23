@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -134,11 +135,34 @@ func (s *Store) Sessions() ([]event.SessionSummary, error) {
 	return out, rows.Err()
 }
 
-// Rename gives a session a name a human will recognise. Not derived
-// from the log, so it is the header's own and nothing replays it.
+// Rename names a session. Not derived from the log, so it is the
+// header's own. A name -resume would read as an id or as "last" is
+// refused here rather than found not to work later.
 func (s *Store) Rename(session uuid.UUID, name string) error {
+	if err := usableName(name); err != nil {
+		return err
+	}
 	if _, err := s.db.Exec(renameSession, name, session.String()); err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			return fmt.Errorf("another session is already called %q", name)
+		}
 		return fmt.Errorf("store: rename: %w", err)
+	}
+	return nil
+}
+
+// ReservedName is the one word -resume reads as an instruction.
+const ReservedName = "last"
+
+func usableName(name string) error {
+	switch {
+	case strings.TrimSpace(name) == "":
+		return fmt.Errorf("a name cannot be blank")
+	case strings.EqualFold(name, ReservedName):
+		return fmt.Errorf("%q is what -resume calls the newest session, so a name would never be read", ReservedName)
+	}
+	if _, err := uuid.Parse(name); err == nil {
+		return fmt.Errorf("%q reads as a session id, so a name would never be read", name)
 	}
 	return nil
 }
