@@ -86,17 +86,25 @@ Every session is recorded to `~/.local/state/detent/events.db`, so it
 can be replayed rather than reconstructed.
 
 ```sh
-detent -sessions              # what can be resumed
-detent -resume last           # continue the most recent
-detent -resume <id>           # or a specific one
+detent -sessions                    # what can be resumed
+detent -resume last                 # continue the most recent
+detent -resume <id>                 # or a specific one
+detent -resume "the sandbox bug"    # or one you named
 ```
 
-`/sessions` shows the same list inside the TUI, with this run's id
-marked so you can resume it later.
+Inside the TUI, `/sessions` shows the same list with this run marked,
+and `/rename <name>` names it so the list is not a wall of ids. A name
+has to be one `-resume` can reach, so `last`, anything uuid-shaped,
+and a name another session already has are all refused when you set
+them.
 
 A resumed session gets its transcript and its history back. It does
 not get the container: those checkpoints died with it, so a Turn from
 before the restart is not offered for undo.
+
+`/status` says whether anything is recording the session at all. If
+nothing is, it cannot be resumed, and it is better to know while you
+are working than when you try.
 
 ## Logs
 
