@@ -8,9 +8,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// Encoding lives here rather than in a store, so adding an event type
-// means editing one file. A store that held its own list would decode
-// every old record and silently drop the new one.
+// Encoding lives here, not in a store: one holding its own type list
+// would decode every old record and silently drop a new one.
 
 // Encode is an event's own fields as JSON. The Kind travels beside it,
 // not inside, because a reader needs it to choose the type.
@@ -25,8 +24,7 @@ func Decode(k Kind, payload []byte) (Event, error) {
 	return decode(payload)
 }
 
-// Kinds are every kind that can be decoded, which is every kind there
-// is: Registered below is the one list, and the tests read it.
+// Kinds is every kind that can be decoded, which is every kind.
 func Kinds() []Kind {
 	out := make([]Kind, 0, len(codecs))
 	for k := range codecs {
@@ -35,9 +33,8 @@ func Kinds() []Kind {
 	return out
 }
 
-// Subject is which Turn and Call a fact is about, so a store can lift
-// them out as columns. Read off the fields rather than switched on,
-// because a switch is a second list to keep in step.
+// Subject is which Turn and Call a fact is about, read off the fields
+// rather than switched on, since a switch is a second list.
 func Subject(e Event) (turn, call uuid.UUID) {
 	v := reflect.ValueOf(e)
 	if v.Kind() != reflect.Struct {
@@ -61,8 +58,7 @@ func codec[T Event](payload []byte) (Event, error) {
 	return v, nil
 }
 
-// codecs is the closed set, and the only place a new event type has
-// to be added for it to survive a round trip.
+// codecs is the one place a new event type must be added.
 var codecs = map[Kind]func([]byte) (Event, error){
 	SessionStartedKind:  codec[SessionStarted],
 	TurnStartedKind:     codec[TurnStarted],

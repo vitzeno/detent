@@ -1,6 +1,5 @@
-// Package store keeps a session's events on disk, so a session can be
-// replayed rather than reconstructed. It speaks event.Record and knows
-// nothing about the engine.
+// Package store keeps a session's events on disk, so it can be
+// replayed rather than reconstructed. Speaks event.Record only.
 package store
 
 import (
@@ -14,8 +13,7 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Store is one database. Safe for concurrent use: database/sql pools,
-// and every write is a single statement.
+// Store is one database, safe for concurrent use.
 type Store struct{ db *sql.DB }
 
 // Open creates the database if it is not there. ":memory:" works, for
@@ -34,8 +32,8 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
-// Append writes one record. The ordinal is the bus's, so a second
-// write of the same one is the same row rather than a duplicate.
+// Append writes one record, keyed on the bus's ordinal, so writing
+// the same one twice is the same row.
 func (s *Store) Append(session uuid.UUID, r event.Record) error {
 	payload, err := event.Encode(r.Event)
 	if err != nil {
@@ -50,9 +48,8 @@ func (s *Store) Append(session uuid.UUID, r event.Record) error {
 	return nil
 }
 
-// Replay is a session's records in the order they were published.
-// Whole rather than streamed: a session is small, and bounding it is
-// a decision to take when one is not.
+// Replay is a session's records in publish order. Whole rather than
+// streamed: a session is small, and bounding it is a later decision.
 func (s *Store) Replay(session uuid.UUID) ([]event.Record, error) {
 	rows, err := s.db.Query(selectSession, session.String())
 	if err != nil {
@@ -115,8 +112,7 @@ type Session struct {
 	Events  int
 }
 
-// Truncate drops everything published after an ordinal, which is what
-// undoing a Turn means once the log is on disk.
+// Truncate drops everything after an ordinal: undo, on disk.
 func (s *Store) Truncate(session uuid.UUID, after uint64) error {
 	_, err := s.db.Exec(deleteAfter, session.String(), after)
 	if err != nil {
@@ -125,8 +121,8 @@ func (s *Store) Truncate(session uuid.UUID, after uint64) error {
 	return nil
 }
 
-// nullable keeps a zero uuid out of the column, so a query for a turn
-// cannot match a record that belongs to none.
+// nullable keeps a zero uuid out of the column, so a turn query
+// cannot match a record belonging to none.
 func nullable(id uuid.UUID) any {
 	if id == uuid.Nil {
 		return nil

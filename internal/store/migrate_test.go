@@ -29,9 +29,8 @@ func TestMigrate_BringsAFreshDatabaseUpToDate(t *testing.T) {
 	assert.NoError(t, err, "the table exists")
 }
 
-// Reopening must not reapply: the first migration creates a table and
-// would fail the second time, which is what proves the version is
-// being read rather than ignored.
+// Reopening must not reapply: migration 1 creates a table and would
+// fail twice, which is what proves the version is read.
 func TestMigrate_IsANoOpSecondTime(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "events.db")
 
@@ -46,9 +45,8 @@ func TestMigrate_IsANoOpSecondTime(t *testing.T) {
 	assert.Equal(t, at, version(t, second.db))
 }
 
-// A database written by a newer detent has migrations this build has
-// never seen, so its tables may not be the shape this one expects.
-// Saying so beats failing later on a column that is not there.
+// A newer build's database has migrations this one never saw, so
+// saying so beats failing later on a missing column.
 func TestMigrate_RefusesADatabaseFromTheFuture(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
@@ -62,8 +60,8 @@ func TestMigrate_RefusesADatabaseFromTheFuture(t *testing.T) {
 	assert.ErrorContains(t, err, "newer detent")
 }
 
-// A migration that fails must not be recorded as applied, or the next
-// start skips it and runs against a table that was never created.
+// A failed migration must not record as applied, or the next start
+// skips it and runs against a table that was never created.
 func TestMigrate_DoesNotRecordAFailedMigration(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
