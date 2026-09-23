@@ -23,7 +23,7 @@ func drainN(t *testing.T, ch <-chan Record, n int) []Record {
 	return out
 }
 
-func TestBus_DeliversInOrderWithGaplessSeq(t *testing.T) {
+func TestBus_DeliversInOrderWithGaplessOrdinals(t *testing.T) {
 	b := New()
 	ch, stop := b.Subscribe(nil)
 	defer stop()
@@ -33,7 +33,7 @@ func TestBus_DeliversInOrderWithGaplessSeq(t *testing.T) {
 	}
 	got := drainN(t, ch, 5)
 	for i, r := range got {
-		assert.Equal(t, uint64(i+1), r.Seq, "seq must be gapless and start at 1")
+		assert.Equal(t, uint64(i+1), r.Ordinal, "ordinals must be gapless and start at 1")
 		assert.False(t, r.At.IsZero(), "the bus stamps the time, not the caller")
 	}
 }

@@ -19,7 +19,7 @@ func Watch(bus *event.Bus) func() {
 		for rec := range facts {
 			level, fields := describe(rec.Event)
 			log.Log(context.TODO(), level, string(rec.Event.Kind()),
-				append([]any{KeyEvent, string(rec.Event.Kind()), KeySeq, rec.Seq}, fields...)...)
+				append([]any{KeyEvent, string(rec.Event.Kind()), KeyOrdinal, rec.Ordinal}, fields...)...)
 		}
 	}()
 	// The stop waits for the last record to be written, not merely

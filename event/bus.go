@@ -10,10 +10,10 @@ import (
 // inside a handler is safe. Each subscriber has its own queue; a
 // lagging one grows it and drops only Lossy events past queueDepth.
 type Bus struct {
-	mu   sync.Mutex
-	subs map[int]*sub
-	next int
-	seq  uint64
+	mu      sync.Mutex
+	subs    map[int]*sub
+	next    int
+	ordinal uint64
 	// shut stops new publishes; closed tears the subscriptions down.
 	// Two states, because Drain is the first without the second.
 	shut    bool
@@ -33,8 +33,8 @@ func (b *Bus) Publish(e Event) {
 		b.mu.Unlock()
 		return
 	}
-	b.seq++
-	r := Record{Seq: b.seq, At: time.Now(), Event: e}
+	b.ordinal++
+	r := Record{Ordinal: b.ordinal, At: time.Now(), Event: e}
 	targets := make([]*sub, 0, len(b.subs))
 	for _, s := range b.subs {
 		if s.filter == nil || s.filter(e) {

@@ -32,7 +32,7 @@ const (
 	KeyEvent     = "event"
 	KeyReason    = "reason"
 	KeyMS        = "ms"
-	KeySeq       = "seq"
+	KeyOrdinal   = "ordinal"
 )
 
 // Components worth filtering to on their own.

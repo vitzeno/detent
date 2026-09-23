@@ -52,7 +52,7 @@ func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 
 	for _, r := range got {
 		assert.Equal(t, "w1", r[logging.KeySession])
-		assert.NotZero(t, r[logging.KeySeq], "seq makes a gap visible")
+		assert.NotZero(t, r[logging.KeyOrdinal], "an ordinal makes a gap visible")
 	}
 }
 
