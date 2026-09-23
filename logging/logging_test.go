@@ -1,7 +1,6 @@
 package logging_test
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"os"
@@ -15,15 +14,22 @@ import (
 	"github.com/vitzeno/detent/logging"
 )
 
+// records reads what has been written so far. A half-written trailing
+// line is skipped rather than failed on: a subscriber writes while a
+// test is polling, and a partial record is a moment, not a fault.
 func records(t *testing.T, dir, session string) []map[string]any {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(dir, session+".jsonl"))
+	if os.IsNotExist(err) {
+		return nil
+	}
 	require.NoError(t, err)
 	var out []map[string]any
 	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
 		var m map[string]any
-		require.NoError(t, json.Unmarshal([]byte(line), &m))
-		out = append(out, m)
+		if json.Unmarshal([]byte(line), &m) == nil {
+			out = append(out, m)
+		}
 	}
 	return out
 }
@@ -35,10 +41,9 @@ func TestSetup_WritesOneQueryableStreamPerSession(t *testing.T) {
 	closer, err := logging.Setup(logging.Options{Dir: dir, Session: "s1"})
 	require.NoError(t, err)
 
-	ctx := logging.WithStep(logging.WithGoal(context.Background(), 2), 7)
-	logging.For(logging.Viewgen).InfoContext(ctx, "declined",
+	logging.For(logging.Viewgen).Info("declined",
 		logging.KeyEvent, logging.ViewDeclined, "candidates", 2)
-	logging.For(logging.LLM).InfoContext(ctx, "replied",
+	logging.For(logging.LLM).Info("replied",
 		logging.KeyEvent, logging.LLMReply, logging.KeyMS, 190)
 	require.NoError(t, closer())
 
@@ -46,27 +51,10 @@ func TestSetup_WritesOneQueryableStreamPerSession(t *testing.T) {
 	require.Len(t, got, 2)
 	for _, r := range got {
 		assert.Equal(t, "s1", r[logging.KeySession])
-		assert.EqualValues(t, 2, r[logging.KeyGoal], "the goal came from the context")
-		assert.EqualValues(t, 7, r[logging.KeyStep], "and so did the step")
 	}
 	assert.Equal(t, logging.Viewgen, got[0][logging.KeyComponent])
 	assert.Equal(t, logging.ViewDeclined, got[0][logging.KeyEvent])
 	assert.Equal(t, logging.LLM, got[1][logging.KeyComponent])
-}
-
-// An unmarked context writes no empty correlation fields, so a query
-// for a step never matches a record that has none.
-func TestSetup_OmitsMarksTheContextDoesNotCarry(t *testing.T) {
-	dir := t.TempDir()
-	closer, err := logging.Setup(logging.Options{Dir: dir, Session: "s2"})
-	require.NoError(t, err)
-	logging.For(logging.UI).Info("started", logging.KeyEvent, logging.GoalBegin)
-	require.NoError(t, closer())
-
-	got := records(t, dir, "s2")
-	require.Len(t, got, 1)
-	assert.NotContains(t, got[0], logging.KeyStep)
-	assert.NotContains(t, got[0], logging.KeyGoal)
 }
 
 // Bodies are off by default because they carry secrets and bulk, and
@@ -95,7 +83,7 @@ func TestSetup_UnwritableDirDisablesRatherThanFails(t *testing.T) {
 	assert.Error(t, err, "the caller is told")
 	require.NotNil(t, closer)
 	assert.NotPanics(t, func() {
-		logging.For(logging.Agent).Info("still fine")
+		logging.For(logging.Engine).Info("still fine")
 		_ = closer()
 	}, "but the session runs on")
 }
@@ -105,7 +93,7 @@ func TestSetup_LevelFiltersAsAsked(t *testing.T) {
 	closer, err := logging.Setup(logging.Options{Dir: dir, Session: "s6", Level: "warn"})
 	require.NoError(t, err)
 	logging.For(logging.Host).Info("quiet")
-	logging.For(logging.Host).Warn("loud", logging.KeyEvent, logging.CmdRun)
+	logging.For(logging.Host).Warn("loud", logging.KeyEvent, logging.LLMRequest)
 	require.NoError(t, closer())
 
 	got := records(t, dir, "s6")
@@ -114,21 +102,31 @@ func TestSetup_LevelFiltersAsAsked(t *testing.T) {
 }
 
 // Every event name is distinct: a name is a record's primary key, so
-// two different things sharing one makes a query return both. The
-// goal-ready record reused goal.begin, and "everything about a goal
-// starting" then came back twice with half the fields missing.
+// two things sharing one makes a query return both. These are only
+// the names the bus never carries — a fact is logged under its own
+// event.Kind, which event's own test already proves unique.
 func TestEvents_NamesAreUnique(t *testing.T) {
 	names := map[string]int{}
 	for _, e := range []string{
-		logging.GoalBegin, logging.GoalReady, logging.GoalEnd, logging.ProbeRun,
+		logging.SessionOpen,
 		logging.LLMRequest, logging.LLMReply, logging.LLMError,
-		logging.JudgePre, logging.JudgePost,
-		logging.CmdPropose, logging.CmdConfirm, logging.CmdRun, logging.CmdDone,
-		logging.Snapshot, logging.Rollback, logging.Compaction,
 		logging.ViewLookup, logging.ViewSkipped, logging.ViewInvalid,
 		logging.ViewFit, logging.ViewAccepted, logging.ViewDeclined, logging.ViewDrawn,
 	} {
 		names[e]++
 		assert.Equal(t, 1, names[e], "%s is used by more than one event", e)
+	}
+}
+
+// No name may say "goal": the unit is a Turn now, and a log that
+// still calls it a goal is a query that finds nothing.
+func TestEvents_NoNameSaysGoal(t *testing.T) {
+	for _, e := range []string{
+		logging.SessionOpen, logging.LLMRequest, logging.LLMReply, logging.LLMError,
+		logging.ViewLookup, logging.ViewSkipped, logging.ViewInvalid,
+		logging.ViewFit, logging.ViewAccepted, logging.ViewDeclined, logging.ViewDrawn,
+		logging.KeyTurn, logging.KeyStep, logging.KeyCall,
+	} {
+		assert.NotContains(t, e, "goal", "%q still names a goal", e)
 	}
 }

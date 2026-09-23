@@ -212,3 +212,40 @@ func TestBus_ConcurrentPublishersAndSubscribers(t *testing.T) {
 	// the assertion is that delivery happened and nothing raced.
 	assert.Zero(t, b.Dropped())
 }
+
+// Shutdown is the one time a backlog must not be abandoned: the
+// consumer is still reading and is owed the rest.
+func TestBus_DrainDeliversTheBacklogBeforeClosing(t *testing.T) {
+	b := New()
+	ch, _ := b.Subscribe(nil)
+
+	const n = 200
+	for i := range n {
+		b.Publish(StepEnded{Step: ID(string(rune('a' + i%26)))})
+	}
+
+	var got int
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range ch {
+			got++
+			time.Sleep(time.Microsecond) // a consumer that is not instant
+		}
+	}()
+
+	b.Drain(5 * time.Second)
+	<-done
+	assert.Equal(t, n, got, "everything published before Drain must arrive")
+}
+
+func TestBus_DrainGivesUpRatherThanHanging(t *testing.T) {
+	b := New()
+	_, _ = b.Subscribe(nil) // subscribed and never read
+	for range 100 {
+		b.Publish(Notice{Text: "x"})
+	}
+	start := time.Now()
+	b.Drain(100 * time.Millisecond)
+	assert.Less(t, time.Since(start), 3*time.Second, "a wedged consumer must not hold up exit")
+}

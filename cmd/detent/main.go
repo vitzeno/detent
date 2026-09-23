@@ -21,6 +21,7 @@ import (
 	"github.com/vitzeno/detent/internal/engine"
 	"github.com/vitzeno/detent/internal/headless"
 	"github.com/vitzeno/detent/internal/host"
+	judgepkg "github.com/vitzeno/detent/internal/judge"
 	"github.com/vitzeno/detent/internal/model"
 	"github.com/vitzeno/detent/internal/routing"
 	"github.com/vitzeno/detent/internal/sandbox"
@@ -186,6 +187,20 @@ func run() error {
 	eng := engine.New(bus, client, tool.Standard(), runners, opts...)
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
+
+	// Subscribers, wired before Run so nothing published at startup is
+	// missed. Each is independent: dropping one costs its own feature
+	// and nothing else.
+	// Registered first so it runs last: Drain empties the bus, then
+	// this waits for the final record to reach disk.
+	defer logging.Watch(bus)()
+	if judge != nil {
+		judgepkg.Watch(bus, judge)
+		views(resolved.Views, judge).Watch(bus)
+	}
+	// Drained rather than closed, so the last records reach the log
+	// instead of dying with the process.
+	defer bus.Drain(2 * time.Second)
 	go eng.Run(ctx)
 
 	if *prompt != "" {

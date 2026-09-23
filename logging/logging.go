@@ -34,9 +34,9 @@ func Setup(o Options) (func() error, error) {
 		return disable(fmt.Errorf("logging: %w", err))
 	}
 	bodies = o.Bodies
-	slog.SetDefault(slog.New(contextHandler{slog.NewJSONHandler(f, &slog.HandlerOptions{
+	slog.SetDefault(slog.New(slog.NewJSONHandler(f, &slog.HandlerOptions{
 		Level: parseLevel(o.Level),
-	})}).With(KeySession, o.Session))
+	})).With(KeySession, o.Session))
 	return f.Close, nil
 }
 

@@ -10,7 +10,7 @@ import (
 // RiskJudge adapts Jev to the engine's hook chain. It answers, it
 // never decides: Widen folds it with everyone else's.
 type RiskJudge struct {
-	Asker     judge
+	Asker     Asker
 	Threshold float64
 }
 

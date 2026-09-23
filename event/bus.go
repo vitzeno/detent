@@ -10,11 +10,14 @@ import (
 // inside a handler is safe. Each subscriber has its own queue; a
 // lagging one grows it and drops only Lossy events past queueDepth.
 type Bus struct {
-	mu      sync.Mutex
-	subs    map[int]*sub
-	next    int
-	seq     uint64
+	mu   sync.Mutex
+	subs map[int]*sub
+	next int
+	seq  uint64
+	// shut stops new publishes; closed tears the subscriptions down.
+	// Two states, because Drain is the first without the second.
 	shut    bool
+	closed  bool
 	dropped atomic.Uint64
 }
 
@@ -69,14 +72,35 @@ func (b *Bus) Subscribe(f Filter) (<-chan Record, func()) {
 	}
 }
 
+// Drain stops accepting publishes, then waits up to timeout for every
+// subscriber to receive what is already queued. Shutdown wants this
+// and unsubscribing does not: one that has gone away is owed nothing.
+func (b *Bus) Drain(timeout time.Duration) {
+	b.mu.Lock()
+	b.shut = true
+	subs := make([]*sub, 0, len(b.subs))
+	for _, s := range b.subs {
+		subs = append(subs, s)
+	}
+	b.mu.Unlock()
+
+	deadline := time.Now().Add(timeout)
+	for _, s := range subs {
+		for s.owed() > 0 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+	}
+	b.Close()
+}
+
 // Close stops every subscription; publishing afterwards is a no-op.
 func (b *Bus) Close() {
 	b.mu.Lock()
-	if b.shut {
+	if b.closed {
 		b.mu.Unlock()
 		return
 	}
-	b.shut = true
+	b.shut, b.closed = true, true
 	subs := make([]*sub, 0, len(b.subs))
 	for _, s := range b.subs {
 		subs = append(subs, s)
@@ -118,10 +142,13 @@ type sub struct {
 	done    chan struct{}
 	dropped *atomic.Uint64
 
-	mu     sync.Mutex
-	cond   *sync.Cond
-	queue  []Record
-	closed bool
+	mu    sync.Mutex
+	cond  *sync.Cond
+	queue []Record
+	// pushed and taken bracket delivery: a Record off the queue but
+	// not yet received is still owed, which is what Drain waits on.
+	pushed, taken uint64
+	closed        bool
 }
 
 func newSub(f Filter, dropped *atomic.Uint64) *sub {
@@ -142,6 +169,7 @@ func (s *sub) push(r Record) {
 		return
 	}
 	s.queue = append(s.queue, r)
+	s.pushed++
 	s.cond.Signal()
 }
 
@@ -164,10 +192,20 @@ func (s *sub) drain() {
 
 		select {
 		case s.out <- r:
+			s.mu.Lock()
+			s.taken++
+			s.mu.Unlock()
 		case <-s.done:
 			return
 		}
 	}
+}
+
+// owed is how much has been pushed but not yet received.
+func (s *sub) owed() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pushed - s.taken
 }
 
 func (s *sub) stop() {

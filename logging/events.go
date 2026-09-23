@@ -1,36 +1,15 @@
 package logging
 
-// The event vocabulary. An event is a record's primary key, so it is
-// a closed set rather than free text; msg is decoration. Names are
-// dotted so a subsystem filters by prefix.
+// Names for records the bus never carries. Everything published as a
+// fact is logged under its own event.Kind instead, so there is one
+// vocabulary rather than two kept in step by hand.
 const (
-	// Goal lifecycle.
-	GoalBegin  = "goal.begin"
-	GoalEnd    = "goal.end"
-	ProbeRun   = "probe.run"
-	Compaction = "transcript.compact"
+	SessionOpen = "session.open"
 
-	// A model was asked something.
+	// A model was asked something outside a Turn.
 	LLMRequest = "llm.request"
 	LLMReply   = "llm.reply"
 	LLMError   = "llm.error"
-
-	// Jev classified something.
-	JudgePre  = "judge.pre"
-	JudgePost = "judge.post"
-	// GoalReady is the point a goal has everything it needs to ask for
-	// a command: probes in, baseline taken.
-	GoalReady = "goal.ready"
-
-	// What a command did.
-	CmdPropose = "cmd.propose"
-	CmdConfirm = "cmd.confirm"
-	CmdRun     = "cmd.run"
-	CmdDone    = "cmd.done"
-
-	// Checkpoints and undo.
-	Snapshot = "snapshot.take"
-	Rollback = "snapshot.rollback"
 
 	// How the output pane got drawn. Every silent branch says which,
 	// because "it looked plain" is otherwise unanswerable.
@@ -47,21 +26,22 @@ const (
 const (
 	KeyComponent = "component"
 	KeySession   = "session"
-	KeyGoal      = "goal"
+	KeyTurn      = "turn"
 	KeyStep      = "step"
+	KeyCall      = "call"
 	KeyEvent     = "event"
 	KeyReason    = "reason"
 	KeyMS        = "ms"
+	KeySeq       = "seq"
 )
 
 // Components worth filtering to on their own.
 const (
-	UI       = "ui"
-	Agent    = "agent"
-	LLM      = "llm"
-	Judge    = "judge"
-	Host     = "host"
-	Sandbox  = "sandbox"
-	Viewgen  = "viewgen"
-	Resolver = "resolver"
+	UI      = "ui"
+	Engine  = "engine"
+	LLM     = "llm"
+	Judge   = "judge"
+	Host    = "host"
+	Sandbox = "sandbox"
+	Viewgen = "viewgen"
 )

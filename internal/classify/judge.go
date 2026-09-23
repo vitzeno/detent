@@ -12,9 +12,10 @@ import (
 // State is the context handed to a Judge alongside Questions.
 type State any
 
-// judge is the shape AskOrFallback needs, used only inside this
-// package. Callers just pass anything with an Ask method.
-type judge interface {
+// Asker is the shape AskOrFallback needs. Exported so a package
+// outside this one can hold one; a caller just passes anything with
+// an Ask method.
+type Asker interface {
 	Ask(ctx context.Context, state State, questions Questions) (Answers, Usage, error)
 }
 
@@ -67,7 +68,7 @@ type Usage struct {
 // or the call errors, so every caller's fallback collapses to one
 // branch. LatencyMS is wall time measured here, not whatever the
 // adapter reports, so timings are directly comparable across callers.
-func AskOrFallback(ctx context.Context, j judge, state State, questions Questions) (Answers, Usage, bool) {
+func AskOrFallback(ctx context.Context, j Asker, state State, questions Questions) (Answers, Usage, bool) {
 	if j == nil {
 		return nil, Usage{}, false
 	}

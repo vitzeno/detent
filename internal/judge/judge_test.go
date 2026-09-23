@@ -1,0 +1,151 @@
+package judge
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/classify"
+)
+
+type fakeAsker struct {
+	answers classify.Answers
+	err     error
+}
+
+func (f fakeAsker) Ask(context.Context, classify.State, classify.Questions) (classify.Answers, classify.Usage, error) {
+	if f.err != nil {
+		return nil, classify.Usage{}, f.err
+	}
+	return f.answers, classify.Usage{}, nil
+}
+
+func TestJudge_ReadsWhatTheJudgeSaid(t *testing.T) {
+	j := ResultJudge{Asker: fakeAsker{answers: classify.Answers{
+		"result_status": {Choice: StatusWarnings},
+		"render_kind":   {Choice: "file_listing"},
+		"attention":     {Noul: 0.7},
+		"goal_achieved": {Noul: 0.95},
+	}}}
+	got := j.Judge(context.Background(), "bash", event.Result{Stdout: "a.go\n"})
+
+	assert.True(t, got.FromJudge)
+	assert.Equal(t, StatusWarnings, got.Status)
+	assert.Equal(t, "file_listing", got.RenderKind)
+	assert.Equal(t, 0.7, got.Attention)
+	assert.Equal(t, 0.95, got.GoalAchieved)
+}
+
+// The heuristic is what a row reads as with no judge wired, and must
+// never claim to be one: the UI tells a verdict from a guess by
+// FromJudge alone.
+func TestJudge_FallsBackWithoutClaimingToBeAVerdict(t *testing.T) {
+	tests := []struct {
+		name   string
+		asker  classify.Asker
+		res    event.Result
+		status string
+	}{
+		{"no judge at all", nil, event.Result{Stdout: "ok\n"}, StatusClean},
+		{"judge unreachable", fakeAsker{err: errors.New("down")}, event.Result{Stdout: "ok\n"}, StatusClean},
+		{"non-zero exit", nil, event.Result{ExitCode: 2, Stderr: "boom"}, StatusFailed},
+		{"could not run", nil, event.Result{Err: "no such file"}, StatusFailed},
+		{"silent", nil, event.Result{}, StatusEmpty},
+		{"whitespace only", nil, event.Result{Stdout: "  \n\n"}, StatusEmpty},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResultJudge{Asker: tt.asker}.Judge(context.Background(), "bash", tt.res)
+			assert.Equal(t, tt.status, got.Status)
+			assert.False(t, got.FromJudge, "a guess must never present as a verdict")
+			assert.NotEmpty(t, got.RenderKind, "something must always be drawable")
+		})
+	}
+}
+
+// The gap your own logs found: goal_achieved was measured after every
+// command and never acted on, so a model ran the same thing twelve
+// times. It now becomes an advisory stop.
+func TestWatch_AHighScoreAsksTheTurnToStop(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	stop := Watch(bus, fakeAsker{answers: classify.Answers{
+		"result_status": {Choice: StatusClean},
+		"goal_achieved": {Noul: 0.97},
+	}})
+	defer stop()
+
+	intents, unsub := bus.Subscribe(event.Only(event.RequestStopKind))
+	defer unsub()
+
+	turn, call := event.NewID(), event.NewID()
+	bus.Publish(event.TurnStarted{Turn: turn, N: 1, Prompt: "count the files"})
+	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
+	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "12\n"}})
+
+	select {
+	case rec := <-intents:
+		got := rec.Event.(event.RequestStop)
+		assert.Equal(t, turn, got.Turn)
+		assert.NotEmpty(t, got.Reason, "a stop must say why")
+	case <-time.After(3 * time.Second):
+		t.Fatal("a judged-met request never asked to stop")
+	}
+}
+
+func TestWatch_ALowScoreLetsItCarryOn(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	stop := Watch(bus, fakeAsker{answers: classify.Answers{
+		"result_status": {Choice: StatusClean},
+		"goal_achieved": {Noul: 0.2},
+	}})
+	defer stop()
+
+	facts, unsub := bus.Subscribe(event.Only(event.CallJudgedKind, event.RequestStopKind))
+	defer unsub()
+
+	call := event.NewID()
+	bus.Publish(event.TurnStarted{Turn: event.NewID(), N: 1, Prompt: "go"})
+	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
+	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "partial\n"}})
+
+	rec := <-facts
+	judged, ok := rec.Event.(event.CallJudged)
+	require.True(t, ok, "the judgement comes first")
+	assert.Equal(t, call, judged.Call)
+
+	select {
+	case rec := <-facts:
+		t.Fatalf("nothing else should follow, got %s", rec.Event.Kind())
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// A heuristic must not be able to end a request: only a real verdict
+// carries that weight.
+func TestWatch_AGuessNeverStopsATurn(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	stop := Watch(bus, nil) // no judge at all
+	defer stop()
+
+	intents, unsub := bus.Subscribe(event.Only(event.RequestStopKind))
+	defer unsub()
+
+	call := event.NewID()
+	bus.Publish(event.TurnStarted{Turn: event.NewID(), N: 1, Prompt: "go"})
+	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
+	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "done\n"}})
+
+	select {
+	case <-intents:
+		t.Fatal("a heuristic asked a request to stop")
+	case <-time.After(300 * time.Millisecond):
+	}
+}
