@@ -28,7 +28,7 @@ func newKeyed(t *testing.T) *keyed {
 	bus := event.New()
 	seen, stop := bus.Subscribe(event.Intents())
 	t.Cleanup(stop)
-	m := New(context.Background(), bus, SessionInfo{Model: "m"})
+	m := New(context.Background(), bus, SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	return &keyed{m: m, bus: bus, seen: seen}

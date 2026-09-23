@@ -295,7 +295,10 @@ adding a fat dependency fails with the transitive import named.
   happened; none is representable from a list the program built.
 
 - **`ui`** — the TUI, and nothing but a projection of the event
-  stream. `apply.go` folds facts in and is the one place it learns
+  stream. `SessionStarted` is the one description of a run: model,
+  sandbox, network, step bound, whether anything is recording it and
+  how much it resumed from. `ui.SessionInfo` carries only what no
+  fact does, so the panes and the log cannot disagree about what ran. `apply.go` folds facts in and is the one place it learns
   anything; `intents.go` publishes and is the one place it asks for
   anything. Seven `tea.Cmd` constructors and eight message types
   collapsed to one of each, so a test drives it with a sequence of

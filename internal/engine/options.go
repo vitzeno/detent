@@ -65,6 +65,15 @@ func WithAssessor(a Assessor) Option {
 // snapshot never covers.
 func WithWorktree(w Worktreer) Option { return func(e *Engine) { e.worktreer = w } }
 
+// WithDescription is what the session says about itself at startup:
+// which model, whether the sandbox can reach the network, and whether
+// anything is writing this session down.
+func WithDescription(model string, network, recorded bool) Option {
+	return func(e *Engine) {
+		e.modelName, e.network, e.recorded = model, network, recorded
+	}
+}
+
 func WithSessionID(id uuid.UUID) Option {
 	return func(e *Engine) {
 		if id != uuid.Nil {

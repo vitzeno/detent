@@ -23,10 +23,10 @@ func (m Model) sessionBar() string {
 	// Segments, so the bar can shed parts rather than wrap.
 	return fitSegments([]string{
 		styleBrand.Render("◆ detent " + version.Number),
-		styleFaint.Render(m.info.Model),
+		styleFaint.Render(m.run.Model),
 		styleFaint.Render(fmt.Sprintf("· %d request(s) · %d call(s)", len(m.blocks), m.calls)),
 		styleFaint.Render(status.Tokens(m.tokens) + " tok"),
-		runModeBadge(m.info.RunMode),
+		runModeBadge(m.runMode()),
 		jev,
 	}, m.layout.width)
 }

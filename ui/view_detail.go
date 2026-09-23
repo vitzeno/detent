@@ -127,10 +127,11 @@ func (m *Model) refreshViewport() {
 func (m Model) welcomePane() []string {
 	return welcome.Lines(welcome.Facts{
 		Version:  version.String(),
-		Proposer: m.info.Model, Judge: m.info.Judge, RunMode: m.info.RunMode,
+		Proposer: m.run.Model, Judge: m.info.Judge, RunMode: m.runMode(),
 		Image: m.info.Image, Mount: m.info.Mount,
 		Runtime: m.info.Runtime, Network: m.info.Network,
 		Goals: len(m.blocks), Commands: m.calls, Sessions: len(m.sessions),
+		Session: m.run.Session.String(), Resumed: m.run.Resumed, Recorded: m.run.Recorded,
 	}, paneInner(m.layout.outputColW), m.output.Height(), m.welcomeFrame)
 }
 

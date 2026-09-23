@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"github.com/vitzeno/detent/event"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -70,7 +71,7 @@ func (m *Model) sessionLines() []string {
 		styleFaint.Render("  resume one with  detent -resume <id>"), ""}
 	for _, s := range m.sessions {
 		mark := "  "
-		if s.ID == m.session {
+		if s.ID == m.run.Session {
 			mark = styleGoal.Render("▸ ")
 		}
 		out = append(out, fmt.Sprintf("%s%s  %s  %s", mark,
@@ -87,11 +88,15 @@ func (m *Model) sessionLines() []string {
 func (m *Model) statusLines() []string {
 	rows := [][2]string{
 		{"version", version.String()},
-		{"session", m.session.String()},
-		{"model", m.info.Model},
+		{"model", m.run.Model},
 		{"judge", orNone(m.info.Judge)},
-		{"runs in", m.info.RunMode},
-		{"step bound", fmt.Sprint(m.info.MaxSteps)},
+		{"runs in", m.runMode()},
+		{"step bound", fmt.Sprint(m.run.MaxSteps)},
+		{"", ""},
+		{"session", m.run.Session.String()},
+		{"recording", recording(m.run)},
+		{"resumed", resumed(m.run)},
+		{"on disk", countOf(len(m.sessions), "session")},
 		{"", ""},
 		{"requests", fmt.Sprint(len(m.blocks))},
 		{"steps", fmt.Sprint(m.steps)},
@@ -124,6 +129,23 @@ func (m *Model) helpLines() []string {
 		"  "+styleFaint.Render("enter     seed the prompt from a view's selection"),
 		"  "+styleFaint.Render("esc       back out, or abort a running request"),
 		"  "+styleFaint.Render("ctrl+c    quit"))
+}
+
+// recording says plainly when nothing is writing this session down,
+// because the alternative is finding out when you try to resume it.
+func recording(run event.SessionStarted) string {
+	if run.Recorded {
+		return styleSafe.Render("● yes") + styleFaint.Render("  resumable")
+	}
+	return styleDanger.Render("✗ no") + styleFaint.Render("  this session cannot be resumed")
+}
+
+func resumed(run event.SessionStarted) string {
+	if run.Resumed == 0 {
+		return styleFaint.Render("(a new session)")
+	}
+	return fmt.Sprintf("%s %s", countOf(run.Resumed, "record"),
+		styleFaint.Render("restored"))
 }
 
 func countOf(n int, thing string) string {

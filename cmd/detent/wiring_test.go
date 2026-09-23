@@ -56,7 +56,7 @@ func TestWiring_TypingReachesTheEngineAndComesBack(t *testing.T) {
 	defer cancel()
 	go eng.Run(ctx)
 
-	m := ui.New(ctx, bus, ui.SessionInfo{Model: "stub"})
+	m := ui.New(ctx, bus, ui.SessionInfo{})
 	var cmds []tea.Cmd
 	cmds = append(cmds, m.Init())
 

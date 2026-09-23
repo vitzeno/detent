@@ -15,7 +15,7 @@ import (
 func (m *Model) apply(ev event.Event) {
 	switch v := ev.(type) {
 	case event.SessionStarted:
-		m.info.MaxSteps, m.session = v.MaxSteps, v.Session
+		m.run = v
 
 	case event.SessionsListed:
 		m.sessions = v.Sessions

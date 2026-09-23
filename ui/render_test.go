@@ -23,7 +23,7 @@ func stripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
 // out, so a render test measures what a human would see.
 func sized(t *testing.T, w, h int, evs ...event.Event) Model {
 	t.Helper()
-	m := New(context.Background(), event.New(), SessionInfo{Model: "m", RunMode: "host"})
+	m := New(context.Background(), event.New(), SessionInfo{})
 	m.layout.width, m.layout.height = w, h
 	for _, e := range evs {
 		m.apply(e)

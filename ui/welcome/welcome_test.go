@@ -98,3 +98,28 @@ func TestLines_ShowsTheVersion(t *testing.T) {
 	}, 90, 30, 0)
 	assert.Contains(t, strings.Join(got, "\n"), "9.9.9")
 }
+
+// The boot pane is where you find the id to resume this run later,
+// and where a session nothing records has to say so.
+func TestWelcome_SaysWhatTheSessionIs(t *testing.T) {
+	const id = "01a0cf7f-dffa-7d71-b7a1-419e79eed0d2"
+
+	recorded := strings.Join(Lines(Facts{
+		Version: "v", Proposer: "m", RunMode: "host",
+		Session: id, Recorded: true, Sessions: 3,
+	}, 80, 40, 0), "\n")
+	assert.Contains(t, recorded, id, "the id is what you type after -resume")
+	assert.Contains(t, recorded, "3 sessions")
+	assert.NotContains(t, recorded, "persistence pending", "that layer landed")
+
+	unrecorded := strings.Join(Lines(Facts{
+		Version: "v", Proposer: "m", RunMode: "host", Recorded: false,
+	}, 80, 40, 0), "\n")
+	assert.Contains(t, unrecorded, "not being recorded")
+
+	resumed := strings.Join(Lines(Facts{
+		Version: "v", Proposer: "m", RunMode: "host",
+		Session: id, Recorded: true, Resumed: 12,
+	}, 80, 40, 0), "\n")
+	assert.Contains(t, resumed, "12 records")
+}

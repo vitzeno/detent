@@ -37,6 +37,11 @@ type Facts struct {
 	Commands int
 	// Sessions is how many are on disk, 0 until a listing arrives.
 	Sessions int
+	// Session is this run's own id, and Resumed how many records it
+	// began from. Recorded is false when nothing is writing it down.
+	Session  string
+	Resumed  int
+	Recorded bool
 }
 
 // Lines renders the pane at width by height, frame advancing the
@@ -153,11 +158,27 @@ func views() string {
 }
 
 func session(f Facts) []string {
-	return []string{
+	out := []string{
+		row("this session", sessionID(f)),
 		row("so far", goal.Render(fmt.Sprintf("%s · %s",
 			plural(f.Goals, "request"), plural(f.Commands, "call")))),
-		row("all time", allTime(f)),
 	}
+	if f.Resumed > 0 {
+		out = append(out, row("resumed", goal.Render(plural(f.Resumed, "record"))+
+			faint.Render("  picking up where it left off")))
+	}
+	return append(out, row("all time", allTime(f)))
+}
+
+// sessionID is what you would type after -resume, so it is shown
+// whole. A session nothing records says so instead: finding out at
+// resume time is too late.
+func sessionID(f Facts) string {
+	if !f.Recorded {
+		return caution.Render("⚠ not being recorded") +
+			faint.Render("  this session cannot be resumed")
+	}
+	return goal.Render(f.Session)
 }
 
 // examples gives a first goal to copy rather than a blank box.

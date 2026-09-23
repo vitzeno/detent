@@ -177,8 +177,17 @@ func run() error {
 		Headers: resolved.Headers, Env: env,
 	}
 
+	// Opened before the engine so it can say whether this session is
+	// being written down. A session that cannot be is still a session.
+	events, storeErr := store.Open(store.DefaultPath())
+	if storeErr != nil {
+		fmt.Fprintln(os.Stderr, storeErr)
+	}
+
 	opts := []engine.Option{
 		engine.WithSessionID(sessionID),
+		engine.WithDescription(resolved.Model,
+			resolved.SandboxNetwork != sandbox.NetworkNone, events != nil),
 		engine.WithContextTokens(resolved.ContextTokens),
 		engine.WithMaxSteps(resolved.Steps),
 		// The same endpoint compacts its own history when it outgrows
@@ -210,10 +219,7 @@ func run() error {
 	// deferred first so they run last: Drain empties the bus, then
 	// these wait for the final record to land.
 	defer logging.Watch(bus)()
-	if events, err := store.Open(store.DefaultPath()); err != nil {
-		// A session that cannot be recorded is still a session.
-		fmt.Fprintln(os.Stderr, err)
-	} else {
+	if events != nil {
 		defer events.Close()
 		defer store.Watch(bus, events, sessionID)()
 	}
@@ -243,11 +249,8 @@ func run() error {
 	if judge != nil {
 		judgeName = resolved.JevModel
 	}
-	// The effective mode, not the configured one: "auto" still reports
-	// host when no sandbox ended up wired.
-	_, runMode := runners.Select(event.UnknownRisk())
 	info := ui.SessionInfo{
-		Model: resolved.Model, Judge: judgeName, RunMode: runMode,
+		Judge: judgeName,
 		Image: resolved.SandboxImage, Mount: resolved.SandboxWorkspace,
 		Runtime: resolved.SandboxRuntime, Network: resolved.SandboxNetwork,
 	}

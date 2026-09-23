@@ -45,6 +45,12 @@ type Engine struct {
 
 	worktreer Worktreer
 
+	// How this run describes itself, for the fact published at start.
+	modelName string
+	network   bool
+	recorded  bool
+	resumed   int
+
 	// intents is subscribed in New, not Run: a caller that publishes
 	// the moment New returns must not lose it to a goroutine that has
 	// not started yet.
@@ -115,7 +121,12 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 // it produces goes out on the bus.
 func (e *Engine) Run(ctx context.Context) {
 	defer e.unsub()
-	e.bus.Publish(event.SessionStarted{Session: e.session, MaxSteps: e.maxSteps})
+	_, mode := e.runners.Select(event.UnknownRisk())
+	e.bus.Publish(event.SessionStarted{
+		Session: e.session, Model: e.modelName, Sandbox: mode == "sandbox",
+		Network: e.network, MaxSteps: e.maxSteps,
+		Recorded: e.recorded, Resumed: e.resumed,
+	})
 	done := make(chan struct{}, 1)
 
 	for {

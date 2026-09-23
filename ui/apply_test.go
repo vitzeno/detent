@@ -18,7 +18,7 @@ import (
 // goroutines, no channels.
 func feed(t *testing.T, evs ...event.Event) Model {
 	t.Helper()
-	m := New(context.Background(), event.New(), SessionInfo{Model: "m"})
+	m := New(context.Background(), event.New(), SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
 	for _, e := range evs {
 		m.apply(e)
@@ -284,4 +284,40 @@ func TestStatus_ShowsTheSessionID(t *testing.T) {
 	m.apply(event.SessionStarted{Session: mine, MaxSteps: 50})
 
 	assert.Contains(t, strings.Join(m.statusLines(), "\n"), mine.String())
+}
+
+// A session nothing is writing down cannot be resumed, and finding
+// that out at resume time is too late.
+func TestStatus_SaysWhenNothingIsRecording(t *testing.T) {
+	for _, recorded := range []bool{true, false} {
+		m := New(context.Background(), event.New(), SessionInfo{})
+		m.layout.width, m.layout.height = 120, 40
+		m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Recorded: recorded})
+
+		got := stripANSI(strings.Join(m.statusLines(), "\n"))
+		if recorded {
+			assert.Contains(t, got, "resumable")
+			assert.NotContains(t, got, "cannot be resumed")
+		} else {
+			assert.Contains(t, got, "cannot be resumed")
+		}
+	}
+}
+
+// The description comes off the fact, so the log and the panes cannot
+// disagree about what ran.
+func TestStatus_ReadsTheRunOffTheFact(t *testing.T) {
+	m := New(context.Background(), event.New(), SessionInfo{})
+	m.layout.width, m.layout.height = 120, 40
+	m.apply(event.SessionStarted{
+		Session: uuid.Must(uuid.NewV7()), Model: "a-model", Sandbox: true,
+		MaxSteps: 42, Recorded: true, Resumed: 9,
+	})
+
+	got := stripANSI(strings.Join(m.statusLines(), "\n"))
+	assert.Contains(t, got, "a-model")
+	assert.Contains(t, got, "sandbox")
+	assert.Contains(t, got, "42")
+	assert.Contains(t, got, "9 records")
+	assert.Equal(t, "sandbox", m.runMode())
 }

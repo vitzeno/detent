@@ -10,7 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"charm.land/lipgloss/v2"
-	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 )
@@ -48,9 +47,9 @@ type Model struct {
 	// than read back from anywhere.
 	calls, steps, errors, views, tokens int
 
-	// session is this run's own id, so a human can resume it later;
+	// run is how this session described itself at startup, and
 	// sessions is what /sessions last heard back.
-	session  uuid.UUID
+	run      event.SessionStarted
 	sessions []event.SessionSummary
 
 	welcomeFrame int
@@ -61,18 +60,17 @@ type Model struct {
 	facts <-chan event.Record
 }
 
-// SessionInfo is what the session bar reports about this run.
+// SessionInfo is what only the wiring knows. Everything a
+// SessionStarted already carries is read off that instead, so there
+// is one description of a run rather than two.
 type SessionInfo struct {
-	Model   string
-	Judge   string // "" when no judge is wired
-	RunMode string // host or sandbox
+	Judge string // "" when no judge is wired
 
-	// Sandbox facts for the welcome pane; empty in host mode.
-	Image    string
-	Mount    string
-	Runtime  string
-	Network  string
-	MaxSteps int
+	// Sandbox detail for the welcome pane; empty in host mode.
+	Image   string
+	Mount   string
+	Runtime string
+	Network string
 }
 
 // New builds the TUI over bus. It subscribes immediately, so nothing
@@ -221,6 +219,14 @@ func (m Model) blockOf(i int) *turnBlock {
 		n += len(b.rows)
 	}
 	return nil
+}
+
+// runMode is how the session bar names where commands go.
+func (m Model) runMode() string {
+	if m.run.Sandbox {
+		return "sandbox"
+	}
+	return "host"
 }
 
 func (m *Model) backToInput() {

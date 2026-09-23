@@ -10,7 +10,8 @@ import (
 // What the engine publishes, past tense. ApprovalAsked is the one
 // question among them, correlated by Call.
 
-// SessionStarted is published once; welcome and status read it.
+// SessionStarted is published once; welcome, status and the log all
+// read it, so it is the one description of a run.
 type SessionStarted struct {
 	fact
 	Session  uuid.UUID
@@ -18,6 +19,11 @@ type SessionStarted struct {
 	Sandbox  bool
 	Network  bool
 	MaxSteps int
+	// Recorded is false when nothing is writing this session down, so
+	// a front-end can say it will not be resumable.
+	Recorded bool
+	// Resumed is how many stored records this run began from.
+	Resumed int
 }
 
 func (SessionStarted) Kind() Kind { return SessionStartedKind }
