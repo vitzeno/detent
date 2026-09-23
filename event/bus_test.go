@@ -1,6 +1,7 @@
 package event
 
 import (
+	"github.com/google/uuid"
 	"sync"
 	"testing"
 	"time"
@@ -48,9 +49,9 @@ func TestBus_DropsLossyOnlyWhenBehind(t *testing.T) {
 
 	const flood = queueDepth * 3
 	for range flood {
-		b.Publish(OutputChunk{Call: "c1", Line: "noise"})
+		b.Publish(OutputChunk{Call: testID("c1"), Line: "noise"})
 	}
-	b.Publish(CallEnded{Call: "c1"})
+	b.Publish(CallEnded{Call: testID("c1")})
 
 	require.Positive(t, b.Dropped(), "a %d-deep flood past a %d queue must drop", flood, queueDepth)
 
@@ -75,7 +76,7 @@ func TestBus_LosslessSurvivesASlowSubscriber(t *testing.T) {
 
 	const n = queueDepth * 2
 	for i := range n {
-		b.Publish(StepEnded{Step: ID(string(rune('a' + i%26)))})
+		b.Publish(StepEnded{Step: testID(string(rune('a' + i%26)))})
 	}
 	assert.Zero(t, b.Dropped(), "nothing lossy was published")
 	assert.Len(t, drainN(t, ch, n), n, "every lossless record must arrive")
@@ -92,7 +93,7 @@ func TestBus_PublishNeverBlocks(t *testing.T) {
 	go func() {
 		defer close(done)
 		for range queueDepth * 4 {
-			b.Publish(OutputChunk{Call: "c", Line: "x"})
+			b.Publish(OutputChunk{Call: testID("c"), Line: "x"})
 		}
 	}()
 	select {
@@ -113,13 +114,13 @@ func TestBus_PublishFromASubscriber(t *testing.T) {
 
 	go func() {
 		for r := range ch {
-			b.Publish(Notice{Level: "info", Text: string(r.Event.(CallEnded).Call)})
+			b.Publish(Notice{Level: "info", Text: r.Event.(CallEnded).Call.String()})
 		}
 	}()
-	b.Publish(CallEnded{Call: "c9"})
+	b.Publish(CallEnded{Call: testID("c9")})
 
 	got := drainN(t, echo, 1)
-	assert.Equal(t, "c9", got[0].Event.(Notice).Text)
+	assert.Equal(t, testID("c9").String(), got[0].Event.(Notice).Text)
 }
 
 func TestBus_FiltersSplitIntentsFromFacts(t *testing.T) {
@@ -129,8 +130,8 @@ func TestBus_FiltersSplitIntentsFromFacts(t *testing.T) {
 	intents, stopI := b.Subscribe(Intents())
 	defer stopI()
 
-	b.Publish(Abort{Turn: "t1"})
-	b.Publish(CallEnded{Call: "c1"})
+	b.Publish(Abort{Turn: testID("t1")})
+	b.Publish(CallEnded{Call: testID("c1")})
 
 	assert.Equal(t, CallEndedKind, drainN(t, facts, 1)[0].Event.Kind())
 	assert.Equal(t, AbortKind, drainN(t, intents, 1)[0].Event.Kind())
@@ -221,7 +222,7 @@ func TestBus_DrainDeliversTheBacklogBeforeClosing(t *testing.T) {
 
 	const n = 200
 	for i := range n {
-		b.Publish(StepEnded{Step: ID(string(rune('a' + i%26)))})
+		b.Publish(StepEnded{Step: testID(string(rune('a' + i%26)))})
 	}
 
 	var got int
@@ -249,3 +250,7 @@ func TestBus_DrainGivesUpRatherThanHanging(t *testing.T) {
 	b.Drain(100 * time.Millisecond)
 	assert.Less(t, time.Since(start), 3*time.Second, "a wedged consumer must not hold up exit")
 }
+
+// testID makes a deterministic uuid from a readable name, so a test
+// can still say "c1" and mean it.
+func testID(name string) uuid.UUID { return uuid.NewSHA1(uuid.Nil, []byte(name)) }

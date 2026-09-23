@@ -2,6 +2,7 @@ package viewgen
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"github.com/vitzeno/detent/event"
 )
 
@@ -13,7 +14,7 @@ func (g *Generator) Watch(bus *event.Bus) func() {
 		event.TurnStartedKind, event.CallProposedKind,
 		event.CallEndedKind, event.CallJudgedKind))
 	go func() {
-		w := watcher{gen: g, bus: bus, calls: map[event.ID]*pending{},
+		w := watcher{gen: g, bus: bus, calls: map[uuid.UUID]*pending{},
 			slots: make(chan struct{}, maxComposing)}
 		for rec := range facts {
 			w.take(rec.Event)
@@ -34,7 +35,7 @@ type pending struct {
 type watcher struct {
 	gen   *Generator
 	bus   *event.Bus
-	calls map[event.ID]*pending
+	calls map[uuid.UUID]*pending
 	// slots caps concurrent composition: parallel Calls finish
 	// together and each costs a judge round trip.
 	slots chan struct{}
@@ -62,7 +63,7 @@ func (w *watcher) take(e event.Event) {
 	}
 }
 
-func (w *watcher) compose(call event.ID, p pending) {
+func (w *watcher) compose(call uuid.UUID, p pending) {
 	w.slots <- struct{}{}
 	defer func() { <-w.slots }()
 
@@ -80,7 +81,7 @@ func (w *watcher) compose(call event.ID, p pending) {
 	w.publish(call, got)
 }
 
-func (w *watcher) publish(call event.ID, got Result) {
+func (w *watcher) publish(call uuid.UUID, got Result) {
 	w.bus.Publish(event.ViewReady{Call: call, Spec: got.Spec, Source: string(got.Source)})
 }
 

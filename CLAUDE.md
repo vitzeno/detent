@@ -203,10 +203,10 @@ adding a fat dependency fails with the transitive import named.
   live line costs a redraw; a dropped `CallEnded` is a row that never
   finishes. `Record` carries a gapless `Ordinal`, so a subscriber
   that filters or drops can be told apart from one that lost
-  something. IDs are `google/uuid`'s UUIDv7,
-  whose `getV7Time` is monotonic within a millisecond as well as
-  across them, which matters because a Step mints all its Call ids
-  inside one.
+  something. Ids are `uuid.UUID` directly, with no
+  wrapper type: `google/uuid`'s v7 is monotonic within a millisecond
+  as well as across them, which matters because a Step mints all its
+  Call ids inside one.
 
 - **`internal/engine`** — the loop, and it drives itself. One
   goroutine, blocking and linear, reading intents and publishing

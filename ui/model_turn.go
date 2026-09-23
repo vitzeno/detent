@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/google/uuid"
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/viewspec"
 )
@@ -9,7 +10,7 @@ import (
 // calls made toward it. Folded from the event stream, nothing else.
 
 type turnBlock struct {
-	id     event.ID
+	id     uuid.UUID
 	n      int
 	prompt string
 	rows   []*callRow
@@ -28,7 +29,7 @@ type turnBlock struct {
 // callRow is one tool call, or the model's own words. Exactly one of
 // tool and prose is set.
 type callRow struct {
-	id event.ID
+	id uuid.UUID
 	// command is what the human reads: the tool's arguments, rendered.
 	command string
 	prose   string

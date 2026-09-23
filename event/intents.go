@@ -1,5 +1,7 @@
 package event
 
+import "github.com/google/uuid"
+
 // What anyone publishes, imperative. The engine subscribes to these
 // and nothing else.
 
@@ -15,7 +17,7 @@ func (SubmitPrompt) Kind() Kind { return SubmitPromptKind }
 // whether a human, an auto-approver or a policy sent it.
 type ResolveApproval struct {
 	fact
-	Call     ID
+	Call     uuid.UUID
 	Approved bool
 }
 
@@ -34,7 +36,7 @@ func (NoteContext) Kind() Kind { return NoteContextKind }
 // completes, with a result per unrun Call, or the next Step fails.
 type Abort struct {
 	fact
-	Turn ID
+	Turn uuid.UUID
 }
 
 func (Abort) Kind() Kind { return AbortKind }
@@ -43,7 +45,7 @@ func (Abort) Kind() Kind { return AbortKind }
 // post-execution judge acts without becoming an interceptor.
 type RequestStop struct {
 	fact
-	Turn   ID
+	Turn   uuid.UUID
 	Reason string
 }
 
@@ -52,7 +54,7 @@ func (RequestStop) Kind() Kind { return RequestStopKind }
 // Continue answers BoundReached; false ends the Turn.
 type Continue struct {
 	fact
-	Turn     ID
+	Turn     uuid.UUID
 	Approved bool
 }
 
@@ -62,7 +64,7 @@ func (Continue) Kind() Kind { return ContinueKind }
 // transcript to where it began. RevertFiles also reverts the workspace.
 type RequestRollback struct {
 	fact
-	Turn        ID
+	Turn        uuid.UUID
 	RevertFiles bool
 }
 

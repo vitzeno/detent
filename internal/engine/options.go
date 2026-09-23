@@ -1,6 +1,6 @@
 package engine
 
-import "github.com/vitzeno/detent/event"
+import "github.com/google/uuid"
 
 type Option func(*Engine)
 
@@ -65,9 +65,9 @@ func WithAssessor(a Assessor) Option {
 // snapshot never covers.
 func WithWorktree(w Worktreer) Option { return func(e *Engine) { e.worktreer = w } }
 
-func WithSessionID(id event.ID) Option {
+func WithSessionID(id uuid.UUID) Option {
 	return func(e *Engine) {
-		if id != "" {
+		if id != uuid.Nil {
 			e.session = id
 		}
 	}

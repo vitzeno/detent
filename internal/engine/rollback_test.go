@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"github.com/google/uuid"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -48,7 +49,7 @@ func TestRollback_RestoresTheTurnsCheckpoint(t *testing.T) {
 func TestRollback_RefusesWhatItCannotDo(t *testing.T) {
 	t.Run("an unknown turn", func(t *testing.T) {
 		r := newRig(t, nil)
-		r.bus.Publish(event.RequestRollback{Turn: event.NewID()})
+		r.bus.Publish(event.RequestRollback{Turn: uuid.Must(uuid.NewV7())})
 		n := r.await(event.NoticeKind).(event.Notice)
 		assert.Equal(t, "error", n.Level)
 		assert.Contains(t, n.Text, "no such request")
@@ -62,7 +63,7 @@ func TestRollback_RefusesWhatItCannotDo(t *testing.T) {
 
 		r.bus.Publish(event.SubmitPrompt{Text: "go"})
 		r.await(event.CallStartedKind)
-		r.bus.Publish(event.RequestRollback{Turn: event.NewID()})
+		r.bus.Publish(event.RequestRollback{Turn: uuid.Must(uuid.NewV7())})
 
 		n := r.await(event.NoticeKind).(event.Notice)
 		assert.Contains(t, n.Text, "cannot roll back while")

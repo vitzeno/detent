@@ -15,6 +15,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/google/uuid"
+
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/config"
@@ -98,11 +100,11 @@ func run() error {
 		pinged <- model.Ping(context.Background(), resolved.BaseURL, resolved.APIKey)
 	}()
 
-	sessionID := string(event.NewID())
+	sessionID := uuid.Must(uuid.NewV7())
 	// A session that cannot log is still a session: Setup says so and
 	// carries on discarding.
 	closeLog, err := logging.Setup(logging.Options{
-		Dir: resolved.LogDir, Session: sessionID,
+		Dir: resolved.LogDir, Session: sessionID.String(),
 		Level: resolved.LogLevel, Bodies: resolved.LogBodies,
 	})
 	if err != nil {
@@ -137,7 +139,7 @@ func run() error {
 			sandbox.WithRuntime(resolved.SandboxRuntime),
 			sandbox.WithNetwork(resolved.SandboxNetwork),
 		)
-		if err := container.Start(context.Background(), sessionID); err != nil {
+		if err := container.Start(context.Background(), sessionID.String()); err != nil {
 			return fmt.Errorf("sandbox: starting container: %w", err)
 		}
 		defer container.Close(context.Background())
@@ -165,7 +167,7 @@ func run() error {
 	}
 
 	opts := []engine.Option{
-		engine.WithSessionID(event.ID(sessionID)),
+		engine.WithSessionID(sessionID),
 		engine.WithContextTokens(resolved.ContextTokens),
 		engine.WithMaxSteps(resolved.Steps),
 		// The same endpoint compacts its own history when it outgrows

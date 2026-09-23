@@ -1,6 +1,7 @@
 package event
 
 import (
+	"github.com/google/uuid"
 	"time"
 
 	"github.com/vitzeno/detent/viewspec"
@@ -12,7 +13,7 @@ import (
 // SessionStarted is published once; welcome and status read it.
 type SessionStarted struct {
 	fact
-	Session  ID
+	Session  uuid.UUID
 	Model    string
 	Sandbox  bool
 	Network  bool
@@ -25,7 +26,7 @@ func (SessionStarted) Kind() Kind { return SessionStartedKind }
 
 type TurnStarted struct {
 	fact
-	Turn   ID
+	Turn   uuid.UUID
 	N      int // 1-based, what the human sees and /rollback takes
 	Prompt string
 }
@@ -35,7 +36,7 @@ func (TurnStarted) Kind() Kind { return TurnStartedKind }
 // CheckpointTaken is the Turn's one snapshot, and all a rollback restores.
 type CheckpointTaken struct {
 	fact
-	Turn     ID
+	Turn     uuid.UUID
 	Snapshot string // container; "" when unsandboxed
 	Tree     string // the human's own working directory
 }
@@ -44,7 +45,7 @@ func (CheckpointTaken) Kind() Kind { return CheckpointTakenKind }
 
 type TurnEnded struct {
 	fact
-	Turn    ID
+	Turn    uuid.UUID
 	Reason  EndReason
 	Summary string
 	Usage   Usage // the whole Turn's cost
@@ -66,7 +67,7 @@ const (
 // BoundReached pauses the Turn at MaxSteps to ask. Not an ending.
 type BoundReached struct {
 	fact
-	Turn  ID
+	Turn  uuid.UUID
 	Steps int
 	Calls int
 }
@@ -75,7 +76,7 @@ func (BoundReached) Kind() Kind { return BoundReachedKind }
 
 type RolledBack struct {
 	fact
-	Turn        ID
+	Turn        uuid.UUID
 	RevertFiles bool
 }
 
@@ -85,7 +86,7 @@ func (RolledBack) Kind() Kind { return RolledBackKind }
 
 type StepStarted struct {
 	fact
-	Turn, Step ID
+	Turn, Step uuid.UUID
 	N          int
 }
 
@@ -93,7 +94,7 @@ func (StepStarted) Kind() Kind { return StepStartedKind }
 
 type StepEnded struct {
 	fact
-	Turn, Step ID
+	Turn, Step uuid.UUID
 	Usage      Usage
 	Calls      int // how many the model asked for; 0 means it stopped
 }
@@ -103,7 +104,7 @@ func (StepEnded) Kind() Kind { return StepEndedKind }
 // ModelText is the model's prose: its own row, judged like output.
 type ModelText struct {
 	fact
-	Turn, Step ID
+	Turn, Step uuid.UUID
 	Text       string
 }
 
@@ -113,7 +114,7 @@ func (ModelText) Kind() Kind { return ModelTextKind }
 
 type CallProposed struct {
 	fact
-	Call, Step ID
+	Call, Step uuid.UUID
 	Tool       string
 	Args       map[string]any
 	Rationale  string
@@ -123,7 +124,7 @@ func (CallProposed) Kind() Kind { return CallProposedKind }
 
 type CallAssessed struct {
 	fact
-	Call ID
+	Call uuid.UUID
 	Risk Risk
 }
 
@@ -132,7 +133,7 @@ func (CallAssessed) Kind() Kind { return CallAssessedKind }
 // ApprovalAsked blocks the engine until a ResolveApproval names this Call.
 type ApprovalAsked struct {
 	fact
-	Call      ID
+	Call      uuid.UUID
 	Tool      string
 	Args      map[string]any
 	Rationale string
@@ -143,7 +144,7 @@ func (ApprovalAsked) Kind() Kind { return ApprovalAskedKind }
 
 type CallStarted struct {
 	fact
-	Call   ID
+	Call   uuid.UUID
 	Runner string // host or sandbox
 }
 
@@ -153,7 +154,7 @@ func (CallStarted) Kind() Kind { return CallStartedKind }
 // Calls interleave, so route by Call rather than assume one is running.
 type OutputChunk struct {
 	fact
-	Call   ID
+	Call   uuid.UUID
 	Line   string
 	Stderr bool
 }
@@ -163,7 +164,7 @@ func (OutputChunk) Lossy() bool { return true }
 
 type CallEnded struct {
 	fact
-	Call   ID
+	Call   uuid.UUID
 	Result Result
 	Took   time.Duration
 }
@@ -184,7 +185,7 @@ type Result struct {
 // CallJudged is how it went and how to draw it. Async: may land late.
 type CallJudged struct {
 	fact
-	Call         ID
+	Call         uuid.UUID
 	Status       string
 	RenderKind   string
 	Attention    float64
@@ -197,7 +198,7 @@ func (CallJudged) Kind() Kind { return CallJudgedKind }
 // ViewReady is a spec for a Call's output.
 type ViewReady struct {
 	fact
-	Call   ID
+	Call   uuid.UUID
 	Spec   *viewspec.Spec
 	Source string // shipped, saved, composed
 }

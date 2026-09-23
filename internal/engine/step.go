@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"github.com/google/uuid"
 	"strings"
 	"sync"
 	"time"
@@ -14,7 +15,7 @@ import (
 
 // runStep answers every Call however it went, keyed by the model's own
 // id because that is what the transcript pairs on.
-func (e *Engine) runStep(ctx context.Context, t *turnState, step event.ID, reply model.Reply) map[string]string {
+func (e *Engine) runStep(ctx context.Context, t *turnState, step uuid.UUID, reply model.Reply) map[string]string {
 	plans := e.plan(step, reply)
 
 	var serial []*callPlan
@@ -54,7 +55,7 @@ func (e *Engine) runStep(ctx context.Context, t *turnState, step event.ID, reply
 // callPlan is one Call's journey. answer is always set by the end,
 // which is what keeps the transcript well formed.
 type callPlan struct {
-	id     event.ID
+	id     uuid.UUID
 	call   model.ToolCall
 	cmd    string
 	risk   event.Risk
@@ -66,10 +67,10 @@ func (p *callPlan) finish(answer string) { p.answer, p.done = answer, true }
 
 // plan validates and assesses, settling anything that cannot run.
 // Every failure here is an answer the model reads, never a Go error.
-func (e *Engine) plan(step event.ID, reply model.Reply) []*callPlan {
+func (e *Engine) plan(step uuid.UUID, reply model.Reply) []*callPlan {
 	out := make([]*callPlan, 0, len(reply.Calls))
 	for i, c := range reply.Calls {
-		p := &callPlan{id: event.NewID(), call: c}
+		p := &callPlan{id: uuid.Must(uuid.NewV7()), call: c}
 		out = append(out, p)
 		e.bus.Publish(event.CallProposed{Call: p.id, Step: step, Tool: c.Name, Args: c.Args})
 

@@ -3,6 +3,7 @@ package judge
 import (
 	"context"
 	"errors"
+	"github.com/google/uuid"
 	"testing"
 	"time"
 
@@ -83,7 +84,7 @@ func TestWatch_AHighScoreAsksTheTurnToStop(t *testing.T) {
 	intents, unsub := bus.Subscribe(event.Only(event.RequestStopKind))
 	defer unsub()
 
-	turn, call := event.NewID(), event.NewID()
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: turn, N: 1, Prompt: "count the files"})
 	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
 	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "12\n"}})
@@ -110,8 +111,8 @@ func TestWatch_ALowScoreLetsItCarryOn(t *testing.T) {
 	facts, unsub := bus.Subscribe(event.Only(event.CallJudgedKind, event.RequestStopKind))
 	defer unsub()
 
-	call := event.NewID()
-	bus.Publish(event.TurnStarted{Turn: event.NewID(), N: 1, Prompt: "go"})
+	call := uuid.Must(uuid.NewV7())
+	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
 	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
 	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "partial\n"}})
 
@@ -138,8 +139,8 @@ func TestWatch_AGuessNeverStopsATurn(t *testing.T) {
 	intents, unsub := bus.Subscribe(event.Only(event.RequestStopKind))
 	defer unsub()
 
-	call := event.NewID()
-	bus.Publish(event.TurnStarted{Turn: event.NewID(), N: 1, Prompt: "go"})
+	call := uuid.Must(uuid.NewV7())
+	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
 	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
 	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "done\n"}})
 

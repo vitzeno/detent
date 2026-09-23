@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 )
@@ -39,7 +40,7 @@ func (e *Engine) rollback(ctx context.Context, req event.RequestRollback) {
 
 // forgetFrom drops the rolled-back Turn and everything after it: they
 // no longer happened, so they are no longer targets.
-func (e *Engine) forgetFrom(id event.ID) {
+func (e *Engine) forgetFrom(id uuid.UUID) {
 	from, ok := e.past[id]
 	if !ok {
 		return

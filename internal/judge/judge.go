@@ -5,6 +5,7 @@ package judge
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"strings"
 
 	"github.com/vitzeno/detent/event"
@@ -40,8 +41,8 @@ func Watch(bus *event.Bus, asker classify.Asker) func() {
 		event.TurnStartedKind, event.CallProposedKind, event.CallEndedKind))
 	go func() {
 		var prompt string
-		var turn event.ID
-		cmds := map[event.ID]string{}
+		var turn uuid.UUID
+		cmds := map[uuid.UUID]string{}
 		for rec := range facts {
 			switch v := rec.Event.(type) {
 			case event.TurnStarted:
@@ -61,7 +62,7 @@ func Watch(bus *event.Bus, asker classify.Asker) func() {
 // publish judges one Call. Each runs on its own goroutine: several
 // Calls finish together, and one slow judgement must not hold up the
 // others or the events behind them.
-func (j ResultJudge) publish(bus *event.Bus, turn event.ID, done event.CallEnded, tool string) {
+func (j ResultJudge) publish(bus *event.Bus, turn uuid.UUID, done event.CallEnded, tool string) {
 	got := j.Judge(context.Background(), tool, done.Result)
 	got.Call = done.Call
 	bus.Publish(got)

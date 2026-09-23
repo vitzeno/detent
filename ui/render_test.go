@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"regexp"
 	"strings"
 	"testing"
@@ -31,8 +32,8 @@ func sized(t *testing.T, w, h int, evs ...event.Event) Model {
 	return m
 }
 
-func oneTurn(prompt, command, out string) (event.ID, []event.Event) {
-	turn, call := event.NewID(), event.NewID()
+func oneTurn(prompt, command, out string) (uuid.UUID, []event.Event) {
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	return turn, []event.Event{
 		event.TurnStarted{Turn: turn, N: 1, Prompt: prompt},
 		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": command}},
@@ -103,7 +104,7 @@ func TestProse_IsItsOwnSelectableRow(t *testing.T) {
 // grouping and result both read from anywhere inside it.
 func TestHistory_RailSpansTheBlockAndCarriesOutcome(t *testing.T) {
 	done, doneEvs := oneTurn("clean up", "ls", "ok\n")
-	aborted := event.NewID()
+	aborted := uuid.Must(uuid.NewV7())
 	m := sized(t, 120, 40, append(doneEvs,
 		event.TurnStarted{Turn: aborted, N: 2, Prompt: "second"},
 		event.TurnEnded{Turn: aborted, Reason: event.EndAborted})...)
@@ -167,7 +168,7 @@ func TestPanels_AllDraw(t *testing.T) {
 
 // A call a human had to approve must not read like `ls` afterwards.
 func TestHistory_FlaggedCallsAreMarked(t *testing.T) {
-	turn, call := event.NewID(), event.NewID()
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := sized(t, 120, 40,
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "clean"},
 		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "rm -rf build"}},
@@ -179,7 +180,7 @@ func TestHistory_FlaggedCallsAreMarked(t *testing.T) {
 	assert.Contains(t, line, "!", "a flagged call carries a mark")
 
 	// And an ordinary one does not.
-	turn2, call2 := event.NewID(), event.NewID()
+	turn2, call2 := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m = sized(t, 120, 40,
 		event.TurnStarted{Turn: turn2, N: 1, Prompt: "look"},
 		event.CallProposed{Call: call2, Tool: "bash", Args: map[string]any{"command": "ls"}},

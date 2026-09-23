@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"testing"
 	"time"
 
@@ -108,8 +109,8 @@ func TestKeys_EnterSubmitsThePrompt(t *testing.T) {
 
 func TestKeys_ApprovalIsAnswered(t *testing.T) {
 	k := newKeyed(t)
-	call := event.NewID()
-	k.m.apply(event.TurnStarted{Turn: event.NewID(), N: 1, Prompt: "clean"})
+	call := uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "clean"})
 	k.m.apply(event.ApprovalAsked{Call: call, Tool: "bash"})
 	require.Equal(t, modeConfirm, k.m.mode)
 
@@ -123,7 +124,7 @@ func TestKeys_ApprovalIsAnswered(t *testing.T) {
 
 func TestKeys_BoundIsAnswered(t *testing.T) {
 	k := newKeyed(t)
-	turn := event.NewID()
+	turn := uuid.Must(uuid.NewV7())
 	k.m.apply(event.TurnStarted{Turn: turn, N: 1, Prompt: "big"})
 	k.m.apply(event.BoundReached{Turn: turn, Steps: 50})
 	k.m.mode = modeBound
@@ -137,7 +138,7 @@ func TestKeys_BoundIsAnswered(t *testing.T) {
 // esc aborts a running request rather than only moving focus.
 func TestKeys_EscapeAbortsARunningRequest(t *testing.T) {
 	k := newKeyed(t)
-	turn := event.NewID()
+	turn := uuid.Must(uuid.NewV7())
 	k.m.apply(event.TurnStarted{Turn: turn, N: 1, Prompt: "slow"})
 
 	k.press(t, "esc")

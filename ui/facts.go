@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"sort"
 	"strings"
 
@@ -157,7 +158,7 @@ func (m *Model) viewReady(v event.ViewReady) {
 	}
 }
 
-func (m *Model) rolledBack(id event.ID) {
+func (m *Model) rolledBack(id uuid.UUID) {
 	for i, b := range m.blocks {
 		if b.id == id {
 			m.blocks = m.blocks[:i]
@@ -170,7 +171,7 @@ func (m *Model) rolledBack(id event.ID) {
 
 // block and row find what an event is about. Linear: a map would have
 // to be kept in step with the slice that draws them.
-func (m *Model) block(id event.ID) *turnBlock {
+func (m *Model) block(id uuid.UUID) *turnBlock {
 	for _, b := range m.blocks {
 		if b.id == id {
 			return b
@@ -179,7 +180,7 @@ func (m *Model) block(id event.ID) *turnBlock {
 	return nil
 }
 
-func (m *Model) row(id event.ID) *callRow {
+func (m *Model) row(id uuid.UUID) *callRow {
 	for i := len(m.blocks) - 1; i >= 0; i-- {
 		for _, r := range m.blocks[i].rows {
 			if r.id == id {

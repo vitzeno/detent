@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -23,14 +24,14 @@ func feed(t *testing.T, evs ...event.Event) Model {
 	return m
 }
 
-func aTurn(prompt string) (event.ID, []event.Event) {
-	turn := event.NewID()
+func aTurn(prompt string) (uuid.UUID, []event.Event) {
+	turn := uuid.Must(uuid.NewV7())
 	return turn, []event.Event{event.TurnStarted{Turn: turn, N: 1, Prompt: prompt}}
 }
 
 func TestApply_BuildsABlockPerRequest(t *testing.T) {
 	turn, evs := aTurn("count the go files")
-	call := event.NewID()
+	call := uuid.Must(uuid.NewV7())
 	m := feed(t, append(evs,
 		event.CheckpointTaken{Turn: turn, Snapshot: "snap-a"},
 		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "ls"}},
@@ -62,7 +63,7 @@ func TestApply_BuildsABlockPerRequest(t *testing.T) {
 
 func TestApply_CountsWhatStatusReports(t *testing.T) {
 	turn, evs := aTurn("go")
-	bad, good := event.NewID(), event.NewID()
+	bad, good := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := feed(t, append(evs,
 		event.StepEnded{Turn: turn},
 		event.CallProposed{Call: bad, Tool: "bash", Args: map[string]any{"command": "false"}},
@@ -80,7 +81,7 @@ func TestApply_CountsWhatStatusReports(t *testing.T) {
 // Live output is routed by call, because parallel calls interleave.
 func TestApply_DemultiplexesLiveOutput(t *testing.T) {
 	_, evs := aTurn("read two files")
-	a, b := event.NewID(), event.NewID()
+	a, b := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := feed(t, append(evs,
 		event.CallProposed{Call: a, Tool: "read_file", Args: map[string]any{"path": "a.go"}},
 		event.CallProposed{Call: b, Tool: "read_file", Args: map[string]any{"path": "b.go"}},
@@ -99,7 +100,7 @@ func TestApply_DemultiplexesLiveOutput(t *testing.T) {
 
 func TestApply_LiveOutputIsBounded(t *testing.T) {
 	_, evs := aTurn("noisy")
-	call := event.NewID()
+	call := uuid.Must(uuid.NewV7())
 	evs = append(evs, event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "yes"}})
 	for range maxLiveLines * 2 {
 		evs = append(evs, event.OutputChunk{Call: call, Line: "noise"})
@@ -112,7 +113,7 @@ func TestApply_LiveOutputIsBounded(t *testing.T) {
 
 func TestApply_ApprovalOpensAndClosesTheQuestion(t *testing.T) {
 	turn, evs := aTurn("clean up")
-	call := event.NewID()
+	call := uuid.Must(uuid.NewV7())
 	m := feed(t, append(evs,
 		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "rm -rf build"}},
 		event.CallAssessed{Call: call, Risk: event.Risk{Dangerous: true, Note: "recursive delete"}},
@@ -142,7 +143,7 @@ func TestApply_BoundPausesForAnAnswer(t *testing.T) {
 
 func TestApply_RollbackDropsTheTurnAndEverythingAfter(t *testing.T) {
 	first, firstEvs := aTurn("one")
-	second := event.NewID()
+	second := uuid.Must(uuid.NewV7())
 	m := feed(t, append(firstEvs,
 		event.TurnEnded{Turn: first, Reason: event.EndDone},
 		event.TurnStarted{Turn: second, N: 2, Prompt: "two"},
@@ -165,7 +166,7 @@ func TestApply_NoticeReachesTheStatusFlash(t *testing.T) {
 
 func TestApply_JudgementExpandsWhatNeedsAttention(t *testing.T) {
 	_, evs := aTurn("go")
-	call := event.NewID()
+	call := uuid.Must(uuid.NewV7())
 	m := feed(t, append(evs,
 		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make"}},
 		event.CallEnded{Call: call, Result: event.Result{ExitCode: 2, Stderr: "boom"}},
@@ -182,11 +183,11 @@ func TestApply_JudgementExpandsWhatNeedsAttention(t *testing.T) {
 // deliver out of order after a reset.
 func TestApply_UnknownIdsAreIgnored(t *testing.T) {
 	m := feed(t,
-		event.CallEnded{Call: event.NewID()},
-		event.CallJudged{Call: event.NewID()},
-		event.OutputChunk{Call: event.NewID(), Line: "x"},
-		event.CheckpointTaken{Turn: event.NewID()},
-		event.TurnEnded{Turn: event.NewID()},
+		event.CallEnded{Call: uuid.Must(uuid.NewV7())},
+		event.CallJudged{Call: uuid.Must(uuid.NewV7())},
+		event.OutputChunk{Call: uuid.Must(uuid.NewV7()), Line: "x"},
+		event.CheckpointTaken{Turn: uuid.Must(uuid.NewV7())},
+		event.TurnEnded{Turn: uuid.Must(uuid.NewV7())},
 	)
 	assert.Empty(t, m.blocks)
 }

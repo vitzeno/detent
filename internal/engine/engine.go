@@ -4,6 +4,7 @@ package engine
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"sync"
 
 	"github.com/vitzeno/detent/event"
@@ -32,7 +33,7 @@ type Engine struct {
 	assessors []Assessor
 	repeat    *repeatHook
 
-	session event.ID
+	session uuid.UUID
 	tr      transcript
 	turns   int
 
@@ -57,7 +58,7 @@ type Engine struct {
 	mu sync.Mutex
 	// cur is the Turn in flight; past is what can still be undone.
 	cur  *turnState
-	past map[event.ID]*turnState
+	past map[uuid.UUID]*turnState
 }
 
 // Completer is one model round trip: a Step.
@@ -93,13 +94,13 @@ type Worktreer interface {
 func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelector, opts ...Option) *Engine {
 	e := &Engine{
 		bus: bus, model: m, tools: tools, runners: runners,
-		session:       event.NewID(),
+		session:       uuid.Must(uuid.NewV7()),
 		maxSteps:      DefaultMaxSteps,
 		maxCalls:      DefaultCallsPerStep,
 		parallel:      DefaultParallelCalls,
 		contextTokens: DefaultContextTokens,
 		repeat:        newRepeatHook(DefaultRepeatLimit),
-		past:          map[event.ID]*turnState{},
+		past:          map[uuid.UUID]*turnState{},
 	}
 	for _, o := range opts {
 		o(e)
@@ -204,4 +205,4 @@ func (e *Engine) Transcript() []model.Message {
 }
 
 // Session is this engine's id.
-func (e *Engine) Session() event.ID { return e.session }
+func (e *Engine) Session() uuid.UUID { return e.session }

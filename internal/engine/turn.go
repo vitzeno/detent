@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"sync"
 
 	"github.com/vitzeno/detent/event"
@@ -10,7 +11,7 @@ import (
 // turnState is one Turn in flight. The Turn goroutine owns the
 // transcript while this exists; the dispatcher only forwards to it.
 type turnState struct {
-	id     event.ID
+	id     uuid.UUID
 	n      int
 	prompt string
 	// mark and snap are what a rollback restores: transcript position
@@ -41,7 +42,7 @@ func (e *Engine) startTurn(ctx context.Context, prompt string, done chan struct{
 	tctx, cancel := context.WithCancel(ctx)
 	e.turns++
 	t := &turnState{
-		id: event.NewID(), n: e.turns, prompt: prompt,
+		id: uuid.Must(uuid.NewV7()), n: e.turns, prompt: prompt,
 		inbox: make(chan event.Event, 64), cancel: cancel,
 	}
 	e.mu.Lock()
@@ -92,7 +93,7 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 			e.tr.compact(ctx, e.contextTokens, e.summarizer)
 		})
 
-		stepID := event.NewID()
+		stepID := uuid.Must(uuid.NewV7())
 		e.bus.Publish(event.StepStarted{Turn: t.id, Step: stepID, N: step})
 		reply, used, err := e.model.Complete(ctx, e.Transcript(), e.tools.Schemas())
 		total = total.Add(used)

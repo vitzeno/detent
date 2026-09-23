@@ -1,6 +1,7 @@
 package logging_test
 
 import (
+	"github.com/google/uuid"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 	bus := event.New()
 	stop := logging.Watch(bus)
 
-	turn, step, call := event.NewID(), event.NewID(), event.NewID()
+	turn, step, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: turn, N: 1, Prompt: "go"})
 	bus.Publish(event.StepStarted{Turn: turn, Step: step, N: 1})
 	bus.Publish(event.CallProposed{Call: call, Step: step, Tool: "bash"})
@@ -40,9 +41,9 @@ func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 		by[r[logging.KeyEvent].(string)] = r
 	}
 
-	assert.Equal(t, string(turn), by["turn.started"][logging.KeyTurn])
-	assert.Equal(t, string(step), by["step.started"][logging.KeyStep])
-	assert.Equal(t, string(call), by["call.proposed"][logging.KeyCall],
+	assert.Equal(t, turn.String(), by["turn.started"][logging.KeyTurn])
+	assert.Equal(t, step.String(), by["step.started"][logging.KeyStep])
+	assert.Equal(t, call.String(), by["call.proposed"][logging.KeyCall],
 		"a call record names its call, and nothing had to thread it")
 
 	ended := by["call.ended"]
@@ -66,7 +67,7 @@ func TestWatch_SkipsLiveOutput(t *testing.T) {
 	bus := event.New()
 	stop := logging.Watch(bus)
 	for range 50 {
-		bus.Publish(event.OutputChunk{Call: "c1", Line: "noise"})
+		bus.Publish(event.OutputChunk{Call: testID("c1"), Line: "noise"})
 	}
 	bus.Publish(event.Notice{Level: "info", Text: "done"})
 
@@ -91,7 +92,7 @@ func TestWatch_WithholdsBodiesUnlessAsked(t *testing.T) {
 
 		bus := event.New()
 		stop := logging.Watch(bus)
-		bus.Publish(event.TurnStarted{Turn: "t", N: 1, Prompt: "the secret prompt"})
+		bus.Publish(event.TurnStarted{Turn: testID("t"), N: 1, Prompt: "the secret prompt"})
 
 		require.Eventually(t, func() bool { return len(records(t, dir, "b")) == 1 },
 			2*time.Second, 10*time.Millisecond)
@@ -106,3 +107,7 @@ func TestWatch_WithholdsBodiesUnlessAsked(t *testing.T) {
 		}
 	}
 }
+
+// testID makes a deterministic uuid from a readable name, so a test
+// can still say "c1" and mean it.
+func testID(name string) uuid.UUID { return uuid.NewSHA1(uuid.Nil, []byte(name)) }

@@ -1,9 +1,12 @@
 package event
 
 import (
+	"github.com/google/uuid"
 	"go/build"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,21 +87,20 @@ func TestLossy_IsOutputChunkAlone(t *testing.T) {
 	}
 }
 
-func TestNewID_IsUUIDv7AndSortsByTime(t *testing.T) {
-	a := NewID()
-	require.Len(t, string(a), 36)
-	assert.Equal(t, byte('7'), string(a)[14], "version nibble")
-	assert.Contains(t, "89ab", string(string(a)[19]), "variant nibble")
-
-	seen := map[ID]bool{}
-	prev := ID("")
-	for range 200 {
-		id := NewID()
-		assert.False(t, seen[id], "duplicate id %s", id)
-		seen[id] = true
-		if prev != "" {
-			assert.GreaterOrEqual(t, string(id), string(prev), "ids must sort by creation")
-		}
-		prev = id
+// Ordering across the whole system rests on this: a Step mints all
+// its Call ids inside one millisecond, and plain UUIDv7 only orders
+// across them. google/uuid's is monotonic within one too, which is a
+// dependency contract worth pinning against a version bump.
+func TestNewV7_OrdersWithinOneMillisecond(t *testing.T) {
+	const n = 500
+	ids := make([]string, n)
+	start := time.Now()
+	for i := range ids {
+		ids[i] = uuid.Must(uuid.NewV7()).String()
 	}
+	require.Less(t, time.Since(start), 100*time.Millisecond,
+		"%d ids took too long to share many milliseconds", n)
+
+	assert.True(t, slices.IsSorted(ids), "ids must sort by creation")
+	assert.Len(t, slices.Compact(slices.Clone(ids)), n, "and be unique")
 }
