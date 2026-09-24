@@ -27,11 +27,7 @@ whether to continue rather than stopping
 
 Current Tools: `bash`, `read_file`, `write_file`, `list_dir`, `web_search`.
 
-`web_search` is one curl against a keyless engine, so no API key exists to
-leak into the container. It returns titles, snippets and URLs; reading a
-result is a normal `bash` curl, which goes through flagging and the sandbox
-like anything else. It needs the sandbox to have network, which is the
-default.
+`web_search` is just curl so no API key exists, it needs the sandbox to have network, which is the default
 
 ## Approving
 
