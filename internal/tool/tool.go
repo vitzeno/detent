@@ -1,5 +1,6 @@
-// Package tool is the closed set of things a model may call, each
-// lowered to one shell command so the sandbox stays the only executor.
+// Package tool is the closed set of things a model may call. A tool
+// lowers to one shell command, so the sandbox stays the only executor
+// of them; an MCP tool has none and internal/mcp answers it instead.
 package tool
 
 // Tool is a typed front end onto a shell command. Pure: no tool runs

@@ -132,3 +132,29 @@ views: saved
 log_level: info      # debug, info, warn, error
 log_bodies: false    # record prompts, model replies and command output
 log_dir: ""          # empty takes ~/.local/state/detent/logs
+
+# --- MCP servers ---
+#
+# Tools an MCP server holds, so a credentialed service can be called
+# without its credentials entering the sandbox. Each key namespaces
+# that server's tools: "github" offers github__create_issue.
+#
+# These calls run in detent's own process, not the container, and no
+# checkpoint can undo one. So every MCP call is confirmed, whatever
+# the server says about itself.
+#
+# env is what the server gets, on top of PATH, HOME, TMPDIR, LANG and
+# USER. Nothing else follows it in: detent's own keys stay with detent.
+#
+#   ./bin/detent -mcp     connect, list what each offers, exit
+#
+mcp: {}
+# mcp:
+#   github:
+#     command: docker
+#     args: [run, -i, --rm, ghcr.io/github/github-mcp-server]
+#     env:
+#       GITHUB_PERSONAL_ACCESS_TOKEN: ghp_...
+#   notes:
+#     command: /usr/local/bin/notes-mcp
+#     disabled: true

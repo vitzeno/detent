@@ -206,6 +206,7 @@ shape was worth the rework:
 cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless
 ui          →  event, viewspec, views, version, logging + its own subpackages
 engine      →  event, tool, model, capture, classify (via an interface)
+mcp         →  event, tool, capture, the MCP SDK
 tool        →  event
 model       →  event
 event       →  the standard library, plus viewspec
@@ -323,6 +324,18 @@ adding a fat dependency fails with the transitive import named.
   `RiskJudge`, which adapts it to the engine's hook chain. It answers;
   it never decides, because `Widen` folds its answer with everyone
   else's.
+
+- **`internal/mcp`** — tools an MCP server holds, so a credentialed
+  service can be called without its credentials entering the sandbox.
+  Calls run in this process, which is why the sandbox is the only
+  executor **of shell commands** rather than of everything. Nothing a
+  checkpoint can undo, so `mcpFloor` confirms every one: `Widen` makes
+  that stick, since a server's own `readOnlyHint` can only widen a
+  verdict. A tool arrives as `server__name`, sanitised to what an
+  endpoint accepts, and a built-in always wins a collision. Its schema
+  is passed through rather than rebuilt, so those tools are not offered
+  as `strict` and `Prepare` leaves their arguments to the server, which
+  the spec says must validate them anyway.
 
 - **`internal/headless`** — one prompt on a terminal, no TUI. A bus
   subscriber like any front-end, which is what makes it a fair test of

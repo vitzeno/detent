@@ -24,6 +24,7 @@ import (
 	"github.com/vitzeno/detent/internal/headless"
 	"github.com/vitzeno/detent/internal/host"
 	judgepkg "github.com/vitzeno/detent/internal/judge"
+	mcppkg "github.com/vitzeno/detent/internal/mcp"
 	"github.com/vitzeno/detent/internal/model"
 	"github.com/vitzeno/detent/internal/routing"
 	"github.com/vitzeno/detent/internal/sandbox"
@@ -59,6 +60,7 @@ func run() error {
 	resume := flag.String("resume", "", "continue a stored session by id or name, or \"last\"")
 	sessions := flag.Bool("sessions", false, "list the sessions that can be resumed, and exit")
 	prune := flag.Bool("prune", false, "remove what abandoned sessions left in containerd, and exit")
+	listMCP := flag.Bool("mcp", false, "list the configured MCP servers and their tools, and exit")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 
@@ -125,6 +127,9 @@ func run() error {
 	defer func() { _ = closeLog() }()
 	if *prune {
 		return pruneSandbox(resolved.SandboxSocket)
+	}
+	if *listMCP {
+		return listServers(resolved.MCP)
 	}
 
 	runners := routing.Selector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
@@ -210,11 +215,23 @@ func run() error {
 			resolved.RiskThreshold))
 	}
 
+	// Connected before the engine, which takes the registry by value
+	// and would never see a tool added afterwards.
+	tools := tool.Standard()
+	servers, mcpErrs := mcppkg.ConnectAll(context.Background(), tools, mcpConfigs(resolved.MCP))
+	defer servers.Close()
+	for _, err := range mcpErrs {
+		fmt.Fprintln(os.Stderr, "warning:", err)
+	}
+	if len(servers.Servers()) > 0 {
+		opts = append(opts, engine.WithInvoker(servers))
+	}
+
 	bus := event.New()
 	// Seeded before anything publishes, or a new record lands on an
 	// ordinal already on disk. The replay never goes on the bus.
 	bus.Resume(engine.Resumable(restore))
-	eng := engine.New(bus, client, tool.Standard(), runners, opts...)
+	eng := engine.New(bus, client, tools, runners, opts...)
 	eng.Restore(restore)
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
@@ -263,6 +280,47 @@ func run() error {
 	p := tea.NewProgram(model)
 	_, err = p.Run()
 	return err
+}
+
+// mcpConfigs converts what the file said into what mcp takes, so
+// internal/mcp never imports config.
+func mcpConfigs(in map[string]config.MCPServer) map[string]mcppkg.Config {
+	out := make(map[string]mcppkg.Config, len(in))
+	for name, c := range in {
+		out[name] = mcppkg.Config{Command: c.Command, Args: c.Args, Env: c.Env, Disabled: c.Disabled}
+	}
+	return out
+}
+
+// listServers connects, says what each offers, and exits. Worth its
+// own flag: a server that answers here is one the model will see.
+func listServers(cfg map[string]config.MCPServer) error {
+	if len(cfg) == 0 {
+		fmt.Println("no mcp servers configured")
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	reg := tool.Standard()
+	servers, errs := mcppkg.ConnectAll(ctx, reg, mcpConfigs(cfg))
+	defer servers.Close()
+
+	for _, s := range servers.Servers() {
+		tools, err := s.Tools(ctx)
+		if err != nil {
+			fmt.Printf("%s: %v\n", s.Name, err)
+			continue
+		}
+		fmt.Printf("%s  %d tool(s)\n", s.Name, len(tools))
+		for _, t := range tools {
+			fmt.Printf("    %s\n", t.Name)
+		}
+	}
+	for _, err := range errs {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	return nil
 }
 
 // pruneSandbox reports what it removed rather than saying nothing,

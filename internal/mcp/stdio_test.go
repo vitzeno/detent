@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -27,17 +26,6 @@ var fakeServer = sync.OnceValues(func() (string, error) {
 })
 
 var buildDir string
-
-func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "detent-mcp")
-	if err != nil {
-		panic(err)
-	}
-	buildDir = dir
-	code := m.Run()
-	os.RemoveAll(dir)
-	os.Exit(code)
-}
 
 func stdioServer(t *testing.T, env ...string) *Server {
 	t.Helper()

@@ -46,7 +46,8 @@ type Approver func(event.ApprovalAsked) bool
 func Ask(in io.Reader, out io.Writer) Approver {
 	r := bufio.NewReader(in)
 	return func(a event.ApprovalAsked) bool {
-		fmt.Fprintf(out, "\n!! %s %v\n", a.Tool, a.Args)
+		// The same rendering the row shows, rather than a raw map.
+		fmt.Fprintf(out, "\n!! %s\n", event.Command(a.Tool, a.Args))
 		if a.Rationale != "" {
 			fmt.Fprintf(out, "   flagged: %s\n", a.Rationale)
 		}
