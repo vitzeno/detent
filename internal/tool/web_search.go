@@ -33,6 +33,7 @@ func (WebSearch) Lower(a Args) (string, error) {
 		return "", errors.New("query must not be empty")
 	}
 	target := searchBase + url.QueryEscape(q)
+	// x-no-cache keeps a search a moment in time, not a stale answer.
 	return "curl -sS --max-time 30 -H 'x-no-cache: true' " + quote(readerPrefix+target), nil
 }
 
@@ -40,7 +41,7 @@ const (
 	// searchBase is a keyless engine, so nothing secret is in the
 	// command, the log, or the container.
 	searchBase = "https://lite.duckduckgo.com/lite/?q="
-	// readerPrefix renders that page as markdown. x-no-cache is what
-	// keeps a search a moment in time rather than a stale answer.
+	// readerPrefix is a third party: it returns that page as markdown, so
+	// every web_search query transits Jina as well as the engine.
 	readerPrefix = "https://r.jina.ai/"
 )
