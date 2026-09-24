@@ -327,6 +327,8 @@ adding a fat dependency fails with the transitive import named.
 
 - **`internal/mcp`** — tools an MCP server holds, so a credentialed
   service can be called without its credentials entering the sandbox.
+  A server is launched over stdio or reached over Streamable HTTP; the
+  SDK takes no headers, so a bearer token rides on a client of ours.
   Calls run in this process, which is why the sandbox is the only
   executor **of shell commands** rather than of everything. Nothing a
   checkpoint can undo, so `mcpFloor` confirms every one: `Widen` makes

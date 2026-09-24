@@ -84,10 +84,16 @@ type Config struct {
 	MCP map[string]MCPServer `yaml:"mcp"`
 }
 
-// MCPServer is one server detent launches and speaks to over stdio.
+// MCPServer is one server, either launched over stdio or reached
+// over HTTP. Set command or url, never both.
 type MCPServer struct {
 	Command string   `yaml:"command"`
 	Args    []string `yaml:"args"`
+	// URL reaches a running server instead of launching one.
+	URL string `yaml:"url"`
+	// Headers is where a bearer token goes. Like Env, these stay with
+	// detent: the call is made from this process, not the container.
+	Headers map[string]string `yaml:"headers"`
 	// Env is what the server gets, on top of the basics a process
 	// needs. Named deliberately: detent's own keys stay with detent.
 	Env map[string]string `yaml:"env"`

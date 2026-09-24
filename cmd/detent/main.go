@@ -288,7 +288,8 @@ func run() error {
 func mcpConfigs(in map[string]config.MCPServer) map[string]mcppkg.Config {
 	out := make(map[string]mcppkg.Config, len(in))
 	for name, c := range in {
-		out[name] = mcppkg.Config{Command: c.Command, Args: c.Args, Env: c.Env, Disabled: c.Disabled}
+		out[name] = mcppkg.Config{Command: c.Command, Args: c.Args, Env: c.Env,
+			Disabled: c.Disabled, URL: c.URL, Headers: c.Headers}
 	}
 	return out
 }

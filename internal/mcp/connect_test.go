@@ -32,7 +32,9 @@ func TestConnectAll_OneBadServerDoesNotStopTheRest(t *testing.T) {
 	assert.True(t, ok, "the working server's tools are missing")
 }
 
-func TestConnectAll_SkipsDisabledAndEmpty(t *testing.T) {
+// Disabled is a choice and says nothing; configured with neither a
+// command nor a url is a mistake and says so.
+func TestConnectAll_SkipsDisabledButReportsEmpty(t *testing.T) {
 	bin, err := fakeServer()
 	require.NoError(t, err)
 
@@ -43,10 +45,11 @@ func TestConnectAll_SkipsDisabledAndEmpty(t *testing.T) {
 	})
 	t.Cleanup(func() { _ = in.Close() })
 
-	assert.Empty(t, errs, "a skipped server is not a failure")
-	assert.Empty(t, in.Servers())
+	require.Len(t, errs, 1, "a misconfigured server went unreported")
+	assert.Contains(t, errs[0].Error(), "unnamed")
+	assert.Empty(t, in.Servers(), "neither one connected")
 	_, ok := reg.Lookup("off__echo")
-	assert.False(t, ok)
+	assert.False(t, ok, "a disabled server registered tools")
 }
 
 // Config names what a server gets. detent's own keys are not part of

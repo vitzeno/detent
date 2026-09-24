@@ -143,18 +143,24 @@ log_dir: ""          # empty takes ~/.local/state/detent/logs
 # checkpoint can undo one. So every MCP call is confirmed, whatever
 # the server says about itself.
 #
-# env is what the server gets, on top of PATH, HOME, TMPDIR, LANG and
-# USER. Nothing else follows it in: detent's own keys stay with detent.
+# Set command or url, never both. env is what a launched server gets,
+# on top of PATH, HOME, TMPDIR, LANG and USER; headers is where a
+# bearer token goes. Neither reaches the container: these calls are
+# made from detent's own process.
 #
 #   ./bin/detent -mcp     connect, list what each offers, exit
 #
 mcp: {}
 # mcp:
-#   github:
+#   github:                                    # launched, over stdio
 #     command: docker
 #     args: [run, -i, --rm, ghcr.io/github/github-mcp-server]
 #     env:
 #       GITHUB_PERSONAL_ACCESS_TOKEN: ghp_...
+#   linear:                                    # reached, over HTTP
+#     url: https://mcp.linear.app/mcp
+#     headers:
+#       Authorization: Bearer ...
 #   notes:
 #     command: /usr/local/bin/notes-mcp
 #     disabled: true
