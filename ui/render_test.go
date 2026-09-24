@@ -697,15 +697,16 @@ func TestSessionBar_ShedsTheGaugeBeforeWhatMatters(t *testing.T) {
 // carries the state, so the state has to be right.
 func TestMCPPage_ColoursEachServerByItsState(t *testing.T) {
 	m := feed(t, event.SessionStarted{Model: "m"}, event.ServersListed{Servers: []event.ServerSummary{
-		{Name: "github", Command: "docker", Tools: 26},
+		{Name: "github", Command: "docker", Connected: true, Tools: 26},
 		{Name: "broken", Command: "/nope", Err: "no such file"},
 		{Name: "archived", Command: "/notes", Disabled: true},
-		{Name: "quiet", Command: "/quiet", Tools: 0},
+		{Name: "quiet", Command: "/quiet", Connected: true, Tools: 0},
+		{Name: "pending", Command: "/slow"},
 	}})
 	page := strings.Join(m.mcpLines(), "\n")
 
 	for _, want := range []string{"github", "26 tools", "broken", "no such file",
-		"archived", "disabled", "quiet", "offers nothing"} {
+		"archived", "disabled", "quiet", "offers nothing", "pending", "connecting"} {
 		assert.Contains(t, stripANSI(page), want)
 	}
 
@@ -715,6 +716,7 @@ func TestMCPPage_ColoursEachServerByItsState(t *testing.T) {
 	assert.Contains(t, page, styleDanger.Render("✗"), "a failed server is not marked dangerous")
 	assert.Contains(t, page, styleFaint.Render("○"), "a disabled server is not marked faint")
 	assert.Contains(t, page, styleCaution.Render("●"), "a server offering nothing is not marked caution")
+	assert.Contains(t, page, styleFaint.Render("◌"), "a server still dialling is not marked faint")
 }
 
 func TestMCPPage_SaysWhenNothingIsConfigured(t *testing.T) {

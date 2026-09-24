@@ -6,11 +6,13 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 )
 
-// Registry is the vocabulary one session offers. The schema the model
-// sees and the validation it is held to come from one Spec.
+// Registry is the vocabulary one session offers, from one Spec. Safe
+// for concurrent use: MCP tools register after the built-ins.
 type Registry struct {
+	mu    sync.RWMutex
 	tools map[string]Tool
 	order []string
 }
@@ -29,7 +31,7 @@ func Standard() *Registry {
 // Prepare validates a call and lowers it. Every error here reaches the
 // model as a tool result, so each says what to do instead.
 func (r *Registry) Prepare(name string, args map[string]any) (Call, error) {
-	t, ok := r.tools[name]
+	t, ok := r.Lookup(name)
 	if !ok {
 		return Call{}, fmt.Errorf("no tool named %q; available: %s", name, strings.Join(r.Names(), ", "))
 	}
@@ -63,6 +65,8 @@ type Call struct {
 }
 
 func (r *Registry) Register(t Tool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	n := t.Name()
 	if _, dup := r.tools[n]; !dup {
 		r.order = append(r.order, n)
@@ -71,15 +75,23 @@ func (r *Registry) Register(t Tool) {
 }
 
 func (r *Registry) Lookup(name string) (Tool, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	t, ok := r.tools[name]
 	return t, ok
 }
 
 // Names are in registration order, which is the order the model sees.
-func (r *Registry) Names() []string { return slices.Clone(r.order) }
+func (r *Registry) Names() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return slices.Clone(r.order)
+}
 
 // Schemas is the `tools` array for a chat-completions request.
 func (r *Registry) Schemas() []map[string]any {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	out := make([]map[string]any, 0, len(r.order))
 	for _, n := range r.order {
 		spec := r.tools[n].Describe()

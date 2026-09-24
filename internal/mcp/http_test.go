@@ -67,9 +67,10 @@ func TestHTTP_CarriesTheConfiguredHeaders(t *testing.T) {
 // A server reached over HTTP registers like any other.
 func TestConnectAll_ReachesAnHTTPServer(t *testing.T) {
 	reg := tool.Standard()
-	in, errs := ConnectAll(context.Background(), reg, map[string]Config{
+	in := NewInvokers()
+	errs := ConnectAll(context.Background(), reg, in, map[string]Config{
 		"remote": {URL: httpServer(t, nil)},
-	})
+	}, nil)
 	t.Cleanup(func() { _ = in.Close() })
 	require.Empty(t, errs)
 
@@ -85,10 +86,10 @@ func TestConnectAll_RefusesBothCommandAndURL(t *testing.T) {
 	bin, err := fakeServer()
 	require.NoError(t, err)
 
-	in, errs := ConnectAll(context.Background(), tool.Standard(), map[string]Config{
-		"confused": {Command: bin, URL: "http://example.invalid"},
-		"empty":    {},
-	})
+	in := NewInvokers()
+	errs := ConnectAll(context.Background(), tool.Standard(), in, map[string]Config{
+		"confused": {Command: bin, URL: "http://example.invalid"}, "empty": {},
+	}, nil)
 	t.Cleanup(func() { _ = in.Close() })
 
 	require.Len(t, errs, 2)
@@ -99,7 +100,8 @@ func TestConnectAll_RefusesBothCommandAndURL(t *testing.T) {
 // The page shows what it reaches, not an empty command column.
 func TestConnectAll_StatusShowsTheURL(t *testing.T) {
 	url := httpServer(t, nil)
-	in, _ := ConnectAll(context.Background(), tool.Standard(), map[string]Config{"remote": {URL: url}})
+	in := NewInvokers()
+	_ = ConnectAll(context.Background(), tool.Standard(), in, map[string]Config{"remote": {URL: url}}, nil)
 	t.Cleanup(func() { _ = in.Close() })
 
 	require.Len(t, in.Status(), 1)

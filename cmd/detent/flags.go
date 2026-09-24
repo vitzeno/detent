@@ -57,8 +57,8 @@ func listServers() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	reg := tool.Standard()
-	servers, errs := mcppkg.ConnectAll(ctx, reg, cfg)
+	reg, servers := tool.Standard(), mcppkg.NewInvokers()
+	errs := mcppkg.ConnectAll(ctx, reg, servers, cfg, nil)
 	defer servers.Close()
 
 	for _, s := range servers.Servers() {

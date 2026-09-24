@@ -265,6 +265,9 @@ func (ServersListed) Kind() Kind { return ServersListedKind }
 type ServerSummary struct {
 	Name    string
 	Command string
+	// Connected tells a server still being dialled from one that
+	// answered and offers nothing, which look alike from Tools alone.
+	Connected bool
 	// Tools is how many it offered, once connected.
 	Tools int
 	// Err is why it is not connected, "" when it is.

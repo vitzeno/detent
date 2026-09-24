@@ -222,14 +222,16 @@ func (m *Model) mcpLines() []string {
 	return append(out, "", styleFaint.Render("  [esc] close"))
 }
 
-// serverMark is the glyph the eye lands on first: connected, off, or
-// broken.
+// serverMark is the glyph the eye lands on first: connected, off,
+// still dialling, or broken.
 func serverMark(s event.ServerSummary) string {
 	switch {
 	case s.Disabled:
 		return styleFaint.Render("○")
 	case s.Err != "":
 		return styleDanger.Render("✗")
+	case !s.Connected:
+		return styleFaint.Render("◌")
 	case s.Tools == 0:
 		return styleCaution.Render("●")
 	}
@@ -243,6 +245,8 @@ func serverState(s event.ServerSummary) string {
 		return styleFaint.Render("disabled")
 	case s.Err != "":
 		return styleDanger.Render("not connected")
+	case !s.Connected:
+		return styleFaint.Render("connecting…")
 	case s.Tools == 0:
 		return styleCaution.Render("connected, offers nothing")
 	}

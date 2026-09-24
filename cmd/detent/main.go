@@ -223,14 +223,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	servers, mcpErrs := mcppkg.ConnectAll(context.Background(), tools, configured)
+	// Held now, filled later, so nothing waits on a server to draw.
+	servers := mcppkg.NewInvokers()
 	defer servers.Close()
-	for _, e := range mcpErrs {
-		fmt.Fprintln(os.Stderr, "warning:", e)
-	}
-	if len(servers.Servers()) > 0 {
-		opts = append(opts, engine.WithInvoker(servers))
-	}
+	opts = append(opts, engine.WithInvoker(servers))
 
 	bus := event.New()
 	// Seeded before anything publishes, or a new record lands on an
@@ -261,6 +257,11 @@ func run() error {
 	defer bus.Drain(2 * time.Second)
 
 	if *prompt != "" {
+		// Waited for here: one prompt goes out immediately, and a tool
+		// that lands after it may as well not exist.
+		for _, e := range mcppkg.ConnectAll(ctx, tools, servers, configured, nil) {
+			fmt.Fprintln(os.Stderr, "warning:", e)
+		}
 		go eng.Run(ctx)
 		approve := headless.Approver(nil)
 		if *unattended {
@@ -281,6 +282,7 @@ func run() error {
 	// Built before the engine runs: SessionStarted is published once,
 	// and a front-end that subscribes afterwards loses it.
 	model := ui.New(ctx, bus, info).Restore(restore)
+	go connectServers(ctx, bus, tools, servers, configured)
 	go eng.Run(ctx)
 
 	// Altscreen is declared by ui.Model.View, not set here — under
@@ -440,4 +442,22 @@ func sandboxSocketFor(c config.Config) string {
 		return c.SandboxSocket
 	}
 	return defaultSandboxSocket()
+}
+
+// connectServers wires MCP without holding up the first frame, and
+// publishes each server as it settles so an open /mcp fills in.
+func connectServers(ctx context.Context, bus *event.Bus, tools *tool.Registry,
+	servers *mcppkg.Invokers, configured map[string]mcppkg.Config) {
+	if len(configured) == 0 {
+		return
+	}
+	errs := mcppkg.ConnectAll(ctx, tools, servers, configured, func(s event.ServerSummary) {
+		if s.Err != "" {
+			bus.Publish(event.Notice{Level: "error", Text: s.Err})
+		}
+		bus.Publish(event.ServersListed{Servers: servers.Status()})
+	})
+	if n := len(servers.Servers()); n > 0 && len(errs) == 0 {
+		bus.Publish(event.Notice{Level: "info", Text: fmt.Sprintf("%d mcp server(s) ready", n)})
+	}
 }

@@ -2,8 +2,11 @@ package mcp
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,10 +22,10 @@ func TestConnectAll_OneBadServerDoesNotStopTheRest(t *testing.T) {
 	require.NoError(t, err)
 
 	reg := tool.Standard()
-	in, errs := ConnectAll(context.Background(), reg, map[string]Config{
-		"good":   {Command: bin},
-		"broken": {Command: "/nonexistent/server"},
-	})
+	in := NewInvokers()
+	errs := ConnectAll(context.Background(), reg, in, map[string]Config{
+		"good": {Command: bin}, "broken": {Command: "/nonexistent/server"},
+	}, nil)
 	t.Cleanup(func() { _ = in.Close() })
 
 	require.Len(t, errs, 1)
@@ -39,10 +42,10 @@ func TestConnectAll_SkipsDisabledButReportsEmpty(t *testing.T) {
 	require.NoError(t, err)
 
 	reg := tool.Standard()
-	in, errs := ConnectAll(context.Background(), reg, map[string]Config{
-		"off":     {Command: bin, Disabled: true},
-		"unnamed": {},
-	})
+	in := NewInvokers()
+	errs := ConnectAll(context.Background(), reg, in, map[string]Config{
+		"off": {Command: bin, Disabled: true}, "unnamed": {},
+	}, nil)
 	t.Cleanup(func() { _ = in.Close() })
 
 	require.Len(t, errs, 1, "a misconfigured server went unreported")
@@ -74,9 +77,10 @@ func TestConnectAll_TheServerSeesItsConfiguredEnv(t *testing.T) {
 	t.Setenv("DETENT_MARKER", "from-detent")
 
 	reg := tool.Standard()
-	in, errs := ConnectAll(context.Background(), reg, map[string]Config{
+	in := NewInvokers()
+	errs := ConnectAll(context.Background(), reg, in, map[string]Config{
 		"demo": {Command: bin, Env: map[string]string{"DETENT_MARKER": "from-config"}},
-	})
+	}, nil)
 	require.Empty(t, errs)
 	t.Cleanup(func() { _ = in.Close() })
 
@@ -95,9 +99,10 @@ func TestConnectAll_RegistersInAStableOrder(t *testing.T) {
 	var runs [][]string
 	for range 3 {
 		reg := tool.Standard()
-		in, _ := ConnectAll(context.Background(), reg, map[string]Config{
+		in := NewInvokers()
+		_ = ConnectAll(context.Background(), reg, in, map[string]Config{
 			"zulu": {Command: bin}, "alpha": {Command: bin}, "mike": {Command: bin},
-		})
+		}, nil)
 		runs = append(runs, reg.Names())
 		_ = in.Close()
 	}
@@ -132,12 +137,10 @@ func TestConnectAll_StatusHoldsEveryServer(t *testing.T) {
 	bin, err := fakeServer()
 	require.NoError(t, err)
 
-	in, _ := ConnectAll(context.Background(), tool.Standard(), map[string]Config{
-		"good":    {Command: bin},
-		"broken":  {Command: "/nonexistent/server"},
-		"off":     {Command: bin, Disabled: true},
-		"unnamed": {},
-	})
+	in := NewInvokers()
+	_ = ConnectAll(context.Background(), tool.Standard(), in, map[string]Config{
+		"good": {Command: bin}, "broken": {Command: "/nonexistent/server"}, "off": {Command: bin, Disabled: true}, "unnamed": {},
+	}, nil)
 	t.Cleanup(func() { _ = in.Close() })
 
 	byName := map[string]event.ServerSummary{}
@@ -148,8 +151,96 @@ func TestConnectAll_StatusHoldsEveryServer(t *testing.T) {
 
 	assert.Equal(t, 1, byName["good"].Tools)
 	assert.Empty(t, byName["good"].Err)
+	assert.True(t, byName["good"].Connected)
+	assert.False(t, byName["broken"].Connected)
 	assert.NotEmpty(t, byName["broken"].Err, "a failed server has nothing to show a human")
 	assert.True(t, byName["off"].Disabled)
 	assert.Zero(t, byName["off"].Tools)
 	assert.NotEmpty(t, byName["unnamed"].Err, "a server with no command says nothing")
+}
+
+// A quick failure must not wait on a slow neighbour: report is called
+// as each server settles, not once they all have.
+func TestConnectAll_ReportsAFailureWithoutWaiting(t *testing.T) {
+	slow := make(chan struct{})
+	held := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-slow }))
+	// Cleanup is LIFO, so the handler is released before Close waits
+	// on it. The other way round deadlocks.
+	t.Cleanup(held.Close)
+	t.Cleanup(func() { close(slow) })
+
+	reported := make(chan event.ServerSummary, 4)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		in := NewInvokers()
+		_ = ConnectAll(context.Background(), tool.Standard(), in, map[string]Config{
+			"broken": {Command: "/nonexistent/server"},
+			"slow":   {URL: held.URL},
+		}, func(s event.ServerSummary) { reported <- s })
+	}()
+
+	select {
+	case s := <-reported:
+		assert.Equal(t, "broken", s.Name)
+		assert.NotEmpty(t, s.Err)
+	case <-done:
+		t.Fatal("nothing was reported until every server had settled")
+	case <-time.After(10 * time.Second):
+		t.Fatal("the quick failure was never reported")
+	}
+}
+
+// Dialling concurrently must not cost the fixed order a model sees:
+// the spec asks for it, since it is what makes a prompt cache hit.
+func TestConnectAll_ConcurrentButStillOrdered(t *testing.T) {
+	bin, err := fakeServer()
+	require.NoError(t, err)
+
+	var runs [][]string
+	for range 3 {
+		reg, in := tool.Standard(), NewInvokers()
+		_ = ConnectAll(context.Background(), reg, in, map[string]Config{
+			"zulu": {Command: bin}, "alpha": {Command: bin}, "mike": {Command: bin},
+		}, nil)
+		runs = append(runs, reg.Names())
+		_ = in.Close()
+	}
+	assert.Equal(t, runs[0], runs[1])
+	assert.Equal(t, runs[1], runs[2])
+	assert.Less(t, indexOf(runs[0], "alpha__echo"), indexOf(runs[0], "mike__echo"))
+}
+
+// Every configured server is listed before any answers, so /mcp draws
+// a slow one as still connecting rather than leaving it out.
+func TestConnectAll_ListsAServerBeforeItAnswers(t *testing.T) {
+	slow := make(chan struct{})
+	held := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-slow }))
+	// Cleanup is LIFO, so the handler is released before Close waits
+	// on it. The other way round deadlocks.
+	t.Cleanup(held.Close)
+	t.Cleanup(func() { close(slow) })
+
+	in := NewInvokers()
+	settled := make(chan struct{}, 4)
+	go func() {
+		_ = ConnectAll(context.Background(), tool.Standard(), in, map[string]Config{
+			"broken": {Command: "/nonexistent/server"},
+			"slow":   {URL: held.URL},
+		}, func(event.ServerSummary) { settled <- struct{}{} })
+	}()
+
+	select {
+	case <-settled:
+	case <-time.After(10 * time.Second):
+		t.Fatal("nothing settled")
+	}
+
+	byName := map[string]event.ServerSummary{}
+	for _, s := range in.Status() {
+		byName[s.Name] = s
+	}
+	require.Len(t, byName, 2, "a server that has not answered is missing from the page")
+	assert.False(t, byName["slow"].Connected, "a pending server is drawn as connected")
+	assert.Empty(t, byName["slow"].Err, "a pending server is drawn as failed")
 }

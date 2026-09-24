@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -54,46 +55,83 @@ func (c Config) transport() (sdk.Transport, error) {
 	return nil, errors.New("no command or url configured")
 }
 
-// ConnectAll launches every enabled server and registers what each
-// offers. One that will not start costs its tools, not the session.
-func ConnectAll(ctx context.Context, reg *tool.Registry, servers map[string]Config) (*Invokers, []error) {
-	in := NewInvokers()
-	var errs []error
-	// Sorted, so the tool order a model sees does not shuffle per run.
-	for _, name := range sorted(servers) {
+// ConnectAll lists every server first, then fills in the enabled ones:
+// dialled concurrently, reported as each settles, registered by name.
+func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers map[string]Config, report func(event.ServerSummary)) []error {
+	names := sorted(servers)
+	seeded := make([]event.ServerSummary, len(names))
+	for i, name := range names {
 		c := servers[name]
-		st := event.ServerSummary{Name: name, Command: describeConfig(c), Disabled: c.Disabled}
-		if !c.Disabled {
-			tools, err := dial(ctx, reg, in, name, c)
-			if err != nil {
-				st.Err = err.Error()
-				errs = append(errs, err)
-			}
-			st.Tools = tools
-		}
-		in.status = append(in.status, st)
+		seeded[i] = event.ServerSummary{Name: name, Command: describeConfig(c), Disabled: c.Disabled}
 	}
-	return in, errs
+	in.seed(seeded)
+
+	dialled := make([]result, len(names))
+	// Settling and reporting under one lock, so a listing drawn from
+	// a report cannot go backwards when two servers answer together.
+	var reporting sync.Mutex
+	var wg sync.WaitGroup
+	for i, name := range names {
+		if servers[name].Disabled {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got := dial(ctx, name, servers[name])
+			dialled[i] = got
+
+			st := seeded[i]
+			st.Connected, st.Tools = got.err == nil, len(got.tools)
+			if got.err != nil {
+				st.Err = got.err.Error()
+			}
+			reporting.Lock()
+			defer reporting.Unlock()
+			in.settle(st)
+			if report != nil {
+				report(st)
+			}
+		}()
+	}
+	wg.Wait()
+
+	var errs []error
+	for i := range names {
+		got := dialled[i]
+		switch {
+		case got.err != nil:
+			errs = append(errs, got.err)
+		case got.server != nil:
+			in.Add(Register(reg, got.server, got.tools)...)
+		}
+	}
+	return errs
 }
 
-// dial connects one server and registers what it offers, reporting
-// how many so a human can see a server that answered with nothing.
-func dial(ctx context.Context, reg *tool.Registry, in *Invokers, name string, c Config) (int, error) {
+// result is one server's answer, held so registering can be ordered.
+type result struct {
+	server *Server
+	tools  []*sdk.Tool
+	err    error
+}
+
+// dial connects one server and asks what it offers.
+func dial(ctx context.Context, name string, c Config) result {
 	t, err := c.transport()
 	if err != nil {
-		return 0, fmt.Errorf("mcp: %s: %w", name, err)
+		return result{err: fmt.Errorf("mcp: %s: %w", name, err)}
 	}
 	s, err := Connect(ctx, name, t)
 	if err != nil {
-		return 0, err
+		return result{err: err}
 	}
 	tools, err := s.Tools(ctx)
 	if err != nil {
 		_ = s.Close()
-		return 0, err
+		return result{err: err}
 	}
-	in.Add(Register(reg, s, tools)...)
-	return len(tools), nil
+	return result{server: s, tools: tools}
 }
 
 // passThrough is what a process needs to run at all. Everything else
