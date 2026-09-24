@@ -168,9 +168,39 @@ which is a whole number of Steps by construction.
 
 ## Architecture
 
-One bus carries everything. Facts are past tense and come from the
+**Everything is an event.** 21 facts and 10 intents are the entire
+interface between components. Facts are past tense and come from the
 engine; intents are imperative and come from anyone. An extension
 listens, publishes, or both — there is no second mechanism.
+
+Nothing calls the engine. The engine subscribes to intents and
+publishes facts, and every other part of the program is one of seven
+subscribers:
+
+| Subscriber | Does | Remove it and |
+| ---------- | ---- | ------------- |
+| `internal/engine` | the only intent subscriber | nothing runs |
+| `ui` | draws the TUI | the engine still runs |
+| `internal/headless` | prints one Turn | the TUI still runs |
+| `logging` | the JSONL stream | nothing else notices |
+| `internal/store` | the SQLite log, answers `ListSessions` | resume stops, nothing else |
+| `internal/judge` | scores a finished Call, may `RequestStop` | rows lose their verdict |
+| `internal/viewgen` | composes the view for an output | rows fall back to text |
+
+That table is the wiring. `cmd/detent/main.go` connects nothing to
+anything else, only each part to the bus, which is why each row is one
+line there. Three things follow, and they are the reason the
+shape was worth the rework:
+
+- **Tests are events in, state out.** `ui/apply_test.go` drives the
+  whole front-end with a slice of `event.Record`: no harness, no
+  terminal, no engine.
+- **Persistence is replay, not reconstruction.** The store writes
+  `event.Record` and resume replays it, so nothing has to reproduce
+  what the engine did. `Appended` carries the real messages for
+  exactly this reason.
+- **A new feature is a subscriber.** Adding one touches `main.go` once
+  and no existing component at all.
 
 ```
 cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless

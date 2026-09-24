@@ -1,7 +1,14 @@
 # detent
 
-A terminal agent, calls tools until it has an answer,
-asks before anything risky, and checkpoints each request so you can undo it
+A terminal agent where commands run in a container and every request is checkpointed so you can undo it
+
+Everything is an event on a single bus and every part of detent is a subscriber
+
+Nothing calls the engine itself including logging and the TUI. They just listen and write what they hear, same with the SQLite log that makes a session resumable, as is the judge that decides how a call went
+
+If any of them are removed everything else runs unchanged
+
+Future extensions are expected to subscribe and publish to the event bus too
 
 Needs an OpenAI-compatible `/chat/completions` endpoint with tool calling.
 LM Studio, OpenRouter and OpenAI all work
@@ -12,6 +19,30 @@ make install                          # onto your PATH
 ./bin/detent -sandbox host            # no container
 ./bin/detent -prompt "find go files over 1MB"
 ```
+
+## Architecture
+
+Events are split into facts and intents, facts for what happened, intents for what someone wants to happen
+
+Facts only come from the engine, intents can come from anyone
+
+```
+  publishes                   bus      subscribes
+                               │
+  engine ───── facts ───────→  │  ──→  engine     intents only
+    │                          │  ──→  ui         draws, publishes back intent (e.g. new prompt)
+    ├── tool                   │  ──→  headless   one Turn, no TUI
+    ├── model                  │  ──→  logging    the JSONL stream
+    └── routing                │  ──→  store      SQLite allows resume
+          ├── host             │  ──→  judge      how the Call went
+          └── sandbox          │  ──→  viewgen    how to draw it
+                               │
+  anyone ───── intents ─────→  │
+```
+
+`ui` imports nothing under `internal/`, both sides import `event`, which depends on the standard library and `viewspec`
+
+All extensions listen, publish, or both
 
 ## Turns, Steps and Calls
 
@@ -117,25 +148,5 @@ jq 'select(.turn == "01a0…")'              one request, end to end
 jq 'select(.event | startswith("call."))'  every tool call
 jq 'select(.level == "WARN")'              what went wrong
 ```
-
-## Architecture
-
-Everything goes on one bus. Facts are what happened and comes from the engine, whereas intents are imperative and come from anyone.
-
-```
-         ┌────────── intents ──────────┐
-         ↓                             │
-      engine ──── facts ────→ bus ────→├→ ui
-         │                             ├→ logging
-         ↓                             ├→ judge     (how it went)
-  tool, model, routing                 └→ viewgen   (how to draw it)
-         ↓
-  host  (unsandboxed)
-  sandbox (containerd)
-```
-
-`ui` imports nothing under `internal/`, both sides import `event`, which depends on the standard library and `viewspec`
-
-All extension listens, publishes, or both
 
 [CLAUDE.md](CLAUDE.md) has how the code is arranged and why.
