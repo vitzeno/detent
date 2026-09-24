@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	containerd "github.com/containerd/containerd"
 	"github.com/containerd/containerd/leases"
 
 	"github.com/stretchr/testify/assert"
@@ -372,4 +373,81 @@ func TestContainer_ConcurrentRunsDoNotCrossContaminate(t *testing.T) {
 		assert.Equal(t, g.want, strings.TrimSpace(g.res.Stdout),
 			"call %d got another command's output, or none", i)
 	}
+}
+
+// A killed process never runs Close, so its container, snapshot and
+// lease are still there under the same per-session ids. Resuming that
+// session used to fail on its own leftovers.
+func TestContainer_StartsOverWhatAKilledProcessLeftBehind(t *testing.T) {
+	if !daemonAvailable() {
+		t.Skip("containerd not reachable at", testSocket)
+	}
+	ctx := context.Background()
+	id := testContainerID(t)
+
+	killed := NewContainer(WithSocket(testSocket), WithNamespace("detent-test"))
+	require.NoError(t, killed.Start(ctx, id))
+	_, err := killed.Run(ctx, "echo first > /tmp/marker", nil)
+	require.NoError(t, err)
+	// No Close: that is the whole point.
+
+	resumed := NewContainer(WithSocket(testSocket), WithNamespace("detent-test"))
+	require.NoError(t, resumed.Start(ctx, id), "the session could not start over its own leftovers")
+	t.Cleanup(func() { _ = resumed.Close(ctx) })
+
+	res, err := resumed.Run(ctx, "echo ok", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ok\n", res.Stdout)
+}
+
+// Clearing must not reach into a session another detent is running.
+func TestContainer_RefusesASessionThatIsStillRunning(t *testing.T) {
+	if !daemonAvailable() {
+		t.Skip("containerd not reachable at", testSocket)
+	}
+	ctx := context.Background()
+	id := testContainerID(t)
+
+	live := NewContainer(WithSocket(testSocket), WithNamespace("detent-test"))
+	require.NoError(t, live.Start(ctx, id))
+	t.Cleanup(func() { _ = live.Close(ctx) })
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = live.Run(ctx, "sleep 5", nil)
+	}()
+	t.Cleanup(func() { <-done })
+
+	// Waited for, not polled with Start: a Start that wins the race
+	// clears the very container this is trying to protect.
+	require.Eventually(t, func() bool { return taskRunning(t, id) },
+		5*time.Second, 100*time.Millisecond, "the live task never started")
+
+	other := NewContainer(WithSocket(testSocket), WithNamespace("detent-test"))
+	err := other.Start(ctx, id)
+	require.ErrorContains(t, err, "already running",
+		"a live session was cleared out from under another process")
+}
+
+// taskRunning reports whether the session's container has a running
+// task, read-only, so waiting for one cannot disturb it.
+func taskRunning(t *testing.T, sessionID string) bool {
+	t.Helper()
+	client, err := containerd.New(testSocket, containerd.WithDefaultNamespace("detent-test"))
+	if err != nil {
+		return false
+	}
+	defer client.Close()
+	ctx := context.Background()
+	cont, err := client.LoadContainer(ctx, containerID(sessionID))
+	if err != nil {
+		return false
+	}
+	task, err := cont.Task(ctx, nil)
+	if err != nil {
+		return false
+	}
+	st, err := task.Status(ctx)
+	return err == nil && st.Status == containerd.Running
 }

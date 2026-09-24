@@ -118,7 +118,10 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 	// Checkpoints need a root of their own, or the GC reclaims them as
 	// soon as a rollback drops them out of the active branch. Close
 	// releases this, which is also what cleans them up.
-	l, err := client.LeasesService().Create(ctx, leases.WithID(containerID(sessionID)+"-checkpoints"))
+	if err := clearStale(ctx, client, sessionID); err != nil {
+		return err
+	}
+	l, err := client.LeasesService().Create(ctx, leases.WithID(leaseID(sessionID)))
 	if err != nil {
 		return fmt.Errorf("sandbox: create lease: %w", err)
 	}
@@ -273,6 +276,48 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 
 // Close tears down the container, its current snapshot, and the
 // client connection. Safe to call even if Start failed partway.
+// clearStale removes what a killed process left behind. Only Close
+// deletes a container and its lease, so a kill leaves both, and the
+// ids are per session: resuming one would collide with its own corpse.
+func clearStale(ctx context.Context, client *containerd.Client, sessionID string) error {
+	cont, err := client.LoadContainer(ctx, containerID(sessionID))
+	switch {
+	case errdefs.IsNotFound(err):
+	case err != nil:
+		return fmt.Errorf("sandbox: look for a stale container: %w", err)
+	default:
+		if err := clearTask(ctx, cont, sessionID); err != nil {
+			return err
+		}
+		if err := cont.Delete(ctx, containerd.WithSnapshotCleanup); err != nil && !errdefs.IsNotFound(err) {
+			return fmt.Errorf("sandbox: delete stale container: %w", err)
+		}
+	}
+	// The checkpoints it rooted died with the container's snapshot, so
+	// the lease goes too and the GC can reclaim them.
+	err = client.LeasesService().Delete(ctx, leases.Lease{ID: leaseID(sessionID)})
+	if err != nil && !errdefs.IsNotFound(err) {
+		return fmt.Errorf("sandbox: delete stale lease: %w", err)
+	}
+	return nil
+}
+
+// clearTask refuses rather than killing a task that is still running:
+// that is another detent holding this session, not a leftover.
+func clearTask(ctx context.Context, cont containerd.Container, sessionID string) error {
+	task, err := cont.Task(ctx, nil)
+	if err != nil {
+		return nil
+	}
+	if st, err := task.Status(ctx); err == nil && st.Status == containerd.Running {
+		return fmt.Errorf("sandbox: session %s is already running somewhere", sessionID)
+	}
+	if _, err := task.Delete(ctx, containerd.WithProcessKill); err != nil && !errdefs.IsNotFound(err) {
+		return fmt.Errorf("sandbox: delete stale task: %w", err)
+	}
+	return nil
+}
+
 func (c *Container) Close(ctx context.Context) error {
 	var errs []error
 	if c.container != nil {
@@ -309,6 +354,8 @@ func (c *Container) Close(ctx context.Context) error {
 // containerID correlates the containerd container with the
 // agent.Session that owns it, rather than inventing a second identity.
 func containerID(sessionID string) string { return "detent-" + sessionID }
+
+func leaseID(sessionID string) string { return containerID(sessionID) + "-checkpoints" }
 
 // resolveImage returns the local image if present, pulling it
 // (unpacked) otherwise.
