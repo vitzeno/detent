@@ -19,6 +19,7 @@ var stressSizes = []struct {
 	{"10x_210turns", 210, 4},
 	{"20x_420turns", 420, 4},
 	{"50x_1050turns", 1050, 4},
+	{"100x_2100turns", 2100, 4},
 }
 
 func session(turns, callsPerTurn, outLines int) Model {
