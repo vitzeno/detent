@@ -2,11 +2,13 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"github.com/google/uuid"
 	"regexp"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/stretchr/testify/assert"
@@ -424,4 +426,124 @@ func TestBlockCache_TheSpinnerStillTurns(t *testing.T) {
 	after, _ := m.historyAll()
 
 	assert.NotEqual(t, before, after, "the cache pinned the spinner to one frame")
+}
+
+// cold recomputes the output pane from scratch, so a test can compare
+// what the skip left on screen against what a forced redraw gives.
+func (m Model) coldDetail() string {
+	m.detail = detailKey{}
+	m.refreshViewport()
+	return m.viewContent
+}
+
+// The output pane must never show content the current state would not
+// produce. Every input its key claims to cover is changed in turn, on
+// the row the pane is actually showing and with columnar output, which
+// is what the pane draws width-sensitively.
+func TestDetailCache_NeverGoesStale(t *testing.T) {
+	m := session(4, 3, 6)
+	rows := m.rows()
+	// Rows must draw differently, or moving the cursor between them
+	// proves nothing about the key.
+	m.apply(event.CallEnded{Call: rows[2].id, Result: event.Result{Stdout: "row two is its own thing\n"}})
+
+	// A fresh Call, because a row binds its view once: feeding an
+	// existing row a second result leaves it drawing the first.
+	shown := uuid.Must(uuid.NewV7())
+	m.apply(event.CallProposed{Call: shown, Tool: "bash", Args: map[string]any{"command": "df -h"}})
+	m.nav.cursor = len(m.rows()) - 1
+	m.layout.width, m.layout.height = 150, 45
+	m.sizeViewport()
+
+	table := "Filesystem      Size  Used Avail Capacity  Mounted on\n"
+	for i := range 20 {
+		table += fmt.Sprintf("/dev/disk%-3d    460Gi %dGi  %dGi    %d%%    /mnt/point%d\n", i, i*7, 400-i, i*3, i)
+	}
+
+	steps := []struct {
+		name string
+		do   func(m *Model)
+	}{
+		{"first render", func(m *Model) {}},
+		{"the shown row streams output", func(m *Model) {
+			m.apply(event.CallStarted{Call: shown, Runner: "sandbox"})
+			m.apply(event.OutputChunk{Call: shown, Line: "a fresh line nobody has drawn yet"})
+		}},
+		{"the shown row finishes", func(m *Model) {
+			m.apply(event.CallEnded{Call: shown, Result: event.Result{Stdout: table}})
+		}},
+		{"the focused row changes", func(m *Model) { m.nav.cursor = 2 }},
+		{"and changes back", func(m *Model) { m.nav.cursor = len(m.rows()) - 1 }},
+		{"the shown row expands", func(m *Model) { m.toggleExpand(m.focused()) }},
+		{"usage opens", func(m *Model) { m.panel.open = panelUsage }},
+		{"help opens", func(m *Model) { m.panel.open = panelHelp }},
+		{"the panel closes", func(m *Model) { m.panel.open = panelNone }},
+		// Through layout.width: sizeViewport derives the column widths,
+		// so setting outputColW directly is overwritten immediately.
+		{"the terminal narrows", func(m *Model) { m.layout.width = 74; m.sizeViewport() }},
+		{"the terminal widens", func(m *Model) { m.layout.width = 190; m.sizeViewport() }},
+		{"the terminal shortens", func(m *Model) { m.layout.height = 20; m.sizeViewport() }},
+		{"focus moves to the pane", func(m *Model) { m.nav.focus = focusOutput }},
+		{"the table cursor moves", func(m *Model) {
+			if r := m.focused(); r != nil {
+				r.tableCursor = 4
+			}
+		}},
+		{"undo opens", func(m *Model) { m.mode = modeUndo }},
+		{"undo closes", func(m *Model) { m.mode = modeInput }},
+	}
+
+	for _, s := range steps {
+		s.do(&m)
+		m.refreshViewport()
+		require.Equal(t, m.coldDetail(), m.viewContent,
+			"after %s: the pane kept content a fresh draw would not produce", s.name)
+	}
+}
+
+// Scrolling must not redraw, or the skip is not doing its job.
+func TestDetailCache_ScrollingDoesNotRedraw(t *testing.T) {
+	m := session(4, 3, 6)
+	m.nav.focus = focusOutput
+	m.sizeViewport()
+	m.refreshViewport()
+	was := m.detail
+
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	got := next.(Model)
+	assert.Equal(t, was, got.detail, "a scroll changed the key, so the content was redrawn")
+}
+
+// Whether the skip is safe is decided entirely by what the key
+// covers, so this asserts coverage directly: change one input the
+// pane draws from, and the key must change. Comparing rendered
+// content cannot do this, because two inputs often draw the same.
+func TestDetailKey_CoversEverythingThePaneDrawsFrom(t *testing.T) {
+	inputs := []struct {
+		name string
+		do   func(m *Model)
+	}{
+		{"a fact arrives", func(m *Model) { m.apply(event.StepStarted{Turn: m.blocks[0].id, Step: uuid.Must(uuid.NewV7()), N: 9}) }},
+		{"the terminal width", func(m *Model) { m.layout.width = 74; m.sizeViewport() }},
+		{"the terminal height", func(m *Model) { m.layout.height = 20; m.sizeViewport() }},
+		{"the focused row", func(m *Model) { m.nav.cursor = 1 }},
+		{"a panel opens", func(m *Model) { m.panel.open = panelUsage }},
+		{"the mode", func(m *Model) { m.mode = modeUndo }},
+		{"which pane has focus", func(m *Model) { m.nav.focus = focusOutput }},
+		{"the table cursor", func(m *Model) { m.focused().tableCursor = 4 }},
+	}
+
+	for _, in := range inputs {
+		t.Run(in.name, func(t *testing.T) {
+			m := session(3, 3, 4)
+			m.nav.cursor, m.nav.focus = 2, focusHistory
+			m.layout.width, m.layout.height = 150, 45
+			m.sizeViewport()
+			before := m.detailKey()
+
+			in.do(&m)
+			assert.NotEqual(t, before, m.detailKey(),
+				"%s changed what the pane draws, but not the key it is cached under", in.name)
+		})
+	}
 }

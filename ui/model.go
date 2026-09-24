@@ -31,7 +31,9 @@ type Model struct {
 	// every block cache is keyed on. apply bumps it for facts;
 	// toggleExpand is the only other thing that may.
 	histRev int
-	cur     *turnBlock
+	// detail is the key the output pane's content was last drawn for.
+	detail detailKey
+	cur    *turnBlock
 
 	mode    mode
 	waiting bool

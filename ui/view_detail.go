@@ -82,12 +82,47 @@ func helpLines() []string {
 	return lines
 }
 
+// detailKey is everything the output pane's content depends on. set
+// is always true when computed, so a real key never equals the zero
+// value and the first render is never skipped.
+type detailKey struct {
+	set           bool
+	rev           int
+	width, height int
+	panel         panelKind
+	mode          mode
+	row           *callRow
+	tableCursor   int
+	focused       bool
+}
+
+func (m Model) detailKey() detailKey {
+	k := detailKey{
+		set: true, rev: m.histRev,
+		width: paneInner(m.layout.outputColW), height: m.output.Height(),
+		panel: m.panel.open, mode: m.mode, row: m.focused(),
+		focused: m.nav.focus == focusOutput,
+	}
+	if k.row != nil {
+		k.tableCursor = k.row.tableCursor
+	}
+	return k
+}
+
 func (m *Model) refreshViewport() {
 	window, offset := m.historyWindow()
 	m.nav.histWindow = window
 	// -1 means following, which never counted a total to offset into.
 	if offset >= 0 {
 		m.nav.histOffset = offset
+	}
+	// Scrolling moves the viewport, not the content. Without this the
+	// pane redraws everything it already drew on every keystroke, and
+	// /usage redraws a table that grows with the session.
+	if key := m.detailKey(); key == m.detail {
+		return
+	} else {
+		m.detail = key
 	}
 	if m.panel.open != panelNone {
 		m.setViewContent(strings.Join(m.panelLines(), "\n"))
