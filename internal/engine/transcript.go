@@ -3,18 +3,21 @@ package engine
 import (
 	"context"
 	"fmt"
-	"github.com/vitzeno/detent/event"
 	"strings"
+
+	"github.com/vitzeno/detent/event"
 
 	"github.com/vitzeno/detent/internal/model"
 )
 
 // DefaultContextTokens caps the transcript, resent whole every Step.
-// A ceiling to stay under, not what is billed.
+// A ceiling, not what is billed. Sized for a large window: a small
+// local model wants context_tokens set, or nothing ever compacts.
 const (
-	DefaultContextTokens = 24_000
+	DefaultContextTokens = 200_000
 	BytesPerToken        = 4
-	// MaxResultBytes bounds one result: a 200KB ps is twice the budget.
+	// MaxResultBytes bounds one result, so one loud command cannot
+	// crowd out the rest of the transcript.
 	MaxResultBytes = 4 * 1024
 	// minCompactShare is the fraction of the budget a cut must free to
 	// be worth a summariser round trip when it cannot reach budget.
