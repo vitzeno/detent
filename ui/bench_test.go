@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 	"github.com/vitzeno/detent/event"
 )
@@ -158,6 +159,57 @@ func BenchmarkUpdateAndView(b *testing.B) {
 			cur := m
 			for b.Loop() {
 				next, _ := cur.Update(msg)
+				cur = next.(Model)
+				_ = cur.View()
+			}
+		})
+	}
+}
+
+// BenchmarkScrollUp is a trackpad scrolling back through history. In
+// alt screen the terminal sends arrow keys, so one flick is a burst of
+// them, and each one moves the cursor off the tail into the path that
+// lays the whole session out.
+func BenchmarkScrollUp(b *testing.B) {
+	up := tea.KeyPressMsg{Code: tea.KeyUp}
+	for _, s := range stressSizes {
+		m := session(s.turns, s.calls, 20)
+		m.nav.focus = focusHistory
+		m.nav.cursor = len(m.rows()) - 1
+		m.sizeViewport()
+
+		b.Run(s.name, func(b *testing.B) {
+			b.ReportAllocs()
+			cur := m
+			for b.Loop() {
+				if cur.nav.cursor == 0 {
+					cur.nav.cursor = len(cur.rows()) - 1
+					cur.nav.follow = false
+				}
+				next, _ := cur.Update(up)
+				cur = next.(Model)
+				_ = cur.View()
+			}
+		})
+	}
+}
+
+// BenchmarkScrollFollowing is the same keystroke while still at the
+// tail, for comparison: the fast path.
+func BenchmarkScrollFollowing(b *testing.B) {
+	down := tea.KeyPressMsg{Code: tea.KeyDown}
+	for _, s := range stressSizes {
+		m := session(s.turns, s.calls, 20)
+		m.nav.focus = focusHistory
+		m.nav.cursor = len(m.rows()) - 1
+		m.nav.follow = true
+		m.sizeViewport()
+
+		b.Run(s.name, func(b *testing.B) {
+			b.ReportAllocs()
+			cur := m
+			for b.Loop() {
+				next, _ := cur.Update(down)
 				cur = next.(Model)
 				_ = cur.View()
 			}
