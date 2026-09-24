@@ -234,9 +234,9 @@ func run() error {
 	// Drained rather than closed, so the last records reach the log
 	// instead of dying with the process.
 	defer bus.Drain(2 * time.Second)
-	go eng.Run(ctx)
 
 	if *prompt != "" {
+		go eng.Run(ctx)
 		approve := headless.Approver(nil)
 		if *unattended {
 			approve = headless.AutoDecline
@@ -253,9 +253,14 @@ func run() error {
 		Image: resolved.SandboxImage, Mount: resolved.SandboxWorkspace,
 		Runtime: resolved.SandboxRuntime, Network: resolved.SandboxNetwork,
 	}
+	// Built before the engine runs: SessionStarted is published once,
+	// and a front-end that subscribes afterwards loses it.
+	model := ui.New(ctx, bus, info).Restore(restore)
+	go eng.Run(ctx)
+
 	// Altscreen is declared by ui.Model.View, not set here — under
 	// Bubble Tea v2 terminal state is a property of what's rendered.
-	p := tea.NewProgram(ui.New(ctx, bus, info).Restore(restore))
+	p := tea.NewProgram(model)
 	_, err = p.Run()
 	return err
 }

@@ -390,3 +390,27 @@ func TestRename_ClaimsNothing(t *testing.T) {
 	next, _ := m.renameSession("/rename the sandbox bug")
 	assert.Empty(t, next.(Model).notice.text, "the store says whether it took")
 }
+
+// Resuming replays the original run's facts, and a notice says
+// something just happened. Announcing old ones is a lie about now.
+func TestRestore_DoesNotFlashHistoryAsNews(t *testing.T) {
+	turn := uuid.Must(uuid.NewV7())
+	records := []event.Record{
+		{Event: event.SessionStarted{Model: "m", ContextTokens: 24_000}},
+		{Event: event.TurnStarted{Turn: turn, N: 1, Prompt: "go"}},
+		{Event: event.Compacted{Turn: turn, Dropped: 223, Note: "summary"}},
+		{Event: event.Notice{Level: "info", Text: "named test"}},
+		{Event: event.TurnEnded{Turn: turn, Reason: event.EndDone}},
+	}
+
+	m := New(t.Context(), event.New(), SessionInfo{}).Restore(records)
+	assert.Empty(t, m.notice.text, "a replayed notice was shown as if it just happened")
+
+	// What the facts mean still lands: only the flash is suppressed.
+	assert.Len(t, m.blocks, 1)
+	assert.Equal(t, 24_000, m.run.ContextTokens)
+
+	// And a live fact after the replay still flashes.
+	m.apply(event.Notice{Level: "info", Text: "this one is now"})
+	assert.Equal(t, "this one is now", m.notice.text)
+}

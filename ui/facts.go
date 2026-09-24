@@ -214,12 +214,14 @@ const maxLiveLines = 200
 // and nothing else. CheckpointTaken is skipped because its snapshot
 // died with the container, and undoable is set from that fact alone.
 func (m Model) Restore(records []event.Record) Model {
+	m.replaying = true
 	for _, r := range records {
 		if r.Event.Kind() == event.CheckpointTakenKind {
 			continue
 		}
 		m.apply(r.Event)
 	}
+	m.replaying = false
 	m.trackNewest()
 	m.backToInput()
 	return m

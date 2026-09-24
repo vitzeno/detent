@@ -49,7 +49,10 @@ type Model struct {
 	// context is the last Step's prompt tokens, which is the whole
 	// transcript resent, so it is how full the budget is right now.
 	context int
-	undo    undoState
+	// replaying suppresses the flashes, because a replayed fact is
+	// history and a notice says something just happened.
+	replaying bool
+	undo      undoState
 
 	// Counters for /usage and /status, folded from the stream rather
 	// than read back from anywhere.

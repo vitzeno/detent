@@ -71,9 +71,18 @@ type noticeState struct {
 	bad  bool
 }
 
-func (m *Model) noteOK(text string)  { m.notice = noticeState{text: text} }
-func (m *Model) noteErr(text string) { m.notice = noticeState{text: text, bad: true} }
-func (m *Model) clearNotice()        { m.notice = noticeState{} }
+func (m *Model) noteOK(text string)  { m.note(noticeState{text: text}) }
+func (m *Model) noteErr(text string) { m.note(noticeState{text: text, bad: true}) }
+
+// note drops the flash while replaying: resuming a session would
+// otherwise announce every notice the original run ever showed.
+func (m *Model) note(n noticeState) {
+	if m.replaying {
+		return
+	}
+	m.notice = n
+}
+func (m *Model) clearNotice() { m.notice = noticeState{} }
 
 // noteLevel routes an engine Notice to the same flash.
 func (m *Model) noteLevel(level, text string) {
