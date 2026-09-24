@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/internal/model"
 )
 
 func writeTemp(t *testing.T, content string) string {
@@ -32,7 +34,14 @@ func TestLoad_PartialFileKeepsDefaults(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "other-model", cfg.Model)
 	assert.Equal(t, DefaultBaseURL, cfg.BaseURL)
-	assert.Equal(t, DefaultModel, "prism-ml/bonsai-27b")
+}
+
+// The defaults are aliased from model rather than redeclared. Pinning
+// the relationship catches a drift; pinning the value only catches a
+// deliberate change to it.
+func TestDefaults_DoNotDriftFromModel(t *testing.T) {
+	assert.Equal(t, model.DefaultModel, DefaultModel)
+	assert.Equal(t, model.DefaultBaseURL, DefaultBaseURL)
 }
 
 func TestLoad_MissingExplicitPathErrors(t *testing.T) {
@@ -113,8 +122,10 @@ func TestLoad_ExampleFileStaysValid(t *testing.T) {
 	defer func() { _ = os.Chdir(cwd) }()
 	cfg, err := Load("detent.example.yaml")
 	require.NoError(t, err)
-	assert.Equal(t, "http://localhost:1234/v1", cfg.BaseURL)
-	assert.Equal(t, "prism-ml/bonsai-27b", cfg.Model)
+	// Against the constants, not literals: the example is meant to
+	// show the defaults, and that is what can silently stop being true.
+	assert.Equal(t, DefaultBaseURL, cfg.BaseURL)
+	assert.Equal(t, DefaultModel, cfg.Model)
 }
 
 // Only generate ever writes a spec. saved draws from what already

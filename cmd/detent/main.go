@@ -47,9 +47,9 @@ func main() {
 func run() error {
 	loadDotenv(".env")
 
-	baseURL := flag.String("url", "", "OpenAI-compatible base URL (default: config file, else LM Studio local)")
+	baseURL := flag.String("url", "", "OpenAI-compatible base URL (default: config file, else "+config.DefaultBaseURL+")")
 	modelName := flag.String("model", "", "model name (default: config file, else "+config.DefaultModel+")")
-	apiKey := flag.String("key", "", "API key (default: config file, else env; empty for local LM Studio)")
+	apiKey := flag.String("key", "", "API key (default: config file, else env; empty for a local endpoint)")
 	configPath := flag.String("config", "", "config file path (default: ./.detent.yaml, then ~/.config/detent/config.yaml)")
 	prompt := flag.String("prompt", "", "run one request through the agent loop and exit")
 	unattended := flag.Bool("unattended", false, "with -prompt, decline every flagged command instead of asking")
@@ -178,7 +178,7 @@ func run() error {
 	}
 
 	if err := <-pinged; err != nil {
-		return fmt.Errorf("%v\n\nis the model endpoint up? Wanted %s with model %s — for LM Studio, load the model and Start Server; otherwise point -url/-model (or a config file) at your provider",
+		return fmt.Errorf("%v\n\nis the model endpoint up? Wanted %s with model %s — check the key, or point -url/-model (or a config file) somewhere else. For a local LM Studio, load the model and Start Server",
 			err, resolved.BaseURL, resolved.Model)
 	}
 

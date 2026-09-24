@@ -13,13 +13,16 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
+// A hosted endpoint by default: it needs a key, but its window is
+// large enough that the transcript budget is a ceiling rather than
+// something a session runs into every other Step.
 const (
-	DefaultBaseURL = "http://localhost:1234/v1"
-	DefaultModel   = "prism-ml/bonsai-27b"
+	DefaultBaseURL = "https://openrouter.ai/api/v1"
+	DefaultModel   = "openai/gpt-6-luna"
 )
 
-// Client is one OpenAI-compatible endpoint. Covers LM Studio and
-// OpenRouter alike.
+// Client is one OpenAI-compatible endpoint. Covers OpenRouter and a
+// local LM Studio alike.
 type Client struct {
 	BaseURL string
 	Model   string

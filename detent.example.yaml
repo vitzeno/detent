@@ -10,9 +10,11 @@
 
 # --- Proposer: any OpenAI-compatible /chat/completions endpoint ---
 
-# LM Studio, the local default. Works as-is with no key.
-base_url: http://localhost:1234/v1
-model: prism-ml/bonsai-27b
+# The default: a hosted endpoint with a large window, which needs a
+# key. A local LM Studio works too — http://localhost:1234/v1 with
+# whatever model it has loaded, and no key.
+base_url: https://openrouter.ai/api/v1
+model: openai/gpt-6-luna
 api_key: ""
 
 # Extra request headers, for a provider that wants them.
@@ -38,9 +40,10 @@ steps: 0
 # session gets steadily more expensive and eventually overruns the
 # window. Past it, the oldest turns are replaced by a summary the same
 # model writes; what's left is the recent half plus that summary.
-# 0 takes the built-in 24000, which suits a 32k model. Raise it if
-# yours has more to spend, remembering the system prompt and the reply
-# need room too.
+# 0 takes the built-in 200000, which suits a large-window model. Set
+# it lower for a small local one: compaction is what keeps a request
+# inside the window, so a budget above the window never fires and the
+# request fails instead.
 context_tokens: 0
 
 # --- Judge (Jev): classifier for confirm emphasis and row rendering ---

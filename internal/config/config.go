@@ -18,8 +18,8 @@ import (
 	"github.com/vitzeno/detent/internal/sandbox"
 )
 
-// Defaults: local LM Studio server, bonsai for now, pinned Jev. Aliased
-// from propose rather than redeclared, so the two can't silently drift.
+// Defaults: OpenRouter and a large-window model, pinned Jev. Aliased
+// from model rather than redeclared, so the two can't silently drift.
 const (
 	DefaultBaseURL = model.DefaultBaseURL
 	DefaultModel   = model.DefaultModel
