@@ -219,7 +219,11 @@ func nextFact(facts <-chan event.Record) tea.Cmd {
 // rows flattens every block's calls into the one list the cursor
 // indexes into.
 func (m Model) rows() []*callRow {
-	var out []*callRow
+	n := 0
+	for _, b := range m.blocks {
+		n += len(b.rows)
+	}
+	out := make([]*callRow, 0, n)
 	for _, b := range m.blocks {
 		out = append(out, b.rows...)
 	}

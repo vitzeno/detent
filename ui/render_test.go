@@ -94,7 +94,7 @@ func TestProse_IsItsOwnSelectableRow(t *testing.T) {
 	assert.Equal(t, said, rows[1].prose)
 
 	m.nav.cursor = 1
-	line := stripANSI(strings.Join(m.rowLines(rows[1]), "\n"))
+	line := stripANSI(strings.Join(m.rowLines(rows[1], m.focusedRow()), "\n"))
 	assert.Contains(t, line, "a summary sentence")
 	assert.NotContains(t, line, "✔", "no status badge: nothing ran")
 	assert.Len(t, strings.Split(line, "\n"), 1, "one line, truncated, not wrapped")
@@ -176,7 +176,7 @@ func TestHistory_FlaggedCallsAreMarked(t *testing.T) {
 		event.CallEnded{Call: call, Result: event.Result{}},
 		event.TurnEnded{Turn: turn, Reason: event.EndDone})
 
-	line := stripANSI(strings.Join(m.rowLines(m.rows()[0]), ""))
+	line := stripANSI(strings.Join(m.rowLines(m.rows()[0], m.focusedRow()), ""))
 	assert.Contains(t, line, "!", "a flagged call carries a mark")
 
 	// And an ordinary one does not.
@@ -186,7 +186,7 @@ func TestHistory_FlaggedCallsAreMarked(t *testing.T) {
 		event.CallProposed{Call: call2, Tool: "bash", Args: map[string]any{"command": "ls"}},
 		event.CallEnded{Call: call2, Result: event.Result{}},
 		event.TurnEnded{Turn: turn2, Reason: event.EndDone})
-	assert.NotContains(t, stripANSI(strings.Join(m.rowLines(m.rows()[0]), "")), "!")
+	assert.NotContains(t, stripANSI(strings.Join(m.rowLines(m.rows()[0], m.focusedRow()), "")), "!")
 }
 
 // A summary is prose, and the pane is where the whole of it is meant

@@ -71,7 +71,7 @@ func (m Model) blockLines(b *turnBlock, focused *callRow) (lines []string, curso
 		if focused != nil && r == focused {
 			cursorAt = len(block)
 		}
-		block = append(block, m.rowLines(r)...)
+		block = append(block, m.rowLines(r, focused)...)
 		if r.expanded {
 			block = append(block, previewLines(r, m.blockWidth()-6)...)
 		}
@@ -85,12 +85,21 @@ func (m Model) blockLines(b *turnBlock, focused *callRow) (lines []string, curso
 }
 
 // focusedRow is the row the cursor is on, or nil when there are none.
+// Resolved once per render and passed down, because every row asking
+// for it rebuilds the whole row list to answer.
 func (m Model) focusedRow() *callRow {
 	rows := m.rows()
 	if len(rows) == 0 {
 		return nil
 	}
-	return rows[m.cursorClamped()]
+	at := m.nav.cursor
+	if at < 0 {
+		at = 0
+	}
+	if at >= len(rows) {
+		at = len(rows) - 1
+	}
+	return rows[at]
 }
 
 // countLines counts real lines, since one entry may hold several.
@@ -155,10 +164,11 @@ func (m *Model) cursorClamped() int {
 }
 
 // rowLines draws one row: the model's words, or a call with its
-// badge and command.
-func (m Model) rowLines(r *callRow) []string {
+// badge and command. Takes the focused row rather than looking it up,
+// which is what keeps drawing off the row count.
+func (m Model) rowLines(r, focused *callRow) []string {
 	mark := "  "
-	if r == m.focused() {
+	if focused != nil && r == focused {
 		mark = styleRowCursor.Render("▸ ")
 	}
 	// The model speaking, not a command: no status badge, because
