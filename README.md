@@ -107,6 +107,11 @@ colima start --cpu 6 --memory 8 --disk 30 --kubernetes=false
 
 On Linux, run containerd and point `sandbox_socket` at it.
 
+A session gets its own container. Resuming one clears whatever the last
+process left behind, but a session you never come back to keeps its
+container and snapshot. `./bin/detent -prune` drops those, and leaves
+alone anything still running.
+
 ## Configuration
 
 `./.detent.yaml` or `~/.config/detent/config.yaml`

@@ -276,6 +276,10 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 
 // Close tears down the container, its current snapshot, and the
 // client connection. Safe to call even if Start failed partway.
+// ErrSessionLive marks a container another detent still holds, so
+// neither starting over it nor pruning it may touch it.
+var ErrSessionLive = errors.New("already running somewhere")
+
 // clearStale removes what a killed process left behind. Only Close
 // deletes a container and its lease, so a kill leaves both, and the
 // ids are per session: resuming one would collide with its own corpse.
@@ -286,34 +290,36 @@ func clearStale(ctx context.Context, client *containerd.Client, sessionID string
 	case err != nil:
 		return fmt.Errorf("sandbox: look for a stale container: %w", err)
 	default:
-		if err := clearTask(ctx, cont, sessionID); err != nil {
+		if err := dropContainer(ctx, cont, sessionID); err != nil {
 			return err
-		}
-		if err := cont.Delete(ctx, containerd.WithSnapshotCleanup); err != nil && !errdefs.IsNotFound(err) {
-			return fmt.Errorf("sandbox: delete stale container: %w", err)
 		}
 	}
 	// The checkpoints it rooted died with the container's snapshot, so
 	// the lease goes too and the GC can reclaim them.
-	err = client.LeasesService().Delete(ctx, leases.Lease{ID: leaseID(sessionID)})
-	if err != nil && !errdefs.IsNotFound(err) {
-		return fmt.Errorf("sandbox: delete stale lease: %w", err)
+	return dropLease(ctx, client, sessionID)
+}
+
+// dropContainer deletes a container and its snapshot, refusing one
+// whose task still runs: that is a live session, not a leftover.
+func dropContainer(ctx context.Context, cont containerd.Container, sessionID string) error {
+	if task, err := cont.Task(ctx, nil); err == nil {
+		if st, err := task.Status(ctx); err == nil && st.Status == containerd.Running {
+			return fmt.Errorf("sandbox: session %s is %w", sessionID, ErrSessionLive)
+		}
+		if _, err := task.Delete(ctx, containerd.WithProcessKill); err != nil && !errdefs.IsNotFound(err) {
+			return fmt.Errorf("sandbox: delete stale task: %w", err)
+		}
+	}
+	if err := cont.Delete(ctx, containerd.WithSnapshotCleanup); err != nil && !errdefs.IsNotFound(err) {
+		return fmt.Errorf("sandbox: delete stale container: %w", err)
 	}
 	return nil
 }
 
-// clearTask refuses rather than killing a task that is still running:
-// that is another detent holding this session, not a leftover.
-func clearTask(ctx context.Context, cont containerd.Container, sessionID string) error {
-	task, err := cont.Task(ctx, nil)
-	if err != nil {
-		return nil
-	}
-	if st, err := task.Status(ctx); err == nil && st.Status == containerd.Running {
-		return fmt.Errorf("sandbox: session %s is already running somewhere", sessionID)
-	}
-	if _, err := task.Delete(ctx, containerd.WithProcessKill); err != nil && !errdefs.IsNotFound(err) {
-		return fmt.Errorf("sandbox: delete stale task: %w", err)
+func dropLease(ctx context.Context, client *containerd.Client, sessionID string) error {
+	err := client.LeasesService().Delete(ctx, leases.Lease{ID: leaseID(sessionID)})
+	if err != nil && !errdefs.IsNotFound(err) {
+		return fmt.Errorf("sandbox: delete stale lease: %w", err)
 	}
 	return nil
 }
@@ -353,9 +359,15 @@ func (c *Container) Close(ctx context.Context) error {
 
 // containerID correlates the containerd container with the
 // agent.Session that owns it, rather than inventing a second identity.
-func containerID(sessionID string) string { return "detent-" + sessionID }
+// containerPrefix is what marks a container as detent's own, which is
+// the whole of how Prune tells ours from anything else in the namespace.
+const containerPrefix = "detent-"
 
-func leaseID(sessionID string) string { return containerID(sessionID) + "-checkpoints" }
+const leaseSuffix = "-checkpoints"
+
+func containerID(sessionID string) string { return containerPrefix + sessionID }
+
+func leaseID(sessionID string) string { return containerID(sessionID) + leaseSuffix }
 
 // resolveImage returns the local image if present, pulling it
 // (unpacked) otherwise.

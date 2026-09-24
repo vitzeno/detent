@@ -58,6 +58,7 @@ func run() error {
 	sandboxSocket := flag.String("sandbox-socket", "", "containerd socket path (default: config file, else OS-conventional)")
 	resume := flag.String("resume", "", "continue a stored session by id or name, or \"last\"")
 	sessions := flag.Bool("sessions", false, "list the sessions that can be resumed, and exit")
+	prune := flag.Bool("prune", false, "remove what abandoned sessions left in containerd, and exit")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 
@@ -122,6 +123,10 @@ func run() error {
 		fmt.Fprintln(os.Stderr, logErr)
 	}
 	defer func() { _ = closeLog() }()
+	if *prune {
+		return pruneSandbox(resolved.SandboxSocket)
+	}
+
 	runners := routing.Selector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
 	var container *sandbox.Container
 	// The model is told where commands actually run, so it writes for
@@ -252,6 +257,36 @@ func run() error {
 	// Bubble Tea v2 terminal state is a property of what's rendered.
 	p := tea.NewProgram(ui.New(ctx, bus, info).Restore(restore))
 	_, err = p.Run()
+	return err
+}
+
+// pruneSandbox reports what it removed rather than saying nothing,
+// because deleting someone's containers silently is the wrong default.
+func pruneSandbox(socket string) error {
+	if socket == "" {
+		socket = defaultSandboxSocket()
+	}
+	if socket == "" {
+		return fmt.Errorf("no default containerd socket for this OS — set -sandbox-socket (or sandbox_socket in config)")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	if err := sandbox.Preflight(ctx, socket); err != nil {
+		return fmt.Errorf("%w\n\nis containerd reachable at %s?", err, socket)
+	}
+	out, err := sandbox.Prune(ctx, socket, sandbox.DefaultNamespace)
+	for _, id := range out.Containers {
+		fmt.Println("removed container", id)
+	}
+	for _, id := range out.Leases {
+		fmt.Println("removed lease for", id)
+	}
+	for _, id := range out.Kept {
+		fmt.Println("still running, left alone:", id)
+	}
+	if err == nil && out.Empty() {
+		fmt.Println("nothing to prune")
+	}
 	return err
 }
 

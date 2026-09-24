@@ -433,8 +433,12 @@ func TestContainer_RefusesASessionThatIsStillRunning(t *testing.T) {
 // taskRunning reports whether the session's container has a running
 // task, read-only, so waiting for one cannot disturb it.
 func taskRunning(t *testing.T, sessionID string) bool {
+	return taskRunningIn(t, "detent-test", sessionID)
+}
+
+func taskRunningIn(t *testing.T, namespace, sessionID string) bool {
 	t.Helper()
-	client, err := containerd.New(testSocket, containerd.WithDefaultNamespace("detent-test"))
+	client, err := containerd.New(testSocket, containerd.WithDefaultNamespace(namespace))
 	if err != nil {
 		return false
 	}
@@ -450,4 +454,61 @@ func taskRunning(t *testing.T, sessionID string) bool {
 	}
 	st, err := task.Status(ctx)
 	return err == nil && st.Status == containerd.Running
+}
+
+// A session nobody resumes leaks its container forever, since only
+// Close and clearStale delete one and neither will ever run again.
+func TestPrune_RemovesWhatAnAbandonedSessionLeft(t *testing.T) {
+	if !daemonAvailable() {
+		t.Skip("containerd not reachable at", testSocket)
+	}
+	ctx := context.Background()
+	const ns = "detent-test-prune"
+	id := testContainerID(t)
+
+	abandoned := NewContainer(WithSocket(testSocket), WithNamespace(ns))
+	require.NoError(t, abandoned.Start(ctx, id))
+	// No Close: this is a session nobody comes back to.
+
+	out, err := Prune(ctx, testSocket, ns)
+	require.NoError(t, err)
+	assert.Contains(t, out.Containers, id)
+	assert.Empty(t, out.Kept)
+
+	again, err := Prune(ctx, testSocket, ns)
+	require.NoError(t, err)
+	assert.True(t, again.Empty(), "a second prune found something to do")
+}
+
+// Pruning must not reach into a session that is still working.
+func TestPrune_LeavesALiveSessionAlone(t *testing.T) {
+	if !daemonAvailable() {
+		t.Skip("containerd not reachable at", testSocket)
+	}
+	ctx := context.Background()
+	const ns = "detent-test-prune-live"
+	id := testContainerID(t)
+
+	live := NewContainer(WithSocket(testSocket), WithNamespace(ns))
+	require.NoError(t, live.Start(ctx, id))
+	t.Cleanup(func() { _ = live.Close(ctx) })
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = live.Run(ctx, "sleep 5", nil)
+	}()
+	t.Cleanup(func() { <-done })
+
+	require.Eventually(t, func() bool { return taskRunningIn(t, ns, id) },
+		5*time.Second, 100*time.Millisecond, "the live task never started")
+
+	out, err := Prune(ctx, testSocket, ns)
+	require.NoError(t, err)
+	assert.Contains(t, out.Kept, id)
+	assert.NotContains(t, out.Containers, id)
+
+	res, err := live.Run(ctx, "echo survived", nil)
+	require.NoError(t, err, "prune broke a live session")
+	assert.Equal(t, "survived\n", res.Stdout)
 }

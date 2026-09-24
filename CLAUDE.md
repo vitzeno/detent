@@ -306,7 +306,12 @@ adding a fat dependency fails with the transitive import named.
   workspace** — that is a bind mount to the user's real directory,
   deliberately outside the snapshot. Checkpoints are held by a
   per-session lease; without one the GC sweeps them and rollback works
-  exactly once.
+  exactly once. Only `Close` deletes a container and its lease, and the
+  ids are per session, so a killed process leaves leftovers its own
+  resume would collide with: `clearStale` removes them at startup, and
+  `Prune` (behind `-prune`) does the same for sessions nobody resumes.
+  Both refuse a container whose task still runs, which is another
+  detent holding that session rather than a leftover.
 
 - **`internal/worktree`** — checkpoints the human's own directory,
   which the container snapshot never covers. Git plumbing against a
