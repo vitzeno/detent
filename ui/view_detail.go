@@ -82,9 +82,8 @@ func helpLines() []string {
 	return lines
 }
 
-// detailKey is everything the output pane's content depends on. set
-// is always true when computed, so a real key never equals the zero
-// value and the first render is never skipped.
+// detailKey is everything the output pane's content depends on. set is
+// always true when computed, so the first render is never skipped.
 type detailKey struct {
 	set           bool
 	rev           int
@@ -117,8 +116,7 @@ func (m *Model) refreshViewport() {
 		m.nav.histOffset = offset
 	}
 	// Scrolling moves the viewport, not the content. Without this the
-	// pane redraws everything it already drew on every keystroke, and
-	// /usage redraws a table that grows with the session.
+	// pane redraws all of it on every keystroke.
 	if key := m.detailKey(); key == m.detail {
 		return
 	} else {

@@ -48,8 +48,8 @@ func (m Model) baseView() string {
 	return b.String()
 }
 
-// histWindow is what sizeViewport laid out on the way into this
-// frame. Falling back keeps the first frame right, before any Update.
+// histWindow is what sizeViewport laid out. The fallback is the first
+// frame, which lands before any Update.
 func (m Model) histWindow() []string {
 	if m.nav.histWindow != nil {
 		return m.nav.histWindow
@@ -61,9 +61,8 @@ func (m Model) histWindow() []string {
 // historyWindow returns the visible slice and the offset it settled
 // on. Pure, so sizeViewport can call it before anything is committed.
 func (m Model) historyWindow() (window []string, offset int) {
-	// Following means the tail is all anyone sees, so only the tail is
-	// rendered. Offset is -1 because the total was never counted;
-	// navUp pins it before it is ever read.
+	// Only the tail is on screen, so only the tail is drawn. Offset is
+	// -1 because no total was counted; navUp pins one before it matters.
 	if m.nav.follow {
 		lines := m.historyTail(m.nav.histHeight)
 		if len(lines) > m.nav.histHeight {
@@ -87,8 +86,8 @@ func (m Model) historyWindow() (window []string, offset int) {
 	return lines[start:min(start+m.nav.histHeight, len(lines))], start
 }
 
-// historyAll is every line, and which one the cursor is on. drawBlock
-// splits on the way into the cache, so an entry is already one line.
+// historyAll is every line and the cursor's. An entry is already one
+// line: drawBlock splits on the way into the cache.
 func (m Model) historyAll() (lines []string, cursorLine int) {
 	return m.historyLines()
 }

@@ -290,8 +290,7 @@ func (m Model) onEscape() (tea.Model, tea.Cmd) {
 }
 
 // toggleExpand opens or shuts a row's preview. The only thing outside
-// apply that changes what history draws, so it is the only other
-// place histRev moves.
+// apply that changes what history draws, so the only other bump.
 func (m *Model) toggleExpand(r *callRow) {
 	r.expanded = !r.expanded
 	m.histRev++

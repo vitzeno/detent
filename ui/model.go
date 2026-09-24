@@ -27,9 +27,8 @@ type Model struct {
 	spinner spinner.Model
 
 	blocks []*turnBlock
-	// histRev changes whenever a block's content does, which is what
-	// every block cache is keyed on. apply bumps it for facts;
-	// toggleExpand is the only other thing that may.
+	// histRev moves whenever block content does, and every block cache
+	// is keyed on it. apply bumps it; so does toggleExpand.
 	histRev int
 	// detail is the key the output pane's content was last drawn for.
 	detail detailKey
@@ -145,8 +144,8 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.apply(e)
 		}
 		var cmd tea.Cmd
-		// Only on the edge: Tick carries the live tag, so re-arming on
-		// every fact restarts the chain and renders a frame to do it.
+		// Edge only: Tick carries the live tag, so re-arming restarts
+		// the chain and costs a frame.
 		if m.waiting && !waiting {
 			cmd = m.spinner.Tick
 		}
@@ -191,13 +190,11 @@ const welcomeFrameEvery = 90 * time.Millisecond
 const maxFactBatch = 256
 
 // coalesceWindow is how long a batch gathers. The bus hands over one
-// record at a time by design, so a burst needs a window to collect in;
-// 2ms is well under a frame and far over a channel hop. Var for tests.
+// record at a time, so a burst needs a window to collect in.
 var coalesceWindow = 2 * time.Millisecond
 
-// nextFact waits for one fact, then gathers whatever follows it
-// closely. Output arrives a line at a time, so coalescing is what
-// keeps a 500 line burst to a couple of renders instead of 500.
+// nextFact waits for one fact, then gathers whatever follows closely.
+// Output is one event per line, so a burst becomes one render.
 func nextFact(facts <-chan event.Record) tea.Cmd {
 	return func() tea.Msg {
 		rec, ok := <-facts

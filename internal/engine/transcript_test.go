@@ -314,9 +314,8 @@ func (c *countingSummarizer) Summarize(context.Context, []event.Message) (string
 	return "summary", nil
 }
 
-// The thrash a real session showed: an open Turn bigger than the
-// budget leaves a sliver droppable, so every Step paid a summariser
-// round trip to re-summarise the note the last one wrote.
+// The thrash a real session showed: an open Turn over budget leaves a
+// sliver droppable, so every Step re-summarised the last note.
 func TestCompact_WillNotPayASummarizerForASliver(t *testing.T) {
 	const budgetTokens = 1000
 	budget := budgetTokens * BytesPerToken

@@ -11,15 +11,14 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// The reason the pump drains: output arrives one line per event, so a
-// loud Call would otherwise cost one full render per line.
+// Output is one event per line, so a loud Call would otherwise cost
+// one full render per line.
 func TestNextFact_DrainsWhatIsAlreadyQueued(t *testing.T) {
 	bus := event.New()
 	facts, stop := bus.Subscribe(event.Facts())
 	defer stop()
 
-	// Widened so the assertion is on the batching, not on how fast
-	// this machine hands 40 records across a channel.
+	// Widened so this asserts on batching, not on scheduler timing.
 	defer widenWindow()()
 
 	call := uuid.Must(uuid.NewV7())
@@ -56,8 +55,8 @@ func TestNextFact_StopsWhenTheBusCloses(t *testing.T) {
 	assert.Nil(t, nextFact(facts)())
 }
 
-// Ticking on every fact restarts the spinner chain and costs a frame
-// each time, so it may only happen on the false to true edge.
+// Ticking per fact restarts the spinner chain and costs a frame, so
+// it may only happen on the false to true edge.
 func TestFacts_TickTheSpinnerOnlyWhenWaitingBegins(t *testing.T) {
 	m := New(t.Context(), event.New(), SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
@@ -71,8 +70,7 @@ func TestFacts_TickTheSpinnerOnlyWhenWaitingBegins(t *testing.T) {
 	require.NotNil(t, cmd, "the pump always re-arms")
 }
 
-// widenWindow makes coalescing wait long enough that a test asserts on
-// the batch size rather than on scheduler timing.
+// widenWindow makes coalescing wait long enough to assert on size.
 func widenWindow() func() {
 	was := coalesceWindow
 	coalesceWindow = 500 * time.Millisecond

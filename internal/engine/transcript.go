@@ -129,9 +129,8 @@ func (t *transcript) compact(ctx context.Context, budgetTokens int, s Summarizer
 	if cut == 0 {
 		return 0, ""
 	}
-	// A cut that frees a sliver and still misses the budget gets asked
-	// for again next Step, paying a summariser round trip to
-	// re-summarise its own note. Leave the front alone instead.
+	// A sliver that still misses the budget is asked for again next
+	// Step, so it only ever re-summarises its own note.
 	freed := msgBytes(t.msgs[:cut])
 	if freed < budget/minCompactShare && t.bytes()-freed > budget {
 		return 0, ""

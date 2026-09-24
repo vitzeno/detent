@@ -31,8 +31,7 @@ type navState struct {
 
 	histHeight int
 	histOffset int
-	// histWindow is what sizeViewport last laid out. View reads it
-	// rather than laying the same history out a second time.
+	// histWindow is what sizeViewport laid out, so View need not.
 	histWindow []string
 }
 

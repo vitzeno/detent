@@ -25,8 +25,8 @@ type turnBlock struct {
 	undoable bool
 	err      string
 
-	// cache is this block's last drawing. Behind a pointer because
-	// View works on a copy of Model and must still be able to fill it.
+	// cache is this block's last drawing, behind a pointer so the copy
+	// of Model that View works on can still fill it.
 	cache *blockCache
 }
 

@@ -36,10 +36,8 @@ func (m Model) historyLines() (lines []string, cursorEntry int) {
 	return lines, cursorEntry
 }
 
-// historyTail renders backwards from the newest block, stopping once
-// it has enough to fill the pane. Cost follows what is on screen
-// rather than how long the session has run, which is the whole point:
-// a fifty Turn session redraws the same six blocks a one Turn one does.
+// historyTail renders backwards from the newest block until the pane
+// is full, so cost follows what is on screen, not session length.
 func (m Model) historyTail(height int) []string {
 	focused := m.focusedRow()
 	var lines []string
@@ -60,10 +58,8 @@ func (m Model) historyTail(height int) []string {
 	return lines
 }
 
-// blockLines is the cached front of drawBlock. Scrolling moves the
-// cursor and nothing else, so every block but the two the cursor left
-// and joined is a hit, and a thousand Turn session stops being a
-// thousand lipgloss renders per keystroke.
+// blockLines is the cached front of drawBlock. Scrolling moves only
+// the cursor, so every block but the two it touched is a hit.
 func (m Model) blockLines(b *turnBlock, focused *callRow) (lines []string, cursorAt int) {
 	key := m.blockKey(b, focused)
 	if b.cache != nil && b.cache.key == key {
@@ -74,9 +70,8 @@ func (m Model) blockLines(b *turnBlock, focused *callRow) (lines []string, curso
 	return lines, cursorAt
 }
 
-// blockKey collects what this block's drawing depends on. focused is
-// carried only when the cursor is inside, so a cursor moving between
-// two other blocks leaves this one's key alone.
+// blockKey carries focused only when the cursor is inside, so a
+// cursor moving elsewhere leaves this block's key alone.
 func (m Model) blockKey(b *turnBlock, focused *callRow) blockKey {
 	k := blockKey{rev: m.histRev, width: m.blockWidth()}
 	for _, r := range b.rows {
@@ -96,8 +91,7 @@ func (m Model) blockKey(b *turnBlock, focused *callRow) blockKey {
 func (m Model) drawBlock(b *turnBlock, focused *callRow) (lines []string, cursorAt int) {
 	cursorAt = -1
 	var block []string
-	// Split on the way in, so a cached block is one entry per line and
-	// nothing downstream has to split again on every keystroke.
+	// Split here, so a cached block is one entry per line.
 	add := func(ss ...string) {
 		for _, s := range ss {
 			if strings.Contains(s, "\n") {
@@ -127,8 +121,8 @@ func (m Model) drawBlock(b *turnBlock, focused *callRow) (lines []string, cursor
 	return m.railed(b, block), cursorAt
 }
 
-// join copies rather than appending onto a cached slice, which would
-// write into a backing array the cache still owns.
+// join copies, because appending onto a cached slice writes into a
+// backing array the cache still owns.
 func join(parts ...[]string) []string {
 	n := 0
 	for _, p := range parts {
@@ -141,9 +135,8 @@ func join(parts ...[]string) []string {
 	return out
 }
 
-// focusedRow is the row the cursor is on, or nil when there are none.
-// Resolved once per render and passed down, because every row asking
-// for it rebuilds the whole row list to answer.
+// focusedRow is the row the cursor is on, or nil. Resolved once and
+// passed down: asking per row rebuilds the whole row list each time.
 func (m Model) focusedRow() *callRow {
 	rows := m.rows()
 	if len(rows) == 0 {
@@ -211,9 +204,8 @@ func (m *Model) cursorClamped() int {
 	return m.nav.cursor
 }
 
-// rowLines draws one row: the model's words, or a call with its
-// badge and command. Takes the focused row rather than looking it up,
-// which is what keeps drawing off the row count.
+// rowLines draws one row: the model's words, or a call with its badge
+// and command. Takes focused rather than looking it up, per row.
 func (m Model) rowLines(r, focused *callRow) []string {
 	mark := "  "
 	if focused != nil && r == focused {

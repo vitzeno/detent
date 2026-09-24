@@ -46,8 +46,7 @@ func session(turns, callsPerTurn, outLines int) Model {
 	return m
 }
 
-// BenchmarkStressPerEvent is what a streaming Call costs per line at
-// each session size: one Update, then the View Bubble Tea asks for.
+// BenchmarkStressPerEvent is one output line: an Update and its View.
 func BenchmarkStressPerEvent(b *testing.B) {
 	for _, s := range stressSizes {
 		m := session(s.turns, s.calls, 20)
@@ -67,8 +66,7 @@ func BenchmarkStressPerEvent(b *testing.B) {
 	}
 }
 
-// BenchmarkStressBurst is the case that felt worst: 200 lines landing
-// at once, which is what one noisy command produces.
+// BenchmarkStressBurst is 200 lines at once, one noisy command.
 func BenchmarkStressBurst(b *testing.B) {
 	for _, s := range stressSizes {
 		m := session(s.turns, s.calls, 20)
@@ -89,8 +87,7 @@ func oneChunk(call uuid.UUID) factMsg {
 	return factMsg{[]event.Event{chunk(call)}}
 }
 
-// burst feeds lines the way the real pump does: coalesced into
-// batches, one render each.
+// burst feeds lines the way the pump does, coalesced into batches.
 func burst(m Model, call uuid.UUID, n int) Model {
 	for i := 0; i < n; i += maxFactBatch {
 		batch := make([]event.Event, 0, maxFactBatch)
@@ -139,8 +136,7 @@ func BenchmarkApplyOutputChunk(b *testing.B) {
 	}
 }
 
-// BenchmarkUpdateAndView is the real per-event cost: Update resizes
-// and re-renders, then Bubble Tea calls View.
+// BenchmarkUpdateAndView is the real per-event cost, Update plus View.
 func BenchmarkUpdateAndView(b *testing.B) {
 	for _, c := range []struct {
 		name              string
@@ -167,10 +163,8 @@ func BenchmarkUpdateAndView(b *testing.B) {
 	}
 }
 
-// BenchmarkScrollUp is a trackpad scrolling back through history. In
-// alt screen the terminal sends arrow keys, so one flick is a burst of
-// them, and each one moves the cursor off the tail into the path that
-// lays the whole session out.
+// BenchmarkScrollUp is a trackpad scrolling back: in alt screen one
+// flick arrives as a burst of arrow keys, each off the tail's fast path.
 func BenchmarkScrollUp(b *testing.B) {
 	up := tea.KeyPressMsg{Code: tea.KeyUp}
 	for _, s := range stressSizes {
@@ -195,8 +189,7 @@ func BenchmarkScrollUp(b *testing.B) {
 	}
 }
 
-// BenchmarkScrollFollowing is the same keystroke while still at the
-// tail, for comparison: the fast path.
+// BenchmarkScrollFollowing is the same keystroke still at the tail.
 func BenchmarkScrollFollowing(b *testing.B) {
 	down := tea.KeyPressMsg{Code: tea.KeyDown}
 	for _, s := range stressSizes {
@@ -218,8 +211,7 @@ func BenchmarkScrollFollowing(b *testing.B) {
 	}
 }
 
-// withBigOutput gives the newest row a result worth scrolling, so the
-// output pane has real work rather than one line.
+// withBigOutput gives the newest row a result worth scrolling.
 func withBigOutput(m Model, lines int) Model {
 	rows := m.rows()
 	r := rows[len(rows)-1]
@@ -236,8 +228,7 @@ func withBigOutput(m Model, lines int) Model {
 	return m
 }
 
-// BenchmarkScrollOutputPane is scrolling the detail pane, which is
-// what a long command's output lands in.
+// BenchmarkScrollOutputPane is scrolling the detail pane.
 func BenchmarkScrollOutputPane(b *testing.B) {
 	down := tea.KeyPressMsg{Code: tea.KeyDown}
 	for _, s := range stressSizes {
@@ -254,8 +245,7 @@ func BenchmarkScrollOutputPane(b *testing.B) {
 	}
 }
 
-// BenchmarkScrollUsagePanel is /usage, the panel whose content grows
-// with the session rather than staying one screen.
+// BenchmarkScrollUsagePanel is /usage, whose content grows with the session.
 func BenchmarkScrollUsagePanel(b *testing.B) {
 	down := tea.KeyPressMsg{Code: tea.KeyDown}
 	for _, s := range stressSizes {

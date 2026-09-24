@@ -341,16 +341,17 @@ adding a fat dependency fails with the transitive import named.
   naming rules; read it before adding a file.
 
   **Drawing costs what is on screen, not what the session has done.**
-  Three rules hold that, and `ui/bench_test.go` is what catches
-  breaking one. `nextFact` coalesces over a 2ms window, because output
-  arrives one event per line and a 500 line burst used to be 500
-  renders. `sizeViewport` lays the history out once and `View` reads
-  what it left, rather than laying it out a second time. While
-  following, only the tail is rendered: `historyTail` walks blocks
-  backwards until the pane is full, so a block must render from its
-  own state alone. Anything needing a whole-history pass belongs in
-  `historyAll`, which runs when scrolled back and on the keystroke
-  that leaves follow.
+  Five things hold that, and `ui/bench_test.go` catches a regression:
+  `nextFact` coalesces facts over a 2ms window, `sizeViewport` lays
+  history out once and `View` reads what it left, only the tail is
+  drawn while following, each block caches its drawing under
+  `blockKey`, and the output pane skips a redraw under `detailKey`.
+
+  Two rules come with that. A block must render from its own state
+  alone, since `historyTail` may never visit the ones before it, and
+  a whole-history pass belongs in `historyAll`. A cache key must name
+  every input its content depends on: miss one and the pane renders
+  stale, which is why both keys are mutation tested.
 
   **A thing leaves `ui` when it stops needing Model.** That is why
   `island`, `layout`, `markdown`, `status`, `theme` and `welcome` are

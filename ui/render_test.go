@@ -247,8 +247,7 @@ func TestSummary_RendersAsMarkdownAndScrolls(t *testing.T) {
 	assert.Equal(t, 3, m.output.YOffset(), "the pane scrolls through the rest")
 }
 
-// The tail path must draw exactly what the full layout would have
-// shown, or following renders something nothing else agrees with.
+// The tail must draw what the full layout would have shown.
 func TestHistoryWindow_TailMatchesTheFullLayout(t *testing.T) {
 	for _, turns := range []int{1, 3, 21, 50} {
 		m := session(turns, 4, 12)
@@ -267,8 +266,7 @@ func TestHistoryWindow_TailMatchesTheFullLayout(t *testing.T) {
 	}
 }
 
-// A short session has to fall out of the tail loop rather than run off
-// the front of the slice.
+// A short session falls out of the tail loop, not off the slice.
 func TestHistoryWindow_TailHandlesLessThanOneScreen(t *testing.T) {
 	m := session(1, 1, 0)
 	m.nav.histHeight = 80
@@ -279,8 +277,7 @@ func TestHistoryWindow_TailHandlesLessThanOneScreen(t *testing.T) {
 	assert.Equal(t, all, tail)
 }
 
-// Leaving follow has to pin the offset, or the pane jumps to the top
-// of the session the moment the cursor moves.
+// Leaving follow pins the offset, or the pane jumps to the top.
 func TestNavUp_PinsTheOffsetOnLeavingFollow(t *testing.T) {
 	m := session(21, 4, 12)
 	m.nav.histHeight = 20
@@ -295,8 +292,7 @@ func TestNavUp_PinsTheOffsetOnLeavingFollow(t *testing.T) {
 	assert.Equal(t, len(all)-20, got.nav.histOffset)
 }
 
-// uncached drops every block cache, so a test can compare what was
-// drawn from cache against what a cold render produces.
+// uncached drops every block cache, for comparing warm against cold.
 func (m Model) uncached() Model {
 	for _, b := range m.blocks {
 		b.cache = nil
@@ -304,8 +300,8 @@ func (m Model) uncached() Model {
 	return m
 }
 
-// The one thing a cache can do wrong. Every mutation the UI supports
-// is applied, and after each the cached drawing must equal a cold one.
+// The one thing a cache can do wrong: after every mutation the UI
+// supports, the cached drawing must equal a cold one.
 func TestBlockCache_NeverGoesStale(t *testing.T) {
 	m := session(6, 3, 8)
 	rows := m.rows()
@@ -345,8 +341,7 @@ func TestBlockCache_NeverGoesStale(t *testing.T) {
 	}
 }
 
-// The cache exists to be hit. A test that only checked correctness
-// would pass with caching switched off entirely.
+// The cache exists to be hit: correctness alone passes with it off.
 func TestBlockCache_IsActuallyHit(t *testing.T) {
 	m := session(40, 3, 8)
 	m.nav.cursor = 60
@@ -360,8 +355,7 @@ func TestBlockCache_IsActuallyHit(t *testing.T) {
 	}
 	require.Equal(t, len(m.blocks), cached, "every block should have been cached")
 
-	// Move the cursor one row: only the block it left and the block it
-	// joined may redraw.
+	// One row: only the blocks it left and joined may redraw.
 	before := make([]*blockCache, len(m.blocks))
 	for i, b := range m.blocks {
 		before[i] = b.cache
@@ -389,9 +383,8 @@ func markedLine(m Model) int {
 	return -1
 }
 
-// Equivalence alone cannot see a cursor that never renders, because a
-// cold draw would get it equally wrong. This asserts the mark exists,
-// lands on one line, and moves when the cursor does.
+// Equivalence cannot see a cursor that never renders, since a cold
+// draw gets it equally wrong. So assert the mark itself.
 func TestHistory_CursorMarkFollowsTheCursor(t *testing.T) {
 	m := session(6, 3, 0)
 	m.nav.cursor = 2
@@ -413,8 +406,7 @@ func TestHistory_CursorMarkFollowsTheCursor(t *testing.T) {
 	assert.Equal(t, 1, marks, "exactly one row is focused at a time")
 }
 
-// The live block redraws per spinner frame, or "thinking…" freezes
-// while the request is still running.
+// The live block redraws per frame, or "thinking…" freezes.
 func TestBlockCache_TheSpinnerStillTurns(t *testing.T) {
 	m := session(3, 2, 0)
 	turn := uuid.Must(uuid.NewV7())
@@ -428,27 +420,23 @@ func TestBlockCache_TheSpinnerStillTurns(t *testing.T) {
 	assert.NotEqual(t, before, after, "the cache pinned the spinner to one frame")
 }
 
-// cold recomputes the output pane from scratch, so a test can compare
-// what the skip left on screen against what a forced redraw gives.
+// coldDetail recomputes the pane, for comparing against the skip.
 func (m Model) coldDetail() string {
 	m.detail = detailKey{}
 	m.refreshViewport()
 	return m.viewContent
 }
 
-// The output pane must never show content the current state would not
-// produce. Every input its key claims to cover is changed in turn, on
-// the row the pane is actually showing and with columnar output, which
-// is what the pane draws width-sensitively.
+// The pane must never show content the current state would not
+// produce. Columnar, since that is what it draws width-sensitively.
 func TestDetailCache_NeverGoesStale(t *testing.T) {
 	m := session(4, 3, 6)
 	rows := m.rows()
-	// Rows must draw differently, or moving the cursor between them
-	// proves nothing about the key.
+	// Rows must draw differently, or a cursor move proves nothing.
 	m.apply(event.CallEnded{Call: rows[2].id, Result: event.Result{Stdout: "row two is its own thing\n"}})
 
-	// A fresh Call, because a row binds its view once: feeding an
-	// existing row a second result leaves it drawing the first.
+	// A fresh Call: a row binds its view once, so a second result on
+	// an existing row would leave it drawing the first.
 	shown := uuid.Must(uuid.NewV7())
 	m.apply(event.CallProposed{Call: shown, Tool: "bash", Args: map[string]any{"command": "df -h"}})
 	m.nav.cursor = len(m.rows()) - 1
@@ -478,8 +466,7 @@ func TestDetailCache_NeverGoesStale(t *testing.T) {
 		{"usage opens", func(m *Model) { m.panel.open = panelUsage }},
 		{"help opens", func(m *Model) { m.panel.open = panelHelp }},
 		{"the panel closes", func(m *Model) { m.panel.open = panelNone }},
-		// Through layout.width: sizeViewport derives the column widths,
-		// so setting outputColW directly is overwritten immediately.
+		// Via layout.width: sizeViewport derives outputColW from it.
 		{"the terminal narrows", func(m *Model) { m.layout.width = 74; m.sizeViewport() }},
 		{"the terminal widens", func(m *Model) { m.layout.width = 190; m.sizeViewport() }},
 		{"the terminal shortens", func(m *Model) { m.layout.height = 20; m.sizeViewport() }},
@@ -514,10 +501,8 @@ func TestDetailCache_ScrollingDoesNotRedraw(t *testing.T) {
 	assert.Equal(t, was, got.detail, "a scroll changed the key, so the content was redrawn")
 }
 
-// Whether the skip is safe is decided entirely by what the key
-// covers, so this asserts coverage directly: change one input the
-// pane draws from, and the key must change. Comparing rendered
-// content cannot do this, because two inputs often draw the same.
+// The skip is only as safe as the key is complete, and comparing
+// rendered content misses fields, since two inputs often draw alike.
 func TestDetailKey_CoversEverythingThePaneDrawsFrom(t *testing.T) {
 	inputs := []struct {
 		name string
