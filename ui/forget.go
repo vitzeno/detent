@@ -9,11 +9,11 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Deleting a stored session, which nothing undoes: the list of what
-// goes is in the pane, and the question below it defaults to cancel.
+// Deleting a stored session. What goes is in the pane; the question
+// below it defaults to cancel.
 
 // runForget handles /delete <id or name>. The argument is required:
-// there is no sensible default for a thing that cannot come back.
+// nothing that cannot come back gets a default.
 func (m Model) runForget(input string) (tea.Model, tea.Cmd) {
 	arg := strings.TrimSpace(strings.TrimPrefix(input, "/delete"))
 	if arg == "" {
@@ -47,8 +47,7 @@ func (m Model) forgetTarget(arg string) (*event.SessionSummary, string) {
 	return nil, fmt.Sprintf("no session %q", arg)
 }
 
-// confirmForget publishes the intent. The store reports the outcome,
-// so nothing here claims one.
+// confirmForget publishes the intent; the store reports the outcome.
 func (m Model) confirmForget() (tea.Model, tea.Cmd) {
 	s := m.forget.target
 	m.forget.target = nil
@@ -65,8 +64,7 @@ func (m Model) cancelForget() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// forgetLines names everything that goes, because nothing brings any
-// of it back and a count would not say what was lost.
+// forgetLines names what goes: a count would not say what was lost.
 func (m *Model) forgetLines() []string {
 	s := m.forget.target
 	if s == nil {

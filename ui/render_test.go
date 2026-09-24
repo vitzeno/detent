@@ -779,9 +779,8 @@ func undoTurn(t *testing.T) Model {
 	return m
 }
 
-// A checkpoint restores a container. It cannot un-file an issue, and
-// a rollback that quietly does less than a human expects is the worst
-// thing this page could do.
+// A checkpoint restores a container; it cannot un-file an issue, and
+// doing less than a human expects is the worst thing here.
 func TestUndoPage_NamesWhatItCannotReverse(t *testing.T) {
 	next, _ := undoTurn(t).runUndo("/undo 1")
 	got := next.(Model)

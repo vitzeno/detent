@@ -11,8 +11,7 @@ import (
 )
 
 // DefaultContextTokens caps the transcript, resent whole every Step.
-// A ceiling, not what is billed. Sized for a large window: a small
-// local model wants context_tokens set, or nothing ever compacts.
+// Sized for a large window; a small local one wants context_tokens.
 const (
 	DefaultContextTokens = 200_000
 	BytesPerToken        = 4

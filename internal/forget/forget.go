@@ -27,9 +27,8 @@ func Watch(bus *event.Bus, sessions Sessions, current uuid.UUID, opts ...Option)
 	return stop
 }
 
-// Sessions is the store, declared here at its consumer so this needs
-// no database to test — which matters for the one path that destroys
-// things.
+// Sessions is the store, declared at its consumer so the one path
+// that destroys things tests without a database.
 type Sessions interface {
 	Delete(session uuid.UUID) (bool, error)
 }

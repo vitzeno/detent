@@ -275,8 +275,7 @@ func (m *Model) toggleExpand(r *callRow) {
 	m.histRev++
 }
 
-// forgetKey answers the delete question. Cancel is every key but one:
-// nothing brings a deleted session back.
+// forgetKey answers the delete question. Every key but y cancels.
 func (m Model) forgetKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":

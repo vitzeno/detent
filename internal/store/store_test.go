@@ -291,8 +291,8 @@ func TestRename_ManySessionsMayBeUnnamed(t *testing.T) {
 	}
 }
 
-// Delete takes the events with it: the foreign key cascades, so a
-// session that lists as gone leaves nothing behind in the database.
+// The foreign key cascades: a session that lists as gone leaves
+// nothing behind.
 func TestDelete_TakesTheEventsWithIt(t *testing.T) {
 	s := open(t)
 	keep, drop := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
@@ -319,8 +319,7 @@ func TestDelete_TakesTheEventsWithIt(t *testing.T) {
 	assert.Len(t, kept, 2, "the wrong session lost records")
 }
 
-// Deleting what was never there is not an error, but it is worth
-// saying so: a typo should not read as success.
+// Not an error, but worth saying: a typo should not read as success.
 func TestDelete_SaysWhenThereWasNothingToDelete(t *testing.T) {
 	s := open(t)
 	gone, err := s.Delete(uuid.Must(uuid.NewV7()))

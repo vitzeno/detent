@@ -1,8 +1,5 @@
 package logging
 
-// Setup takes the session positionally and the rest as options, the
-// way every other constructor here does.
-
 // Option is one knob on Setup.
 type Option func(*settings)
 

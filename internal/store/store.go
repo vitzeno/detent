@@ -167,8 +167,8 @@ func usableName(name string) error {
 	return nil
 }
 
-// Delete forgets a session and every event in it. Irreversible, and
-// reports whether there was anything there to forget.
+// Delete forgets a session and its events, reporting whether there
+// was anything to forget.
 func (s *Store) Delete(session uuid.UUID) (bool, error) {
 	res, err := s.db.Exec(deleteSession, session.String())
 	if err != nil {

@@ -13,9 +13,8 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// A hosted endpoint by default: it needs a key, but its window is
-// large enough that the transcript budget is a ceiling rather than
-// something a session runs into every other Step.
+// Hosted by default: it needs a key, but its window is large enough
+// that the transcript budget stays a ceiling.
 const (
 	DefaultBaseURL = "https://openrouter.ai/api/v1"
 	DefaultModel   = "openai/gpt-6-luna"
