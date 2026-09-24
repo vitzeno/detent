@@ -352,3 +352,41 @@ func TestCompact_StillCutsWhenTheCutReachesBudget(t *testing.T) {
 	assert.Equal(t, 1, s.calls)
 	assert.LessOrEqual(t, tr.bytes(), budget)
 }
+
+// Compaction is a model round trip that stalls the Turn for seconds.
+// Saying so before it starts is the difference between a wait and a
+// hang.
+func TestCompact_SaysSoBeforeItStalls(t *testing.T) {
+	big := strings.Repeat("x", 4000)
+	replies := []model.Reply{
+		{Calls: []event.ToolCall{bashCall("a", "one")}},
+		{Calls: []event.ToolCall{bashCall("b", "two")}},
+	}
+	r := rigWith(t, event.New(), &fakeModel{replies: replies}, &fakeRunner{out: big + "\n"},
+		WithContextTokens(200), WithSummarizer(stubSummarizer{out: "earlier work"}))
+	// Two Turns: nothing inside the open one is droppable, so the
+	// first has to close before there is anything to compact.
+	r.run("go")
+	r.run("again")
+
+	require.NotEmpty(t, r.of(event.CompactedKind), "the test needs compaction to have run")
+	var said bool
+	for _, e := range r.of(event.NoticeKind) {
+		if strings.Contains(e.(event.Notice).Text, "compact") {
+			said = true
+		}
+	}
+	assert.True(t, said, "compaction stalled the Turn without saying so")
+}
+
+// A Turn under budget must not flash a compaction that never happens.
+func TestCompact_SaysNothingWhenItDoesNotRun(t *testing.T) {
+	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("a", "ls")}}})
+	r.run("go")
+
+	require.Empty(t, r.of(event.CompactedKind), "nothing should have compacted")
+	for _, e := range r.of(event.NoticeKind) {
+		assert.NotContains(t, e.(event.Notice).Text, "compact",
+			"announced a compaction that never ran")
+	}
+}

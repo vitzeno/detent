@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -87,6 +88,15 @@ func (m *Model) apply(ev event.Event) {
 
 	case event.StepEnded:
 		m.steps++
+		if v.Usage.PromptTokens > 0 {
+			m.context = v.Usage.PromptTokens
+		}
+
+	case event.Compacted:
+		// The next Step measures the new size; until then the old
+		// reading is stale and would overstate the budget.
+		m.context = 0
+		m.noteOK(fmt.Sprintf("compacted, %d messages summarised", v.Dropped))
 
 	case event.Notice:
 		m.noteLevel(v.Level, v.Text)

@@ -230,16 +230,38 @@ func (e *Engine) appended(turn, step uuid.UUID, fn func() []event.Message) {
 	}
 }
 
-// compact publishes what it replaced, because compaction rewrites the
-// front and a replay that could not see it would rebuild a different
-// transcript.
+// compact announces before it starts, since summarising is a model
+// round trip that stalls the Turn, and publishes what it replaced so
+// a replay rebuilds the same transcript rather than a different one.
 func (e *Engine) compact(ctx context.Context, t *turnState) {
+	if !e.wouldCompact() {
+		return
+	}
+	e.bus.Publish(event.Notice{Level: "info", Text: "compacting the transcript"})
+
 	var dropped int
 	var note string
 	e.trLock(func() { dropped, note = e.tr.compact(ctx, e.contextTokens, e.summarizer) })
 	if dropped > 0 {
 		e.bus.Publish(event.Compacted{Turn: t.id, Dropped: dropped, Note: note})
 	}
+}
+
+// budget is the transcript ceiling, resolved the way compact resolves
+// it, so a front-end measures against what actually applies.
+func (e *Engine) budget() int {
+	if e.contextTokens <= 0 {
+		return DefaultContextTokens
+	}
+	return e.contextTokens
+}
+
+// wouldCompact reports whether the transcript is over budget, so the
+// notice is not published for a compact that returns immediately.
+func (e *Engine) wouldCompact() bool {
+	over := false
+	e.trLock(func() { over = e.tr.bytes() > e.budget()*BytesPerToken })
+	return over
 }
 
 // trLock runs fn holding the transcript lock. Never used around

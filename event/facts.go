@@ -26,6 +26,9 @@ type SessionStarted struct {
 	Recorded bool
 	// Resumed is how many stored records this run began from.
 	Resumed int
+	// ContextTokens is the transcript budget, which a Step's
+	// PromptTokens is measured against. Zero means nobody said.
+	ContextTokens int
 }
 
 func (SessionStarted) Kind() Kind { return SessionStartedKind }
