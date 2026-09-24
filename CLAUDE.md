@@ -237,7 +237,12 @@ adding a fat dependency fails with the transitive import named.
   itself, which is the entire point of a loop. Under `strict: true`
   every property must appear in `required`, so an optional parameter
   is nullable rather than omitted — found by running it, not by
-  asserting on it.
+  asserting on it. `web_search` is what proves the rule holds even for
+  the network: it lowers to one curl against a **keyless** engine, so
+  there is no API key to put in the container, in the command, or in
+  the log. Reading a result stays an ordinary `bash` curl, which is the
+  distinction worth keeping — searching is the harness reaching out,
+  fetching is a command, and only the second goes through flagging.
 
 - **`internal/model`** — the tool-calling client. `Complete` is one
   Step. The transcript's own types (`Message`, `ToolCall`, `Role`)

@@ -22,6 +22,7 @@ func Standard() *Registry {
 	r.Register(ReadFile{})
 	r.Register(WriteFile{})
 	r.Register(ListDir{})
+	r.Register(WebSearch{})
 	return r
 }
 
