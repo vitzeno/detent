@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/ui/markdown"
 	"github.com/vitzeno/detent/views"
@@ -85,6 +86,10 @@ func fallbackChain(r *callRow, output string) []*viewspec.Compiled {
 		return []*viewspec.Compiled{compiledMarkdown, compiledPlain}
 	}
 	var chain []*viewspec.Compiled
+	// A tool that declared its shape is not guessing, so it goes first.
+	if r.renders == event.RendersMarkdown {
+		return []*viewspec.Compiled{compiledMarkdown, compiledPlain}
+	}
 	kind := r.kind()
 	if kind == "file_content" && markdown.Wants(r.command, output) {
 		chain = append(chain, compiledMarkdown)

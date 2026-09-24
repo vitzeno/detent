@@ -550,3 +550,32 @@ func TestBlockCache_ARunningCallKeepsSpinning(t *testing.T) {
 
 	assert.NotEqual(t, before, after, "the running call's spinner is frozen by the cache")
 }
+
+// web_search output is markdown from a reader, so links and emphasis
+// are worth drawing rather than showing as their source.
+func TestFallbackChain_AToolThatDeclaresMarkdownGetsIt(t *testing.T) {
+	const searchOutput = "Title: containerd at DuckDuckGo\n\nMarkdown Content:\n" +
+		"1.[containerd docs](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fcontainerd.io)\n" +
+		"An open and reliable **container** runtime.\n"
+
+	declared := &callRow{command: "web_search query=containerd", renders: event.RendersMarkdown,
+		result: &event.Result{Stdout: searchOutput}}
+	assert.Same(t, compiledMarkdown, fallbackChain(declared, searchOutput)[0],
+		"a declared markdown shape did not reach the markdown view")
+
+	// The same bytes with nothing declared stay on the plain path,
+	// since the body does not open like markdown.
+	plain := &callRow{command: "bash", result: &event.Result{Stdout: searchOutput}}
+	assert.NotSame(t, compiledMarkdown, fallbackChain(plain, searchOutput)[0])
+}
+
+// A judged kind must not override what the tool actually knows.
+func TestFallbackChain_ADeclaredShapeBeatsAJudgedGuess(t *testing.T) {
+	r := &callRow{
+		command: "web_search query=containerd", renders: event.RendersMarkdown,
+		result: &event.Result{Stdout: "Title: x\n"},
+		post:   &verdict{renderKind: "plain_text", fromJudge: true},
+	}
+	assert.Same(t, compiledMarkdown, fallbackChain(r, "Title: x\n")[0],
+		"the judge's guess overrode the tool's own answer")
+}

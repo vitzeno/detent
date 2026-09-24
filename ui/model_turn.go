@@ -51,6 +51,9 @@ type callRow struct {
 	// command is what the human reads: the tool's arguments, rendered.
 	command string
 	prose   string
+	// renders is the shape the tool declared, which beats a judged
+	// guess because the tool knows and the judge is estimating.
+	renders string
 
 	risk    event.Risk
 	running bool

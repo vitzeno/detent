@@ -472,6 +472,13 @@ Start from what the feature actually is:
   it in `ui/apply.go`. Three edits, each provable on its own, and the
   compiler catches the first two.
 
+A tool that knows how its output should be read says so in
+`Spec.Renders`, which rides on `CallProposed` and beats a judged
+render kind, because the tool knows and the judge is estimating. No
+shipped tool claims one: `web_search` returns markdown but glamour
+prints every link's destination, and DuckDuckGo's redirects double the
+output.
+
 There is no DTO mirror to keep in step any more. The thing that
 replaced it is the rule that `event` may import nothing but the
 standard library and `viewspec` — break that and the boundary is back.

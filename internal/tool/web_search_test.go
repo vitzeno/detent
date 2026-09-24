@@ -79,3 +79,9 @@ func TestWebSearch_RefusesAnEmptyQuery(t *testing.T) {
 func TestWebSearch_IsReadOnly(t *testing.T) {
 	assert.Equal(t, event.MutRead, WebSearch{}.Describe().Mutability)
 }
+
+// Deliberately no declared shape: glamour prints every link's
+// destination, and DuckDuckGo's redirects double the output.
+func TestWebSearch_DoesNotClaimAShape(t *testing.T) {
+	assert.Empty(t, WebSearch{}.Describe().Renders)
+}

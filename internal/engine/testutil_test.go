@@ -135,7 +135,14 @@ func newRig(t *testing.T, replies []model.Reply, opts ...Option) *rig {
 // rigWith takes the runner, so a test can supply one that snapshots.
 func rigWith(t *testing.T, bus *event.Bus, fm *fakeModel, runner Runner, opts ...Option) *rig {
 	t.Helper()
-	eng := New(bus, fm, tool.Standard(), fakeSelector{runner}, opts...)
+	return rigWithTools(t, bus, fm, runner, tool.Standard(), opts...)
+}
+
+// rigWithTools takes the registry, so a test can add a tool the
+// shipped set does not have.
+func rigWithTools(t *testing.T, bus *event.Bus, fm *fakeModel, runner Runner, reg *tool.Registry, opts ...Option) *rig {
+	t.Helper()
+	eng := New(bus, fm, reg, fakeSelector{runner}, opts...)
 	inner, _ := runner.(*fakeRunner)
 	if s, ok := runner.(*snapRunner); ok {
 		inner = s.fakeRunner

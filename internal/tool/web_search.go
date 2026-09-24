@@ -22,6 +22,9 @@ func (WebSearch) Describe() Spec {
 			{Name: "query", Type: TypeString, Desc: "what to search for, as you would type it", Required: true},
 		},
 		Mutability: event.MutRead,
+		// Renders stays unset: the reader returns markdown, but
+		// glamour prints every link's destination and DuckDuckGo's
+		// redirects are long enough to double the output.
 	}
 }
 

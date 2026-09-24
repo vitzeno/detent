@@ -20,6 +20,8 @@ type Spec struct {
 	// Mutability floors the risk chain without a model call. Empty
 	// means unknown, which is bash and only bash.
 	Mutability string
+	// Renders is how the output should be rendered, empty leaves it to the judge and the heuristics
+	Renders string
 }
 
 // Param is one argument, in the subset of JSON Schema every endpoint agrees on.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/model"
+	"github.com/vitzeno/detent/internal/tool"
 )
 
 // The phase gate, part one: a Step asking for several Calls runs them
@@ -277,3 +278,40 @@ func TestEngine_ResetForgetsTheTranscript(t *testing.T) {
 	require.Eventually(t, func() bool { return len(r.eng.Transcript()) == 0 },
 		2*time.Second, 10*time.Millisecond)
 }
+
+// A front-end cannot ask the registry, so the tool's own answer about
+// how to read its output has to travel on the fact.
+func TestCallProposed_CarriesTheToolsDeclaredShape(t *testing.T) {
+	reg := tool.Standard()
+	reg.Register(markdownTool{})
+	call := event.ToolCall{ID: "m1", Name: "declares_markdown"}
+	r := rigWithTools(t, event.New(), &fakeModel{replies: []model.Reply{{Calls: []event.ToolCall{call}}}},
+		&fakeRunner{out: "ok\n"}, reg)
+	r.run("go")
+
+	proposed := r.of(event.CallProposedKind)
+	require.Len(t, proposed, 1)
+	assert.Equal(t, event.RendersMarkdown, proposed[0].(event.CallProposed).Renders,
+		"the tool's answer did not reach the fact")
+}
+
+// No tool ships with an opinion, and inventing one would send ordinary
+// command output through a markdown renderer.
+func TestCallProposed_LeavesRendersEmptyWhenTheToolHasNoOpinion(t *testing.T) {
+	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "ls")}}})
+	r.run("go")
+
+	proposed := r.of(event.CallProposedKind)
+	require.Len(t, proposed, 1)
+	assert.Empty(t, proposed[0].(event.CallProposed).Renders)
+}
+
+// markdownTool stands in for one that knows its output is a document,
+// since none of the shipped tools claims a shape today.
+type markdownTool struct{}
+
+func (markdownTool) Name() string { return "declares_markdown" }
+func (markdownTool) Describe() tool.Spec {
+	return tool.Spec{Description: "x", Mutability: event.MutRead, Renders: event.RendersMarkdown}
+}
+func (markdownTool) Lower(tool.Args) (string, error) { return "true", nil }

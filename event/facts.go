@@ -1,8 +1,9 @@
 package event
 
 import (
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/viewspec"
 )
@@ -146,7 +147,13 @@ type CallProposed struct {
 	Tool       string
 	Args       map[string]any
 	Rationale  string
+	// Renders is how the tool says its output should be read
+	// It is a fact so it beats a judged guess
+	Renders string
 }
+
+// RendersMarkdown says a tool's output is a md document
+const RendersMarkdown = "markdown"
 
 func (CallProposed) Kind() Kind { return CallProposedKind }
 

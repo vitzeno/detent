@@ -3,10 +3,11 @@ package engine
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/capture"
@@ -72,7 +73,8 @@ func (e *Engine) plan(step uuid.UUID, reply model.Reply) []*callPlan {
 	for i, c := range reply.Calls {
 		p := &callPlan{id: uuid.Must(uuid.NewV7()), call: c}
 		out = append(out, p)
-		e.bus.Publish(event.CallProposed{Call: p.id, Step: step, Tool: c.Name, Args: c.Args})
+		e.bus.Publish(event.CallProposed{Call: p.id, Step: step, Tool: c.Name, Args: c.Args,
+			Renders: e.renders(c.Name)})
 
 		switch {
 		case c.Err != "":
@@ -215,4 +217,15 @@ func formatResult(cmd string, r event.Result) string {
 		b.WriteString("\n[output truncated at capture]")
 	}
 	return b.String()
+}
+
+// renders asks the tool how its output should be read, so a front-end
+// does not have to guess at a shape the tool already knows
+// this is advisory, the front-end may choose to respect it or not
+func (e *Engine) renders(name string) string {
+	t, ok := e.tools.Lookup(name)
+	if !ok {
+		return ""
+	}
+	return t.Describe().Renders
 }
