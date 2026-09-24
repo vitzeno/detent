@@ -24,6 +24,24 @@ type turnBlock struct {
 	// only what it can actually restore.
 	undoable bool
 	err      string
+
+	// cache is this block's last drawing. Behind a pointer because
+	// View works on a copy of Model and must still be able to fill it.
+	cache *blockCache
+}
+
+// blockKey is everything a block's drawing depends on. Comparable, so
+// a hit is one equality check. Miss it and the pane renders stale.
+type blockKey struct {
+	rev, width int
+	focused    *callRow // nil unless the cursor is in this block
+	spinner    string   // only the live block ever draws one
+}
+
+type blockCache struct {
+	key      blockKey
+	lines    []string
+	cursorAt int
 }
 
 // callRow is one tool call, or the model's own words. Exactly one of

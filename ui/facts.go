@@ -12,6 +12,9 @@ import (
 // apply folds one fact into the Model, and is the whole of how the UI
 // learns anything. A test drives it with events and no harness.
 func (m *Model) apply(ev event.Event) {
+	// Every fact is a potential content change, so the history caches
+	// go stale here rather than at each of a dozen mutation sites.
+	m.histRev++
 	switch v := ev.(type) {
 	case event.SessionStarted:
 		m.run = v

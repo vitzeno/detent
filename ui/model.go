@@ -27,7 +27,11 @@ type Model struct {
 	spinner spinner.Model
 
 	blocks []*turnBlock
-	cur    *turnBlock
+	// histRev changes whenever a block's content does, which is what
+	// every block cache is keyed on. apply bumps it for facts;
+	// toggleExpand is the only other thing that may.
+	histRev int
+	cur     *turnBlock
 
 	mode    mode
 	waiting bool

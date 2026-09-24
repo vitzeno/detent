@@ -292,3 +292,136 @@ func TestNavUp_PinsTheOffsetOnLeavingFollow(t *testing.T) {
 	all, _ := m.historyAll()
 	assert.Equal(t, len(all)-20, got.nav.histOffset)
 }
+
+// uncached drops every block cache, so a test can compare what was
+// drawn from cache against what a cold render produces.
+func (m Model) uncached() Model {
+	for _, b := range m.blocks {
+		b.cache = nil
+	}
+	return m
+}
+
+// The one thing a cache can do wrong. Every mutation the UI supports
+// is applied, and after each the cached drawing must equal a cold one.
+func TestBlockCache_NeverGoesStale(t *testing.T) {
+	m := session(6, 3, 8)
+	rows := m.rows()
+	turn := m.blocks[2].id
+	call := m.blocks[2].rows[1].id
+
+	steps := []struct {
+		name string
+		do   func(m *Model)
+	}{
+		{"cursor moves", func(m *Model) { m.nav.cursor = 4 }},
+		{"cursor moves again", func(m *Model) { m.nav.cursor = 9 }},
+		{"a row expands", func(m *Model) { m.toggleExpand(rows[4]) }},
+		{"the same row shuts", func(m *Model) { m.toggleExpand(rows[4]) }},
+		{"output arrives", func(m *Model) {
+			m.apply(event.OutputChunk{Call: call, Line: "a new line of output"})
+		}},
+		{"a verdict lands", func(m *Model) {
+			m.apply(event.CallJudged{Call: call, Status: "failed", Attention: 0.95, FromJudge: true})
+		}},
+		{"a turn ends", func(m *Model) {
+			m.apply(event.TurnEnded{Turn: turn, Reason: event.EndError, Summary: "it broke"})
+		}},
+		{"a checkpoint lands", func(m *Model) { m.apply(event.CheckpointTaken{Turn: turn}) }},
+		{"the pane narrows", func(m *Model) { m.layout.histColW = 44 }},
+		{"a new turn starts", func(m *Model) {
+			m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 7, Prompt: "one more"})
+		}},
+	}
+
+	for _, s := range steps {
+		s.do(&m)
+		warm, warmCursor := m.historyAll()
+		cold, coldCursor := m.uncached().historyAll()
+		require.Equal(t, cold, warm, "after %s: the cache drew something a cold render would not", s.name)
+		require.Equal(t, coldCursor, warmCursor, "after %s: cursor line diverged", s.name)
+	}
+}
+
+// The cache exists to be hit. A test that only checked correctness
+// would pass with caching switched off entirely.
+func TestBlockCache_IsActuallyHit(t *testing.T) {
+	m := session(40, 3, 8)
+	m.nav.cursor = 60
+	_, _ = m.historyAll()
+
+	cached := 0
+	for _, b := range m.blocks {
+		if b.cache != nil {
+			cached++
+		}
+	}
+	require.Equal(t, len(m.blocks), cached, "every block should have been cached")
+
+	// Move the cursor one row: only the block it left and the block it
+	// joined may redraw.
+	before := make([]*blockCache, len(m.blocks))
+	for i, b := range m.blocks {
+		before[i] = b.cache
+	}
+	m.nav.cursor = 61
+	_, _ = m.historyAll()
+
+	redrawn := 0
+	for i, b := range m.blocks {
+		if b.cache != before[i] {
+			redrawn++
+		}
+	}
+	assert.LessOrEqual(t, redrawn, 2, "a cursor move redrew %d blocks, not the two it touches", redrawn)
+}
+
+// markedLine is which rendered line carries the cursor mark, or -1.
+func markedLine(m Model) int {
+	lines, _ := m.historyAll()
+	for i, l := range lines {
+		if strings.Contains(stripANSI(l), "▸") {
+			return i
+		}
+	}
+	return -1
+}
+
+// Equivalence alone cannot see a cursor that never renders, because a
+// cold draw would get it equally wrong. This asserts the mark exists,
+// lands on one line, and moves when the cursor does.
+func TestHistory_CursorMarkFollowsTheCursor(t *testing.T) {
+	m := session(6, 3, 0)
+	m.nav.cursor = 2
+	first := markedLine(m)
+	require.NotEqual(t, -1, first, "the focused row carries no mark")
+
+	m.nav.cursor = 11
+	second := markedLine(m)
+	require.NotEqual(t, -1, second, "the mark vanished when the cursor moved")
+	assert.NotEqual(t, first, second, "the mark did not move with the cursor")
+
+	lines, _ := m.historyAll()
+	marks := 0
+	for _, l := range lines {
+		if strings.Contains(stripANSI(l), "▸") {
+			marks++
+		}
+	}
+	assert.Equal(t, 1, marks, "exactly one row is focused at a time")
+}
+
+// The live block redraws per spinner frame, or "thinking…" freezes
+// while the request is still running.
+func TestBlockCache_TheSpinnerStillTurns(t *testing.T) {
+	m := session(3, 2, 0)
+	turn := uuid.Must(uuid.NewV7())
+	m.apply(event.TurnStarted{Turn: turn, N: 4, Prompt: "still working"})
+	require.True(t, m.waiting)
+
+	before, _ := m.historyAll()
+	m.spinner, _ = m.spinner.Update(m.spinner.Tick())
+	after, _ := m.historyAll()
+
+	assert.NotEqual(t, before, after, "the cache pinned the spinner to one frame")
+}

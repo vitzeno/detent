@@ -46,10 +46,11 @@ func (m Model) historyTail(height int) []string {
 	for bi := len(m.blocks) - 1; bi >= 0; bi-- {
 		block, _ := m.blockLines(m.blocks[bi], focused)
 		if bi > 0 {
-			block = append([]string{""}, block...)
+			lines = join([]string{""}, block, lines)
+		} else {
+			lines = join(block, lines)
 		}
-		lines = append(block, lines...)
-		if countLines(lines) >= height {
+		if len(lines) >= height {
 			break
 		}
 	}
@@ -59,29 +60,85 @@ func (m Model) historyTail(height int) []string {
 	return lines
 }
 
-// blockLines renders one block against its rail, reporting where the
-// cursor landed inside it or -1 when it is elsewhere.
+// blockLines is the cached front of drawBlock. Scrolling moves the
+// cursor and nothing else, so every block but the two the cursor left
+// and joined is a hit, and a thousand Turn session stops being a
+// thousand lipgloss renders per keystroke.
 func (m Model) blockLines(b *turnBlock, focused *callRow) (lines []string, cursorAt int) {
+	key := m.blockKey(b, focused)
+	if b.cache != nil && b.cache.key == key {
+		return b.cache.lines, b.cache.cursorAt
+	}
+	lines, cursorAt = m.drawBlock(b, key.focused)
+	b.cache = &blockCache{key: key, lines: lines, cursorAt: cursorAt}
+	return lines, cursorAt
+}
+
+// blockKey collects what this block's drawing depends on. focused is
+// carried only when the cursor is inside, so a cursor moving between
+// two other blocks leaves this one's key alone.
+func (m Model) blockKey(b *turnBlock, focused *callRow) blockKey {
+	k := blockKey{rev: m.histRev, width: m.blockWidth()}
+	for _, r := range b.rows {
+		if r == focused {
+			k.focused = focused
+			break
+		}
+	}
+	if !b.ended && b == m.cur && m.waiting && !anyRunning(b) {
+		k.spinner = m.spinner.View()
+	}
+	return k
+}
+
+// drawBlock renders one block against its rail, reporting where the
+// cursor landed inside it or -1 when it is elsewhere.
+func (m Model) drawBlock(b *turnBlock, focused *callRow) (lines []string, cursorAt int) {
 	cursorAt = -1
 	var block []string
+	// Split on the way in, so a cached block is one entry per line and
+	// nothing downstream has to split again on every keystroke.
+	add := func(ss ...string) {
+		for _, s := range ss {
+			if strings.Contains(s, "\n") {
+				block = append(block, strings.Split(s, "\n")...)
+				continue
+			}
+			block = append(block, s)
+		}
+	}
 	for _, gl := range wrapPlain(b.prompt, m.blockWidth()) {
-		block = append(block, styleGoal.Render(gl))
+		add(styleGoal.Render(gl))
 	}
 	for _, r := range b.rows {
 		if focused != nil && r == focused {
 			cursorAt = len(block)
 		}
-		block = append(block, m.rowLines(r, focused)...)
+		add(m.rowLines(r, focused)...)
 		if r.expanded {
-			block = append(block, previewLines(r, m.blockWidth()-6)...)
+			add(previewLines(r, m.blockWidth()-6)...)
 		}
 	}
 	if b.ended {
-		block = append(block, m.turnBanner(b)...)
+		add(m.turnBanner(b)...)
 	} else if b == m.cur && m.waiting && !anyRunning(b) {
-		block = append(block, fmt.Sprintf("  %s %s", m.spinner.View(), styleFaint.Render("thinking…")))
+		add(fmt.Sprintf("  %s %s", m.spinner.View(), styleFaint.Render("thinking…")))
 	}
 	return m.railed(b, block), cursorAt
+}
+
+// join copies rather than appending onto a cached slice, which would
+// write into a backing array the cache still owns.
+func join(parts ...[]string) []string {
+	n := 0
+	for _, p := range parts {
+		n += len(p)
+	}
+	out := make([]string, 0, n)
+	for _, p := range parts {
+		out = append(out, p...)
+	}
+	return out
 }
 
 // focusedRow is the row the cursor is on, or nil when there are none.
@@ -100,15 +157,6 @@ func (m Model) focusedRow() *callRow {
 		at = len(rows) - 1
 	}
 	return rows[at]
-}
-
-// countLines counts real lines, since one entry may hold several.
-func countLines(entries []string) int {
-	n := 0
-	for _, e := range entries {
-		n += strings.Count(e, "\n") + 1
-	}
-	return n
 }
 
 // railWidth is the gutter the rail and its space occupy.

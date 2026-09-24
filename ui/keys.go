@@ -230,7 +230,7 @@ func (m Model) outputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 					return nm, nil
 				}
 			}
-			r.expanded = !r.expanded
+			m.toggleExpand(r)
 		}
 		return m, nil
 	}
@@ -249,12 +249,12 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.scrollViewport(msg.String())
 	case "enter":
 		if r := m.focused(); r != nil && !r.running {
-			r.expanded = !r.expanded
+			m.toggleExpand(r)
 		}
 		return m, nil
 	case "v", "space":
 		if r := m.focused(); r != nil {
-			r.expanded = !r.expanded
+			m.toggleExpand(r)
 		}
 		return m, nil
 	}
@@ -287,4 +287,12 @@ func (m Model) onEscape() (tea.Model, tea.Cmd) {
 		return m, m.send(event.Abort{Turn: m.cur.id})
 	}
 	return m, nil
+}
+
+// toggleExpand opens or shuts a row's preview. The only thing outside
+// apply that changes what history draws, so it is the only other
+// place histRev moves.
+func (m *Model) toggleExpand(r *callRow) {
+	r.expanded = !r.expanded
+	m.histRev++
 }

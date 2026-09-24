@@ -65,7 +65,7 @@ func (m Model) historyWindow() (window []string, offset int) {
 	// rendered. Offset is -1 because the total was never counted;
 	// navUp pins it before it is ever read.
 	if m.nav.follow {
-		lines := flatten(m.historyTail(m.nav.histHeight))
+		lines := m.historyTail(m.nav.histHeight)
 		if len(lines) > m.nav.histHeight {
 			lines = lines[len(lines)-m.nav.histHeight:]
 		}
@@ -87,24 +87,10 @@ func (m Model) historyWindow() (window []string, offset int) {
 	return lines[start:min(start+m.nav.histHeight, len(lines))], start
 }
 
-// historyAll flattens every entry and reports the cursor's line.
+// historyAll is every line, and which one the cursor is on. drawBlock
+// splits on the way into the cache, so an entry is already one line.
 func (m Model) historyAll() (lines []string, cursorLine int) {
-	entries, cursorEntry := m.historyLines()
-	for i, e := range entries {
-		if i == cursorEntry {
-			cursorLine = len(lines)
-		}
-		lines = append(lines, strings.Split(e, "\n")...)
-	}
-	return lines, cursorLine
-}
-
-func flatten(entries []string) []string {
-	out := make([]string, 0, len(entries))
-	for _, e := range entries {
-		out = append(out, strings.Split(e, "\n")...)
-	}
-	return out
+	return m.historyLines()
 }
 
 func (m Model) inputBar() string {
