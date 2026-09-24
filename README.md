@@ -112,6 +112,32 @@ process left behind, but a session you never come back to keeps its
 container and snapshot. `./bin/detent -prune` drops those, and leaves
 alone anything still running.
 
+## MCP
+
+Servers go in `.mcp.json`, pretty much the standard so one written for another client works here
+
+`~/.config/detent/mcp.json` and `./.mcp.json` merge, nearest wins
+Also `${VAR}` expands from the environment, so a committed file can name a token it does not hold
+
+```json
+{
+	"mcpServers": {
+		"github": {
+			"command": "docker",
+			"args": ["run", "-i", "--rm", "ghcr.io/github/github-mcp-server"]
+		},
+		"linear": { "type": "http", "url": "https://mcp.linear.app/mcp" }
+	}
+}
+```
+
+`./bin/detent -mcp` connects and lists what each offers. `/mcp` shows the
+same from inside
+
+These calls run in detent's process, not the container, and no checkpoint
+undoes one. So every MCP call is confirmed, whatever the server says about
+itself
+
 ## Configuration
 
 `./.detent.yaml` or `~/.config/detent/config.yaml`
