@@ -12,6 +12,7 @@ import (
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/capture"
 	"github.com/vitzeno/detent/internal/model"
+	"github.com/vitzeno/detent/internal/tool"
 )
 
 // runStep answers every Call however it went, keyed by the model's own
@@ -62,6 +63,9 @@ type callPlan struct {
 	risk   event.Risk
 	answer string
 	done   bool
+	// prepared is what the registry made of the call, and says which
+	// executor runs it.
+	prepared tool.Call
 }
 
 func (p *callPlan) finish(answer string) { p.answer, p.done = answer, true }
@@ -90,7 +94,7 @@ func (e *Engine) plan(step uuid.UUID, reply model.Reply) []*callPlan {
 			p.finish(err.Error())
 			continue
 		}
-		p.cmd = prepared.Command
+		p.prepared, p.cmd = prepared, prepared.Command
 		p.risk = e.assess(context.Background(), prepared)
 		if n := e.repeat.count(prepared.Command); n > DefaultRepeatLimit {
 			p.finish(fmt.Sprintf("Not run: this exact command has already run %d times and printed the same thing. Try something else.", n))
@@ -145,6 +149,10 @@ func (e *Engine) approve(ctx context.Context, t *turnState, p *callPlan) bool {
 }
 
 func (e *Engine) execute(ctx context.Context, p *callPlan) {
+	if p.prepared.Executor != "" {
+		e.invoke(ctx, p)
+		return
+	}
 	runner, mode := e.runners.Select(p.risk)
 	if runner == nil {
 		p.finish("No runner is wired; nothing could be executed.")
@@ -228,4 +236,36 @@ func (e *Engine) renders(name string) string {
 		return ""
 	}
 	return t.Describe().Renders
+}
+
+// invoke runs a Call with no command. Runner names the executor, so
+// the row says where it ran rather than implying the sandbox.
+func (e *Engine) invoke(ctx context.Context, p *callPlan) {
+	if e.invoker == nil {
+		p.finish("No invoker is wired for " + p.prepared.Executor + "; nothing could be executed.")
+		return
+	}
+	e.bus.Publish(event.CallStarted{Call: p.id, Runner: p.prepared.Executor})
+
+	start := time.Now()
+	res, err := invokeSafely(ctx, e.invoker, p.prepared)
+	out := event.Result{
+		ExitCode: res.ExitCode, Stdout: res.Stdout, Stderr: res.Stderr, Truncated: res.Truncated,
+	}
+	if err != nil {
+		out.Err = err.Error()
+	}
+	e.bus.Publish(event.CallEnded{Call: p.id, Result: out, Took: time.Since(start)})
+	p.finish(formatResult(p.cmd, out))
+}
+
+// invokeSafely turns a panicking Invoker into a failed Call, the way
+// runSafely does for a Runner.
+func invokeSafely(ctx context.Context, in Invoker, c tool.Call) (res capture.Result, err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			err = fmt.Errorf("invoker panicked: %v", v)
+		}
+	}()
+	return in.Invoke(ctx, c), nil
 }

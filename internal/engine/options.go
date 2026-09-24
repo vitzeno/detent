@@ -65,6 +65,10 @@ func WithAssessor(a Assessor) Option {
 // snapshot never covers.
 func WithWorktree(w Worktreer) Option { return func(e *Engine) { e.worktreer = w } }
 
+// WithInvoker wires what answers a Call with no command. Without one
+// those Calls come back saying so, rather than running.
+func WithInvoker(in Invoker) Option { return func(e *Engine) { e.invoker = in } }
+
 // WithDescription is what the session says about itself at startup,
 // for the fact published by Run.
 func WithDescription(model, judge string, network, recorded bool) Option {

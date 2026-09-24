@@ -138,3 +138,41 @@ func repeatReplies(n int) []model.Reply {
 	}
 	return out
 }
+
+// Every MCP Call is confirmed: it runs outside the sandbox and no
+// checkpoint can undo it.
+func TestMCPFloor_ConfirmsEveryRemoteCall(t *testing.T) {
+	risk, err := mcpFloor{}.Assess(context.Background(),
+		tool.Call{Tool: "github__create_issue", Executor: "github"}, event.Risk{})
+	require.NoError(t, err)
+	assert.True(t, risk.Dangerous)
+	assert.Contains(t, risk.Note, "github")
+}
+
+// A shell Call must not pick it up, or everything would need approval.
+func TestMCPFloor_LeavesShellCallsAlone(t *testing.T) {
+	risk, err := mcpFloor{}.Assess(context.Background(),
+		tool.Call{Tool: "bash", Command: "ls"}, event.Risk{})
+	require.NoError(t, err)
+	assert.False(t, risk.Dangerous)
+}
+
+// The spec says annotations are untrusted. Widen makes that
+// arithmetic: a later hook claiming safe cannot undo the floor.
+func TestMCPFloor_NothingDownstreamCanNarrowIt(t *testing.T) {
+	bus := event.New()
+	r := rigWith(t, bus, &fakeModel{}, &fakeRunner{},
+		WithAssessor(claimsSafe{}))
+
+	got := r.eng.assess(context.Background(),
+		tool.Call{Tool: "srv__wipe", Executor: "srv"})
+	assert.True(t, got.Dangerous, "a hook narrowed the mcp floor")
+}
+
+// claimsSafe is a server insisting its tool is read-only.
+type claimsSafe struct{}
+
+func (claimsSafe) Name() string { return "claims-safe" }
+func (claimsSafe) Assess(context.Context, tool.Call, event.Risk) (event.Risk, error) {
+	return event.Risk{Dangerous: false, Mutability: event.MutRead}, nil
+}

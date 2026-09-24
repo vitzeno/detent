@@ -53,7 +53,7 @@ func TestRegister_ABuiltInAlwaysWins(t *testing.T) {
 
 	after, _ := reg.Lookup("bash")
 	assert.Equal(t, before, after, "a server replaced a built-in")
-	assert.NotContains(t, added, "bash")
+	assert.NotContains(t, names(added), "bash")
 }
 
 // Truncation makes collisions likelier than the namespace alone, and
@@ -68,10 +68,10 @@ func TestRegister_RenamesRatherThanReplaces(t *testing.T) {
 
 	require.Len(t, first, 1)
 	require.Len(t, second, 1)
-	assert.NotEqual(t, first[0], second[0], "the second registration replaced the first")
-	legal(t, second[0])
+	assert.NotEqual(t, first[0].Name(), second[0].Name(), "the second registration replaced the first")
+	legal(t, second[0].Name())
 
-	for _, n := range append(first, second...) {
+	for _, n := range append(names(first), names(second)...) {
 		_, ok := reg.Lookup(n)
 		assert.True(t, ok, "%q was reported but not registered", n)
 	}
@@ -95,14 +95,14 @@ func TestRegister_PassesTheSchemaThrough(t *testing.T) {
 	})
 	require.Len(t, added, 1)
 
-	tl, ok := reg.Lookup(added[0])
+	tl, ok := reg.Lookup(added[0].Name())
 	require.True(t, ok)
 	assert.Equal(t, schema, tl.Describe().Raw)
 	assert.Equal(t, "srv", tl.Describe().Executor)
 
 	// And it reaches the model, not just the Spec: the two can
 	// differ, and only the second one is what gets sent.
-	assert.Equal(t, schema, parameters(t, reg, added[0]))
+	assert.Equal(t, schema, parameters(t, reg, added[0].Name()))
 }
 
 // parameters is the schema a request would carry for one tool.
@@ -130,7 +130,7 @@ func TestSchemas_ARawSchemaIsNotOfferedAsStrict(t *testing.T) {
 	for _, s := range reg.Schemas() {
 		fn := s["function"].(map[string]any)
 		switch fn["name"] {
-		case added[0]:
+		case added[0].Name():
 			sawMCP = true
 			assert.Equal(t, false, fn["strict"])
 		case "bash":
@@ -149,7 +149,7 @@ func TestPrepare_DoesNotValidateARawSchema(t *testing.T) {
 		{Name: "search", InputSchema: map[string]any{"type": "object"}},
 	})
 
-	call, err := reg.Prepare(added[0], map[string]any{"anything": "at all", "nested": map[string]any{"a": 1}})
+	call, err := reg.Prepare(added[0].Name(), map[string]any{"anything": "at all", "nested": map[string]any{"a": 1}})
 	require.NoError(t, err, "arguments were rejected before the server ever saw them")
 	assert.Equal(t, "srv", call.Executor)
 	assert.Equal(t, "at all", call.Args["anything"])
@@ -170,7 +170,7 @@ func TestPrepare_CommandDescribesTheCall(t *testing.T) {
 		{Name: "create_issue", InputSchema: map[string]any{"type": "object"}},
 	})
 
-	call, err := reg.Prepare(added[0], map[string]any{"repo": "detent", "title": "it broke"})
+	call, err := reg.Prepare(added[0].Name(), map[string]any{"repo": "detent", "title": "it broke"})
 	require.NoError(t, err)
 	assert.Contains(t, call.Command, "github__create_issue")
 	assert.Contains(t, call.Command, "repo=detent")
@@ -195,7 +195,7 @@ func TestRegister_FromALiveServer(t *testing.T) {
 
 	reg := tool.Standard()
 	added := Register(reg, s, tools)
-	assert.ElementsMatch(t, []string{"fake__alpha", "fake__beta"}, added)
+	assert.ElementsMatch(t, []string{"fake__alpha", "fake__beta"}, names(added))
 
 	call, err := reg.Prepare("fake__alpha", nil)
 	require.NoError(t, err)
@@ -204,4 +204,13 @@ func TestRegister_FromALiveServer(t *testing.T) {
 	tl, ok := reg.Lookup("fake__alpha")
 	require.True(t, ok)
 	assert.Equal(t, "alpha", tl.(Tool).Remote(), "the server's own name was lost")
+}
+
+// names is what Register registered, for asserting on.
+func names(tools []Tool) []string {
+	var out []string
+	for _, t := range tools {
+		out = append(out, t.Name())
+	}
+	return out
 }

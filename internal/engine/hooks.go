@@ -22,6 +22,19 @@ func (toolFloor) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Ris
 	return event.Risk{Mutability: c.Mutability}, nil
 }
 
+// mcpFloor confirms every Call that runs outside the sandbox: no
+// checkpoint can undo one, so a human sees each before it happens.
+type mcpFloor struct{}
+
+func (mcpFloor) Name() string { return "mcp" }
+
+func (mcpFloor) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
+	if c.Executor == "" {
+		return event.Risk{}, nil
+	}
+	return event.Risk{Dangerous: true, Note: "mcp: " + c.Executor}, nil
+}
+
 // regexHook is the backstop. It only ever adds emphasis, which Widen
 // now guarantees rather than merely documenting.
 type regexHook struct{}

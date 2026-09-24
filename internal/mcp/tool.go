@@ -10,14 +10,17 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// Register adds a server's tools and reports what it registered. A
-// taken name is renamed, never replaced: nothing may shadow bash.
-func Register(reg *tool.Registry, s *Server, tools []*sdk.Tool) []string {
-	var added []string
+// Register adds a server's tools and returns them. A taken name is
+// renamed, never replaced: nothing may shadow bash.
+func Register(reg *tool.Registry, s *Server, tools []*sdk.Tool) []Tool {
+	var added []Tool
 	for _, t := range tools {
-		name := free(reg, toolName(s.Name, t.Name))
-		reg.Register(Tool{name: name, remote: t.Name, server: s, spec: specOf(s.Name, t)})
-		added = append(added, name)
+		tl := Tool{
+			name:   free(reg, toolName(s.Name, t.Name)),
+			remote: t.Name, server: s, spec: specOf(s.Name, t),
+		}
+		reg.Register(tl)
+		added = append(added, tl)
 	}
 	return added
 }

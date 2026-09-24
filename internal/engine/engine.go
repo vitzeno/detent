@@ -31,6 +31,7 @@ type Engine struct {
 	runners RunnerSelector
 
 	assessors []Assessor
+	invoker   Invoker
 	repeat    *repeatHook
 
 	session uuid.UUID
@@ -79,6 +80,12 @@ type Runner interface {
 	Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error)
 }
 
+// Invoker answers a Call that has no command to run. internal/mcp
+// satisfies it, so the engine never imports a client.
+type Invoker interface {
+	Invoke(ctx context.Context, c tool.Call) capture.Result
+}
+
 // RunnerSelector picks host or sandbox per Call.
 type RunnerSelector interface {
 	Select(r event.Risk) (Runner, string)
@@ -113,7 +120,7 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 		o(e)
 	}
 	// Cheapest first, the network hook last.
-	e.assessors = append([]Assessor{toolFloor{}, regexHook{}, e.repeat}, e.assessors...)
+	e.assessors = append([]Assessor{toolFloor{}, mcpFloor{}, regexHook{}, e.repeat}, e.assessors...)
 	e.intents, e.unsub = bus.Subscribe(event.Intents())
 	return e
 }

@@ -17,14 +17,20 @@ import (
 // serve wires a real server to a real client over an in-memory pair,
 // so these exercise the protocol rather than a fake of it.
 func serve(t *testing.T, tools ...fake) *Server {
-	return servePaged(t, 0, tools...)
+	return serveAs(t, "fake", 0, tools...)
 }
 
 // servePaged takes the page size: the SDK's default is 1000, and a
 // test that never crosses a boundary proves nothing about the cursor.
 func servePaged(t *testing.T, pageSize int, tools ...fake) *Server {
+	return serveAs(t, "fake", pageSize, tools...)
+}
+
+// serveAs names the server, since detent keys servers by name and two
+// sharing one is a case the config cannot produce.
+func serveAs(t *testing.T, name string, pageSize int, tools ...fake) *Server {
 	t.Helper()
-	srv := sdk.NewServer(&sdk.Implementation{Name: "fake", Version: "1"},
+	srv := sdk.NewServer(&sdk.Implementation{Name: name, Version: "1"},
 		&sdk.ServerOptions{PageSize: pageSize})
 	for _, tl := range tools {
 		srv.AddTool(&sdk.Tool{
@@ -40,7 +46,7 @@ func servePaged(t *testing.T, pageSize int, tools ...fake) *Server {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ss.Close() })
 
-	s, err := Connect(ctx, "fake", client)
+	s, err := Connect(ctx, name, client)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 	return s
