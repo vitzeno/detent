@@ -167,6 +167,20 @@ func usableName(name string) error {
 	return nil
 }
 
+// Delete forgets a session and every event in it. Irreversible, and
+// reports whether there was anything there to forget.
+func (s *Store) Delete(session uuid.UUID) (bool, error) {
+	res, err := s.db.Exec(deleteSession, session.String())
+	if err != nil {
+		return false, fmt.Errorf("store: delete: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("store: delete: %w", err)
+	}
+	return n > 0, nil
+}
+
 // Truncate drops everything after an ordinal: undo, on disk.
 func (s *Store) Truncate(session uuid.UUID, after uint64) error {
 	_, err := s.db.Exec(deleteAfter, session.String(), after)

@@ -21,7 +21,7 @@ func (m *Model) sizeViewport() {
 	switch m.mode {
 	case modeConfirm:
 		bottom = len(strings.Split(m.confirmBox(), "\n"))
-	case modeBound, modeUndo:
+	case modeBound, modeUndo, modeForget:
 		bottom = len(strings.Split(m.questionBox(), "\n"))
 	}
 	avail := m.layout.height - 2 - islandOverhead - bottom

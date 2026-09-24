@@ -512,3 +512,34 @@ func TestPrune_LeavesALiveSessionAlone(t *testing.T) {
 	require.NoError(t, err, "prune broke a live session")
 	assert.Equal(t, "survived\n", res.Stdout)
 }
+
+// A deleted session must not leave a container nothing will resume.
+func TestForget_RemovesOneSessionsContainer(t *testing.T) {
+	if !daemonAvailable() {
+		t.Skip("containerd not reachable at", testSocket)
+	}
+	ctx := context.Background()
+	const ns = "detent-test-forget"
+	gone, kept := testContainerID(t), testContainerID(t)
+
+	for _, id := range []string{gone, kept} {
+		c := NewContainer(WithSocket(testSocket), WithNamespace(ns))
+		require.NoError(t, c.Start(ctx, id))
+	}
+	t.Cleanup(func() { _, _ = Prune(ctx, testSocket, ns) })
+
+	require.NoError(t, Forget(ctx, testSocket, ns, gone))
+
+	out, err := Prune(ctx, testSocket, ns)
+	require.NoError(t, err)
+	assert.NotContains(t, out.Containers, gone, "Forget left it for Prune")
+	assert.Contains(t, out.Containers, kept, "Forget took the wrong one")
+}
+
+// Forgetting a session that never had a container is not a failure.
+func TestForget_AbsentIsNotAnError(t *testing.T) {
+	if !daemonAvailable() {
+		t.Skip("containerd not reachable at", testSocket)
+	}
+	assert.NoError(t, Forget(context.Background(), testSocket, "detent-test-forget", testContainerID(t)))
+}

@@ -110,6 +110,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		RequestRollback{Turn: turn, RevertFiles: true},
 		ListSessions{},
 		ListServers{},
+		DeleteSession{Session: turn},
 		RenameSession{Session: turn, Name: "the sandbox bug"},
 		ResetSession{},
 	}

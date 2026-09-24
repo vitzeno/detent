@@ -22,4 +22,7 @@ const (
 	  GROUP BY s.id ORDER BY s.started DESC`
 
 	deleteAfter = `DELETE FROM events WHERE session = ? AND ordinal > ?`
+
+	// The events go with it: the foreign key cascades
+	deleteSession = `DELETE FROM sessions WHERE id = ?`
 )

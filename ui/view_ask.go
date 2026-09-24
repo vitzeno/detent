@@ -45,6 +45,9 @@ func (m Model) questionBox() string {
 	case modeUndo:
 		return styleCaution.Render("⚠ undo — your own files") + "\n" +
 			styleFaint.Render("  [n/enter] container only   [y] revert your files too   [esc] cancel")
+	case modeForget:
+		return styleDanger.Render("⚠ delete — this cannot be undone") + "\n" +
+			styleFaint.Render("  [y] delete   [n/enter/esc] cancel")
 	}
 	return ""
 }

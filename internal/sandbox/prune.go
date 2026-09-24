@@ -78,3 +78,15 @@ func pruneLeases(ctx context.Context, client *containerd.Client, out *Pruned) er
 	}
 	return nil
 }
+
+// Forget removes one session's container, snapshot and lease, so a
+// session being deleted does not leave a container nothing will
+// resume. Refuses one whose task is still running.
+func Forget(ctx context.Context, socket, namespace, sessionID string) error {
+	client, err := containerd.New(socket, containerd.WithDefaultNamespace(namespace))
+	if err != nil {
+		return fmt.Errorf("sandbox: connect %s: %w", socket, err)
+	}
+	defer client.Close()
+	return clearStale(ctx, client, sessionID)
+}

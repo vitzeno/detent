@@ -53,6 +53,7 @@ type Model struct {
 	// history and a notice says something just happened.
 	replaying bool
 	undo      undoState
+	forget    forgetState
 
 	// Counters for /usage and /status, folded from the stream rather
 	// than read back from anywhere.

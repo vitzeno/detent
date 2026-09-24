@@ -40,7 +40,7 @@ func (m Model) baseView() string {
 	switch m.mode {
 	case modeConfirm:
 		b.WriteString(m.confirmBox())
-	case modeBound, modeUndo:
+	case modeBound, modeUndo, modeForget:
 		b.WriteString(m.questionBox())
 	default:
 		b.WriteString(island.Render("", m.nav.focus == focusInput, strings.Split(m.inputBar(), "\n"), m.layout.width, m.prompt.Rows()))

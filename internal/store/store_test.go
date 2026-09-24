@@ -290,3 +290,40 @@ func TestRename_ManySessionsMayBeUnnamed(t *testing.T) {
 		assert.Empty(t, g.Name)
 	}
 }
+
+// Delete takes the events with it: the foreign key cascades, so a
+// session that lists as gone leaves nothing behind in the database.
+func TestDelete_TakesTheEventsWithIt(t *testing.T) {
+	s := open(t)
+	keep, drop := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	for _, id := range []uuid.UUID{keep, drop} {
+		require.NoError(t, s.Append(id, rec(1, event.SessionStarted{Session: id, Model: "m"})))
+		require.NoError(t, s.Append(id, rec(2, event.Notice{Text: "x"})))
+	}
+
+	gone, err := s.Delete(drop)
+	require.NoError(t, err)
+	assert.True(t, gone)
+
+	left, err := s.Sessions()
+	require.NoError(t, err)
+	require.Len(t, left, 1)
+	assert.Equal(t, keep, left[0].ID)
+
+	records, err := s.Replay(drop)
+	require.NoError(t, err)
+	assert.Empty(t, records, "the events outlived their session")
+
+	kept, err := s.Replay(keep)
+	require.NoError(t, err)
+	assert.Len(t, kept, 2, "the wrong session lost records")
+}
+
+// Deleting what was never there is not an error, but it is worth
+// saying so: a typo should not read as success.
+func TestDelete_SaysWhenThereWasNothingToDelete(t *testing.T) {
+	s := open(t)
+	gone, err := s.Delete(uuid.Must(uuid.NewV7()))
+	require.NoError(t, err)
+	assert.False(t, gone)
+}

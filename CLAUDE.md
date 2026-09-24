@@ -207,6 +207,7 @@ cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless
 ui          →  event, viewspec, views, version, logging + its own subpackages
 engine      →  event, tool, model, capture, classify (via an interface)
 mcp         →  event, tool, capture, the MCP SDK
+forget      →  event (the store and sandbox arrive as arguments)
 tool        →  event
 model       →  event
 event       →  the standard library, plus viewspec
@@ -344,6 +345,13 @@ adding a fat dependency fails with the transitive import named.
   is passed through rather than rebuilt, so those tools are not offered
   as `strict` and `Prepare` leaves their arguments to the server, which
   the spec says must validate them anyway.
+
+- **`internal/forget`** — what a deleted session leaves: its events,
+  and the container nothing will resume. The log stays, since a
+  diagnostic outliving the thing it describes is the point of one. The
+  store and the container remover are taken rather than imported, so
+  the one path that destroys things tests with nothing to destroy. The
+  running session is refused: its store and container are both open.
 
 - **`internal/headless`** — one prompt on a terminal, no TUI. A bus
   subscriber like any front-end, which is what makes it a fair test of

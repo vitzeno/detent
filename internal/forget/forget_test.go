@@ -1,0 +1,173 @@
+package forget
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/event"
+)
+
+// fakeSessions stands in for the store, so the one path that destroys
+// things is testable without anything to destroy.
+type fakeSessions struct {
+	mu      sync.Mutex
+	deleted []uuid.UUID
+	gone    bool
+	err     error
+}
+
+func (f *fakeSessions) Delete(id uuid.UUID) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deleted = append(f.deleted, id)
+	return f.gone, f.err
+}
+
+func (f *fakeSessions) calls() []uuid.UUID {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]uuid.UUID(nil), f.deleted...)
+}
+
+// rig wires a watcher to a bus and collects what it says.
+type rig struct {
+	bus      *event.Bus
+	notices  chan event.Notice
+	relisted chan struct{}
+}
+
+func start(t *testing.T, o Options) *rig {
+	t.Helper()
+	bus := event.New()
+	facts, unsub := bus.Subscribe(event.Only(event.NoticeKind, event.ListSessionsKind))
+	stop := Watch(bus, o)
+	t.Cleanup(func() { stop(); unsub(); bus.Close() })
+
+	r := &rig{bus: bus, notices: make(chan event.Notice, 8), relisted: make(chan struct{}, 8)}
+	go func() {
+		for rec := range facts {
+			switch e := rec.Event.(type) {
+			case event.Notice:
+				r.notices <- e
+			case event.ListSessions:
+				r.relisted <- struct{}{}
+			}
+		}
+	}()
+	return r
+}
+
+func (r *rig) notice(t *testing.T) event.Notice {
+	t.Helper()
+	select {
+	case n := <-r.notices:
+		return n
+	case <-time.After(2 * time.Second):
+		t.Fatal("nothing was said about the delete")
+		return event.Notice{}
+	}
+}
+
+func TestForget_DeletesAndSaysSo(t *testing.T) {
+	store := &fakeSessions{gone: true}
+	var removed []string
+	r := start(t, Options{
+		Sessions:   store,
+		Current:    uuid.Must(uuid.NewV7()),
+		Containers: func(_ context.Context, id string) error { removed = append(removed, id); return nil },
+	})
+
+	target := uuid.Must(uuid.NewV7())
+	r.bus.Publish(event.DeleteSession{Session: target})
+
+	n := r.notice(t)
+	assert.Equal(t, "info", n.Level)
+	assert.Contains(t, n.Text, target.String())
+	assert.Equal(t, []uuid.UUID{target}, store.calls())
+	assert.Equal(t, []string{target.String()}, removed, "the container stayed")
+
+	select {
+	case <-r.relisted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the list was never refreshed, so it still shows a deleted session")
+	}
+}
+
+// The running session has its store, log and container all open. It
+// is the one thing that cannot go.
+func TestForget_RefusesTheRunningSession(t *testing.T) {
+	store := &fakeSessions{gone: true}
+	current := uuid.Must(uuid.NewV7())
+	r := start(t, Options{Sessions: store, Current: current})
+
+	r.bus.Publish(event.DeleteSession{Session: current})
+
+	n := r.notice(t)
+	assert.Equal(t, "error", n.Level)
+	assert.Contains(t, n.Text, "running session")
+	assert.Empty(t, store.calls(), "it reached the store anyway")
+}
+
+// A typo should not read as success.
+func TestForget_SaysWhenThereWasNothingThere(t *testing.T) {
+	r := start(t, Options{Sessions: &fakeSessions{gone: false}, Current: uuid.Must(uuid.NewV7())})
+	missing := uuid.Must(uuid.NewV7())
+
+	r.bus.Publish(event.DeleteSession{Session: missing})
+
+	n := r.notice(t)
+	assert.Equal(t, "error", n.Level)
+	assert.Contains(t, n.Text, missing.String())
+}
+
+func TestForget_ReportsAStoreThatRefused(t *testing.T) {
+	r := start(t, Options{
+		Sessions: &fakeSessions{err: errors.New("database is locked")},
+		Current:  uuid.Must(uuid.NewV7()),
+	})
+	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
+
+	n := r.notice(t)
+	assert.Equal(t, "error", n.Level)
+	assert.Contains(t, n.Text, "locked")
+}
+
+// The session is already gone by then, so a container that stayed is
+// a leak worth mentioning rather than a failure to undo.
+func TestForget_AContainerThatStaysIsStillADelete(t *testing.T) {
+	store := &fakeSessions{gone: true}
+	r := start(t, Options{
+		Sessions:   store,
+		Current:    uuid.Must(uuid.NewV7()),
+		Containers: func(context.Context, string) error { return errors.New("containerd is down") },
+	})
+	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
+
+	n := r.notice(t)
+	assert.Contains(t, n.Text, "container stayed")
+	require.Len(t, store.calls(), 1, "the delete itself should still have happened")
+}
+
+// No sandbox this run means nothing to remove, not a nil call.
+func TestForget_NoSandboxIsNotAFailure(t *testing.T) {
+	r := start(t, Options{Sessions: &fakeSessions{gone: true}, Current: uuid.Must(uuid.NewV7())})
+	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
+
+	assert.Equal(t, "info", r.notice(t).Level)
+}
+
+func TestForget_NoStoreSaysSo(t *testing.T) {
+	r := start(t, Options{Current: uuid.Must(uuid.NewV7())})
+	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
+
+	n := r.notice(t)
+	assert.Equal(t, "error", n.Level)
+	assert.Contains(t, n.Text, "nothing is recording")
+}

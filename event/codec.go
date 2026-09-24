@@ -92,6 +92,7 @@ var codecs = map[Kind]func([]byte) (Event, error){
 	ResetSessionKind:    codec[ResetSession],
 	ListSessionsKind:    codec[ListSessions],
 	ListServersKind:     codec[ListServers],
+	DeleteSessionKind:   codec[DeleteSession],
 	ServersListedKind:   codec[ServersListed],
 	RenameSessionKind:   codec[RenameSession],
 }

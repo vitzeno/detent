@@ -21,6 +21,7 @@ import (
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/config"
 	"github.com/vitzeno/detent/internal/engine"
+	"github.com/vitzeno/detent/internal/forget"
 	"github.com/vitzeno/detent/internal/headless"
 	"github.com/vitzeno/detent/internal/host"
 	judgepkg "github.com/vitzeno/detent/internal/judge"
@@ -253,6 +254,10 @@ func run() error {
 		views(resolved.Views, judge).Watch(bus)
 	}
 	defer mcppkg.Watch(bus, servers)()
+	defer forget.Watch(bus, forget.Options{
+		Sessions: sessionStore(events), Current: sessionID,
+		Containers: containerRemover(sandboxSocketFor(resolved)),
+	})()
 	// Drained rather than closed, so the last records reach the log
 	// instead of dying with the process.
 	defer bus.Drain(2 * time.Second)
@@ -405,4 +410,36 @@ func judgeName(c config.Config) string {
 		return ""
 	}
 	return c.JevModel
+}
+
+// sessionStore avoids handing forget a non-nil interface holding a
+// nil pointer, which is not nil and would panic on the first call.
+func sessionStore(s *store.Store) forget.Sessions {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
+// containerRemover is how a deleted session's container goes, or nil
+// when this run has no sandbox and so nothing to remove.
+func containerRemover(socket string) func(context.Context, string) error {
+	if socket == "" {
+		return nil
+	}
+	return func(ctx context.Context, id string) error {
+		return sandbox.Forget(ctx, socket, sandbox.DefaultNamespace, id)
+	}
+}
+
+// sandboxSocketFor is the socket a deleted session's container would
+// be on, or "" when this run never had one to speak of.
+func sandboxSocketFor(c config.Config) string {
+	if c.SandboxMode != "auto" {
+		return ""
+	}
+	if c.SandboxSocket != "" {
+		return c.SandboxSocket
+	}
+	return defaultSandboxSocket()
 }

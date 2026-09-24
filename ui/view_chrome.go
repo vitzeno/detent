@@ -101,6 +101,9 @@ func (m Model) viewportHeader() string {
 	if m.mode == modeUndo {
 		return fmt.Sprintf("%s %s", paneMark(active), paneLabel("undoing", active))
 	}
+	if m.mode == modeForget {
+		return fmt.Sprintf("%s %s", paneMark(active), paneLabel("deleting", active))
+	}
 	if m.panel.open != panelNone {
 		return fmt.Sprintf("%s %s — %s", paneMark(active), paneLabel(panelName(m.panel.open), active),
 			styleFaint.Render("esc to close"))

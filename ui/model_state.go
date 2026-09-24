@@ -1,5 +1,7 @@
 package ui
 
+import "github.com/vitzeno/detent/event"
+
 // The small state values Model is composed of. Grouped rather than
 // spread across Model's own fields, so a handler takes one thing.
 
@@ -11,6 +13,7 @@ const (
 	modeConfirm      // a dangerous call is waiting on an answer
 	modeBound        // the engine hit its step bound and is asking
 	modeUndo         // asks before reverting the human's own files
+	modeForget       // asks before deleting a stored session
 )
 
 // focusPane is which zone the arrow keys act in.
@@ -58,6 +61,11 @@ const (
 	panelSessions
 	panelMCP
 )
+
+// forgetState is the session /delete is asking about.
+type forgetState struct {
+	target *event.SessionSummary
+}
 
 // undoState is an undo waiting on the human to say whether their own
 // files go back with the container.

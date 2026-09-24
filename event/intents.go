@@ -70,6 +70,15 @@ type RequestRollback struct {
 
 func (RequestRollback) Kind() Kind { return RequestRollbackKind }
 
+// DeleteSession forgets a stored session: its events, its log and
+// its container. Irreversible, so nothing sends it unasked.
+type DeleteSession struct {
+	fact
+	Session uuid.UUID
+}
+
+func (DeleteSession) Kind() Kind { return DeleteSessionKind }
+
 // ListServers asks which MCP servers are wired and how they fared.
 // Whatever holds them answers, since a front-end cannot ask directly.
 type ListServers struct{ fact }

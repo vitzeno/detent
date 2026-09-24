@@ -17,6 +17,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.mode == modeUndo {
 		return m.undoKey(msg)
 	}
+	if m.mode == modeForget {
+		return m.forgetKey(msg)
+	}
 	if m.mode == modeBound {
 		return m.boundKey(msg)
 	}
@@ -270,4 +273,20 @@ func (m Model) onEscape() (tea.Model, tea.Cmd) {
 func (m *Model) toggleExpand(r *callRow) {
 	r.expanded = !r.expanded
 	m.histRev++
+}
+
+// forgetKey answers the delete question. Cancel is every key but one:
+// nothing brings a deleted session back.
+func (m Model) forgetKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y":
+		return m.confirmForget()
+	case "up":
+		m.output.ScrollUp(1)
+		return m, nil
+	case "down":
+		m.output.ScrollDown(1)
+		return m, nil
+	}
+	return m.cancelForget()
 }

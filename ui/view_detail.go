@@ -17,7 +17,7 @@ import (
 func (m Model) detailLines() []string {
 	// The undo list is what is being reviewed and can run to hundreds
 	// of paths; the box below stays small and asks.
-	if m.mode == modeUndo {
+	if m.mode == modeUndo || m.mode == modeForget {
 		return strings.Split(m.output.View(), "\n")
 	}
 	// A panel is a page about the session, drawn through the viewport
@@ -124,6 +124,10 @@ func (m *Model) refreshViewport() {
 	}
 	if m.panel.open != panelNone {
 		m.setViewContent(strings.Join(m.panelLines(), "\n"))
+		return
+	}
+	if m.mode == modeForget {
+		m.setViewContent(strings.Join(m.forgetLines(), "\n"))
 		return
 	}
 	if m.mode == modeUndo {
