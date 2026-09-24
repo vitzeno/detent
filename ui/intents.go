@@ -23,8 +23,12 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 	if strings.HasPrefix(text, "/") {
 		return m.runSlash(text)
 	}
+	// cur is nil between Turns, so it says whether the engine will read
+	// this as a note or start a Turn with it.
 	if m.cur == nil {
 		m.waiting = true
+	} else {
+		m.noteOK("steering the current request")
 	}
 	return m, tea.Batch(m.spinner.Tick, m.send(event.SubmitPrompt{Text: text}))
 }

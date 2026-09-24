@@ -161,3 +161,64 @@ func TestKeys_SlashCommandsDoNotReachTheEngine(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 }
+
+// Typing while a request runs steers it: the engine turns a prompt
+// sent mid-Turn into NoteContext rather than starting a new one.
+func TestBusy_TypingReachesThePromptAndEnterSteers(t *testing.T) {
+	k := newKeyed(t)
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
+	require.True(t, k.m.waiting, "the test needs the busy path")
+	require.Equal(t, ownerBusy, k.m.owner())
+
+	for _, key := range []string{"u", "s", "e", " ", "g", "o"} {
+		k.press(t, key)
+	}
+	require.Equal(t, "use go", k.m.prompt.Value(), "keys did not reach the prompt while busy")
+
+	k.press(t, "enter")
+	sent, ok := k.intent(t).(event.SubmitPrompt)
+	require.True(t, ok, "enter while busy published no prompt")
+	assert.Equal(t, "use go", sent.Text)
+}
+
+// Slash commands must keep working on the busy path, which is what it
+// narrowed the keys for in the first place.
+func TestBusy_SlashStillOpens(t *testing.T) {
+	k := newKeyed(t)
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
+
+	k.press(t, "/")
+	assert.True(t, k.m.prompt.Open(), "the slash dropdown did not open while busy")
+}
+
+// A note is queued with no fact of its own, so without this the text
+// vanishes and the human cannot tell it was taken.
+func TestBusy_SteeringSaysSo(t *testing.T) {
+	k := newKeyed(t)
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
+	for _, key := range []string{"u", "s", "e", " ", "g", "o"} {
+		k.press(t, key)
+	}
+	k.press(t, "enter")
+
+	assert.Contains(t, k.m.notice.text, "steering")
+	assert.False(t, k.m.notice.bad)
+	assert.Empty(t, k.m.prompt.Value(), "the prompt should clear either way")
+}
+
+// endTurn clears cur, so a prompt after one finishes is a new request
+// rather than steering the Turn that just ended.
+func TestSubmit_AfterATurnEndsIsANewRequestNotSteering(t *testing.T) {
+	k := newKeyed(t)
+	turn := uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, N: 1, Prompt: "go"})
+	k.m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+
+	for _, key := range []string{"n", "e", "x", "t"} {
+		k.press(t, key)
+	}
+	k.press(t, "enter")
+
+	assert.Empty(t, k.m.notice.text, "a new request was called steering")
+	assert.True(t, k.m.waiting, "a new request has to show as waiting")
+}

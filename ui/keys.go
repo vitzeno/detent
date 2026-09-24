@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/vitzeno/detent/event"
@@ -31,10 +29,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch m.owner() {
 	case ownerConfirm:
 		return m.confirmKey(msg)
-	case ownerInput:
+	case ownerInput, ownerBusy:
 		return m.inputKey(msg)
-	case ownerBusy:
-		return m.busyKey(msg)
 	case ownerOutput:
 		return m.outputKey(msg)
 	default:
@@ -68,7 +64,7 @@ type keyOwner int
 const (
 	ownerConfirm keyOwner = iota
 	ownerInput            // idle typing, slash dropdown included
-	ownerBusy             // waiting: slash entry only
+	ownerBusy             // waiting: types like input, but esc aborts
 	ownerOutput
 	ownerHistory
 )
@@ -164,26 +160,6 @@ func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	cmd := m.prompt.Key(msg)
 	m.clearNotice()
 	return m, cmd
-}
-
-// busyKey narrows a waiting input to slash entry, so /abort and
-// /quit stay reachable while a request runs.
-func (m Model) busyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if next, cmd, handled := m.slashKey(msg); handled {
-		return next, cmd
-	}
-	switch msg.String() {
-	case "pgup", "pgdown":
-		return m.scrollViewport(msg.String())
-	}
-	// Only "/" may start slash entry; once typed, all keys go to input.
-	if strings.HasPrefix(m.prompt.Value(), "/") ||
-		(msg.String() == "/" && m.prompt.Value() == "") {
-		cmd := m.prompt.Key(msg)
-		m.clearNotice()
-		return m, cmd
-	}
-	return m, nil
 }
 
 // slashKey drives the open dropdown (arrows/enter/esc); tab is handled

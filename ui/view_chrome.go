@@ -189,7 +189,7 @@ func (m Model) statusHint() string {
 		if m.prompt.Open() {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
 		}
-		return "[esc] abort · type / for commands · [tab] history"
+		return "[esc] abort · [enter] steers · [tab] history"
 	default: // ownerInput
 		if m.prompt.Open() {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
