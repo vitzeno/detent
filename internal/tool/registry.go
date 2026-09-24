@@ -33,15 +33,22 @@ func (r *Registry) Prepare(name string, args map[string]any) (Call, error) {
 	if !ok {
 		return Call{}, fmt.Errorf("no tool named %q; available: %s", name, strings.Join(r.Names(), ", "))
 	}
-	clean, err := validate(t.Describe(), args)
-	if err != nil {
-		return Call{}, fmt.Errorf("%s: %w", name, err)
+	spec := t.Describe()
+	// A raw schema is not ours to check. The server that published it
+	// validates, and says what was wrong as a tool result.
+	clean := Args(args)
+	if spec.Raw == nil {
+		var err error
+		if clean, err = validate(spec, args); err != nil {
+			return Call{}, fmt.Errorf("%s: %w", name, err)
+		}
 	}
 	cmd, err := t.Lower(clean)
 	if err != nil {
 		return Call{}, fmt.Errorf("%s: %w", name, err)
 	}
-	return Call{Tool: name, Command: cmd, Mutability: t.Describe().Mutability, Args: clean}, nil
+	return Call{Tool: name, Command: cmd, Mutability: spec.Mutability,
+		Args: clean, Executor: spec.Executor}, nil
 }
 
 // Call is one validated, lowered invocation.
@@ -50,6 +57,9 @@ type Call struct {
 	Command    string
 	Mutability string
 	Args       Args
+	// Executor is empty for a shell command, and otherwise names what
+	// runs it instead.
+	Executor string
 }
 
 func (r *Registry) Register(t Tool) {
@@ -72,14 +82,16 @@ func (r *Registry) Names() []string { return slices.Clone(r.order) }
 func (r *Registry) Schemas() []map[string]any {
 	out := make([]map[string]any, 0, len(r.order))
 	for _, n := range r.order {
-		t := r.tools[n]
+		spec := r.tools[n].Describe()
 		out = append(out, map[string]any{
 			"type": "function",
 			"function": map[string]any{
 				"name":        n,
-				"description": t.Describe().Description,
-				"parameters":  schema(t.Describe()),
-				"strict":      true,
+				"description": spec.Description,
+				"parameters":  schema(spec),
+				// Strict demands a shape an arbitrary schema will not
+				// have, so a raw one is offered as it came.
+				"strict": spec.Raw == nil,
 			},
 		})
 	}
@@ -91,6 +103,9 @@ func (r *Registry) Schemas() []map[string]any {
 // nullable rather than omitted; validate already reads an explicit
 // null as absent.
 func schema(s Spec) map[string]any {
+	if s.Raw != nil {
+		return s.Raw
+	}
 	props := map[string]any{}
 	required := make([]string, 0, len(s.Params))
 	for _, p := range s.Params {

@@ -22,6 +22,11 @@ type Spec struct {
 	Mutability string
 	// Renders is how the output should be rendered, empty leaves it to the judge and the heuristics
 	Renders string
+	// Executor names what runs this call, empty being a shell command.
+	Executor string
+	// Raw is a schema detent did not build, handed to the model as
+	// given. Set when the parameters are not Param's small subset.
+	Raw map[string]any
 }
 
 // Param is one argument, in the subset of JSON Schema every endpoint agrees on.

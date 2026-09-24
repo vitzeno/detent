@@ -16,13 +16,13 @@ import (
 
 // serve wires a real server to a real client over an in-memory pair,
 // so these exercise the protocol rather than a fake of it.
-func serve(t *testing.T, tools ...tool) *Server {
+func serve(t *testing.T, tools ...fake) *Server {
 	return servePaged(t, 0, tools...)
 }
 
 // servePaged takes the page size: the SDK's default is 1000, and a
 // test that never crosses a boundary proves nothing about the cursor.
-func servePaged(t *testing.T, pageSize int, tools ...tool) *Server {
+func servePaged(t *testing.T, pageSize int, tools ...fake) *Server {
 	t.Helper()
 	srv := sdk.NewServer(&sdk.Implementation{Name: "fake", Version: "1"},
 		&sdk.ServerOptions{PageSize: pageSize})
@@ -46,13 +46,14 @@ func servePaged(t *testing.T, pageSize int, tools ...tool) *Server {
 	return s
 }
 
-type tool struct {
+// fake is one tool the in-memory server offers.
+type fake struct {
 	name, desc string
 	handle     sdk.ToolHandler
 }
 
-func text(name string, out ...sdk.Content) tool {
-	return tool{name: name, desc: name + " does something", handle: func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+func text(name string, out ...sdk.Content) fake {
+	return fake{name: name, desc: name + " does something", handle: func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		return &sdk.CallToolResult{Content: out}, nil
 	}}
 }
@@ -80,7 +81,7 @@ func TestServer_CallReturnsText(t *testing.T) {
 
 // A tool error is the model's cue to correct itself.
 func TestServer_ToolErrorIsANonZeroExit(t *testing.T) {
-	s := serve(t, tool{name: "fails", handle: func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+	s := serve(t, fake{name: "fails", handle: func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		return &sdk.CallToolResult{
 			IsError: true,
 			Content: []sdk.Content{&sdk.TextContent{Text: "date must be in the future"}},
@@ -114,7 +115,7 @@ func TestServer_BadCallsAreResultsNotErrors(t *testing.T) {
 // A handler returning an error is a protocol error, and the model
 // still has to be able to read it.
 func TestServer_AHandlerThatFailsIsStillAResult(t *testing.T) {
-	s := serve(t, tool{name: "boom", handle: func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+	s := serve(t, fake{name: "boom", handle: func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		return nil, errors.New("the upstream API is down")
 	}})
 
@@ -141,7 +142,7 @@ func TestConnect_RefusesAnUnnamedServer(t *testing.T) {
 
 // Without the cursor a server silently offers only its first page.
 func TestServer_ToolsFollowsPagination(t *testing.T) {
-	var many []tool
+	var many []fake
 	for i := range 25 {
 		many = append(many, text(fmt.Sprintf("tool_%03d", i)))
 	}
