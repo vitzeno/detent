@@ -96,6 +96,10 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		ViewReady{Call: call, Spec: spec, Source: "composed"},
 		Notice{Level: "warn", Text: "careful"},
 		SessionsListed{Sessions: []SessionSummary{{ID: turn, Name: "named", Started: time.UnixMilli(1_700_000_000_000).UTC(), Model: "m", Events: 12}}},
+		ServersListed{Servers: []ServerSummary{
+			{Name: "github", Command: "docker", Tools: 12},
+			{Name: "broken", Command: "nope", Err: "no such file", Disabled: true},
+		}},
 
 		SubmitPrompt{Text: "go"},
 		ResolveApproval{Call: call, Approved: true},
@@ -105,6 +109,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		Continue{Turn: turn, Approved: true},
 		RequestRollback{Turn: turn, RevertFiles: true},
 		ListSessions{},
+		ListServers{},
 		RenameSession{Session: turn, Name: "the sandbox bug"},
 		ResetSession{},
 	}

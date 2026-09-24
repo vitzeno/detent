@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -690,4 +691,75 @@ func TestSessionBar_ShedsTheGaugeBeforeWhatMatters(t *testing.T) {
 	assert.NotContains(t, narrow, "ctx 70%", "the gauge should go before the model")
 	assert.Contains(t, narrow, "detent", "the brand is not droppable")
 	assert.Contains(t, narrow, "jev", "the judge is not droppable")
+}
+
+// The page a human opens to find out why a tool is missing. Colour
+// carries the state, so the state has to be right.
+func TestMCPPage_ColoursEachServerByItsState(t *testing.T) {
+	m := feed(t, event.SessionStarted{Model: "m"}, event.ServersListed{Servers: []event.ServerSummary{
+		{Name: "github", Command: "docker", Tools: 26},
+		{Name: "broken", Command: "/nope", Err: "no such file"},
+		{Name: "archived", Command: "/notes", Disabled: true},
+		{Name: "quiet", Command: "/quiet", Tools: 0},
+	}})
+	page := strings.Join(m.mcpLines(), "\n")
+
+	for _, want := range []string{"github", "26 tools", "broken", "no such file",
+		"archived", "disabled", "quiet", "offers nothing"} {
+		assert.Contains(t, stripANSI(page), want)
+	}
+
+	// Each state gets its own colour, or the page says nothing a plain
+	// list would not.
+	assert.Contains(t, page, styleSafe.Render("●"), "a connected server is not marked safe")
+	assert.Contains(t, page, styleDanger.Render("✗"), "a failed server is not marked dangerous")
+	assert.Contains(t, page, styleFaint.Render("○"), "a disabled server is not marked faint")
+	assert.Contains(t, page, styleCaution.Render("●"), "a server offering nothing is not marked caution")
+}
+
+// The page has to say the thing that is not obvious: these calls are
+// not covered by a checkpoint.
+func TestMCPPage_WarnsThatCallsAreConfirmed(t *testing.T) {
+	m := feed(t, event.SessionStarted{Model: "m"},
+		event.ServersListed{Servers: []event.ServerSummary{{Name: "a", Tools: 1}}})
+	page := stripANSI(strings.Join(m.mcpLines(), "\n"))
+	assert.Contains(t, page, "confirmed")
+	assert.Contains(t, page, "undo")
+}
+
+func TestMCPPage_SaysWhenNothingIsConfigured(t *testing.T) {
+	m := feed(t, event.SessionStarted{Model: "m"})
+	assert.Contains(t, stripANSI(strings.Join(m.mcpLines(), "\n")), "none configured")
+}
+
+// Opening the page asks, since ui holds no servers of its own.
+func TestSlashMCP_OpensThePageAndAsks(t *testing.T) {
+	bus := event.New()
+	seen, stop := bus.Subscribe(event.Only(event.ListServersKind))
+	defer stop()
+
+	m := New(t.Context(), bus, SessionInfo{})
+	next, cmd := m.listServers("/mcp")
+	got := next.(Model)
+	assert.Equal(t, panelMCP, got.panel.open)
+
+	require.NotNil(t, cmd)
+	cmd()
+	select {
+	case rec := <-seen:
+		assert.Equal(t, event.ListServersKind, rec.Event.Kind())
+	case <-time.After(2 * time.Second):
+		t.Fatal("opening /mcp asked nothing")
+	}
+}
+
+// esc closes it, the way it closes every other page.
+func TestMCPPage_EscapeCloses(t *testing.T) {
+	m := feed(t, event.SessionStarted{Model: "m"})
+	next, _ := m.listServers("/mcp")
+	got := next.(Model)
+	require.Equal(t, panelMCP, got.panel.open)
+
+	closed, _ := got.onEscape()
+	assert.Equal(t, panelNone, closed.(Model).panel.open)
 }

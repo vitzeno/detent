@@ -62,6 +62,7 @@ type Model struct {
 	// sessions is what /sessions last heard back.
 	run      event.SessionStarted
 	sessions []event.SessionSummary
+	servers  []event.ServerSummary
 
 	welcomeFrame int
 	viewContent  string

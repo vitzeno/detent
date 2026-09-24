@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/capture"
 	"github.com/vitzeno/detent/internal/tool"
 )
@@ -12,7 +13,13 @@ import (
 // that offered it. Satisfies engine.Invoker structurally.
 type Invokers struct {
 	tools map[string]Tool
+	// status is every configured server, connected or not: one that
+	// is missing is the thing a human needs to be told about.
+	status []event.ServerSummary
 }
+
+// Status is what /mcp draws, sorted by name the way they connect.
+func (i *Invokers) Status() []event.ServerSummary { return i.status }
 
 func NewInvokers() *Invokers { return &Invokers{tools: map[string]Tool{}} }
 

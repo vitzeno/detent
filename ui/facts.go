@@ -23,6 +23,9 @@ func (m *Model) apply(ev event.Event) {
 	case event.SessionsListed:
 		m.sessions = v.Sessions
 
+	case event.ServersListed:
+		m.servers = v.Servers
+
 	case event.TurnStarted:
 		b := &turnBlock{id: v.Turn, n: v.N, prompt: v.Prompt}
 		m.blocks = append(m.blocks, b)

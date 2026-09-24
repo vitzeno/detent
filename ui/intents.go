@@ -67,6 +67,14 @@ func (m Model) listSessions(string) (tea.Model, tea.Cmd) {
 	return next, m.send(event.ListSessions{})
 }
 
+// listServers opens the page and asks, since ui cannot reach the
+// servers itself. Asked every time: a page that drew a stale answer
+// would be worse than one that blanks for a frame.
+func (m Model) listServers(string) (tea.Model, tea.Cmd) {
+	next, _ := m.openPanel(panelMCP)
+	return next, m.send(event.ListServers{})
+}
+
 // renameSession names this run so a listing shows something a human
 // recognises rather than a uuid.
 func (m Model) renameSession(input string) (tea.Model, tea.Cmd) {

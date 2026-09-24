@@ -43,6 +43,8 @@ func (m *Model) panelLines() []string {
 		return m.helpLines()
 	case panelSessions:
 		return m.sessionLines()
+	case panelMCP:
+		return m.mcpLines()
 	}
 	return nil
 }
@@ -197,4 +199,54 @@ func (m Model) contextDetail() string {
 	}
 	return fmt.Sprintf("%d%%  %s of %s", m.context*100/budget,
 		status.Tokens(m.context), status.Tokens(budget))
+}
+
+// mcpLines draws what connected, what failed, and why. Colour carries
+// the state: it is what a human opens this page to see.
+func (m *Model) mcpLines() []string {
+	out := []string{styleGoal.Render("mcp servers"), "",
+		styleFaint.Render("  every call is confirmed: these run outside the sandbox"),
+		styleFaint.Render("  and no checkpoint can undo one"), ""}
+
+	if len(m.servers) == 0 {
+		return append(out, styleFaint.Render("  (none configured — see mcp: in the config file)"))
+	}
+	for _, s := range m.servers {
+		out = append(out, fmt.Sprintf("  %s %s  %s",
+			serverMark(s), styleGoal.Render(pad(s.Name, 14)), serverState(s)))
+		if s.Command != "" {
+			out = append(out, styleFaint.Render("     "+s.Command))
+		}
+		if s.Err != "" {
+			out = append(out, styleDanger.Render("     "+s.Err))
+		}
+	}
+	return append(out, "", styleFaint.Render("  [esc] close"))
+}
+
+// serverMark is the glyph the eye lands on first: connected, off, or
+// broken.
+func serverMark(s event.ServerSummary) string {
+	switch {
+	case s.Disabled:
+		return styleFaint.Render("○")
+	case s.Err != "":
+		return styleDanger.Render("✗")
+	case s.Tools == 0:
+		return styleCaution.Render("●")
+	}
+	return styleSafe.Render("●")
+}
+
+// serverState names what the glyph means: a colour alone is not one.
+func serverState(s event.ServerSummary) string {
+	switch {
+	case s.Disabled:
+		return styleFaint.Render("disabled")
+	case s.Err != "":
+		return styleDanger.Render("not connected")
+	case s.Tools == 0:
+		return styleCaution.Render("connected, offers nothing")
+	}
+	return styleSafe.Render(countOf(s.Tools, "tool"))
 }

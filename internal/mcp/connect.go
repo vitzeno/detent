@@ -5,6 +5,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/tool"
 )
 
@@ -24,23 +25,38 @@ func ConnectAll(ctx context.Context, reg *tool.Registry, servers map[string]Conf
 	// Sorted, so the tool order a model sees does not shuffle per run.
 	for _, name := range sorted(servers) {
 		c := servers[name]
-		if c.Disabled || c.Command == "" {
-			continue
+		st := event.ServerSummary{Name: name, Command: c.Command, Disabled: c.Disabled}
+		switch {
+		case c.Disabled:
+		case c.Command == "":
+			st.Err = "no command configured"
+		default:
+			tools, err := dial(ctx, reg, in, name, c)
+			if err != nil {
+				st.Err = err.Error()
+				errs = append(errs, err)
+			}
+			st.Tools = tools
 		}
-		s, err := Connect(ctx, name, Stdio{Command: c.Command, Args: c.Args, Env: environ(c.Env)}.Transport())
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		tools, err := s.Tools(ctx)
-		if err != nil {
-			errs = append(errs, err)
-			_ = s.Close()
-			continue
-		}
-		in.Add(Register(reg, s, tools)...)
+		in.status = append(in.status, st)
 	}
 	return in, errs
+}
+
+// dial connects one server and registers what it offers, reporting
+// how many so a human can see a server that answered with nothing.
+func dial(ctx context.Context, reg *tool.Registry, in *Invokers, name string, c Config) (int, error) {
+	s, err := Connect(ctx, name, Stdio{Command: c.Command, Args: c.Args, Env: environ(c.Env)}.Transport())
+	if err != nil {
+		return 0, err
+	}
+	tools, err := s.Tools(ctx)
+	if err != nil {
+		_ = s.Close()
+		return 0, err
+	}
+	in.Add(Register(reg, s, tools)...)
+	return len(tools), nil
 }
 
 // passThrough is what a process needs to run at all. Everything else

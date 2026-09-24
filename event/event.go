@@ -54,6 +54,7 @@ const (
 
 	NoticeKind         Kind = "notice"
 	SessionsListedKind Kind = "sessions.listed"
+	ServersListedKind  Kind = "servers.listed"
 )
 
 // Intents. Imperative, published by anyone.
@@ -67,6 +68,7 @@ const (
 	RequestRollbackKind Kind = "do.rollback"
 	ResetSessionKind    Kind = "do.reset"
 	ListSessionsKind    Kind = "do.list_sessions"
+	ListServersKind     Kind = "do.list_servers"
 	RenameSessionKind   Kind = "do.rename_session"
 )
 
@@ -78,6 +80,7 @@ var intents = map[Kind]bool{
 	SubmitPromptKind: true, ResolveApprovalKind: true, NoteContextKind: true,
 	AbortKind: true, RequestStopKind: true, ContinueKind: true,
 	RequestRollbackKind: true, ResetSessionKind: true, ListSessionsKind: true, RenameSessionKind: true,
+	ListServersKind: true,
 }
 
 // fact is embedded by everything but OutputChunk.

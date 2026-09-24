@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/tool"
 )
 
@@ -120,4 +121,32 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
+}
+
+// /mcp draws from this, so it has to hold every configured server,
+// including the ones that never connected.
+func TestConnectAll_StatusHoldsEveryServer(t *testing.T) {
+	bin, err := fakeServer()
+	require.NoError(t, err)
+
+	in, _ := ConnectAll(context.Background(), tool.Standard(), map[string]Config{
+		"good":    {Command: bin},
+		"broken":  {Command: "/nonexistent/server"},
+		"off":     {Command: bin, Disabled: true},
+		"unnamed": {},
+	})
+	t.Cleanup(func() { _ = in.Close() })
+
+	byName := map[string]event.ServerSummary{}
+	for _, s := range in.Status() {
+		byName[s.Name] = s
+	}
+	require.Len(t, byName, 4, "a configured server is missing from the page")
+
+	assert.Equal(t, 1, byName["good"].Tools)
+	assert.Empty(t, byName["good"].Err)
+	assert.NotEmpty(t, byName["broken"].Err, "a failed server has nothing to show a human")
+	assert.True(t, byName["off"].Disabled)
+	assert.Zero(t, byName["off"].Tools)
+	assert.NotEmpty(t, byName["unnamed"].Err, "a server with no command says nothing")
 }

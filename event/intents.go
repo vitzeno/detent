@@ -70,6 +70,12 @@ type RequestRollback struct {
 
 func (RequestRollback) Kind() Kind { return RequestRollbackKind }
 
+// ListServers asks which MCP servers are wired and how they fared.
+// Whatever holds them answers, since a front-end cannot ask directly.
+type ListServers struct{ fact }
+
+func (ListServers) Kind() Kind { return ListServersKind }
+
 // ListSessions asks what can be resumed. Whatever holds the log
 // answers with SessionsListed.
 type ListSessions struct{ fact }

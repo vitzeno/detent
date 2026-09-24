@@ -39,6 +39,7 @@ func slashCommands() []slashCmd {
 			return m.openPanel(panelStatus)
 		}},
 		{Name: "/sessions", Desc: "list the sessions that can be resumed", run: Model.listSessions},
+		{Name: "/mcp", Desc: "show the MCP servers and how they connected", run: Model.listServers},
 		{Name: "/rename", Desc: "name this session, e.g. /rename the sandbox bug",
 			run: Model.renameSession, answers: true},
 		{Name: "/undo", Desc: "undo a request and everything after it, e.g. /undo 2", run: Model.runUndo},

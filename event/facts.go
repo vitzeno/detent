@@ -249,6 +249,27 @@ type SessionsListed struct {
 	Sessions []SessionSummary
 }
 
+// ServersListed answers ListServers, failures included: a missing
+// server is the thing a human needs told.
+type ServersListed struct {
+	fact
+	Servers []ServerSummary
+}
+
+func (ServersListed) Kind() Kind { return ServersListedKind }
+
+// ServerSummary is one MCP server as configured, connected or not.
+type ServerSummary struct {
+	Name    string
+	Command string
+	// Tools is how many it offered, once connected.
+	Tools int
+	// Err is why it is not connected, "" when it is.
+	Err string
+	// Disabled is a server left in the config but switched off.
+	Disabled bool
+}
+
 func (SessionsListed) Kind() Kind { return SessionsListedKind }
 
 // SessionSummary is one resumable session, as a listing shows it.

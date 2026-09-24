@@ -56,6 +56,7 @@ const (
 	panelStatus
 	panelHelp
 	panelSessions
+	panelMCP
 )
 
 // undoState is an undo waiting on the human to say whether their own
