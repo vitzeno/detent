@@ -134,9 +134,14 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Eight message types and seven command constructors collapsed to
 	// one of each: the UI learns everything the same way.
 	case factMsg:
-		m.apply(msg.Event)
+		waiting := m.waiting
+		for _, e := range msg.events {
+			m.apply(e)
+		}
 		var cmd tea.Cmd
-		if m.waiting {
+		// Only on the edge: Tick carries the live tag, so re-arming on
+		// every fact restarts the chain and renders a frame to do it.
+		if m.waiting && !waiting {
 			cmd = m.spinner.Tick
 		}
 		return m, tea.Batch(cmd, nextFact(m.facts))
@@ -163,8 +168,8 @@ func (m Model) send(ev event.Event) tea.Cmd {
 	}
 }
 
-// factMsg carries one fact into the update loop.
-type factMsg struct{ event.Event }
+// factMsg carries every fact that was ready, in order.
+type factMsg struct{ events []event.Event }
 
 type welcomeTickMsg struct{}
 
@@ -176,15 +181,38 @@ func welcomeTick() tea.Cmd {
 
 const welcomeFrameEvery = 90 * time.Millisecond
 
-// nextFact waits for the next fact. One command, re-armed each time,
-// in place of a constructor per pipeline stage.
+// maxFactBatch bounds one batch so a loud Call cannot starve keys.
+const maxFactBatch = 256
+
+// coalesceWindow is how long a batch gathers. The bus hands over one
+// record at a time by design, so a burst needs a window to collect in;
+// 2ms is well under a frame and far over a channel hop. Var for tests.
+var coalesceWindow = 2 * time.Millisecond
+
+// nextFact waits for one fact, then gathers whatever follows it
+// closely. Output arrives a line at a time, so coalescing is what
+// keeps a 500 line burst to a couple of renders instead of 500.
 func nextFact(facts <-chan event.Record) tea.Cmd {
 	return func() tea.Msg {
 		rec, ok := <-facts
 		if !ok {
 			return nil
 		}
-		return factMsg{rec.Event}
+		batch := []event.Event{rec.Event}
+		window := time.NewTimer(coalesceWindow)
+		defer window.Stop()
+		for len(batch) < maxFactBatch {
+			select {
+			case rec, ok := <-facts:
+				if !ok {
+					return factMsg{batch}
+				}
+				batch = append(batch, rec.Event)
+			case <-window.C:
+				return factMsg{batch}
+			}
+		}
+		return factMsg{batch}
 	}
 }
 
