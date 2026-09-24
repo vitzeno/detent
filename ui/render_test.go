@@ -628,3 +628,66 @@ func TestSessionBar_ContextGaugeWarnsBeforeTheStall(t *testing.T) {
 		assert.Equal(t, c.want.Render("x"), m.contextStyle().Render("x"), c.name)
 	}
 }
+
+// Counts belong on /status, which has room to label them. The bar is
+// for what a glance needs while something is running.
+func TestSessionBar_LeavesCountsToTheStatusPage(t *testing.T) {
+	m := feed(t, event.SessionStarted{Model: "m", ContextTokens: 24_000})
+	m.layout.width = 150
+	turn, evs := aTurn("go")
+	for _, e := range evs {
+		m.apply(e)
+	}
+	call := uuid.Must(uuid.NewV7())
+	m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "ls"}})
+	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+
+	bar := stripANSI(m.sessionBar())
+	assert.NotContains(t, bar, "request", "counts are duplicated from /status")
+	assert.NotContains(t, bar, "call(s)")
+
+	status := stripANSI(strings.Join(m.statusLines(), "\n"))
+	assert.Contains(t, status, "requests")
+	assert.Contains(t, status, "calls")
+}
+
+// A share answers "how close am I", the raw pair answers "how much
+// room is left". The page has space for both; the bar does not.
+func TestStatusPage_ShowsContextBothWays(t *testing.T) {
+	m := feed(t, event.SessionStarted{Model: "m", ContextTokens: 24_000})
+	m.apply(event.StepEnded{Usage: event.Usage{PromptTokens: 16_800}})
+
+	line := m.contextDetail()
+	assert.Contains(t, line, "70%")
+	assert.Contains(t, line, "16.8k")
+	assert.Contains(t, line, "24.0k")
+	assert.Contains(t, stripANSI(strings.Join(m.statusLines(), "\n")), "context")
+}
+
+func TestStatusPage_ContextSaysWhenThereIsNothingToShow(t *testing.T) {
+	none := feed(t, event.SessionStarted{Model: "m"})
+	assert.Contains(t, none.contextDetail(), "no budget")
+
+	unmeasured := feed(t, event.SessionStarted{Model: "m", ContextTokens: 24_000})
+	assert.Contains(t, unmeasured.contextDetail(), "nothing measured")
+	assert.Contains(t, unmeasured.contextDetail(), "24.0k", "the budget is still worth saying")
+}
+
+// The bar sheds rather than wraps, and the indices it sheds by move
+// whenever a segment is added or removed. Brand, run mode and judge
+// are what a human checks, so they are what survives.
+func TestSessionBar_ShedsTheGaugeBeforeWhatMatters(t *testing.T) {
+	m := feed(t, event.SessionStarted{Model: "a-long-model-name-here", Judge: "jev-1", ContextTokens: 24_000})
+	m.apply(event.StepEnded{Usage: event.Usage{PromptTokens: 16_800}})
+
+	m.layout.width = 150
+	wide := stripANSI(m.sessionBar())
+	require.Contains(t, wide, "ctx 70%")
+	require.Contains(t, wide, "a-long-model-name-here")
+
+	m.layout.width = 60
+	narrow := stripANSI(m.sessionBar())
+	assert.NotContains(t, narrow, "ctx 70%", "the gauge should go before the model")
+	assert.Contains(t, narrow, "detent", "the brand is not droppable")
+	assert.Contains(t, narrow, "jev", "the judge is not droppable")
+}

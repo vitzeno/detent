@@ -107,6 +107,7 @@ func (m *Model) statusLines() []string {
 		{"errors", fmt.Sprint(m.errors)},
 		{"views drawn", fmt.Sprint(m.views)},
 		{"tokens", status.Tokens(m.tokens)},
+		{"context", m.contextDetail()},
 	}
 	out := []string{styleGoal.Render("status"), ""}
 	for _, r := range rows {
@@ -181,4 +182,19 @@ func truncCell(s string, w int) string {
 		return string(r)
 	}
 	return string(r[:w-1]) + "…"
+}
+
+// contextDetail spells out what the bar compresses to a percentage,
+// since a share is the right thing at a glance and the wrong thing
+// when you want to know how much room is left.
+func (m Model) contextDetail() string {
+	budget := m.run.ContextTokens
+	if budget <= 0 {
+		return "no budget set"
+	}
+	if m.context <= 0 {
+		return fmt.Sprintf("nothing measured yet, budget %s", status.Tokens(budget))
+	}
+	return fmt.Sprintf("%d%%  %s of %s", m.context*100/budget,
+		status.Tokens(m.context), status.Tokens(budget))
 }

@@ -24,7 +24,6 @@ func (m Model) sessionBar() string {
 	return fitSegments([]string{
 		styleBrand.Render("◆ detent " + version.Number),
 		styleFaint.Render(m.run.Model),
-		styleFaint.Render(fmt.Sprintf("· %d request(s) · %d call(s)", len(m.blocks), m.calls)),
 		m.contextStyle().Render(m.contextGauge()),
 		runModeBadge(m.runMode()),
 		jev,
@@ -65,7 +64,7 @@ func fitSegments(segs []string, width int) string {
 	for i := range keep {
 		keep[i] = true
 	}
-	for _, drop := range []int{3, 2, 1} {
+	for _, drop := range []int{2, 1} {
 		if joinedWidth(segs, keep) <= width {
 			break
 		}
