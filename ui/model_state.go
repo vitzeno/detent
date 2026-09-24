@@ -31,6 +31,9 @@ type navState struct {
 
 	histHeight int
 	histOffset int
+	// histWindow is what sizeViewport last laid out. View reads it
+	// rather than laying the same history out a second time.
+	histWindow []string
 }
 
 // layoutState is the body row's pane widths, recomputed by sizeViewport.

@@ -244,3 +244,51 @@ func TestSummary_RendersAsMarkdownAndScrolls(t *testing.T) {
 	m.output.ScrollDown(3)
 	assert.Equal(t, 3, m.output.YOffset(), "the pane scrolls through the rest")
 }
+
+// The tail path must draw exactly what the full layout would have
+// shown, or following renders something nothing else agrees with.
+func TestHistoryWindow_TailMatchesTheFullLayout(t *testing.T) {
+	for _, turns := range []int{1, 3, 21, 50} {
+		m := session(turns, 4, 12)
+		m.nav.histHeight = 30
+		m.nav.follow = true
+
+		tail, offset := m.historyWindow()
+		assert.Equal(t, -1, offset, "following never counts a total")
+
+		all, _ := m.historyAll()
+		want := all
+		if len(want) > m.nav.histHeight {
+			want = want[len(want)-m.nav.histHeight:]
+		}
+		assert.Equal(t, want, tail, "%d turns: tail diverged from the full layout", turns)
+	}
+}
+
+// A short session has to fall out of the tail loop rather than run off
+// the front of the slice.
+func TestHistoryWindow_TailHandlesLessThanOneScreen(t *testing.T) {
+	m := session(1, 1, 0)
+	m.nav.histHeight = 80
+	m.nav.follow = true
+
+	tail, _ := m.historyWindow()
+	all, _ := m.historyAll()
+	assert.Equal(t, all, tail)
+}
+
+// Leaving follow has to pin the offset, or the pane jumps to the top
+// of the session the moment the cursor moves.
+func TestNavUp_PinsTheOffsetOnLeavingFollow(t *testing.T) {
+	m := session(21, 4, 12)
+	m.nav.histHeight = 20
+	m.nav.follow = true
+	m.nav.cursor = len(m.rows()) - 1
+
+	next, _ := m.navUp()
+	got := next.(Model)
+	require.False(t, got.nav.follow)
+
+	all, _ := m.historyAll()
+	assert.Equal(t, len(all)-20, got.nav.histOffset)
+}

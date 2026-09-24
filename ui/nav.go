@@ -29,6 +29,12 @@ func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
 
 func (m Model) navUp() (tea.Model, tea.Cmd) {
 	if m.nav.cursor > 0 {
+		if m.nav.follow {
+			// Leaving follow needs a real offset, and following never
+			// counted one. One full layout, on a keystroke.
+			lines, _ := m.historyAll()
+			m.nav.histOffset = max(0, len(lines)-m.nav.histHeight)
+		}
 		m.nav.cursor--
 		m.nav.follow = false
 	}

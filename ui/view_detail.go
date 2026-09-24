@@ -83,7 +83,12 @@ func helpLines() []string {
 }
 
 func (m *Model) refreshViewport() {
-	_, m.nav.histOffset = m.historyWindow()
+	window, offset := m.historyWindow()
+	m.nav.histWindow = window
+	// -1 means following, which never counted a total to offset into.
+	if offset >= 0 {
+		m.nav.histOffset = offset
+	}
 	if m.panel.open != panelNone {
 		m.setViewContent(strings.Join(m.panelLines(), "\n"))
 		return

@@ -17,38 +17,89 @@ import (
 
 // historyLines renders every history entry and reports which entry the
 // cursor is on, rather than writing that to shared state on the way
-// past. Pure, so View can call it on its throwaway copy.
+// past. Pure, so sizeViewport can call it before anything is committed.
 func (m Model) historyLines() (lines []string, cursorEntry int) {
-	rows := m.rows()
+	focused := m.focusedRow()
 	for bi, b := range m.blocks {
 		if bi > 0 {
 			lines = append(lines, "")
 		}
-		var block []string
-
-		for _, gl := range wrapPlain(b.prompt, m.blockWidth()) {
-			block = append(block, styleGoal.Render(gl))
+		block, at := m.blockLines(b, focused)
+		if at >= 0 {
+			cursorEntry = len(lines) + at
 		}
-		for _, r := range b.rows {
-			if len(rows) > 0 && r == rows[m.cursorClamped()] {
-				cursorEntry = len(lines) + len(block)
-			}
-			block = append(block, m.rowLines(r)...)
-			if r.expanded {
-				block = append(block, previewLines(r, m.blockWidth()-6)...)
-			}
-		}
-		if b.ended {
-			block = append(block, m.turnBanner(b)...)
-		} else if b == m.cur && m.waiting && !anyRunning(b) {
-			block = append(block, fmt.Sprintf("  %s %s", m.spinner.View(), styleFaint.Render("thinking…")))
-		}
-		lines = append(lines, m.railed(b, block)...)
+		lines = append(lines, block...)
 	}
 	if len(lines) == 0 {
 		lines = append(lines, styleFaint.Render("  nothing yet — ask for something below"))
 	}
 	return lines, cursorEntry
+}
+
+// historyTail renders backwards from the newest block, stopping once
+// it has enough to fill the pane. Cost follows what is on screen
+// rather than how long the session has run, which is the whole point:
+// a fifty Turn session redraws the same six blocks a one Turn one does.
+func (m Model) historyTail(height int) []string {
+	focused := m.focusedRow()
+	var lines []string
+	for bi := len(m.blocks) - 1; bi >= 0; bi-- {
+		block, _ := m.blockLines(m.blocks[bi], focused)
+		if bi > 0 {
+			block = append([]string{""}, block...)
+		}
+		lines = append(block, lines...)
+		if countLines(lines) >= height {
+			break
+		}
+	}
+	if len(lines) == 0 {
+		lines = append(lines, styleFaint.Render("  nothing yet — ask for something below"))
+	}
+	return lines
+}
+
+// blockLines renders one block against its rail, reporting where the
+// cursor landed inside it or -1 when it is elsewhere.
+func (m Model) blockLines(b *turnBlock, focused *callRow) (lines []string, cursorAt int) {
+	cursorAt = -1
+	var block []string
+	for _, gl := range wrapPlain(b.prompt, m.blockWidth()) {
+		block = append(block, styleGoal.Render(gl))
+	}
+	for _, r := range b.rows {
+		if focused != nil && r == focused {
+			cursorAt = len(block)
+		}
+		block = append(block, m.rowLines(r)...)
+		if r.expanded {
+			block = append(block, previewLines(r, m.blockWidth()-6)...)
+		}
+	}
+	if b.ended {
+		block = append(block, m.turnBanner(b)...)
+	} else if b == m.cur && m.waiting && !anyRunning(b) {
+		block = append(block, fmt.Sprintf("  %s %s", m.spinner.View(), styleFaint.Render("thinking…")))
+	}
+	return m.railed(b, block), cursorAt
+}
+
+// focusedRow is the row the cursor is on, or nil when there are none.
+func (m Model) focusedRow() *callRow {
+	rows := m.rows()
+	if len(rows) == 0 {
+		return nil
+	}
+	return rows[m.cursorClamped()]
+}
+
+// countLines counts real lines, since one entry may hold several.
+func countLines(entries []string) int {
+	n := 0
+	for _, e := range entries {
+		n += strings.Count(e, "\n") + 1
+	}
+	return n
 }
 
 // railWidth is the gutter the rail and its space occupy.
