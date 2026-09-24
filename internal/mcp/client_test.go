@@ -14,16 +14,14 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// serve wires a real server to a real client over an in-memory pair.
-// A real one, because the point is to exercise the protocol rather
-// than a fake of what I assumed it does.
+// serve wires a real server to a real client over an in-memory pair,
+// so these exercise the protocol rather than a fake of it.
 func serve(t *testing.T, tools ...tool) *Server {
 	return servePaged(t, 0, tools...)
 }
 
-// servePaged takes the page size, because the SDK's default is 1000
-// and a test that never crosses a boundary proves nothing about
-// following the cursor.
+// servePaged takes the page size: the SDK's default is 1000, and a
+// test that never crosses a boundary proves nothing about the cursor.
 func servePaged(t *testing.T, pageSize int, tools ...tool) *Server {
 	t.Helper()
 	srv := sdk.NewServer(&sdk.Implementation{Name: "fake", Version: "1"},
@@ -80,8 +78,7 @@ func TestServer_CallReturnsText(t *testing.T) {
 	assert.Zero(t, res.ExitCode)
 }
 
-// A tool error is the model's cue to correct itself, so it has to read
-// as a failure the way a non-zero exit does.
+// A tool error is the model's cue to correct itself.
 func TestServer_ToolErrorIsANonZeroExit(t *testing.T) {
 	s := serve(t, tool{name: "fails", handle: func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		return &sdk.CallToolResult{
@@ -95,8 +92,7 @@ func TestServer_ToolErrorIsANonZeroExit(t *testing.T) {
 	assert.Contains(t, res.Stdout, "must be in the future")
 }
 
-// Everything the model got wrong comes back as a result it can read,
-// never a Go error that would end the Turn.
+// What the model got wrong comes back as a result, not a Go error.
 func TestServer_BadCallsAreResultsNotErrors(t *testing.T) {
 	s := serve(t, text("only_tool"))
 
@@ -115,8 +111,8 @@ func TestServer_BadCallsAreResultsNotErrors(t *testing.T) {
 	}
 }
 
-// A handler that returns an error, rather than an error result, is a
-// protocol error. The model still has to be able to read it.
+// A handler returning an error is a protocol error, and the model
+// still has to be able to read it.
 func TestServer_AHandlerThatFailsIsStillAResult(t *testing.T) {
 	s := serve(t, tool{name: "boom", handle: func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		return nil, errors.New("the upstream API is down")
@@ -143,8 +139,7 @@ func TestConnect_RefusesAnUnnamedServer(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// Tools has to follow the cursor or a server with more tools than one
-// page silently offers only its first.
+// Without the cursor a server silently offers only its first page.
 func TestServer_ToolsFollowsPagination(t *testing.T) {
 	var many []tool
 	for i := range 25 {
@@ -184,8 +179,7 @@ func TestToResult_EmbeddedResourceKeepsItsText(t *testing.T) {
 	assert.Contains(t, res.Stdout, "file:///main.go")
 }
 
-// Structured output is meant to be duplicated into a text block. This
-// is for the servers that do not.
+// For the servers that do not duplicate it into a text block.
 func TestToResult_FallsBackToStructuredContent(t *testing.T) {
 	res := toResult(&sdk.CallToolResult{
 		StructuredContent: map[string]any{"temperature": 22.5},

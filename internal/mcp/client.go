@@ -1,6 +1,6 @@
 // Package mcp reaches tools an MCP server holds, so a credentialed
 // service can be called without its credentials entering the sandbox.
-// Calls run in this process: see docs/plans/MCP_PLAN.md, decision 1.
+// Calls run in this process, not the sandbox.
 package mcp
 
 import (
@@ -15,16 +15,14 @@ import (
 	"github.com/vitzeno/detent/version"
 )
 
-// Server is one connected MCP server. Name is detent's own key for it,
-// not the server's self-reported one, which the spec says may collide.
+// Server is one connected MCP server. Name is detent's key for it, not
+// the server's own, which the spec says may collide.
 type Server struct {
 	Name    string
 	session *sdk.ClientSession
 }
 
-// Connect opens a session and returns once the server is usable. A
-// server that will not start is the caller's problem to report, never
-// a reason to end a session: see Phase 4.
+// Connect opens a session and returns once the server is usable.
 func Connect(ctx context.Context, name string, t sdk.Transport) (*Server, error) {
 	if name == "" {
 		return nil, errors.New("mcp: a server needs a name")
@@ -37,27 +35,8 @@ func Connect(ctx context.Context, name string, t sdk.Transport) (*Server, error)
 	return &Server{Name: name, session: session}, nil
 }
 
-// Stdio describes a server detent launches and talks to over its
-// standard streams. Env is the whole environment, not an addition:
-// a server's credentials are named deliberately or not at all.
-type Stdio struct {
-	Command string
-	Args    []string
-	Env     []string
-}
-
-// Transport builds what Connect needs. Separate from Connect so a test
-// can supply an in-memory pair and never touch a subprocess.
-func (s Stdio) Transport() sdk.Transport {
-	cmd := exec.Command(s.Command, s.Args...)
-	if s.Env != nil {
-		cmd.Env = s.Env
-	}
-	return &sdk.CommandTransport{Command: cmd}
-}
-
-// Tools is everything the server offers, following cursor pagination
-// to the end: a server with more tools than one page is not unusual.
+// Tools is everything the server offers, following the cursor: a
+// server with more tools than one page is not unusual.
 func (s *Server) Tools(ctx context.Context) ([]*sdk.Tool, error) {
 	var out []*sdk.Tool
 	var cursor string
@@ -74,9 +53,8 @@ func (s *Server) Tools(ctx context.Context) ([]*sdk.Tool, error) {
 	}
 }
 
-// Call runs one tool. A server that refuses, fails, or has gone away
-// comes back as a Result the model can read and correct itself from,
-// which is how every other bad call in detent behaves.
+// Call runs one tool. A server that refuses, fails or has gone away
+// comes back as a Result, the way every bad call in detent does.
 func (s *Server) Call(ctx context.Context, name string, args map[string]any) capture.Result {
 	res, err := s.session.CallTool(ctx, &sdk.CallToolParams{Name: name, Arguments: args})
 	if err != nil {
@@ -85,11 +63,27 @@ func (s *Server) Call(ctx context.Context, name string, args map[string]any) cap
 	return toResult(res)
 }
 
-// Close ends the session and, for a stdio server, the process with it.
-// A server that outlives the run is what the next one trips over.
+// Close ends the session, and a stdio server's process with it.
 func (s *Server) Close() error {
 	if s.session == nil {
 		return nil
 	}
 	return s.session.Close()
+}
+
+// Stdio is a server detent launches. Env is the whole environment, not
+// an addition: credentials are named deliberately or not at all.
+type Stdio struct {
+	Command string
+	Args    []string
+	Env     []string
+}
+
+// Transport is separate from Connect so a test can supply its own.
+func (s Stdio) Transport() sdk.Transport {
+	cmd := exec.Command(s.Command, s.Args...)
+	if s.Env != nil {
+		cmd.Env = s.Env
+	}
+	return &sdk.CommandTransport{Command: cmd}
 }

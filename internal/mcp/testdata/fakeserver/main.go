@@ -1,5 +1,4 @@
-// Command fakeserver is a stdio MCP server for the tests: the real
-// transport, over real pipes, without reaching outside the module.
+// Command fakeserver is a stdio MCP server for the tests.
 package main
 
 import (

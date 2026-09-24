@@ -15,9 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeServer builds testdata/fakeserver once and returns its path.
-// Built rather than skipped: stdio is the transport every configured
-// server arrives on, so CI has to actually exercise it.
+// fakeServer builds testdata/fakeserver once. Built rather than
+// skipped, so CI exercises the transport every server arrives on.
 var fakeServer = sync.OnceValues(func() (string, error) {
 	bin := filepath.Join(buildDir, "fakeserver")
 	out, err := exec.Command("go", "build", "-o", bin, "./testdata/fakeserver").CombinedOutput()
@@ -51,8 +50,7 @@ func stdioServer(t *testing.T, env ...string) *Server {
 	return s
 }
 
-// The in-memory tests never launch anything. This one does: a real
-// subprocess over real pipes, which is how a configured server arrives.
+// The in-memory tests launch nothing. This one uses real pipes.
 func TestStdio_TalksToARealSubprocess(t *testing.T) {
 	ctx := context.Background()
 	s := stdioServer(t, "DETENT_MARKER=carried")
@@ -68,8 +66,7 @@ func TestStdio_TalksToARealSubprocess(t *testing.T) {
 	assert.Contains(t, res.Stdout, "env=carried", "Env did not reach the server")
 }
 
-// A server that outlives its session is what the next run trips over,
-// which is the lesson internal/sandbox learned the expensive way.
+// A server that outlives its session is what the next run trips over.
 func TestStdio_CloseEndsTheProcess(t *testing.T) {
 	bin, err := fakeServer()
 	require.NoError(t, err)
