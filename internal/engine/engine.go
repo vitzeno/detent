@@ -128,6 +128,7 @@ func (e *Engine) Run(ctx context.Context) {
 		Sandbox: mode == "sandbox",
 		Network: e.network, MaxSteps: e.maxSteps,
 		Recorded: e.recorded, Resumed: e.resumed,
+		ContextTokens: e.budget(),
 	})
 	done := make(chan struct{}, 1)
 

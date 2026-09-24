@@ -46,7 +46,10 @@ type Model struct {
 	panel  panelState
 	layout layoutState
 	notice noticeState
-	undo   undoState
+	// context is the last Step's prompt tokens, which is the whole
+	// transcript resent, so it is how full the budget is right now.
+	context int
+	undo    undoState
 
 	// Counters for /usage and /status, folded from the stream rather
 	// than read back from anywhere.

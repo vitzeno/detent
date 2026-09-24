@@ -315,3 +315,19 @@ func (markdownTool) Describe() tool.Spec {
 	return tool.Spec{Description: "x", Mutability: event.MutRead, Renders: event.RendersMarkdown}
 }
 func (markdownTool) Lower(tool.Args) (string, error) { return "true", nil }
+
+// A front-end measures a Step's prompt tokens against the budget, so
+// the budget has to be on the fact that describes the run.
+func TestSessionStarted_CarriesTheContextBudget(t *testing.T) {
+	r := newRig(t, nil, WithContextTokens(9_000))
+	started := r.await(event.SessionStartedKind).(event.SessionStarted)
+	assert.Equal(t, 9_000, started.ContextTokens)
+}
+
+// Unset means the default applies, not that there is no budget: a
+// front-end showing "no limit" would be wrong.
+func TestSessionStarted_ReportsTheDefaultBudgetWhenUnset(t *testing.T) {
+	r := newRig(t, nil)
+	started := r.await(event.SessionStartedKind).(event.SessionStarted)
+	assert.Equal(t, DefaultContextTokens, started.ContextTokens)
+}

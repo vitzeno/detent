@@ -25,10 +25,36 @@ func (m Model) sessionBar() string {
 		styleBrand.Render("◆ detent " + version.Number),
 		styleFaint.Render(m.run.Model),
 		styleFaint.Render(fmt.Sprintf("· %d request(s) · %d call(s)", len(m.blocks), m.calls)),
-		styleFaint.Render(status.Tokens(m.tokens) + " tok"),
+		m.contextStyle().Render(m.contextGauge()),
 		runModeBadge(m.runMode()),
 		jev,
 	}, m.layout.width)
+}
+
+// contextGauge is how full the transcript budget is, which is what
+// decides when a Turn stalls to compact. Raw totals live in /usage.
+func (m Model) contextGauge() string {
+	budget := m.run.ContextTokens
+	if budget <= 0 || m.context <= 0 {
+		return status.Tokens(m.tokens) + " tok"
+	}
+	return fmt.Sprintf("ctx %d%%", m.context*100/budget)
+}
+
+// contextStyle warns before the stall rather than after it: crossing
+// the budget costs a summariser round trip mid-Turn.
+func (m Model) contextStyle() lipgloss.Style {
+	budget := m.run.ContextTokens
+	if budget <= 0 || m.context <= 0 {
+		return styleFaint
+	}
+	switch pct := m.context * 100 / budget; {
+	case pct >= 90:
+		return styleDanger
+	case pct >= 75:
+		return styleCaution
+	}
+	return styleFaint
 }
 
 // fitSegments drops the least useful first: name, run mode and judge

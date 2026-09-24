@@ -579,3 +579,52 @@ func TestFallbackChain_ADeclaredShapeBeatsAJudgedGuess(t *testing.T) {
 	assert.Same(t, compiledMarkdown, fallbackChain(r, "Title: x\n")[0],
 		"the judge's guess overrode the tool's own answer")
 }
+
+// The bar says how full the budget is, since that is what decides
+// when a Turn stalls to compact. Raw totals live in /usage.
+func TestSessionBar_ShowsContextAsAPercentageOfBudget(t *testing.T) {
+	m := feed(t, event.SessionStarted{Model: "m", ContextTokens: 24_000})
+	m.apply(event.StepEnded{Usage: event.Usage{PromptTokens: 12_000}})
+	assert.Equal(t, "ctx 50%", m.contextGauge())
+
+	m.apply(event.StepEnded{Usage: event.Usage{PromptTokens: 23_000}})
+	assert.Equal(t, "ctx 95%", m.contextGauge())
+}
+
+// Compaction shrinks the transcript, so the old reading would
+// overstate the budget until the next Step measures the new one.
+func TestSessionBar_CompactionClearsTheStaleReading(t *testing.T) {
+	m := feed(t, event.SessionStarted{Model: "m", ContextTokens: 24_000})
+	m.apply(event.StepEnded{Usage: event.Usage{PromptTokens: 23_000}})
+	require.Equal(t, "ctx 95%", m.contextGauge())
+
+	m.apply(event.Compacted{Dropped: 21, Note: "summary"})
+	assert.NotContains(t, m.contextGauge(), "95", "the pre-compaction reading survived")
+	assert.Contains(t, m.notice.text, "21 messages")
+}
+
+// Without a budget there is nothing to be a percentage of, so the
+// raw total is better than a made-up denominator.
+func TestSessionBar_FallsBackToRawTokensWithNoBudget(t *testing.T) {
+	m := feed(t, event.SessionStarted{Model: "m"})
+	m.apply(event.StepEnded{Usage: event.Usage{PromptTokens: 12_000}})
+	assert.Contains(t, m.contextGauge(), "tok")
+}
+
+// Crossing the budget costs a summariser round trip mid-Turn, so the
+// gauge warns on the way up rather than reporting after the stall.
+func TestSessionBar_ContextGaugeWarnsBeforeTheStall(t *testing.T) {
+	for _, c := range []struct {
+		prompt int
+		want   lipgloss.Style
+		name   string
+	}{
+		{4_000, styleFaint, "17%, nothing to say"},
+		{18_500, styleCaution, "77%, getting close"},
+		{22_000, styleDanger, "91%, about to stall"},
+	} {
+		m := feed(t, event.SessionStarted{Model: "m", ContextTokens: 24_000})
+		m.apply(event.StepEnded{Usage: event.Usage{PromptTokens: c.prompt}})
+		assert.Equal(t, c.want.Render("x"), m.contextStyle().Render("x"), c.name)
+	}
+}

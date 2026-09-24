@@ -100,6 +100,7 @@ func (m Model) startOver() (tea.Model, tea.Cmd) {
 	m.blocks, m.cur = nil, nil
 	m.nav = navState{follow: true}
 	m.calls, m.steps, m.errors, m.views, m.tokens = 0, 0, 0, 0, 0
+	m.context = 0
 	m.backToInput()
 	return m, m.send(event.ResetSession{})
 }
