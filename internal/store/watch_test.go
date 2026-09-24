@@ -183,6 +183,9 @@ func TestWatch_RenameSticksAcrossAResume(t *testing.T) {
 	// The resume: a second SessionStarted for the same session.
 	bus.Publish(event.SessionStarted{Session: session, Model: "m", Resumed: 2})
 	bus.Drain(3 * time.Second)
+	// Drain says delivered, not written. Reading before the watcher
+	// has stopped races its own last write for the database lock.
+	stop()
 
 	all, err := s.Sessions()
 	require.NoError(t, err)
