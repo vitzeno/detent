@@ -20,7 +20,7 @@ import (
 // correlation off the event rather than threaded through call sites.
 func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 	dir := t.TempDir()
-	closer, err := logging.Setup(logging.Options{Dir: dir, Session: "w1", Level: "debug"})
+	closer, err := logging.Setup("w1", logging.WithDir(dir), logging.WithLevel("debug"))
 	require.NoError(t, err)
 
 	bus := event.New()
@@ -65,7 +65,7 @@ func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 // carries the whole of it anyway.
 func TestWatch_SkipsLiveOutput(t *testing.T) {
 	dir := t.TempDir()
-	closer, err := logging.Setup(logging.Options{Dir: dir, Session: "w2", Level: "debug"})
+	closer, err := logging.Setup("w2", logging.WithDir(dir), logging.WithLevel("debug"))
 	require.NoError(t, err)
 
 	bus := event.New()
@@ -90,8 +90,7 @@ func TestWatch_SkipsLiveOutput(t *testing.T) {
 func TestWatch_WithholdsBodiesUnlessAsked(t *testing.T) {
 	for _, bodies := range []bool{false, true} {
 		dir := t.TempDir()
-		closer, err := logging.Setup(logging.Options{
-			Dir: dir, Session: "b", Level: "debug", Bodies: bodies})
+		closer, err := logging.Setup("b", logging.WithDir(dir), logging.WithLevel("debug"), logging.WithBodies(bodies))
 		require.NoError(t, err)
 
 		bus := event.New()
@@ -120,7 +119,7 @@ func testID(name string) uuid.UUID { return uuid.NewSHA1(uuid.Nil, []byte(name))
 // only answer "bash". The command rides through Body like any content.
 func TestWatch_RecordsTheCommand(t *testing.T) {
 	dir := t.TempDir()
-	closer, err := logging.Setup(logging.Options{Dir: dir, Session: "c", Level: "debug", Bodies: true})
+	closer, err := logging.Setup("c", logging.WithDir(dir), logging.WithLevel("debug"), logging.WithBodies(true))
 	require.NoError(t, err)
 
 	bus := event.New()
@@ -149,7 +148,7 @@ func TestWatch_RecordsTheCommand(t *testing.T) {
 // it silently replaces the first for every reader.
 func TestWatch_NeverWritesTwoLevelKeys(t *testing.T) {
 	dir := t.TempDir()
-	closer, err := logging.Setup(logging.Options{Dir: dir, Session: "n", Level: "debug"})
+	closer, err := logging.Setup("n", logging.WithDir(dir), logging.WithLevel("debug"))
 	require.NoError(t, err)
 
 	bus := event.New()

@@ -118,10 +118,10 @@ func run() error {
 	}
 	// A session that cannot log is still a session: Setup says so and
 	// carries on discarding.
-	closeLog, logErr := logging.Setup(logging.Options{
-		Dir: resolved.LogDir, Session: sessionID.String(),
-		Level: resolved.LogLevel, Bodies: resolved.LogBodies,
-	})
+	closeLog, logErr := logging.Setup(sessionID.String(),
+		logging.WithDir(resolved.LogDir),
+		logging.WithLevel(resolved.LogLevel),
+		logging.WithBodies(resolved.LogBodies))
 	if logErr != nil {
 		fmt.Fprintln(os.Stderr, logErr)
 	}
@@ -254,10 +254,8 @@ func run() error {
 		views(resolved.Views, judge).Watch(bus)
 	}
 	defer mcppkg.Watch(bus, servers)()
-	defer forget.Watch(bus, forget.Options{
-		Sessions: sessionStore(events), Current: sessionID,
-		Containers: containerRemover(sandboxSocketFor(resolved)),
-	})()
+	defer forget.Watch(bus, sessionStore(events), sessionID,
+		forget.WithContainers(containerRemover(sandboxSocketFor(resolved))))()
 	// Drained rather than closed, so the last records reach the log
 	// instead of dying with the process.
 	defer bus.Drain(2 * time.Second)

@@ -38,7 +38,7 @@ func records(t *testing.T, dir, session string) []map[string]any {
 // filtering stays easy and the join across components survives.
 func TestSetup_WritesOneQueryableStreamPerSession(t *testing.T) {
 	dir := t.TempDir()
-	closer, err := logging.Setup(logging.Options{Dir: dir, Session: "s1"})
+	closer, err := logging.Setup("s1", logging.WithDir(dir))
 	require.NoError(t, err)
 
 	logging.For(logging.Viewgen).Info("declined",
@@ -61,14 +61,14 @@ func TestSetup_WritesOneQueryableStreamPerSession(t *testing.T) {
 // the shape of a reply answers most questions.
 func TestBody_WithheldUnlessAskedFor(t *testing.T) {
 	dir := t.TempDir()
-	closer, err := logging.Setup(logging.Options{Dir: dir, Session: "s3"})
+	closer, err := logging.Setup("s3", logging.WithDir(dir))
 	require.NoError(t, err)
 	withheld := logging.Body("sk-secret-key-material")
 	require.NoError(t, closer())
 	assert.NotContains(t, withheld, "secret")
 	assert.Contains(t, withheld, "22 bytes")
 
-	closer, err = logging.Setup(logging.Options{Dir: dir, Session: "s4", Bodies: true})
+	closer, err = logging.Setup("s4", logging.WithDir(dir), logging.WithBodies(true))
 	require.NoError(t, err)
 	assert.Equal(t, "hello", logging.Body("hello"))
 	require.NoError(t, closer())
@@ -79,7 +79,7 @@ func TestSetup_UnwritableDirDisablesRatherThanFails(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "not-a-dir")
 	require.NoError(t, os.WriteFile(file, []byte("x"), 0o644))
 
-	closer, err := logging.Setup(logging.Options{Dir: file, Session: "s5"})
+	closer, err := logging.Setup("s5", logging.WithDir(file))
 	assert.Error(t, err, "the caller is told")
 	require.NotNil(t, closer)
 	assert.NotPanics(t, func() {
@@ -90,7 +90,7 @@ func TestSetup_UnwritableDirDisablesRatherThanFails(t *testing.T) {
 
 func TestSetup_LevelFiltersAsAsked(t *testing.T) {
 	dir := t.TempDir()
-	closer, err := logging.Setup(logging.Options{Dir: dir, Session: "s6", Level: "warn"})
+	closer, err := logging.Setup("s6", logging.WithDir(dir), logging.WithLevel("warn"))
 	require.NoError(t, err)
 	logging.For(logging.Host).Info("quiet")
 	logging.For(logging.Host).Warn("loud", logging.KeyEvent, logging.LLMRequest)

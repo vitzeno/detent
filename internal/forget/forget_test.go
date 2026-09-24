@@ -43,11 +43,11 @@ type rig struct {
 	relisted chan struct{}
 }
 
-func start(t *testing.T, o Options) *rig {
+func start(t *testing.T, sessions Sessions, current uuid.UUID, opts ...Option) *rig {
 	t.Helper()
 	bus := event.New()
 	facts, unsub := bus.Subscribe(event.Only(event.NoticeKind, event.ListSessionsKind))
-	stop := Watch(bus, o)
+	stop := Watch(bus, sessions, current, opts...)
 	t.Cleanup(func() { stop(); unsub(); bus.Close() })
 
 	r := &rig{bus: bus, notices: make(chan event.Notice, 8), relisted: make(chan struct{}, 8)}
@@ -78,11 +78,8 @@ func (r *rig) notice(t *testing.T) event.Notice {
 func TestForget_DeletesAndSaysSo(t *testing.T) {
 	store := &fakeSessions{gone: true}
 	var removed []string
-	r := start(t, Options{
-		Sessions:   store,
-		Current:    uuid.Must(uuid.NewV7()),
-		Containers: func(_ context.Context, id string) error { removed = append(removed, id); return nil },
-	})
+	r := start(t, store, uuid.Must(uuid.NewV7()),
+		WithContainers(func(_ context.Context, id string) error { removed = append(removed, id); return nil }))
 
 	target := uuid.Must(uuid.NewV7())
 	r.bus.Publish(event.DeleteSession{Session: target})
@@ -105,7 +102,7 @@ func TestForget_DeletesAndSaysSo(t *testing.T) {
 func TestForget_RefusesTheRunningSession(t *testing.T) {
 	store := &fakeSessions{gone: true}
 	current := uuid.Must(uuid.NewV7())
-	r := start(t, Options{Sessions: store, Current: current})
+	r := start(t, store, current)
 
 	r.bus.Publish(event.DeleteSession{Session: current})
 
@@ -117,7 +114,7 @@ func TestForget_RefusesTheRunningSession(t *testing.T) {
 
 // A typo should not read as success.
 func TestForget_SaysWhenThereWasNothingThere(t *testing.T) {
-	r := start(t, Options{Sessions: &fakeSessions{gone: false}, Current: uuid.Must(uuid.NewV7())})
+	r := start(t, &fakeSessions{gone: false}, uuid.Must(uuid.NewV7()))
 	missing := uuid.Must(uuid.NewV7())
 
 	r.bus.Publish(event.DeleteSession{Session: missing})
@@ -128,10 +125,7 @@ func TestForget_SaysWhenThereWasNothingThere(t *testing.T) {
 }
 
 func TestForget_ReportsAStoreThatRefused(t *testing.T) {
-	r := start(t, Options{
-		Sessions: &fakeSessions{err: errors.New("database is locked")},
-		Current:  uuid.Must(uuid.NewV7()),
-	})
+	r := start(t, &fakeSessions{err: errors.New("database is locked")}, uuid.Must(uuid.NewV7()))
 	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
 
 	n := r.notice(t)
@@ -143,11 +137,8 @@ func TestForget_ReportsAStoreThatRefused(t *testing.T) {
 // a leak worth mentioning rather than a failure to undo.
 func TestForget_AContainerThatStaysIsStillADelete(t *testing.T) {
 	store := &fakeSessions{gone: true}
-	r := start(t, Options{
-		Sessions:   store,
-		Current:    uuid.Must(uuid.NewV7()),
-		Containers: func(context.Context, string) error { return errors.New("containerd is down") },
-	})
+	r := start(t, store, uuid.Must(uuid.NewV7()),
+		WithContainers(func(context.Context, string) error { return errors.New("containerd is down") }))
 	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
 
 	n := r.notice(t)
@@ -157,17 +148,26 @@ func TestForget_AContainerThatStaysIsStillADelete(t *testing.T) {
 
 // No sandbox this run means nothing to remove, not a nil call.
 func TestForget_NoSandboxIsNotAFailure(t *testing.T) {
-	r := start(t, Options{Sessions: &fakeSessions{gone: true}, Current: uuid.Must(uuid.NewV7())})
+	r := start(t, &fakeSessions{gone: true}, uuid.Must(uuid.NewV7()))
 	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
 
 	assert.Equal(t, "info", r.notice(t).Level)
 }
 
 func TestForget_NoStoreSaysSo(t *testing.T) {
-	r := start(t, Options{Current: uuid.Must(uuid.NewV7())})
+	r := start(t, nil, uuid.Must(uuid.NewV7()))
 	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
 
 	n := r.notice(t)
 	assert.Equal(t, "error", n.Level)
 	assert.Contains(t, n.Text, "nothing is recording")
+}
+
+// WithContainers(nil) is what a run with no sandbox passes, and it
+// has to mean "nothing to remove" rather than a nil call.
+func TestWithContainers_NilMeansNothingToRemove(t *testing.T) {
+	r := start(t, &fakeSessions{gone: true}, uuid.Must(uuid.NewV7()), WithContainers(nil))
+	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
+
+	assert.Equal(t, "info", r.notice(t).Level)
 }

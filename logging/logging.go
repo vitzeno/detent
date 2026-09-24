@@ -17,26 +17,30 @@ import (
 // Setup opens this session's log and makes it the default logger.
 // A path it cannot open is reported but not fatal: it discards
 // instead, since no session is worth failing over its log.
-func Setup(o Options) (func() error, error) {
-	dir := o.Dir
+func Setup(session string, opts ...Option) (func() error, error) {
+	var o settings
+	for _, apply := range opts {
+		apply(&o)
+	}
+	dir := o.dir
 	if dir == "" {
 		dir = DefaultDir()
 	}
-	if o.Session == "" {
-		o.Session = "session"
+	if session == "" {
+		session = "session"
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return disable(fmt.Errorf("logging: %w", err))
 	}
-	path := filepath.Join(dir, o.Session+".jsonl")
+	path := filepath.Join(dir, session+".jsonl")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return disable(fmt.Errorf("logging: %w", err))
 	}
-	bodies = o.Bodies
+	bodies = o.bodies
 	slog.SetDefault(slog.New(slog.NewJSONHandler(f, &slog.HandlerOptions{
-		Level: parseLevel(o.Level),
-	})).With(KeySession, o.Session))
+		Level: parseLevel(o.level),
+	})).With(KeySession, session))
 	return f.Close, nil
 }
 
@@ -52,19 +56,6 @@ func Body(text string) string {
 		return text
 	}
 	return fmt.Sprintf("(%d bytes, set log_bodies to record)", len(text))
-}
-
-// Options configures Setup.
-type Options struct {
-	// Dir holds one file per session. Empty means DefaultDir.
-	Dir string
-	// Session identifies this run and names its file.
-	Session string
-	// Level is "debug", "info", "warn" or "error".
-	Level string
-	// Bodies allows prompts, replies and command output into the log.
-	// Off by default: they carry secrets and bulk.
-	Bodies bool
 }
 
 // DefaultDir is where session logs live, beside the saved views.
