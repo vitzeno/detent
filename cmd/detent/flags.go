@@ -7,9 +7,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/vitzeno/detent/internal/config"
 	mcppkg "github.com/vitzeno/detent/internal/mcp"
 	"github.com/vitzeno/detent/internal/sandbox"
 	"github.com/vitzeno/detent/internal/store"
@@ -45,16 +45,20 @@ func listSessions() error {
 
 // listServers connects, says what each offers, and exits. Worth its
 // own flag: a server that answers here is one the model will see.
-func listServers(cfg map[string]config.MCPServer) error {
+func listServers() error {
+	cfg, err := mcppkg.Load(mcppkg.Files()...)
+	if err != nil {
+		return err
+	}
 	if len(cfg) == 0 {
-		fmt.Println("no mcp servers configured")
+		fmt.Printf("no mcp servers configured — looked in %s\n", strings.Join(mcppkg.Files(), " and "))
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	reg := tool.Standard()
-	servers, errs := mcppkg.ConnectAll(ctx, reg, mcpConfigs(cfg))
+	servers, errs := mcppkg.ConnectAll(ctx, reg, cfg)
 	defer servers.Close()
 
 	for _, s := range servers.Servers() {

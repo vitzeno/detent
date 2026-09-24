@@ -91,11 +91,6 @@ func (c *Config) apply(o Config) {
 	if o.SandboxWorkspace != "" {
 		c.SandboxWorkspace = o.SandboxWorkspace
 	}
-	// Replaced whole, not merged: half a server list is worse than
-	// either one, and only the file layer ever sets this.
-	if len(o.MCP) > 0 {
-		c.MCP = o.MCP
-	}
 }
 
 // Known limitation: a config file with `risk_threshold: 0` is

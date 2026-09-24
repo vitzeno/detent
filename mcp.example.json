@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "ghcr.io/github/github-mcp-server"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    "linear": {
+      "type": "http",
+      "url": "${LINEAR_MCP_URL:-https://mcp.linear.app/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${LINEAR_TOKEN}"
+      }
+    },
+    "notes": {
+      "command": "/usr/local/bin/notes-mcp",
+      "disabled": true
+    }
+  }
+}

@@ -78,28 +78,6 @@ type Config struct {
 	// the containerd daemon's host, which on macOS is the colima VM.
 	SandboxNetwork   string `yaml:"sandbox_network"`
 	SandboxWorkspace string `yaml:"sandbox_workspace"`
-
-	// MCP is the servers to connect at startup, keyed by the name
-	// their tools are namespaced under. Unique by construction.
-	MCP map[string]MCPServer `yaml:"mcp"`
-}
-
-// MCPServer is one server, either launched over stdio or reached
-// over HTTP. Set command or url, never both.
-type MCPServer struct {
-	Command string   `yaml:"command"`
-	Args    []string `yaml:"args"`
-	// URL reaches a running server instead of launching one.
-	URL string `yaml:"url"`
-	// Headers is where a bearer token goes. Like Env, these stay with
-	// detent: the call is made from this process, not the container.
-	Headers map[string]string `yaml:"headers"`
-	// Env is what the server gets, on top of the basics a process
-	// needs. Named deliberately: detent's own keys stay with detent.
-	Env map[string]string `yaml:"env"`
-	// Disabled keeps a server configured but unconnected, which beats
-	// commenting a block out and losing it.
-	Disabled bool `yaml:"disabled"`
 }
 
 // DefaultTheme mirrors theme.DefaultName, duplicated to avoid the same

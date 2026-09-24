@@ -129,7 +129,7 @@ func run() error {
 		return pruneSandbox(resolved.SandboxSocket)
 	}
 	if *listMCP {
-		return listServers(resolved.MCP)
+		return listServers()
 	}
 
 	runners := routing.Selector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
@@ -218,10 +218,14 @@ func run() error {
 	// Connected before the engine, which takes the registry by value
 	// and would never see a tool added afterwards.
 	tools := tool.Standard()
-	servers, mcpErrs := mcppkg.ConnectAll(context.Background(), tools, mcpConfigs(resolved.MCP))
+	configured, err := mcppkg.Load(mcppkg.Files()...)
+	if err != nil {
+		return err
+	}
+	servers, mcpErrs := mcppkg.ConnectAll(context.Background(), tools, configured)
 	defer servers.Close()
-	for _, err := range mcpErrs {
-		fmt.Fprintln(os.Stderr, "warning:", err)
+	for _, e := range mcpErrs {
+		fmt.Fprintln(os.Stderr, "warning:", e)
 	}
 	if len(servers.Servers()) > 0 {
 		opts = append(opts, engine.WithInvoker(servers))
@@ -281,17 +285,6 @@ func run() error {
 	p := tea.NewProgram(model)
 	_, err = p.Run()
 	return err
-}
-
-// mcpConfigs converts what the file said into what mcp takes, so
-// internal/mcp never imports config.
-func mcpConfigs(in map[string]config.MCPServer) map[string]mcppkg.Config {
-	out := make(map[string]mcppkg.Config, len(in))
-	for name, c := range in {
-		out[name] = mcppkg.Config{Command: c.Command, Args: c.Args, Env: c.Env,
-			Disabled: c.Disabled, URL: c.URL, Headers: c.Headers}
-	}
-	return out
 }
 
 // defaultSandboxSocket returns the OS-conventional containerd socket

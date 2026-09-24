@@ -138,32 +138,13 @@ log_dir: ""          # empty takes ~/.local/state/detent/logs
 
 # --- MCP servers ---
 #
-# Tools an MCP server holds, so a credentialed service can be called
-# without its credentials entering the sandbox. Each key namespaces
-# that server's tools: "github" offers github__create_issue.
+# Not here: servers live in .mcp.json, the file every MCP client
+# reads, so one written for another client works as-is. Two are
+# merged, nearest last:
 #
-# These calls run in detent's own process, not the container, and no
-# checkpoint can undo one. So every MCP call is confirmed, whatever
-# the server says about itself.
+#   ~/.config/detent/mcp.json    yours, every project
+#   ./.mcp.json                  this project, and wins
 #
-# Set command or url, never both. env is what a launched server gets,
-# on top of PATH, HOME, TMPDIR, LANG and USER; headers is where a
-# bearer token goes. Neither reaches the container: these calls are
-# made from detent's own process.
+#   ./bin/detent -mcp            connect, list what each offers, exit
 #
-#   ./bin/detent -mcp     connect, list what each offers, exit
-#
-mcp: {}
-# mcp:
-#   github:                                    # launched, over stdio
-#     command: docker
-#     args: [run, -i, --rm, ghcr.io/github/github-mcp-server]
-#     env:
-#       GITHUB_PERSONAL_ACCESS_TOKEN: ghp_...
-#   linear:                                    # reached, over HTTP
-#     url: https://mcp.linear.app/mcp
-#     headers:
-#       Authorization: Bearer ...
-#   notes:
-#     command: /usr/local/bin/notes-mcp
-#     disabled: true
+# See mcp.example.json.

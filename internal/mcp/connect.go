@@ -15,14 +15,18 @@ import (
 
 // Config is one server to launch, as the config file describes it.
 type Config struct {
-	Command  string
-	Args     []string
-	Env      map[string]string
-	Disabled bool
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env"`
 	// URL reaches a server rather than launching one. Set this or
 	// Command, never both.
-	URL     string
-	Headers map[string]string
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers"`
+	// Type names a remote transport. Absent means stdio, which is the
+	// convention every other client follows.
+	Type string `json:"type"`
+	// Disabled keeps a server configured but unconnected.
+	Disabled bool `json:"disabled"`
 }
 
 // transport is how this server is reached, and says so when the
@@ -31,9 +35,20 @@ func (c Config) transport() (sdk.Transport, error) {
 	switch {
 	case c.Command != "" && c.URL != "":
 		return nil, errors.New("set command or url, not both")
+
 	case c.URL != "":
-		return HTTP{URL: c.URL, Headers: c.Headers}.Transport(), nil
+		// Absent type means stdio everywhere else, so a url without
+		// one is a remote server that forgot to say which kind.
+		switch c.Type {
+		case "", "http", "streamable-http":
+			return HTTP{URL: c.URL, Headers: c.Headers}.Transport(), nil
+		}
+		return nil, fmt.Errorf("transport %q is not supported; use http", c.Type)
+
 	case c.Command != "":
+		if c.Type != "" && c.Type != "stdio" {
+			return nil, fmt.Errorf("type %q takes a url, not a command", c.Type)
+		}
 		return Stdio{Command: c.Command, Args: c.Args, Env: environ(c.Env)}.Transport(), nil
 	}
 	return nil, errors.New("no command or url configured")
