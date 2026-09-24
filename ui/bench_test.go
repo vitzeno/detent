@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -205,6 +206,63 @@ func BenchmarkScrollFollowing(b *testing.B) {
 		m.nav.follow = true
 		m.sizeViewport()
 
+		b.Run(s.name, func(b *testing.B) {
+			b.ReportAllocs()
+			cur := m
+			for b.Loop() {
+				next, _ := cur.Update(down)
+				cur = next.(Model)
+				_ = cur.View()
+			}
+		})
+	}
+}
+
+// withBigOutput gives the newest row a result worth scrolling, so the
+// output pane has real work rather than one line.
+func withBigOutput(m Model, lines int) Model {
+	rows := m.rows()
+	r := rows[len(rows)-1]
+	var b strings.Builder
+	for i := range lines {
+		fmt.Fprintf(&b, "%-6d detent/internal/pkg%-3d  ok  0.42s  %d allocs\n", i, i%40, i*7)
+	}
+	r.result = &event.Result{Stdout: b.String()}
+	r.running, r.viewTried, r.view = false, false, nil
+	m.nav.cursor = len(rows) - 1
+	m.nav.focus = focusOutput
+	m.histRev++
+	m.sizeViewport()
+	return m
+}
+
+// BenchmarkScrollOutputPane is scrolling the detail pane, which is
+// what a long command's output lands in.
+func BenchmarkScrollOutputPane(b *testing.B) {
+	down := tea.KeyPressMsg{Code: tea.KeyDown}
+	for _, s := range stressSizes {
+		m := withBigOutput(session(s.turns, s.calls, 20), 2000)
+		b.Run(s.name, func(b *testing.B) {
+			b.ReportAllocs()
+			cur := m
+			for b.Loop() {
+				next, _ := cur.Update(down)
+				cur = next.(Model)
+				_ = cur.View()
+			}
+		})
+	}
+}
+
+// BenchmarkScrollUsagePanel is /usage, the panel whose content grows
+// with the session rather than staying one screen.
+func BenchmarkScrollUsagePanel(b *testing.B) {
+	down := tea.KeyPressMsg{Code: tea.KeyDown}
+	for _, s := range stressSizes {
+		m := session(s.turns, s.calls, 20)
+		m.panel.open = panelUsage
+		m.nav.focus = focusOutput
+		m.sizeViewport()
 		b.Run(s.name, func(b *testing.B) {
 			b.ReportAllocs()
 			cur := m
