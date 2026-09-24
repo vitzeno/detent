@@ -306,3 +306,50 @@ func lastAppend(tr *transcript) string {
 	}
 	return string(m[len(m)-1].Role) + ":" + m[len(m)-1].CallID
 }
+
+type countingSummarizer struct{ calls int }
+
+func (c *countingSummarizer) Summarize(context.Context, []event.Message) (string, error) {
+	c.calls++
+	return "summary", nil
+}
+
+// The thrash a real session showed: an open Turn bigger than the
+// budget leaves a sliver droppable, so every Step paid a summariser
+// round trip to re-summarise the note the last one wrote.
+func TestCompact_WillNotPayASummarizerForASliver(t *testing.T) {
+	const budgetTokens = 1000
+	budget := budgetTokens * BytesPerToken
+
+	var tr transcript
+	tr.user(strings.Repeat("o", budget/50)) // the droppable sliver
+	c := call("old", "bash")
+	tr.step(model.Reply{Calls: []event.ToolCall{c}}, map[string]string{c.ID: "x"})
+
+	tr.user(strings.Repeat("L", 2*budget)) // an open Turn over budget on its own
+
+	s := &countingSummarizer{}
+	for range 5 {
+		dropped, _ := tr.compact(context.Background(), budgetTokens, s)
+		assert.Zero(t, dropped)
+	}
+	assert.Zero(t, s.calls, "a sliver that cannot reach budget is not worth a round trip")
+}
+
+// The guard must not stop compaction that actually works.
+func TestCompact_StillCutsWhenTheCutReachesBudget(t *testing.T) {
+	const budgetTokens = 1000
+	budget := budgetTokens * BytesPerToken
+
+	var tr transcript
+	for range 4 {
+		tr.user(strings.Repeat("o", budget/2))
+	}
+	tr.user("the open request")
+
+	s := &countingSummarizer{}
+	dropped, _ := tr.compact(context.Background(), budgetTokens, s)
+	assert.NotZero(t, dropped)
+	assert.Equal(t, 1, s.calls)
+	assert.LessOrEqual(t, tr.bytes(), budget)
+}

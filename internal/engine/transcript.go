@@ -16,6 +16,9 @@ const (
 	BytesPerToken        = 4
 	// MaxResultBytes bounds one result: a 200KB ps is twice the budget.
 	MaxResultBytes = 4 * 1024
+	// minCompactShare is the fraction of the budget a cut must free to
+	// be worth a summariser round trip when it cannot reach budget.
+	minCompactShare = 10
 )
 
 // transcript is the model's input. Its atom is a Step, which nothing
@@ -124,6 +127,13 @@ func (t *transcript) compact(ctx context.Context, budgetTokens int, s Summarizer
 	}
 	cut := t.cutPoint(budget)
 	if cut == 0 {
+		return 0, ""
+	}
+	// A cut that frees a sliver and still misses the budget gets asked
+	// for again next Step, paying a summariser round trip to
+	// re-summarise its own note. Leave the front alone instead.
+	freed := msgBytes(t.msgs[:cut])
+	if freed < budget/minCompactShare && t.bytes()-freed > budget {
 		return 0, ""
 	}
 	gone := t.msgs[:cut]
