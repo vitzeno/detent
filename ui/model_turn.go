@@ -54,6 +54,9 @@ type callRow struct {
 	// renders is the shape the tool declared, which beats a judged
 	// guess because the tool knows and the judge is estimating.
 	renders string
+	// executor is empty for a shell command. Anything else ran outside
+	// the sandbox, so no checkpoint can take it back.
+	executor string
 
 	risk    event.Risk
 	running bool

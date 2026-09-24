@@ -153,6 +153,9 @@ type CallProposed struct {
 	// Renders is how the tool says its output should be read
 	// It is a fact so it beats a judged guess
 	Renders string
+	// Executor is empty for a shell command, and otherwise names what
+	// runs it. Nothing a checkpoint can undo.
+	Executor string
 }
 
 // RendersMarkdown says a tool's output is a md document

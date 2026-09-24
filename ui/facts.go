@@ -136,7 +136,8 @@ func (m *Model) addCall(v event.CallProposed) {
 		return
 	}
 	m.cur.rows = append(m.cur.rows, &callRow{
-		id: v.Call, command: event.Command(v.Tool, v.Args), renders: v.Renders,
+		id: v.Call, command: event.Command(v.Tool, v.Args),
+		renders: v.Renders, executor: v.Executor,
 	})
 	m.trackNewest()
 }

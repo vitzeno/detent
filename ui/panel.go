@@ -204,9 +204,7 @@ func (m Model) contextDetail() string {
 // mcpLines draws what connected, what failed, and why. Colour carries
 // the state: it is what a human opens this page to see.
 func (m *Model) mcpLines() []string {
-	out := []string{styleGoal.Render("mcp servers"), "",
-		styleFaint.Render("  every call is confirmed: these run outside the sandbox"),
-		styleFaint.Render("  and no checkpoint can undo one"), ""}
+	out := []string{styleGoal.Render("mcp servers"), ""}
 
 	if len(m.servers) == 0 {
 		return append(out, styleFaint.Render("  (none configured — see mcp: in the config file)"))

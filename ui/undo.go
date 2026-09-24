@@ -81,18 +81,42 @@ func (m *Model) undoLines() []string {
 	if b == nil {
 		return nil
 	}
-	var out []string
-	out = append(out, styleCaution.Render(fmt.Sprintf("undo request #%d", b.n)), "",
-		"  "+truncCell(b.prompt, m.layout.outputColW-6), "",
-		styleFaint.Render(fmt.Sprintf("  %d call(s) will be undone", len(b.rows))), "")
-	for _, r := range b.rows {
-		if r.prose != "" {
-			continue
+	reversible, standing := split(b.rows)
+	width := m.layout.outputColW - 6
+
+	out := []string{styleCaution.Render(fmt.Sprintf("undo request #%d", b.n)), "",
+		"  " + truncCell(b.prompt, width), "",
+		styleFaint.Render(fmt.Sprintf("  %d call(s) will be undone", len(reversible))), ""}
+	for _, r := range reversible {
+		out = append(out, "  "+styleMuted.Render(truncCell(r.command, width)))
+	}
+
+	// Named, not counted: a rollback that quietly does less than a
+	// human expects is the worst thing this page could do.
+	if len(standing) > 0 {
+		out = append(out, "",
+			styleDanger.Render(fmt.Sprintf("  %d call(s) cannot be undone", len(standing))))
+		for _, r := range standing {
+			out = append(out, "  "+styleDanger.Render(truncCell(r.command, width)))
 		}
-		out = append(out, "  "+styleMuted.Render(truncCell(r.command, m.layout.outputColW-6)))
 	}
 	return append(out, "",
 		styleFaint.Render("  The container goes back either way."),
 		styleFaint.Render("  Your own files only go back if you say so — this"),
 		styleFaint.Render("  request may have touched work detent never made."))
+}
+
+// split separates what a checkpoint covers from what it does not.
+// Prose is neither: nothing ran.
+func split(rows []*callRow) (reversible, standing []*callRow) {
+	for _, r := range rows {
+		switch {
+		case r.prose != "":
+		case r.executor != "":
+			standing = append(standing, r)
+		default:
+			reversible = append(reversible, r)
+		}
+	}
+	return reversible, standing
 }

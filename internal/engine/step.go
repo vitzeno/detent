@@ -78,7 +78,7 @@ func (e *Engine) plan(step uuid.UUID, reply model.Reply) []*callPlan {
 		p := &callPlan{id: uuid.Must(uuid.NewV7()), call: c}
 		out = append(out, p)
 		e.bus.Publish(event.CallProposed{Call: p.id, Step: step, Tool: c.Name, Args: c.Args,
-			Renders: e.renders(c.Name)})
+			Renders: e.renders(c.Name), Executor: e.executor(c.Name)})
 
 		switch {
 		case c.Err != "":
@@ -268,4 +268,14 @@ func invokeSafely(ctx context.Context, in Invoker, c tool.Call) (res capture.Res
 		}
 	}()
 	return in.Invoke(ctx, c), nil
+}
+
+// executor names what runs a tool, empty for a shell command. A
+// front-end needs it to say what a rollback cannot take back.
+func (e *Engine) executor(name string) string {
+	t, ok := e.tools.Lookup(name)
+	if !ok {
+		return ""
+	}
+	return t.Describe().Executor
 }

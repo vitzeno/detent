@@ -717,16 +717,6 @@ func TestMCPPage_ColoursEachServerByItsState(t *testing.T) {
 	assert.Contains(t, page, styleCaution.Render("●"), "a server offering nothing is not marked caution")
 }
 
-// The page has to say the thing that is not obvious: these calls are
-// not covered by a checkpoint.
-func TestMCPPage_WarnsThatCallsAreConfirmed(t *testing.T) {
-	m := feed(t, event.SessionStarted{Model: "m"},
-		event.ServersListed{Servers: []event.ServerSummary{{Name: "a", Tools: 1}}})
-	page := stripANSI(strings.Join(m.mcpLines(), "\n"))
-	assert.Contains(t, page, "confirmed")
-	assert.Contains(t, page, "undo")
-}
-
 func TestMCPPage_SaysWhenNothingIsConfigured(t *testing.T) {
 	m := feed(t, event.SessionStarted{Model: "m"})
 	assert.Contains(t, stripANSI(strings.Join(m.mcpLines(), "\n")), "none configured")
@@ -762,4 +752,73 @@ func TestMCPPage_EscapeCloses(t *testing.T) {
 
 	closed, _ := got.onEscape()
 	assert.Equal(t, panelNone, closed.(Model).panel.open)
+}
+
+// undoTurn is a request holding both kinds of Call.
+func undoTurn(t *testing.T) Model {
+	t.Helper()
+	turn := uuid.Must(uuid.NewV7())
+	m := feed(t, event.SessionStarted{Model: "m"},
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "do several things"})
+	for _, c := range []struct {
+		tool, exec string
+		args       map[string]any
+	}{
+		{"bash", "", map[string]any{"command": "go test ./..."}},
+		{"github__create_issue", "github", map[string]any{"repo": "detent"}},
+		{"write_file", "", map[string]any{"path": "notes.md"}},
+	} {
+		call := uuid.Must(uuid.NewV7())
+		m.apply(event.CallProposed{Call: call, Tool: c.tool, Args: c.args, Executor: c.exec})
+		m.apply(event.CallEnded{Call: call, Result: event.Result{Stdout: "ok"}})
+	}
+	m.apply(event.CheckpointTaken{Turn: turn})
+	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	m.layout.width, m.layout.height = 150, 45
+	m.sizeViewport()
+	return m
+}
+
+// A checkpoint restores a container. It cannot un-file an issue, and
+// a rollback that quietly does less than a human expects is the worst
+// thing this page could do.
+func TestUndoPage_NamesWhatItCannotReverse(t *testing.T) {
+	next, _ := undoTurn(t).runUndo("/undo 1")
+	got := next.(Model)
+	page := stripANSI(strings.Join(got.undoLines(), "\n"))
+
+	assert.Contains(t, page, "2 call(s) will be undone")
+	assert.Contains(t, page, "1 call(s) cannot be undone")
+	assert.Contains(t, page, "github__create_issue", "the standing call is not named")
+	assert.Contains(t, page, "go test ./...")
+}
+
+// Nothing to warn about, nothing said: the section only earns its
+// space when a Turn actually holds one.
+func TestUndoPage_SaysNothingWhenEverythingReverses(t *testing.T) {
+	turn := uuid.Must(uuid.NewV7())
+	m := feed(t, event.SessionStarted{Model: "m"},
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "just a command"})
+	call := uuid.Must(uuid.NewV7())
+	m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "ls"}})
+	m.apply(event.CallEnded{Call: call, Result: event.Result{}})
+	m.apply(event.CheckpointTaken{Turn: turn})
+	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	m.layout.width, m.layout.height = 150, 45
+	m.sizeViewport()
+
+	next, _ := m.runUndo("/undo 1")
+	shown := next.(Model)
+	page := stripANSI(strings.Join(shown.undoLines(), "\n"))
+	assert.NotContains(t, page, "cannot be undone")
+	assert.Contains(t, page, "1 call(s) will be undone")
+}
+
+// The count has to be of what actually goes back, or the page is
+// wrong in the one number a human reads.
+func TestUndoPage_CountsOnlyWhatGoesBack(t *testing.T) {
+	next, _ := undoTurn(t).runUndo("/undo 1")
+	got := next.(Model)
+	page := stripANSI(strings.Join(got.undoLines(), "\n"))
+	assert.NotContains(t, page, "3 call(s) will be undone")
 }

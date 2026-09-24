@@ -295,6 +295,34 @@ func TestCallProposed_CarriesTheToolsDeclaredShape(t *testing.T) {
 		"the tool's answer did not reach the fact")
 }
 
+// A front-end says what a rollback cannot take back, so it has to be
+// told which Calls ran outside the sandbox.
+func TestCallProposed_CarriesTheExecutor(t *testing.T) {
+	reg := tool.Standard()
+	reg.Register(remoteTool{name: "srv__do"})
+	r := rigWithTools(t, event.New(),
+		&fakeModel{replies: []model.Reply{{Calls: []event.ToolCall{remoteCall("r1")}}}},
+		&fakeRunner{out: "ok\n"}, reg, WithInvoker(&fakeInvoker{}))
+	r.approve(t)
+	r.run("go")
+
+	proposed := r.of(event.CallProposedKind)
+	require.Len(t, proposed, 1)
+	assert.Equal(t, "srv", proposed[0].(event.CallProposed).Executor,
+		"nothing said this Call ran outside the sandbox")
+}
+
+// A shell Call must not claim one, or undo would say it cannot
+// reverse things it can.
+func TestCallProposed_AShellCallHasNoExecutor(t *testing.T) {
+	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "ls")}}})
+	r.run("go")
+
+	proposed := r.of(event.CallProposedKind)
+	require.Len(t, proposed, 1)
+	assert.Empty(t, proposed[0].(event.CallProposed).Executor)
+}
+
 // No tool ships with an opinion, and inventing one would send ordinary
 // command output through a markdown renderer.
 func TestCallProposed_LeavesRendersEmptyWhenTheToolHasNoOpinion(t *testing.T) {
