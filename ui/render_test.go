@@ -532,3 +532,21 @@ func TestDetailKey_CoversEverythingThePaneDrawsFrom(t *testing.T) {
 		})
 	}
 }
+
+// Every running row draws a spinner, not just the thinking line, so a
+// block holding one has to redraw as the frame advances.
+func TestBlockCache_ARunningCallKeepsSpinning(t *testing.T) {
+	m := session(3, 2, 0)
+	turn := uuid.Must(uuid.NewV7())
+	call := uuid.Must(uuid.NewV7())
+	m.apply(event.TurnStarted{Turn: turn, N: 4, Prompt: "run something"})
+	m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
+	m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
+	require.True(t, anyRunning(m.cur), "the test needs a running row")
+
+	before, _ := m.historyAll()
+	m.spinner, _ = m.spinner.Update(m.spinner.Tick())
+	after, _ := m.historyAll()
+
+	assert.NotEqual(t, before, after, "the running call's spinner is frozen by the cache")
+}

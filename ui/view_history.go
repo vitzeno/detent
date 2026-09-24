@@ -80,7 +80,9 @@ func (m Model) blockKey(b *turnBlock, focused *callRow) blockKey {
 			break
 		}
 	}
-	if !b.ended && b == m.cur && m.waiting && !anyRunning(b) {
+	// Every running row draws a spinner too, not just the thinking
+	// line, so the frame is part of the key whenever either shows.
+	if !b.ended && (anyRunning(b) || (b == m.cur && m.waiting)) {
 		k.spinner = m.spinner.View()
 	}
 	return k
