@@ -129,7 +129,7 @@ default one is context `colima`, a named one is `colima-<profile>`.
 
 ## The vocabulary
 
-Everything is named for one of four scopes, and using the wrong word
+Everything is named for one of five scopes, and using the wrong word
 is how a bug gets written:
 
 | Term | Is | Unit of |
@@ -138,10 +138,16 @@ is how a bug gets written:
 | **Turn** | one human prompt and all the agent did about it | **undo**, the history block |
 | **Step** | one model round trip | **the transcript's atom**, compaction |
 | **Call** | one tool invocation | the row, approval, parallelism |
+| **Shell** | one command the human ran themselves | looking, not working |
 
 A Step holds zero or more Calls; a Turn holds Steps until the model
 stops asking for tools. Steps are never shown — a human does not think
 in model round trips.
+
+A **Shell** is none of the other four: no model asked for it, so
+nothing assesses, approves or judges it, and it opens no Turn. It is
+its own noun precisely so it cannot be bolted onto Call and quietly
+break those three at once. `internal/humanshell` owns it.
 
 ### The transcript's atom is a Step
 
@@ -168,24 +174,34 @@ which is a whole number of Steps by construction.
 
 ## Architecture
 
-**Everything is an event.** 21 facts and 10 intents are the entire
-interface between components. Facts are past tense and come from the
-engine; intents are imperative and come from anyone. An extension
+**Everything is an event.** 24 facts and 14 intents are the entire
+interface between components. Facts are past tense, intents are
+imperative, and either may come from anyone: the engine publishes most
+facts, but a subscriber answering a question publishes one too. An extension
 listens, publishes, or both — there is no second mechanism.
 
-Nothing calls the engine. The engine subscribes to intents and
-publishes facts, and every other part of the program is one of seven
+Nothing calls the engine. Every part of the program is one of ten
 subscribers:
 
 | Subscriber | Does | Remove it and |
 | ---------- | ---- | ------------- |
-| `internal/engine` | the only intent subscriber | nothing runs |
+| `internal/engine` | owns every intent that drives the agent loop | nothing runs |
 | `ui` | draws the TUI | the engine still runs |
 | `internal/headless` | prints one Turn | the TUI still runs |
 | `logging` | the JSONL stream | nothing else notices |
 | `internal/store` | the SQLite log, answers `ListSessions` | resume stops, nothing else |
 | `internal/judge` | scores a finished Call, may `RequestStop` | rows lose their verdict |
 | `internal/viewgen` | composes the view for an output | rows fall back to text |
+| `internal/mcp` | answers `ListServers` | `/mcp` draws nothing |
+| `internal/forget` | answers `DeleteSession` | `/delete` does nothing |
+| `internal/humanshell` | runs `RunCommand`, the human's own | shift+tab stops working |
+
+**The engine is not the only intent subscriber**, and a sentence here
+once said it was. Four packages own an intent apiece. What holds is
+narrower: each intent kind has exactly one owner, and the engine owns
+the ones that drive the loop. Disjointness is what makes several
+subscribers sound, and it is why cancelling a command is its own
+`CancelCommand` rather than a field on `Abort`.
 
 That table is the wiring. `cmd/detent/main.go` connects nothing to
 anything else, only each part to the bus, which is why each row is one
@@ -208,6 +224,7 @@ ui          →  event, viewspec, views, version, logging + its own subpackages
 engine      →  event, tool, model, capture, classify (via an interface)
 mcp         →  event, tool, capture, the MCP SDK
 forget      →  event (the store and sandbox arrive as arguments)
+humanshell  →  event, capture (the runner arrives as an argument)
 tool        →  event
 model       →  event
 event       →  the standard library, plus viewspec

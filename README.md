@@ -69,15 +69,40 @@ Flagging is a chain: the tool's own declared mutability, a regex backstop, a
 repeat check, then TypeSafe's Jev if a key is set. Each link can raise the
 verdict but none can lower it
 
-Declining stops that Call, the agent reads the refusal andtries
+Declining stops that Call, the agent reads the refusal and tries
 something else
 
 Typing while it works steers it
+
+## Your own commands
+
+shift+tab switches the input bar between a request and a shell. The border
+turns amber and the prompt becomes `$`. `/shell` does the same thing
+
+What you type goes to the runner the agent uses, so in the sandbox you are
+looking at what it just did. Output streams into the pane like any other
+row, esc stops it
+
+Nothing flags it and nothing asks you to approve it. That chain is there to
+protect you from the model, and you typed this one
+
+The model reads it afterwards, as a message in the transcript
+
+```
+[human ran a command in the sandbox]
+$ git status --short
+exit 0
+ M ui/keys.go
+```
+
+So it knows what you checked instead of checking again
 
 ## Undoing
 
 `/undo 2` restores the container to before your second request and trims the
 transcript to match
+
+Commands you ran yourself go back with it, if they ran after that snapshot
 
 Your working directory is mounted at `/workspace`, outside the snapshot
 
