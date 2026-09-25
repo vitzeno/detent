@@ -53,9 +53,12 @@ func TestKinds_AreUniqueAndComplete(t *testing.T) {
 		RolledBack{}, BoundReached{}, StepStarted{}, StepEnded{}, ModelText{},
 		Appended{}, Compacted{},
 		CallProposed{}, CallAssessed{}, ApprovalAsked{}, CallStarted{},
-		OutputChunk{}, CallEnded{}, CallJudged{}, ViewReady{}, Notice{}, SessionsListed{},
+		OutputChunk{}, CallEnded{}, CallJudged{}, ViewReady{},
+		ShellStarted{}, ShellEnded{},
+		Notice{}, SessionsListed{}, ServersListed{},
 		SubmitPrompt{}, ResolveApproval{}, NoteContext{}, Abort{},
 		RequestStop{}, Continue{}, RequestRollback{}, ResetSession{}, ListSessions{}, RenameSession{},
+		RunCommand{}, CancelCommand{},
 	}
 	seen := map[Kind]bool{}
 	for _, e := range all {
@@ -70,11 +73,13 @@ func TestKinds_AreUniqueAndComplete(t *testing.T) {
 // Tense is the convention that tells a reader which way an event
 // travels, so it has to actually hold.
 func TestKinds_IntentsAndFactsAreDistinct(t *testing.T) {
-	facts := []Event{TurnStarted{}, CallEnded{}, Notice{}, ApprovalAsked{}}
+	facts := []Event{TurnStarted{}, CallEnded{}, Notice{}, ApprovalAsked{},
+		ShellStarted{}, ShellEnded{}}
 	for _, e := range facts {
 		assert.False(t, e.Kind().IsIntent(), "%T is a fact", e)
 	}
-	intents := []Event{SubmitPrompt{}, Abort{}, RequestStop{}, ResetSession{}}
+	intents := []Event{SubmitPrompt{}, Abort{}, RequestStop{}, ResetSession{},
+		RunCommand{}, CancelCommand{}}
 	for _, e := range intents {
 		assert.True(t, e.Kind().IsIntent(), "%T is an intent", e)
 	}

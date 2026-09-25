@@ -108,6 +108,17 @@ func describe(e event.Event) (slog.Level, []any) {
 			"goal_achieved", v.GoalAchieved, "from_judge", v.FromJudge}
 	case event.ViewReady:
 		return slog.LevelDebug, []any{KeyCall, v.Call, "source", v.Source}
+	case event.ShellStarted:
+		// The command through Body like any other: it is the human's
+		// content, not the harness's metadata.
+		return slog.LevelInfo, []any{KeyShell, v.Shell, "runner", v.Runner,
+			"command", Body(v.Command)}
+	case event.ShellEnded:
+		return level(v.Result.ExitCode != 0 || v.Result.Err != ""), []any{
+			KeyShell, v.Shell, "exit", v.Result.ExitCode, KeyMS, v.Took.Milliseconds(),
+			"bytes", len(v.Result.Stdout) + len(v.Result.Stderr),
+			"stdout", Body(v.Result.Stdout), "stderr", Body(v.Result.Stderr),
+			KeyReason, v.Result.Err}
 	case event.Notice:
 		// severity, not level: slog writes its own "level" key, and two
 		// in one object means the last one silently wins.

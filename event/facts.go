@@ -246,6 +246,27 @@ type ViewReady struct {
 
 func (ViewReady) Kind() Kind { return ViewReadyKind }
 
+// A Shell is one command the human ran themselves. Not a Call: the
+// model never asked for it, so nothing assesses or approves it.
+
+type ShellStarted struct {
+	fact
+	Shell   uuid.UUID
+	Command string
+	Runner  string // host or sandbox
+}
+
+func (ShellStarted) Kind() Kind { return ShellStartedKind }
+
+type ShellEnded struct {
+	fact
+	Shell  uuid.UUID
+	Result Result
+	Took   time.Duration
+}
+
+func (ShellEnded) Kind() Kind { return ShellEndedKind }
+
 // SessionsListed answers ListSessions with what can be resumed.
 type SessionsListed struct {
 	fact

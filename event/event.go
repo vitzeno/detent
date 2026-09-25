@@ -52,6 +52,10 @@ const (
 	CallJudgedKind    Kind = "call.judged"
 	ViewReadyKind     Kind = "call.view"
 
+	// A Shell is one command the human ran themselves.
+	ShellStartedKind Kind = "shell.started"
+	ShellEndedKind   Kind = "shell.ended"
+
 	NoticeKind         Kind = "notice"
 	SessionsListedKind Kind = "sessions.listed"
 	ServersListedKind  Kind = "servers.listed"
@@ -71,6 +75,8 @@ const (
 	ListServersKind     Kind = "do.list_servers"
 	DeleteSessionKind   Kind = "do.delete_session"
 	RenameSessionKind   Kind = "do.rename_session"
+	RunCommandKind      Kind = "do.shell"
+	CancelCommandKind   Kind = "do.cancel_shell"
 )
 
 // IsIntent splits what someone wants from what happened. The engine
@@ -82,6 +88,7 @@ var intents = map[Kind]bool{
 	AbortKind: true, RequestStopKind: true, ContinueKind: true,
 	RequestRollbackKind: true, ResetSessionKind: true, ListSessionsKind: true, RenameSessionKind: true,
 	ListServersKind: true, DeleteSessionKind: true,
+	RunCommandKind: true, CancelCommandKind: true,
 }
 
 // fact is embedded by everything but OutputChunk.

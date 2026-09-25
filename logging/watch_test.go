@@ -61,6 +61,44 @@ func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 	}
 }
 
+// A command the human ran is logged like a Call, under its own key:
+// the id has to be findable, and a failure has to be worth finding.
+func TestWatch_LogsAHumanCommand(t *testing.T) {
+	dir := t.TempDir()
+	closer, err := logging.Setup("w5", logging.WithDir(dir),
+		logging.WithLevel("debug"), logging.WithBodies(true))
+	require.NoError(t, err)
+
+	bus := event.New()
+	stop := logging.Watch(bus)
+
+	shell := uuid.Must(uuid.NewV7())
+	bus.Publish(event.ShellStarted{Shell: shell, Command: "git status", Runner: "sandbox"})
+	bus.Publish(event.ShellEnded{Shell: shell, Took: 8 * time.Millisecond,
+		Result: event.Result{ExitCode: 1, Stderr: "boom"}})
+
+	require.Eventually(t, func() bool { return len(records(t, dir, "w5")) == 2 },
+		2*time.Second, 10*time.Millisecond)
+	stop()
+	require.NoError(t, closer())
+
+	by := map[string]map[string]any{}
+	for _, r := range records(t, dir, "w5") {
+		by[r[logging.KeyEvent].(string)] = r
+	}
+
+	started := by["shell.started"]
+	assert.Equal(t, shell.String(), started[logging.KeyShell])
+	assert.Equal(t, "git status", started["command"])
+	assert.Equal(t, "sandbox", started["runner"])
+
+	ended := by["shell.ended"]
+	assert.Equal(t, shell.String(), ended[logging.KeyShell])
+	assert.EqualValues(t, 1, ended["exit"])
+	assert.EqualValues(t, 8, ended[logging.KeyMS])
+	assert.Equal(t, "WARN", ended["level"], "a failed command is worth finding")
+}
+
 // Live output is the one thing too noisy to keep, and CallEnded
 // carries the whole of it anyway.
 func TestWatch_SkipsLiveOutput(t *testing.T) {

@@ -32,6 +32,24 @@ type NoteContext struct {
 
 func (NoteContext) Kind() Kind { return NoteContextKind }
 
+// RunCommand runs what the human typed. Not a request: nothing is
+// assessed, nothing is approved, and no Turn opens.
+type RunCommand struct {
+	fact
+	Text string
+}
+
+func (RunCommand) Kind() Kind { return RunCommandKind }
+
+// CancelCommand stops one running command. Its own intent rather than
+// a field on Abort, so no two subscribers read the same kind.
+type CancelCommand struct {
+	fact
+	Shell uuid.UUID
+}
+
+func (CancelCommand) Kind() Kind { return CancelCommandKind }
+
 // Abort cancels in-flight Calls and ends the Turn. The Step still
 // completes, with a result per unrun Call, or the next Step fails.
 type Abort struct {

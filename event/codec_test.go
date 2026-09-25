@@ -62,6 +62,7 @@ func typeName(e Event) string {
 // payload once and reads it back much later.
 func TestCodec_RoundTripsEveryField(t *testing.T) {
 	turn, step, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	shell := uuid.Must(uuid.NewV7())
 	spec := &viewspec.Spec{Blocks: []viewspec.Block{{Kind: "log"}}}
 
 	cases := []Event{
@@ -94,6 +95,9 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		CallJudged{Call: call, Status: "failed", RenderKind: "errors",
 			Attention: 0.9, GoalAchieved: 0.1, FromJudge: true},
 		ViewReady{Call: call, Spec: spec, Source: "composed"},
+		ShellStarted{Shell: shell, Command: "git status", Runner: "sandbox"},
+		ShellEnded{Shell: shell, Took: 8 * time.Millisecond, Result: Result{
+			ExitCode: 1, Stdout: "o", Stderr: "e", Truncated: true, Err: "x"}},
 		Notice{Level: "warn", Text: "careful"},
 		SessionsListed{Sessions: []SessionSummary{{ID: turn, Name: "named", Started: time.UnixMilli(1_700_000_000_000).UTC(), Model: "m", Events: 12}}},
 		ServersListed{Servers: []ServerSummary{
@@ -113,6 +117,8 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		DeleteSession{Session: turn},
 		RenameSession{Session: turn, Name: "the sandbox bug"},
 		ResetSession{},
+		RunCommand{Text: "git status"},
+		CancelCommand{Shell: shell},
 	}
 	require.Len(t, cases, len(codecs), "every kind needs a case here")
 

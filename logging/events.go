@@ -29,6 +29,7 @@ const (
 	KeyTurn      = "turn"
 	KeyStep      = "step"
 	KeyCall      = "call"
+	KeyShell     = "shell"
 	KeyEvent     = "event"
 	KeyReason    = "reason"
 	KeyMS        = "ms"

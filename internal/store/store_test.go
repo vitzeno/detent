@@ -40,6 +40,7 @@ func TestStore_RoundTripsEveryKind(t *testing.T) {
 	s := open(t)
 	session := uuid.Must(uuid.NewV7())
 	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	shell := uuid.Must(uuid.NewV7())
 
 	want := []event.Record{
 		rec(1, event.SessionStarted{Session: session, Model: "m", MaxSteps: 50}),
@@ -53,6 +54,9 @@ func TestStore_RoundTripsEveryKind(t *testing.T) {
 		rec(6, event.Compacted{Turn: turn, Dropped: 4, Note: "summary"}),
 		rec(7, event.TurnEnded{Turn: turn, Reason: event.EndDone,
 			Usage: event.Usage{PromptTokens: 9, Latency: time.Second}}),
+		rec(8, event.ShellStarted{Shell: shell, Command: "git status", Runner: "sandbox"}),
+		rec(9, event.ShellEnded{Shell: shell, Took: 8 * time.Millisecond,
+			Result: event.Result{Stdout: "clean"}}),
 	}
 	for _, r := range want {
 		require.NoError(t, s.Append(session, r))
