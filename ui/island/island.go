@@ -1,5 +1,5 @@
-// Package island wraps a zone (title + lines) in a rounded border,
-// accent when focused. One place owns padding and sizing so every zone
+// Package island wraps a zone (title + lines) in a rounded border of
+// the caller's colour. One place owns padding and sizing so every zone
 // tiles the terminal identically. Every line is truncated to the inner
 // width: a wrapped line would render as two physical lines and push the
 // session bar off the top, so the island guarantees one line in, one
@@ -7,17 +7,16 @@
 package island
 
 import (
+	"image/color"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/vitzeno/detent/ui/theme"
 )
 
-// Render wraps lines in a bordered island height tall and width
-// wide, padding or truncating to fit. An empty title renders none.
-func Render(title string, active bool, lines []string, width, height int) string {
+// Render wraps lines in a bordered island height tall and width wide,
+// padding or truncating to fit. An empty title renders none.
+func Render(title string, border color.Color, lines []string, width, height int) string {
 	width = max(10, width)
 	inner := width - 4 // border plus padding on both sides
 	body := make([]string, 0, height)
@@ -37,11 +36,8 @@ func Render(title string, active bool, lines []string, width, height int) string
 	}
 	style := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.Border).
+		BorderForeground(border).
 		Padding(0, 1)
-	if active {
-		style = style.BorderForeground(theme.Accent)
-	}
 	// lipgloss v2's Width is the total rendered width, border included —
 	// under v1 it was the content width and the border sat outside it.
 	return style.Width(width).Render(strings.Join(body, "\n"))

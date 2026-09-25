@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -27,8 +28,8 @@ func (m Model) baseView() string {
 	if m.layout.width <= 0 {
 		return "loading…"
 	}
-	outputBlock := island.Render(m.viewportHeader(), m.nav.focus == focusOutput, m.detailLines(), m.layout.outputColW, m.output.Height()+1)
-	historyBlock := island.Render(m.historyHeader(), m.nav.focus == focusHistory, m.histWindow(), m.layout.histColW, m.nav.histHeight+1)
+	outputBlock := island.Render(m.viewportHeader(), paneBorder(m.nav.focus == focusOutput), m.detailLines(), m.layout.outputColW, m.output.Height()+1)
+	historyBlock := island.Render(m.historyHeader(), paneBorder(m.nav.focus == focusHistory), m.histWindow(), m.layout.histColW, m.nav.histHeight+1)
 
 	var b strings.Builder
 	b.WriteString(m.sessionBar())
@@ -43,9 +44,18 @@ func (m Model) baseView() string {
 	case modeBound, modeUndo, modeForget:
 		b.WriteString(m.questionBox())
 	default:
-		b.WriteString(island.Render("", m.nav.focus == focusInput, strings.Split(m.inputBar(), "\n"), m.layout.width, m.prompt.Rows()))
+		b.WriteString(island.Render("", paneBorder(m.nav.focus == focusInput), strings.Split(m.inputBar(), "\n"), m.layout.width, m.prompt.Rows()))
 	}
 	return b.String()
+}
+
+// paneBorder is the ordinary rule every zone follows: accent when it
+// has focus, the neutral border when it does not.
+func paneBorder(active bool) color.Color {
+	if active {
+		return accent
+	}
+	return border
 }
 
 // histWindow is what sizeViewport laid out. The fallback is the first
