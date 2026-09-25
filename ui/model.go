@@ -52,6 +52,8 @@ type Model struct {
 	// replaying suppresses the flashes, because a replayed fact is
 	// history and a notice says something just happened.
 	replaying bool
+	// quitArmed is a quit asked for once while a request was running.
+	quitArmed bool
 	undo      undoState
 	forget    forgetState
 

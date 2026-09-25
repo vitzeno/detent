@@ -1,6 +1,10 @@
 package engine
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Option func(*Engine)
 
@@ -82,6 +86,16 @@ func WithSessionID(id uuid.UUID) Option {
 	return func(e *Engine) {
 		if id != uuid.Nil {
 			e.session = id
+		}
+	}
+}
+
+// WithStopGrace bounds how long a cancelled Run waits for the running
+// Turn to publish what it owes.
+func WithStopGrace(d time.Duration) Option {
+	return func(e *Engine) {
+		if d > 0 {
+			e.stopGrace = d
 		}
 	}
 }

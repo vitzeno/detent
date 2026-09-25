@@ -92,6 +92,17 @@ func (m Model) renameSession(input string) (tea.Model, tea.Cmd) {
 	return m, m.send(event.RenameSession{Session: m.run.Session, Name: name})
 }
 
+// onQuit asks first when a request is running, because one keystroke
+// is thin to rest abandoning it on. repeat is what they just pressed.
+func (m Model) onQuit(repeat string) (tea.Model, tea.Cmd) {
+	if m.cur == nil || m.quitArmed {
+		return m, tea.Quit
+	}
+	m.quitArmed = true
+	m.noteErr("a request is running — " + repeat + " again to quit, or /abort it")
+	return m, nil
+}
+
 // abortRunning stops the open request. Cancels in flight, unlike a
 // decline, which stops one call and lets the model react.
 func (m Model) abortRunning() (tea.Model, tea.Cmd) {

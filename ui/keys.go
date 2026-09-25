@@ -12,8 +12,11 @@ import (
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
-		return m, tea.Quit
+		return m.onQuit("ctrl+c")
 	}
+	// Anything else means they are still working, so the quit they
+	// half-asked for is no longer the next thing they meant.
+	m.quitArmed = false
 	if m.mode == modeUndo {
 		return m.undoKey(msg)
 	}

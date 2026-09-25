@@ -4,8 +4,10 @@ package engine
 
 import (
 	"context"
-	"github.com/google/uuid"
 	"sync"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/capture"
@@ -21,6 +23,10 @@ const (
 	DefaultParallelCalls = 4
 	DefaultRepeatLimit   = 3
 )
+
+// DefaultStopGrace is how long a cancelled Run waits for the Turn it
+// was running to publish its last facts before giving up on them.
+const DefaultStopGrace = 5 * time.Second
 
 // Engine is one session. Run it once, in its own goroutine; everything
 // else reaches it through the bus.
@@ -43,6 +49,7 @@ type Engine struct {
 	parallel      int
 	contextTokens int
 	summarizer    Summarizer
+	stopGrace     time.Duration
 
 	worktreer Worktreer
 
@@ -113,6 +120,7 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 		maxCalls:      DefaultCallsPerStep,
 		parallel:      DefaultParallelCalls,
 		contextTokens: DefaultContextTokens,
+		stopGrace:     DefaultStopGrace,
 		repeat:        newRepeatHook(DefaultRepeatLimit),
 		past:          map[uuid.UUID]*turnState{},
 	}
@@ -142,7 +150,7 @@ func (e *Engine) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			e.abortCurrent()
+			e.stopCurrent(done)
 			return
 		case <-done:
 			e.finishTurn()
@@ -205,6 +213,19 @@ func (e *Engine) finishTurn() {
 	e.mu.Lock()
 	e.cur = nil
 	e.mu.Unlock()
+}
+
+// stopCurrent aborts the running Turn and waits for what it owes: a
+// Step whose results went to a closed bus is one resume cannot send.
+func (e *Engine) stopCurrent(done <-chan struct{}) {
+	if e.current() == nil {
+		return
+	}
+	e.abortCurrent()
+	select {
+	case <-done:
+	case <-time.After(e.stopGrace):
+	}
 }
 
 func (e *Engine) abortCurrent() {

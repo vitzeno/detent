@@ -8,9 +8,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -126,6 +128,13 @@ func run() error {
 		fmt.Fprintln(os.Stderr, logErr)
 	}
 	defer func() { _ = closeLog() }()
+
+	// Filled in below as each thing opens. Deferred here so an early
+	// return closes what was reached, and so the log outlives it.
+	var sd shutdown
+	sd.session = sessionID
+	defer func() { sd.close() }()
+
 	if *prune {
 		return pruneSandbox(resolved.SandboxSocket)
 	}
@@ -164,7 +173,7 @@ func run() error {
 		if err := container.Start(context.Background(), sessionID.String()); err != nil {
 			return fmt.Errorf("sandbox: starting container: %w", err)
 		}
-		defer container.Close(context.Background())
+		sd.container = container
 		runners.Sandbox = container
 
 		// The container is Linux whatever this machine is, starts in
@@ -194,6 +203,7 @@ func run() error {
 	if storeErr != nil {
 		fmt.Fprintln(os.Stderr, storeErr)
 	}
+	sd.events = events
 
 	opts := []engine.Option{
 		engine.WithSessionID(sessionID),
@@ -225,44 +235,45 @@ func run() error {
 	}
 	// Held now, filled later, so nothing waits on a server to draw.
 	servers := mcppkg.NewInvokers()
-	defer servers.Close()
+	sd.servers = servers
 	opts = append(opts, engine.WithInvoker(servers))
 
 	bus := event.New()
+	sd.bus = bus
 	// Seeded before anything publishes, or a new record lands on an
 	// ordinal already on disk. The replay never goes on the bus.
 	bus.Resume(engine.Resumable(restore))
 	eng := engine.New(bus, client, tools, runners, opts...)
 	eng.Restore(restore)
 	ctx, stop := context.WithCancel(context.Background())
-	defer stop()
+	sd.stop = stop
 
 	// Wired before Run so nothing published at startup is missed, and
-	// deferred first so they run last: Drain empties the bus, then
-	// these wait for the final record to land.
-	defer logging.Watch(bus)()
+	// unwatched by shutdown after it drains, so the last record lands.
+	sd.unwatch = append(sd.unwatch, logging.Watch(bus))
 	if events != nil {
-		defer events.Close()
-		defer store.Watch(bus, events, sessionID)()
+		sd.unwatch = append(sd.unwatch, store.Watch(bus, events, sessionID))
 	}
 	if judge != nil {
 		judgepkg.Watch(bus, judge)
 		views(resolved.Views, judge).Watch(bus)
 	}
-	defer mcppkg.Watch(bus, servers)()
-	defer forget.Watch(bus, sessionStore(events), sessionID,
-		forget.WithContainers(containerRemover(sandboxSocketFor(resolved))))()
-	// Drained rather than closed, so the last records reach the log
-	// instead of dying with the process.
-	defer bus.Drain(2 * time.Second)
+	sd.unwatch = append(sd.unwatch, mcppkg.Watch(bus, servers))
+	sd.unwatch = append(sd.unwatch, forget.Watch(bus, sessionStore(events), sessionID,
+		forget.WithContainers(containerRemover(sandboxSocketFor(resolved)))))
 
 	if *prompt != "" {
+		// Bubble Tea catches these for the TUI; with no TUI, nothing
+		// does so a killed -prompt leaves its container behind.
+		ctx, untrap := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+		defer untrap()
+
 		// Waited for here: one prompt goes out immediately, and a tool
 		// that lands after it may as well not exist.
 		for _, e := range mcppkg.ConnectAll(ctx, tools, servers, configured, nil) {
 			fmt.Fprintln(os.Stderr, "warning:", e)
 		}
-		go eng.Run(ctx)
+		sd.engine = runEngine(ctx, eng)
 		approve := headless.Approver(nil)
 		if *unattended {
 			approve = headless.AutoDecline
@@ -282,8 +293,8 @@ func run() error {
 	// Built before the engine runs: SessionStarted is published once,
 	// and a front-end that subscribes afterwards loses it.
 	model := ui.New(ctx, bus, info).Restore(restore)
-	go connectServers(ctx, bus, tools, servers, configured)
-	go eng.Run(ctx)
+	sd.connect = connectServers(ctx, bus, tools, servers, configured)
+	sd.engine = runEngine(ctx, eng)
 
 	// Altscreen is declared by ui.Model.View, not set here — under
 	// Bubble Tea v2 terminal state is a property of what's rendered.
@@ -445,8 +456,19 @@ func sandboxSocketFor(c config.Config) string {
 }
 
 // connectServers wires MCP without holding up the first frame, and
-// publishes each server as it settles so an open /mcp fills in.
+// publishes each server as it settles so an open /mcp fills in. The
+// channel closes when it is done, which is what shutdown waits on.
 func connectServers(ctx context.Context, bus *event.Bus, tools *tool.Registry,
+	servers *mcppkg.Invokers, configured map[string]mcppkg.Config) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		connectAll(ctx, bus, tools, servers, configured)
+	}()
+	return done
+}
+
+func connectAll(ctx context.Context, bus *event.Bus, tools *tool.Registry,
 	servers *mcppkg.Invokers, configured map[string]mcppkg.Config) {
 	if len(configured) == 0 {
 		return
@@ -460,4 +482,15 @@ func connectServers(ctx context.Context, bus *event.Bus, tools *tool.Registry,
 	if n := len(servers.Servers()); n > 0 && len(errs) == 0 {
 		bus.Publish(event.Notice{Level: "info", Text: fmt.Sprintf("%d mcp server(s) ready", n)})
 	}
+}
+
+// runEngine starts the loop and says when it has stopped, which is what
+// shutdown waits on before closing the bus out from under it.
+func runEngine(ctx context.Context, eng *engine.Engine) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		eng.Run(ctx)
+	}()
+	return done
 }

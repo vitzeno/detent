@@ -27,7 +27,7 @@ type slashCmd struct {
 func slashCommands() []slashCmd {
 	return []slashCmd{
 		{Name: "/quit", Desc: "quit detent", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
-			return m, tea.Quit
+			return m.onQuit("/quit")
 		}},
 		{Name: "/abort", Desc: "stop the running request", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.abortRunning()
