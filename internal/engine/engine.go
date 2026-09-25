@@ -175,6 +175,14 @@ func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{
 			return
 		}
 		e.startTurn(ctx, v.Text, done)
+	case event.NoteContext:
+		// Idle, this used to reach the default branch and be dropped,
+		// so a note between Turns never got to the one it was for.
+		if t != nil {
+			t.post(v)
+			return
+		}
+		e.appended(uuid.Nil, uuid.Nil, func() []event.Message { return e.tr.note(v.Text) })
 	case event.ResetSession:
 		if t != nil {
 			t.post(event.Abort{Turn: t.id})

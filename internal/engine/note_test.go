@@ -1,0 +1,86 @@
+package engine
+
+import (
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/model"
+)
+
+// A NoteContext published rather than typed as a prompt, which is how
+// anything but the input box sends one.
+
+// Idle, this used to reach dispatch's default branch and be dropped,
+// so the note never reached the Turn it was meant to steer.
+func TestNoteContext_LandsWhenNothingIsRunning(t *testing.T) {
+	r := newRig(t, nil)
+
+	r.bus.Publish(event.NoteContext{Text: "use ripgrep, not grep"})
+	added := r.await(event.AppendedKind).(event.Appended)
+	require.Len(t, added.Messages, 1)
+	assert.Equal(t, event.RoleUser, added.Messages[0].Role)
+	assert.Equal(t, "use ripgrep, not grep", added.Messages[0].Content)
+	assert.Equal(t, uuid.Nil, added.Turn, "a note between Turns belongs to none")
+
+	r.run("now search")
+	sent := r.model.lastSent()
+	require.Len(t, sent, 2)
+	assert.Equal(t, "use ripgrep, not grep", sent[0].Content, "the note came first")
+	assert.Equal(t, "now search", sent[1].Content)
+}
+
+// Mid-Turn it waits for a Step boundary, because a note between an
+// assistant's calls and their answers is a Step nothing accepts.
+func TestNoteContext_MidTurnWaitsForAStepBoundary(t *testing.T) {
+	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("a", "find .")}}})
+	r.runner.mu.Lock()
+	r.runner.hold = make(chan struct{})
+	r.runner.mu.Unlock()
+
+	r.bus.Publish(event.SubmitPrompt{Text: "search the tree"})
+	r.await(event.CallStartedKind)
+	r.bus.Publish(event.NoteContext{Text: "use ripgrep, not find"})
+	r.bus.Settle(3 * time.Second)
+	close(r.runner.hold)
+
+	r.await(event.TurnEndedKind)
+	msgs := r.eng.Transcript()
+	note, step := -1, -1
+	for i, m := range msgs {
+		switch {
+		case m.Content == "use ripgrep, not find":
+			note = i
+		case m.Role == event.RoleAssistant && len(m.Calls) > 0:
+			step = i
+		}
+	}
+	require.GreaterOrEqual(t, note, 0, "the note must reach the model")
+	assert.Greater(t, note, step,
+		"a note landing before the Step it interrupted reads as one the model ignored")
+	answered(t, r.eng)
+}
+
+// A note while a Turn runs must not open one, the way a prompt does
+// not either: it is context for the Turn in flight.
+func TestNoteContext_MidTurnOpensNoTurn(t *testing.T) {
+	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("a", "ls")}}})
+	r.runner.mu.Lock()
+	r.runner.hold = make(chan struct{})
+	r.runner.mu.Unlock()
+
+	r.bus.Publish(event.SubmitPrompt{Text: "look around"})
+	r.await(event.CallStartedKind)
+	r.bus.Publish(event.NoteContext{Text: "in the ui package"})
+	r.bus.Settle(3 * time.Second)
+	close(r.runner.hold)
+
+	r.await(event.TurnEndedKind)
+	assert.Len(t, r.of(event.TurnStartedKind), 1)
+	assert.Len(t, r.of(event.AppendedKind), 4,
+		"prompt, note, the Step, and the closing say")
+}

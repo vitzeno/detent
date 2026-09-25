@@ -64,13 +64,16 @@ func describe(e event.Event) (slog.Level, []any) {
 		return slog.LevelInfo, []any{KeyTurn, v.Turn, KeyStep, v.Step, "calls", v.Calls,
 			"tokens", v.Usage.Tokens(), KeyMS, v.Usage.Latency.Milliseconds()}
 	case event.Appended:
-		// A prompt or a note belongs to no Step, and a zero uuid in
-		// the field is worse than no field.
-		out := []any{KeyTurn, v.Turn, "messages", len(v.Messages)}
+		// A prompt or a note belongs to no Step, one between Turns to
+		// no Turn, and a zero uuid in the field is worse than no field.
+		var out []any
+		if v.Turn != uuid.Nil {
+			out = append(out, KeyTurn, v.Turn)
+		}
 		if v.Step != uuid.Nil {
 			out = append(out, KeyStep, v.Step)
 		}
-		return slog.LevelDebug, out
+		return slog.LevelDebug, append(out, "messages", len(v.Messages))
 	case event.Compacted:
 		// Info, not Debug: compaction rewrites the front of the
 		// transcript and used to tell nobody at all.
