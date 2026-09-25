@@ -26,6 +26,7 @@ import (
 	"github.com/vitzeno/detent/internal/forget"
 	"github.com/vitzeno/detent/internal/headless"
 	"github.com/vitzeno/detent/internal/host"
+	"github.com/vitzeno/detent/internal/humanshell"
 	judgepkg "github.com/vitzeno/detent/internal/judge"
 	mcppkg "github.com/vitzeno/detent/internal/mcp"
 	"github.com/vitzeno/detent/internal/model"
@@ -293,6 +294,10 @@ func run() error {
 	// Built before the engine runs: SessionStarted is published once,
 	// and a front-end that subscribes afterwards loses it.
 	model := ui.New(ctx, bus, info).Restore(restore)
+	// The same runner the model's commands go to: a shell that cannot
+	// see what the agent just did is not worth having.
+	shellRunner, shellWhere := runners.Select(event.UnknownRisk())
+	sd.shell = humanshell.Watch(bus, shellRunner, shellWhere)
 	sd.connect = connectServers(ctx, bus, tools, servers, configured)
 	sd.engine = runEngine(ctx, eng)
 

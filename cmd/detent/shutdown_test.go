@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -51,6 +52,51 @@ func TestShutdown_DrainsOnlyAfterTheEngineHasStopped(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Contains(t, got, event.TurnEndedKind, "the last fact was lost: the bus closed before the engine stopped")
+}
+
+// The same rule as the engine, one step earlier. The command's end
+// must be published before anything closes, and before the engine
+// goes, or the message it owes the transcript lands nowhere.
+func TestShutdown_StopsTheShellBeforeTheEngineAndTheDrain(t *testing.T) {
+	bus := event.New()
+	records, unsub := bus.Subscribe(nil)
+	t.Cleanup(unsub)
+
+	var mu sync.Mutex
+	var got []event.Kind
+	collected := make(chan struct{})
+	go func() {
+		defer close(collected)
+		for rec := range records {
+			mu.Lock()
+			got = append(got, rec.Event.Kind())
+			mu.Unlock()
+		}
+	}()
+
+	// Stands in for what humanshell.Watch returns: it publishes what
+	// the cancelled command owes and only then returns.
+	shell := func() {
+		bus.Publish(event.ShellEnded{Result: event.Result{Err: "stopped by the human"}})
+		bus.Publish(event.NoteContext{Text: "[human ran a command on the host]"})
+	}
+	stopped, engine := make(chan struct{}), make(chan struct{})
+	go func() {
+		<-stopped
+		bus.Publish(event.TurnEnded{Reason: event.EndAborted})
+		close(engine)
+	}()
+
+	sd := shutdown{bus: bus, shell: shell, engine: engine, stop: func() { close(stopped) }}
+	sd.close()
+	<-collected
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Contains(t, got, event.ShellEndedKind, "the command's end was lost to the drain")
+	require.Contains(t, got, event.NoteContextKind, "and so was the message it owes the model")
+	assert.Less(t, slices.Index(got, event.ShellEndedKind), slices.Index(got, event.TurnEndedKind),
+		"the shell stops first, or its note reaches an engine that has already gone")
 }
 
 // An engine that will not stop must not hold the terminal: it is given

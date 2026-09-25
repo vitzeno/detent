@@ -19,6 +19,8 @@ import (
 // Every wait here is bounded. Quitting is the one thing a human cannot
 // take back by pressing another key, so no step may hang the terminal.
 const (
+	// shellGrace bounds unwinding a cancelled command, not running one.
+	shellGrace = 3 * time.Second
 	// engineGrace outlasts engine.DefaultStopGrace, so a Turn that will
 	// not stop is the engine's own bound expiring rather than this one.
 	engineGrace    = engine.DefaultStopGrace + time.Second
@@ -32,8 +34,11 @@ const (
 // and nothing it never got to.
 type shutdown struct {
 	session uuid.UUID
-	stop    context.CancelFunc
-	engine  <-chan struct{}
+	// shell stops the human's own command. Not in unwatch: that list
+	// runs after the drain, and a fact published then reaches nobody.
+	shell  func()
+	stop   context.CancelFunc
+	engine <-chan struct{}
 	// grace bounds the wait on engine; zero means engineGrace.
 	grace   time.Duration
 	bus     *event.Bus
@@ -48,7 +53,10 @@ type shutdown struct {
 // close stops everything in the one order that keeps the session's
 // last facts, then says how it went.
 func (s shutdown) close() {
-	errs := s.stopEngine()
+	// Before the engine, so the message the command owes the
+	// transcript still has somewhere to land.
+	errs := s.stopShell()
+	errs = append(errs, s.stopEngine()...)
 	// Drained before the subscribers go, so what the engine just
 	// published reaches the log and the store rather than dying here.
 	if s.bus != nil {
@@ -72,6 +80,19 @@ func (s shutdown) close() {
 		cancel()
 	}
 	s.report(os.Stderr, errs)
+}
+
+// stopShell cancels the human's command and waits for its last facts,
+// then lets them reach the engine before that stops too.
+func (s shutdown) stopShell() []error {
+	if s.shell == nil {
+		return nil
+	}
+	err := bounded(shellGrace, "the running command", func() error { s.shell(); return nil })
+	if s.bus != nil {
+		s.bus.Settle(shellGrace)
+	}
+	return appendErr(nil, err)
 }
 
 // stopEngine cancels the loop and waits for the facts it still owes,
