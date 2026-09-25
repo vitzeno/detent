@@ -83,8 +83,7 @@ What you type goes to the runner the agent uses, so in the sandbox you are
 looking at what it just did. Output streams into the pane like any other
 row, esc stops it
 
-Nothing flags it and nothing asks you to approve it. That chain is there to
-protect you from the model, and you typed this one
+Nothing flags it and nothing asks you to approve it
 
 The model reads it afterwards, as a message in the transcript
 
