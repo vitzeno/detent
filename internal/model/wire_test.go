@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/humanshell"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -79,6 +80,15 @@ func TestComplete_SendsToolsAndTheSystemPrompt(t *testing.T) {
 	assert.Contains(t, text, "/workspace")
 	assert.Contains(t, text, "container")
 	assert.Contains(t, text, "undo the whole request", "Undoable is per Turn now")
+}
+
+// The prompt promises the model a shape, and another package emits
+// it. Asserted against that package's own constant, because prose
+// drifting from the thing it describes fails silently.
+func TestSystemPrompt_NamesTheMarkerHumanshellActuallyWrites(t *testing.T) {
+	assert.Contains(t, systemPrompt(LocalEnvironment()), humanshell.Marker)
+	assert.Contains(t, systemPrompt(LocalEnvironment()), "read it rather than running it again",
+		"and says what to do with it, which is the point of naming it")
 }
 
 // Without tools the request must not carry an empty array: some
