@@ -20,11 +20,13 @@ type prompt struct {
 	// keyboard protocol, which is what makes shift+enter arrive as
 	// something other than a plain enter.
 	richKeys bool
+	// shell switches the box to commands, which closes the dropdown:
+	// /usr/bin has to be typable.
+	shell bool
 }
 
 func newPrompt() prompt {
 	ta := textarea.New()
-	ta.Placeholder = "describe a goal, e.g. what is listening on port 3000?"
 	ta.CharLimit = 4000
 	ta.ShowLineNumbers = false
 	// Enter submits, so a newline moves off it. shift+enter needs the
@@ -33,17 +35,39 @@ func newPrompt() prompt {
 		key.WithKeys("shift+enter", "alt+enter", "ctrl+j"),
 		key.WithHelp("shift+enter", "newline"),
 	)
-	// Prompt on the first row only; wrapped rows align under it.
-	ta.SetPromptFunc(inputPromptW, func(p textarea.PromptInfo) string {
-		if p.LineNumber == 0 {
-			return "❯ "
-		}
-		return "  "
-	})
 	ta.SetHeight(1)
 	applyInputTheme(&ta)
 	ta.Focus()
-	return prompt{input: ta}
+	p := prompt{input: ta}
+	// Sets the glyph and the placeholder, so they have one spelling.
+	p.SetShell(false)
+	return p
+}
+
+// SetShell switches the box between a request and a command, glyph
+// and all: the glyph is the only thing on screen that says which.
+func (p *prompt) SetShell(on bool) {
+	p.shell = on
+	glyph, hint := "❯ ", "describe a goal, e.g. what is listening on port 3000?"
+	if on {
+		glyph, hint = "$ ", "run a command, e.g. git status"
+	}
+	p.input.Placeholder = hint
+	// The glyph carries the same signal as the border around it.
+	st := p.input.Styles()
+	st.Focused.Prompt = styleRowCursor
+	if on {
+		st.Focused.Prompt = styleCaution
+	}
+	p.input.SetStyles(st)
+	// Prompt on the first row only; wrapped rows align under it.
+	p.input.SetPromptFunc(inputPromptW, func(i textarea.PromptInfo) string {
+		if i.LineNumber == 0 {
+			return glyph
+		}
+		return "  "
+	})
+	p.rematch()
 }
 
 // applyInputTheme keeps the input in the app's palette and strips
@@ -91,6 +115,10 @@ func (p *prompt) Clear() {
 }
 
 func (p *prompt) rematch() {
+	if p.shell {
+		p.Close()
+		return
+	}
 	p.matches = matchSlash(p.input.Value())
 	if p.cursor >= len(p.matches) {
 		p.cursor = 0

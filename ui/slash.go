@@ -45,6 +45,10 @@ func slashCommands() []slashCmd {
 		{Name: "/undo", Desc: "undo a request and everything after it, e.g. /undo 2", run: Model.runUndo},
 		{Name: "/delete", Desc: "delete a stored session, e.g. /delete the sandbox bug",
 			run: Model.runForget, answers: true},
+		{Name: "/shell", Desc: "type commands instead of requests (shift+tab)",
+			run: func(m Model, _ string) (tea.Model, tea.Cmd) {
+				return m.toggleEntry()
+			}},
 		{Name: "/new", Desc: "forget the conversation and start over", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.startOver()
 		}},

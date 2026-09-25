@@ -52,6 +52,10 @@ type Row struct {
 	Judged    bool
 	Status    string // agent Status* value, or ""
 	Attention float64
+	// Err is set when it could not run, as opposed to ran and failed.
+	Err bool
+	// NoVerdict says nothing will ever judge this one.
+	NoVerdict bool
 }
 
 // Badge splits status into icon and detail text: exit-code styling
@@ -69,10 +73,16 @@ func Badge(s Row, spinner string) (icon, detail string) {
 		if !s.HasResult {
 			return faint.Render("○"), "pending"
 		}
-		if s.ExitCode == 0 {
-			return safe.Render("✓"), s.Summary + " · judging…"
+		icon = safe.Render("✓")
+		if s.ExitCode != 0 || s.Err {
+			icon = danger.Render("✗")
 		}
-		return danger.Render("✗"), s.Summary + " · judging…"
+		// Nothing judges a command the human ran, so saying it is being
+		// judged is a promise that never lands.
+		if s.NoVerdict {
+			return icon, s.Summary
+		}
+		return icon, s.Summary + " · judging…"
 	}
 	detail = statusWord(s.Status)
 	if s.Attention >= AttentionThreshold {

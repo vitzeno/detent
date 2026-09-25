@@ -150,6 +150,14 @@ func viewNote(r *callRow) string {
 	return ""
 }
 
+// shellHint is the bar in shell mode, where / is a path.
+func (m Model) shellHint() string {
+	if m.shellRunning() {
+		return "[esc] stop · [shift+tab] back to a request"
+	}
+	return "[shift+tab] request · [enter] run · [tab] history"
+}
+
 // panelName is what the header calls an open page.
 func panelName(k panelKind) string {
 	switch k {
@@ -216,11 +224,17 @@ func (m Model) statusHint() string {
 		}
 		return "[tab] output · [↑/↓] move · [space] expand · [enter] expand"
 	case ownerBusy:
+		if m.entry == entryShell {
+			return m.shellHint()
+		}
 		if m.prompt.Open() {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
 		}
 		return "[esc] abort · [enter] steers · [tab] history"
 	default: // ownerInput
+		if m.entry == entryShell {
+			return m.shellHint()
+		}
 		if m.prompt.Open() {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
 		}

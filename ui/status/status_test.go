@@ -23,6 +23,18 @@ func TestBadge(t *testing.T) {
 	icon, detail = Badge(Row{HasResult: true, ExitCode: 1, Summary: "exit 1, 0 lines"}, "…")
 	assert.Contains(t, icon, "✗")
 
+	// Nothing judges one of these, so the summary is all there is.
+	icon, detail = Badge(Row{HasResult: true, Summary: "clean", NoVerdict: true}, "…")
+	assert.Contains(t, icon, "✓")
+	assert.Equal(t, "clean", detail)
+	assert.NotContains(t, detail, "judging")
+
+	// It exited 0 because it never got to exit at all.
+	icon, detail = Badge(Row{HasResult: true, Err: true,
+		Summary: "stopped by the human", NoVerdict: true}, "…")
+	assert.Contains(t, icon, "✗")
+	assert.Equal(t, "stopped by the human", detail)
+
 	icon, detail = Badge(Row{Judged: true, Status: "clean_success"}, "…")
 	assert.Contains(t, icon, "✓")
 	assert.Equal(t, "clean", detail)

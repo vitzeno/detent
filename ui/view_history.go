@@ -115,8 +115,11 @@ func (m Model) drawBlock(b *turnBlock, focused *callRow) (lines []string, cursor
 			block = append(block, s)
 		}
 	}
-	for _, gl := range wrapPlain(b.prompt, m.blockWidth()) {
-		add(styleGoal.Render(gl))
+	// A shell block has no prompt: nobody asked for anything.
+	if !b.shell {
+		for _, gl := range wrapPlain(b.prompt, m.blockWidth()) {
+			add(styleGoal.Render(gl))
+		}
 	}
 	for _, r := range b.rows {
 		if focused != nil && r == focused {
@@ -189,6 +192,10 @@ func (m Model) railed(b *turnBlock, block []string) []string {
 // still running, then whatever it came to.
 func (m Model) railStyle(b *turnBlock) lipgloss.Style {
 	switch {
+	case b.shell:
+		// Nothing ends a shell block, so the live colour would stay on
+		// it for the rest of the session.
+		return styleMuted
 	case b == m.cur && !b.ended:
 		return styleRowCursor
 	case !b.ended:
@@ -244,7 +251,9 @@ func (m Model) rowLines(r, focused *callRow) []string {
 	case r.result != nil:
 		s.HasResult = true
 		s.ExitCode = r.result.ExitCode
+		s.Err = r.result.Err != ""
 		s.Summary = resultSummary(r.result)
+		s.NoVerdict = r.human
 		if r.post != nil {
 			s.Judged = true
 			s.Status = r.post.status
@@ -255,6 +264,10 @@ func (m Model) rowLines(r, focused *callRow) []string {
 	// A call a human had to approve must not read like `ls`.
 	if r.risk.Dangerous {
 		icon = styleDanger.Render("!") + icon
+	}
+	// Theirs, not the model's, wherever the row happened to land.
+	if r.human {
+		icon = styleGoal.Render("$") + icon
 	}
 
 	// Truncated, not wrapped: a command is often one unbreakable

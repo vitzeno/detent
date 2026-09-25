@@ -33,6 +33,18 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 	return m, tea.Batch(m.spinner.Tick, m.send(event.SubmitPrompt{Text: text}))
 }
 
+// runShell sends what was typed to the shell. No Turn opens, and the
+// model only reads it afterwards.
+func (m Model) runShell() (tea.Model, tea.Cmd) {
+	text := strings.TrimSpace(m.prompt.Value())
+	if text == "" {
+		return m, nil
+	}
+	m.prompt.Clear()
+	m.clearNotice()
+	return m, m.send(event.RunCommand{Text: text})
+}
+
 func (m Model) approve() (tea.Model, tea.Cmd) { return m.answerApproval(true) }
 func (m Model) decline() (tea.Model, tea.Cmd) { return m.answerApproval(false) }
 

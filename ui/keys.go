@@ -31,6 +31,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.onEscape()
 	case "tab":
 		return m.onTab()
+	case "shift+tab":
+		return m.toggleEntry()
 	}
 	switch m.owner() {
 	case ownerConfirm:
@@ -102,6 +104,22 @@ func (m Model) onTab() (tea.Model, tea.Cmd) {
 	return m.toggleFocus()
 }
 
+// toggleEntry switches the bar between a request and a command.
+// Focus follows, unless a question is up: that still comes first.
+func (m Model) toggleEntry() (tea.Model, tea.Cmd) {
+	m.entry = entryShell
+	if m.prompt.shell {
+		m.entry = entryPrompt
+	}
+	m.prompt.SetShell(m.entry == entryShell)
+	if m.mode == modeInput {
+		m.nav.focus = focusInput
+		m.prompt.Focus()
+	}
+	m.clearNotice()
+	return m, nil
+}
+
 // boundKey answers the step bound. The engine is paused, waiting.
 func (m Model) boundKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -159,6 +177,9 @@ func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	switch msg.String() {
 	case "enter":
+		if m.entry == entryShell {
+			return m.runShell()
+		}
 		return m.submit()
 	case "pgup", "pgdown":
 		return m.scrollViewport(msg.String())
@@ -264,6 +285,11 @@ func (m Model) onEscape() (tea.Model, tea.Cmd) {
 	if m.nav.focus == focusOutput && m.cur == nil {
 		m.nav.focus = focusHistory
 		return m, nil
+	}
+	// A command the human ran stops before the Turn does: it is theirs,
+	// and they are watching it.
+	if m.shellRunning() {
+		return m, m.send(event.CancelCommand{})
 	}
 	if m.cur != nil {
 		return m, m.send(event.Abort{Turn: m.cur.id})

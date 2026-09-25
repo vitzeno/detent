@@ -20,6 +20,9 @@ type turnBlock struct {
 	summary string
 	used    event.Usage
 
+	// shell is a block holding commands the human ran between Turns.
+	// Not a Turn: no prompt, no checkpoint, nothing to undo.
+	shell bool
 	// undoable is set once a checkpoint lands, so /undo offers
 	// only what it can actually restore.
 	undoable bool
@@ -71,6 +74,8 @@ type callRow struct {
 	// executor is empty for a shell command. Anything else ran outside
 	// the sandbox, so no checkpoint can take it back.
 	executor string
+	// human is a command the person typed, not one the model proposed.
+	human bool
 
 	risk    event.Risk
 	running bool

@@ -39,7 +39,8 @@ func newKeyed(t *testing.T) *keyed {
 // than running them, so this does what the runtime would.
 func (k *keyed) press(t *testing.T, key string) {
 	t.Helper()
-	next, cmd := k.m.Update(tea.KeyPressMsg{Code: keyCode(key), Text: keyText(key)})
+	next, cmd := k.m.Update(tea.KeyPressMsg{
+		Code: keyCode(key), Text: keyText(key), Mod: keyMod(key)})
 	k.m = next.(Model)
 	runCmd(cmd)
 }
@@ -69,8 +70,19 @@ func keyCode(key string) rune {
 		return tea.KeyEnter
 	case "esc":
 		return tea.KeyEscape
+	case "tab", "shift+tab":
+		return tea.KeyTab
 	}
 	return rune(key[0])
+}
+
+// shift+tab arrives as tab carrying the modifier, which is how the
+// terminal sends backtab and what handleKey matches on.
+func keyMod(key string) tea.KeyMod {
+	if key == "shift+tab" {
+		return tea.ModShift
+	}
+	return 0
 }
 
 func keyText(key string) string {
@@ -78,6 +90,13 @@ func keyText(key string) string {
 		return key
 	}
 	return ""
+}
+
+// The binding is only worth having if it actually arrives, so this
+// asserts the string handleKey switches on rather than trusting it.
+func TestKeys_ShiftTabIsSpeltTheWayTheTerminalSendsIt(t *testing.T) {
+	msg := tea.KeyPressMsg{Code: keyCode("shift+tab"), Mod: keyMod("shift+tab")}
+	assert.Equal(t, "shift+tab", msg.String())
 }
 
 func (k *keyed) intent(t *testing.T) event.Event {

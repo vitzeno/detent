@@ -38,6 +38,7 @@ type Model struct {
 	cur    *turnBlock
 
 	mode    mode
+	entry   entry
 	waiting bool
 
 	// asking and bound are the two questions the engine can put to a
@@ -143,7 +144,7 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if !m.waiting {
+		if !m.spinning() {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -153,14 +154,14 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Eight message types and seven command constructors collapsed to
 	// one of each: the UI learns everything the same way.
 	case factMsg:
-		waiting := m.waiting
+		spinning := m.spinning()
 		for _, e := range msg.events {
 			m.apply(e)
 		}
 		var cmd tea.Cmd
 		// Edge only: Tick carries the live tag, so re-arming restarts
 		// the chain and costs a frame.
-		if m.waiting && !waiting {
+		if m.spinning() && !spinning {
 			cmd = m.spinner.Tick
 		}
 		return m, tea.Batch(cmd, nextFact(m.facts))
@@ -265,6 +266,32 @@ func (m Model) blockOf(i int) *turnBlock {
 		n += len(b.rows)
 	}
 	return nil
+}
+
+// spinning reports whether anything on screen is still turning: the
+// model thinking, a Call running, or a command the human ran.
+func (m Model) spinning() bool {
+	if m.waiting {
+		return true
+	}
+	for _, b := range m.blocks {
+		if anyRunning(b) {
+			return true
+		}
+	}
+	return false
+}
+
+// shellRunning is whether esc has a command of the human's to stop.
+func (m Model) shellRunning() bool {
+	for _, b := range m.blocks {
+		for _, r := range b.rows {
+			if r.human && r.running {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // runMode is how the session bar names where commands go.

@@ -44,7 +44,7 @@ func (m Model) baseView() string {
 	case modeBound, modeUndo, modeForget:
 		b.WriteString(m.questionBox())
 	default:
-		b.WriteString(island.Render("", paneBorder(m.nav.focus == focusInput), strings.Split(m.inputBar(), "\n"), m.layout.width, m.prompt.Rows()))
+		b.WriteString(island.Render("", m.inputBorder(), strings.Split(m.inputBar(), "\n"), m.layout.width, m.prompt.Rows()))
 	}
 	return b.String()
 }
@@ -56,6 +56,18 @@ func paneBorder(active bool) color.Color {
 		return accent
 	}
 	return border
+}
+
+// inputBorder says which language the bar is in. Amber for a command,
+// which runs with neither the approval gate nor a checkpoint.
+func (m Model) inputBorder() color.Color {
+	if m.nav.focus != focusInput {
+		return border
+	}
+	if m.entry == entryShell {
+		return caution
+	}
+	return accent
 }
 
 // histWindow is what sizeViewport laid out. The fallback is the first

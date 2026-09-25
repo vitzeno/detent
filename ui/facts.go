@@ -80,6 +80,16 @@ func (m *Model) apply(ev event.Event) {
 			}
 		}
 
+	case event.ShellStarted:
+		m.addShell(v)
+
+	case event.ShellEnded:
+		if r := m.row(v.Shell); r != nil {
+			r.running = false
+			result := v.Result
+			r.result = &result
+		}
+
 	case event.CallJudged:
 		m.judged(v)
 
@@ -140,6 +150,30 @@ func (m *Model) addCall(v event.CallProposed) {
 		renders: v.Renders, executor: v.Executor,
 	})
 	m.trackNewest()
+}
+
+// addShell puts a command in the Turn it interrupted, or its own
+// block between Turns: anywhere else draws it out of order.
+func (m *Model) addShell(v event.ShellStarted) {
+	b := m.cur
+	if b == nil {
+		b = m.shellBlock()
+	}
+	b.rows = append(b.rows, &callRow{
+		id: v.Shell, command: v.Command, human: true, running: true,
+	})
+	m.trackNewest()
+}
+
+// shellBlock is where commands land between Turns. Reused while it is
+// the newest, so a burst of them reads as one sitting.
+func (m *Model) shellBlock() *turnBlock {
+	if n := len(m.blocks); n > 0 && m.blocks[n-1].shell {
+		return m.blocks[n-1]
+	}
+	b := &turnBlock{shell: true}
+	m.blocks = append(m.blocks, b)
+	return b
 }
 
 func (m *Model) addLine(v event.OutputChunk) {
