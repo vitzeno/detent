@@ -27,6 +27,9 @@ type Model struct {
 	spinner spinner.Model
 
 	blocks []*turnBlock
+	// hist is the assembled history, behind a pointer so the copy of
+	// Model that View works on can still fill it.
+	hist *histCache
 	// histRev moves whenever block content does, and every block cache
 	// is keyed on it. apply bumps it; so does toggleExpand.
 	histRev int
@@ -100,6 +103,7 @@ func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 		spinner: sp,
 		nav:     navState{follow: true},
 		facts:   facts,
+		hist:    &histCache{},
 	}
 }
 

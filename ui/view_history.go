@@ -88,6 +88,18 @@ func (m Model) blockKey(b *turnBlock, focused *callRow) blockKey {
 	return k
 }
 
+// spinnerFrame is the frame a live block is drawing, and "" when none
+// is. The whole history turns over with it, by the same rule blockKey
+// follows for one block.
+func (m Model) spinnerFrame() string {
+	for _, b := range m.blocks {
+		if !b.ended && (anyRunning(b) || (b == m.cur && m.waiting)) {
+			return m.spinner.View()
+		}
+	}
+	return ""
+}
+
 // drawBlock renders one block against its rail, reporting where the
 // cursor landed inside it or -1 when it is elsewhere.
 func (m Model) drawBlock(b *turnBlock, focused *callRow) (lines []string, cursorAt int) {

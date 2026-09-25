@@ -86,10 +86,22 @@ func (m Model) historyWindow() (window []string, offset int) {
 	return lines[start:min(start+m.nav.histHeight, len(lines))], start
 }
 
-// historyAll is every line and the cursor's. An entry is already one
-// line: drawBlock splits on the way into the cache.
+// historyAll is every line and the cursor's. Assembling it walks every
+// block, and Update wants it for every message once the pane is
+// scrolled away from the end, so the whole of it is cached too.
 func (m Model) historyAll() (lines []string, cursorLine int) {
-	return m.historyLines()
+	key := histKey{
+		rev: m.histRev, width: m.blockWidth(),
+		cursor: m.nav.cursor, spinner: m.spinnerFrame(),
+	}
+	if m.hist != nil && m.hist.lines != nil && m.hist.key == key {
+		return m.hist.lines, m.hist.cursorLine
+	}
+	lines, cursorLine = m.historyLines()
+	if m.hist != nil {
+		*m.hist = histCache{key: key, lines: lines, cursorLine: cursorLine}
+	}
+	return lines, cursorLine
 }
 
 func (m Model) inputBar() string {

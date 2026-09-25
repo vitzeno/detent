@@ -44,6 +44,20 @@ type blockCache struct {
 	cursorAt int
 }
 
+// histKey is everything the assembled history depends on. Moving the
+// window changes only which slice of it is on screen, so a scroll is
+// a hit.
+type histKey struct {
+	rev, width, cursor int
+	spinner            string // only while a block is still live
+}
+
+type histCache struct {
+	key        histKey
+	lines      []string
+	cursorLine int
+}
+
 // callRow is one tool call, or the model's own words. Exactly one of
 // tool and prose is set.
 type callRow struct {
