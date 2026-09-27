@@ -84,3 +84,30 @@ func TestNoteContext_MidTurnOpensNoTurn(t *testing.T) {
 	assert.Len(t, r.of(event.AppendedKind), 4,
 		"prompt, note, the Step, and the closing say")
 }
+
+// The shape a resume actually has: a transcript replayed from the
+// store, then a note saying what of it is still true, then the next
+// prompt. The note has to sit between them or it describes steps the
+// model has already read as current.
+func TestNoteContext_ResumeLandsBetweenTheOldTranscriptAndTheNewPrompt(t *testing.T) {
+	r := newRig(t, nil)
+	r.eng.Restore([]event.Record{{Ordinal: 1, Event: event.Appended{
+		Messages: []event.Message{
+			{Role: event.RoleUser, Content: "install jq"},
+			{Role: event.RoleAssistant, Content: "installed"},
+		}}}})
+
+	r.bus.Publish(event.NoteContext{Text: "[session resumed]\nthat container is gone"})
+	r.await(event.AppendedKind)
+	r.run("now use jq")
+
+	var got []string
+	for _, m := range r.model.lastSent() {
+		got = append(got, m.Content)
+	}
+	assert.Equal(t, []string{
+		"install jq", "installed",
+		"[session resumed]\nthat container is gone",
+		"now use jq",
+	}, got)
+}

@@ -34,6 +34,10 @@ func LocalEnvironment() Environment {
 	return Environment{OS: runtime.GOOS, Arch: runtime.GOARCH, Dir: dir, Network: true}
 }
 
+// ResumeMarker opens the note a resumed session leaves in the
+// transcript, and point 4 names it. Exported so both can be asserted.
+const ResumeMarker = "[session resumed]"
+
 func systemPrompt(env Environment) string { return env.preamble() + agentPrompt }
 
 // preamble states the facts a command depends on: whose flags, where
@@ -71,7 +75,7 @@ Work the request:
 1. Call tools until you have actually answered it, then reply with prose and no tool calls. That ends the request.
 2. Call several tools at once when they are independent, such as reading three files. Call them one at a time when a later one depends on what an earlier one printed.
 3. Write commands complete: real paths, real pids, real search terms. Never a placeholder like <file> or $TARGET.
-4. Build on what already ran. The filesystem carries your earlier steps, so do not redo setup the transcript shows you already did.
+4. Build on what already ran: the filesystem carries your earlier steps, so do not redo setup the transcript shows you already did. A "[session resumed]" note is the exception, and says what survived.
 5. Never answer from an earlier request's output. It describes the past; files, processes and git state have moved on.
 
 Choose the tool:

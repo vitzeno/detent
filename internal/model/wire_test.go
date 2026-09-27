@@ -91,6 +91,15 @@ func TestSystemPrompt_NamesTheMarkerHumanshellActuallyWrites(t *testing.T) {
 		"and says what to do with it, which is the point of naming it")
 }
 
+// Point 4 tells the model its earlier steps are still on disk, which
+// a resume makes false. The exception has to name the marker the note
+// actually opens with.
+func TestSystemPrompt_NamesTheResumeMarker(t *testing.T) {
+	got := systemPrompt(LocalEnvironment())
+	assert.Contains(t, got, ResumeMarker)
+	assert.Contains(t, got, "is the exception, and says what survived")
+}
+
 // Without tools the request must not carry an empty array: some
 // endpoints treat its presence as a demand to call something.
 func TestComplete_OmitsToolsWhenThereAreNone(t *testing.T) {

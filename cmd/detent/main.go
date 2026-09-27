@@ -263,6 +263,12 @@ func run() error {
 	sd.unwatch = append(sd.unwatch, forget.Watch(bus, sessionStore(events), sessionID,
 		forget.WithContainers(containerRemover(sandboxSocketFor(resolved)))))
 
+	// A resumed transcript describes a machine that no longer exists.
+	// After the watchers, so the append it causes is recorded too.
+	if len(restore) > 0 {
+		bus.Publish(event.NoteContext{Text: resumeNote(restore, env)})
+	}
+
 	if *prompt != "" {
 		// Bubble Tea catches these for the TUI; with no TUI, nothing
 		// does so a killed -prompt leaves its container behind.
