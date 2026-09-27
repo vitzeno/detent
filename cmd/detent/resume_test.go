@@ -83,3 +83,34 @@ func started(sandboxed bool) []event.Record {
 		Event:   event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Sandbox: sandboxed},
 	}}
 }
+
+// The seam first: history draws the boundary, the note explains it.
+func TestAnnounceResume_PublishesTheSeamThenTheNote(t *testing.T) {
+	bus := event.New()
+	seen, unsub := bus.Subscribe(nil)
+	t.Cleanup(unsub)
+
+	id := uuid.Must(uuid.NewV7())
+	announceResume(bus, id, started(true), model.Environment{Dir: "/workspace", Sandboxed: true})
+
+	first := (<-seen).Event.(event.SessionResumed)
+	assert.Equal(t, id, first.Session)
+	assert.Equal(t, 1, first.Records)
+	assert.True(t, first.Sandbox)
+
+	second := (<-seen).Event.(event.NoteContext)
+	assert.Contains(t, second.Text, model.ResumeMarker)
+}
+
+// A fresh session has no seam and nothing to disclose.
+func TestAnnounceResume_SaysNothingWithoutARestore(t *testing.T) {
+	bus := event.New()
+	seen, unsub := bus.Subscribe(nil)
+	t.Cleanup(unsub)
+
+	announceResume(bus, uuid.Must(uuid.NewV7()), nil, model.Environment{})
+	bus.Publish(event.Notice{Text: "after"})
+
+	_, ok := (<-seen).Event.(event.Notice)
+	assert.True(t, ok, "the first thing on the bus is what came after it")
+}

@@ -115,6 +115,9 @@ func (m Model) drawBlock(b *turnBlock, focused *callRow) (lines []string, cursor
 			block = append(block, s)
 		}
 	}
+	if b.seam != nil {
+		return m.railed(b, []string{m.seamLine(b.seam)}), -1
+	}
 	// A shell block has no prompt: nobody asked for anything.
 	if !b.shell {
 		for _, gl := range wrapPlain(b.prompt, m.blockWidth()) {
@@ -136,6 +139,18 @@ func (m Model) drawBlock(b *turnBlock, focused *callRow) (lines []string, cursor
 		add(fmt.Sprintf("  %s %s", m.spinner.View(), styleFaint.Render("thinking…")))
 	}
 	return m.railed(b, block), cursorAt
+}
+
+// seamLine is what a seam draws: how much came back, and where this
+// run is running.
+func (m Model) seamLine(s *event.SessionResumed) string {
+	where := "host"
+	if s.Sandbox {
+		where = "sandbox"
+	}
+	return styleFaint.Render(layout.Truncate(
+		fmt.Sprintf("─── resumed · %d records · %s", s.Records, where),
+		m.blockWidth()))
 }
 
 // join copies, because appending onto a cached slice writes into a
@@ -192,6 +207,8 @@ func (m Model) railed(b *turnBlock, block []string) []string {
 // still running, then whatever it came to.
 func (m Model) railStyle(b *turnBlock) lipgloss.Style {
 	switch {
+	case b.seam != nil:
+		return styleFaint
 	case b.shell:
 		// Nothing ends a shell block, so the live colour would stay on
 		// it for the rest of the session.

@@ -302,3 +302,70 @@ func TestShell_TheirCommandIsUndoneWithTheTurnItRanIn(t *testing.T) {
 	assert.Len(t, reversible, 1, "the snapshot predates it, so it goes back")
 	assert.Empty(t, standing, "listing it as standing would promise less than a rollback does")
 }
+
+// showWelcome is focused() == nil and Restore moves the cursor onto a
+// row, so on resume the seam is the only thing that says so.
+func TestResume_HistoryMarksWhereItWasPickedUp(t *testing.T) {
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	m := feed(t,
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "install jq"},
+		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "apt-get install jq"}},
+		event.CallEnded{Call: call},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone},
+		event.SessionResumed{Records: 412, Sandbox: false},
+	)
+	m.sizeViewport()
+	require.False(t, m.showWelcome(),
+		"a restored session has rows, so the cursor is on one and the pane is gone")
+
+	require.Len(t, m.blocks, 2)
+	seam := m.blocks[1]
+	require.NotNil(t, seam.seam)
+	assert.Empty(t, seam.rows, "a seam holds nothing; it marks a place")
+
+	line := seamLineOf(t, m)
+	assert.Contains(t, line, "resumed · 412 records")
+	assert.Contains(t, line, "host", "the mode it came back as")
+	assert.NotContains(t, line, "…", "and it fits the pane it is drawn in")
+}
+
+// A count on the header could only ever describe the last one.
+func TestResume_EverySeamIsKept(t *testing.T) {
+	m := feed(t,
+		event.SessionResumed{Records: 10, Sandbox: true},
+		event.SessionResumed{Records: 40, Sandbox: true},
+	)
+	m.sizeViewport()
+	require.Len(t, m.blocks, 2)
+
+	drawn := stripStyle(strings.Join(mustLines(t, m), "\n"))
+	assert.Contains(t, drawn, "resumed · 10 records")
+	assert.Contains(t, drawn, "resumed · 40 records")
+}
+
+// A seam is not a request, so /undo must not offer it one.
+func TestResume_ASeamIsNotAnUndoTarget(t *testing.T) {
+	m := feed(t, event.SessionResumed{Records: 3})
+	_, err := m.undoTarget("/undo 0")
+	assert.Equal(t, "no request 0", err)
+}
+
+// seamLineOf is the drawn seam, so an assertion about its width is
+// not satisfied by a truncated command three rows above it.
+func seamLineOf(t *testing.T, m Model) string {
+	t.Helper()
+	for _, l := range mustLines(t, m) {
+		if strings.Contains(l, "resumed") {
+			return stripStyle(l)
+		}
+	}
+	t.Fatal("no seam was drawn")
+	return ""
+}
+
+func mustLines(t *testing.T, m Model) []string {
+	t.Helper()
+	lines, _ := m.historyLines()
+	require.NotEmpty(t, lines)
+	return lines
+}

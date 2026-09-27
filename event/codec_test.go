@@ -67,6 +67,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 
 	cases := []Event{
 		SessionStarted{Session: turn, Model: "m", Sandbox: true, Network: true, MaxSteps: 50},
+		SessionResumed{Session: turn, Records: 412, Sandbox: true},
 		TurnStarted{Turn: turn, N: 3, Prompt: "do it"},
 		TurnEnded{Turn: turn, Reason: EndDone, Summary: "did it",
 			Usage: Usage{PromptTokens: 7, CompletionTokens: 2, Latency: 90 * time.Millisecond, Model: "m"}},

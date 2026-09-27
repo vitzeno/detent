@@ -4,13 +4,25 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/model"
 )
 
-// What a resumed session owes the model: the prompt says the
-// filesystem carries every earlier step, and a resume makes that
-// true only of the human's own directory.
+// What a resume owes: a seam the human can see, and a note saying
+// which of the transcript's earlier steps are still true.
+
+// announceResume marks the seam and says what did not come back.
+// Both or neither: a boundary nothing explains is worse than none.
+func announceResume(bus *event.Bus, session uuid.UUID, records []event.Record, env model.Environment) {
+	if len(records) == 0 {
+		return
+	}
+	bus.Publish(event.SessionResumed{
+		Session: session, Records: len(records), Sandbox: env.Sandboxed})
+	bus.Publish(event.NoteContext{Text: resumeNote(records, env)})
+}
 
 // resumeNote says what did not come back. Each sentence is added
 // only when it applies, so none of it is true of the wrong resume.

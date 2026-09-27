@@ -33,6 +33,20 @@ type SessionStarted struct {
 
 func (SessionStarted) Kind() Kind { return SessionStartedKind }
 
+// SessionResumed marks where a stored session was picked up again.
+// Not a count on SessionStarted: two resumes are two seams.
+type SessionResumed struct {
+	fact
+	Session uuid.UUID
+	// Records is how many were replayed to get here.
+	Records int
+	// Sandbox is this run's mode, carried so an old seam still says it
+	// once later runs have published their own.
+	Sandbox bool
+}
+
+func (SessionResumed) Kind() Kind { return SessionResumedKind }
+
 // A Turn is one prompt and everything the agent did about it.
 
 type TurnStarted struct {

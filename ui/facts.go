@@ -80,6 +80,9 @@ func (m *Model) apply(ev event.Event) {
 			}
 		}
 
+	case event.SessionResumed:
+		m.blocks = append(m.blocks, &turnBlock{seam: &v})
+
 	case event.ShellStarted:
 		m.addShell(v)
 

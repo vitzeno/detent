@@ -23,6 +23,8 @@ type turnBlock struct {
 	// shell is a block holding commands the human ran between Turns.
 	// Not a Turn: no prompt, no checkpoint, nothing to undo.
 	shell bool
+	// seam is set on a block that marks a resume: one line, no rows.
+	seam *event.SessionResumed
 	// undoable is set once a checkpoint lands, so /undo offers
 	// only what it can actually restore.
 	undoable bool

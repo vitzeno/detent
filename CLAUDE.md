@@ -174,7 +174,7 @@ which is a whole number of Steps by construction.
 
 ## Architecture
 
-**Everything is an event.** 24 facts and 14 intents are the entire
+**Everything is an event.** 25 facts and 14 intents are the entire
 interface between components. Facts are past tense, intents are
 imperative, and either may come from anyone: the engine publishes most
 facts, but a subscriber answering a question publishes one too. An extension

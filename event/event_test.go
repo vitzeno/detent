@@ -49,7 +49,7 @@ func external(path string) bool {
 // a reducer switch on the wrong one.
 func TestKinds_AreUniqueAndComplete(t *testing.T) {
 	all := []Event{
-		SessionStarted{}, TurnStarted{}, TurnEnded{}, CheckpointTaken{},
+		SessionStarted{}, SessionResumed{}, TurnStarted{}, TurnEnded{}, CheckpointTaken{},
 		RolledBack{}, BoundReached{}, StepStarted{}, StepEnded{}, ModelText{},
 		Appended{}, Compacted{},
 		CallProposed{}, CallAssessed{}, ApprovalAsked{}, CallStarted{},

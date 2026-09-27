@@ -61,6 +61,7 @@ func codec[T Event](payload []byte) (Event, error) {
 // codecs is the one place a new event type must be added.
 var codecs = map[Kind]func([]byte) (Event, error){
 	SessionStartedKind:  codec[SessionStarted],
+	SessionResumedKind:  codec[SessionResumed],
 	TurnStartedKind:     codec[TurnStarted],
 	TurnEndedKind:       codec[TurnEnded],
 	CheckpointTakenKind: codec[CheckpointTaken],

@@ -47,6 +47,8 @@ func describe(e event.Event) (slog.Level, []any) {
 		return slog.LevelInfo, []any{"model", v.Model, "sandbox", v.Sandbox,
 			"network", v.Network, "max_steps", v.MaxSteps,
 			"recorded", v.Recorded, "resumed", v.Resumed}
+	case event.SessionResumed:
+		return slog.LevelInfo, []any{"records", v.Records, "sandbox", v.Sandbox}
 	case event.TurnStarted:
 		return slog.LevelInfo, []any{KeyTurn, v.Turn, "n", v.N, "prompt", Body(v.Prompt)}
 	case event.TurnEnded:

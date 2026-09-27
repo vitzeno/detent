@@ -52,6 +52,8 @@ const (
 	CallJudgedKind    Kind = "call.judged"
 	ViewReadyKind     Kind = "call.view"
 
+	SessionResumedKind Kind = "session.resumed"
+
 	// A Shell is one command the human ran themselves.
 	ShellStartedKind Kind = "shell.started"
 	ShellEndedKind   Kind = "shell.ended"

@@ -42,7 +42,7 @@ func (m Model) undoTarget(input string) (*turnBlock, string) {
 		return nil, "usage: /undo [request number]"
 	}
 	for _, b := range m.blocks {
-		if b.shell || b.n != n {
+		if b.shell || b.seam != nil || b.n != n {
 			continue
 		}
 		switch {
