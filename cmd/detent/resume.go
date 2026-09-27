@@ -8,13 +8,12 @@ import (
 	"github.com/vitzeno/detent/internal/model"
 )
 
-// What a resumed session owes the model. The prompt tells it the
-// filesystem carries every earlier step, and after a resume that is
-// only true of the human's own directory.
+// What a resumed session owes the model: the prompt says the
+// filesystem carries every earlier step, and a resume makes that
+// true only of the human's own directory.
 
-// resumeNote says what did not come back. Sentences are added only
-// when they apply, so nothing here is true of one resume and not
-// another.
+// resumeNote says what did not come back. Each sentence is added
+// only when it applies, so none of it is true of the wrong resume.
 func resumeNote(records []event.Record, env model.Environment) string {
 	var b strings.Builder
 	b.WriteString(model.ResumeMarker + "\n")
@@ -39,9 +38,8 @@ func resumeNote(records []event.Record, env model.Environment) string {
 	return b.String()
 }
 
-// wasSandboxed reads the earlier run's mode off the header fact it
-// already recorded, so noticing a change costs no new state. The last
-// one wins: a session resumed twice has two.
+// wasSandboxed reads the earlier mode off the header fact already
+// recorded. The last wins: a session resumed twice has two.
 func wasSandboxed(records []event.Record) (was, known bool) {
 	for i := len(records) - 1; i >= 0; i-- {
 		if s, ok := records[i].Event.(event.SessionStarted); ok {
