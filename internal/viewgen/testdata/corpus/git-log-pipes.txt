@@ -1,0 +1,8 @@
+82238b0|Ada Lovelace|2026-09-30|Read separators and headers off the output
+8366864|Ada Lovelace|2026-09-30|Refuse a view that hides most of it
+b56683a|Ada Lovelace|2026-09-29|Cut fixed columns where the rows leave gaps
+ea5b20e|Ada Lovelace|2026-09-28|Draw views for the commands a human runs
+0762978|Ada Lovelace|2026-09-27|Fail a columns parse that drops most lines
+65099c2|Ada Lovelace|2026-09-27|Key views on the command, not the tool
+92fb343|Ada Lovelace|2026-09-26|Mark in history where a session resumed
+7c19b5f|Ada Lovelace|2026-09-25|Trim the resume note comments

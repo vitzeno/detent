@@ -176,9 +176,12 @@ func (failingJudge) Ask(context.Context, classify.State, classify.Questions) (cl
 // the composition decided without a network. Unscripted questions take
 // the first criterion not already given in the batch, as two slots would.
 type scriptedJudge struct {
-	mu   sync.Mutex
-	say  map[string]string
-	seen []classify.State
+	mu  sync.Mutex
+	say map[string]string
+	// again answers a question asked a second time, as a re-asked slot is.
+	again map[string]string
+	asks  map[string]int
+	seen  []classify.State
 	// asked is each batch's question names, sorted.
 	asked [][]string
 	err   error
@@ -197,7 +200,14 @@ func (j *scriptedJudge) Ask(_ context.Context, state classify.State,
 	given := map[string]bool{}
 	for _, name := range slices.Sorted(maps.Keys(qs)) {
 		q := qs[name]
+		if j.asks == nil {
+			j.asks = map[string]int{}
+		}
+		j.asks[name]++
 		choice, ok := j.say[name]
+		if again, has := j.again[name]; has && j.asks[name] > 1 {
+			choice = again
+		}
 		if !ok {
 			choice = firstCriterion(q)
 			for _, c := range slices.Sorted(maps.Keys(q.Choice.Criteria)) {
@@ -257,32 +267,6 @@ func TestCompose_AssemblesFromChoicesAndCaches(t *testing.T) {
 	assert.Len(t, judge.seen, before, "a saved spec asks nothing")
 }
 
-// Choosing columns for df reads one row of nine, all of it shifted a
-// column over. The header answer stands and the kind gives way.
-func TestCompose_AMisreadHeaderGivesWayToFixed(t *testing.T) {
-	g, _ := composer(t, map[string]string{
-		"header_line": "0",
-		"parse_kind":  "columns",
-		"body":        "table",
-		"summary":     "none",
-	})
-	req := request()
-	req.Kind, req.Output = "table", dfH
-	got, err := g.Compose(context.Background(), req)
-	require.NoError(t, err)
-	assert.Equal(t, "fixed", got.Spec.Parse.Kind)
-}
-
-const dfH = "Filesystem      Size  Used Avail Use% Mounted on\n" +
-	"/dev/disk3s1s1  926G   10G  560G   2% /\n" +
-	"devfs           205K  205K    0B 100% /dev\n" +
-	"/dev/disk3s6    926G  7.0G  560G   2% /System/Volumes/VM\n" +
-	"/dev/disk3s2    926G  7.6G  560G   2% /System/Volumes/Preboot\n" +
-	"/dev/disk3s4    926G  3.1M  560G   1% /System/Volumes/Update\n" +
-	"/dev/disk1s2    500M  6.0M  483M   2% /System/Volumes/xarts\n" +
-	"/dev/disk3s5    926G  345G  560G  39% /System/Volumes/Data\n" +
-	"map auto_home     0B    0B    0B 100% /System/Volumes/Data/home\n"
-
 // Every field the composition picks comes from a list the program
 // built out of what the parse actually produced.
 func TestCompose_OffersOnlyFieldsTheParseProduced(t *testing.T) {
@@ -316,9 +300,20 @@ func TestCompose_OffersOnlyFieldsTheParseProduced(t *testing.T) {
 }
 
 // "none" is how a composition declines, and prose is what it declines.
-func TestCompose_DeclinesOutputWithNothingToExtract(t *testing.T) {
-	g, _ := composer(t, map[string]string{"header_line": "none", "parse_kind": "none"})
-	_, err := g.Compose(context.Background(), request())
+func TestCompose_DrawsOutputWithNothingToExtractAsItCame(t *testing.T) {
+	// Declining here, a README could only ever draw as code.
+	g, _ := composer(t, map[string]string{"header_line": "none", "parse_kind": "none", "body": "markdown"})
+	g.Registry = ui.Registry()
+	req := request()
+	req.Kind, req.Output = viewgen.KindContent, "# Notes\n\n- one\n- two\n\n## More\n\nText.\n"
+	got, err := g.Compose(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "markdown", got.Spec.Blocks[0].Kind)
+
+	// With one such kind offered, the fallback already draws it.
+	g, _ = composer(t, map[string]string{"header_line": "none", "parse_kind": "none"})
+	req.Kind, req.Output = viewgen.KindJSON, strings.Repeat("{not json}\n", 9)
+	_, err = g.Compose(context.Background(), req)
 	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
 }
 
@@ -420,7 +415,7 @@ func TestCompose_EveryOfferedWidgetCanBeComposed(t *testing.T) {
 				output := columnar
 				// A list of one column from three hides the other two,
 				// so a listing is composed from a listing.
-				if k.Name == viewgen.KindFiles {
+				if w == "list" || w == "tree" || w == "flow" || k.Name == viewgen.KindFiles {
 					say["header_line"], say["parse_kind"] = "none", "lines"
 					output = strings.Repeat("cmd/detent/main.go\nui/view.go\n", 5)
 				}
@@ -444,45 +439,6 @@ func firstBody(guide map[string]viewspec.Description, kinds []string) string {
 		}
 	}
 	return "log"
-}
-
-// Composition set no separator for delimited and always "=" for pairs,
-// so neither CSV nor "key: value" output ever parsed.
-func TestCompose_ReadsTheSeparatorOffTheOutput(t *testing.T) {
-	tests := []struct {
-		name, parse, output, sep string
-	}{
-		{"csv", "delimited", "name,lang,stars\n" + strings.Repeat("detent,go,120\nink,js,27000\n", 4), ","},
-		{"pipes", "delimited", "hash|author|subject\n" + strings.Repeat("ea5b20e|me|Draw views\n", 8), "|"},
-		{"colon pairs", "pairs", strings.Repeat("hw.ncpu: 12\nhw.memsize: 38654705664\n", 4), ":"},
-		{"equals pairs", "pairs", strings.Repeat("GOOS=darwin\nGOARCH=arm64\n", 4), "="},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			g, _ := composer(t, map[string]string{
-				"header_line": "0", "parse_kind": tt.parse, "body": "table", "summary": "none"})
-			req := request()
-			req.Kind, req.Output = "table", tt.output
-			got, err := g.Compose(context.Background(), req)
-			require.NoError(t, err)
-			assert.Equal(t, tt.sep, got.Spec.Parse.Sep)
-		})
-	}
-}
-
-// Named from the widest line, a symlink's "a -> b" made every other
-// line of ls -la short, and the table fell back to "total" as a header.
-func TestCompose_AHeaderlessTableIsAsWideAsMostLines(t *testing.T) {
-	g, _ := composer(t, map[string]string{
-		"header_line": "none", "parse_kind": "columns", "body": "table", "summary": "none"})
-	req := request()
-	req.Kind = "table"
-	req.Output = "total 48\n" + strings.Repeat("-rw-r--r--  1 me  staff  1203 Sep 29 18:44 go.mod\n", 6) +
-		"lrwxr-xr-x  1 me  staff  7 Sep 29 18:44 cc -> clang\n"
-	got, err := g.Compose(context.Background(), req)
-	require.NoError(t, err)
-	assert.False(t, got.Spec.Parse.Header)
-	assert.Len(t, got.Spec.Parse.Fields, 9)
 }
 
 // A header of "##" read every line as one field: a table of one column.
@@ -531,42 +487,67 @@ func TestExisting_AShippedViewThatHidesTheOutputIsNotUsed(t *testing.T) {
 	assert.True(t, ok, "the summary alone still draws with it")
 }
 
-// Taking the first parse that read at all, cal kept columns and lost its
-// short first and last weeks; fixed reads every one.
-func TestCompose_KeepsTheParseThatReadsTheMostRows(t *testing.T) {
-	g, _ := composer(t, map[string]string{
-		"header_line": "1", "parse_kind": "columns", "body": "table", "summary": "none"})
-	req := request()
-	req.Kind = "table"
-	req.Output = "   September 2026\nSu Mo Tu We Th Fr Sa\n       1  2  3  4  5\n 6  7  8  9 10 11 12\n" +
-		"13 14 15 16 17 18 19\n20 21 22 23 24 25 26\n27 28 29 30\n\n"
-	got, err := g.Compose(context.Background(), req)
-	require.NoError(t, err)
-	assert.Equal(t, "fixed", got.Spec.Parse.Kind)
-	assert.Equal(t, 1, got.Spec.Parse.Skip)
-}
-
-// Picking one field for two slots drew each key against itself.
-func TestCompose_OneFieldForTwoSlotsIsRefused(t *testing.T) {
-	g, _ := composer(t, map[string]string{"header_line": "0", "parse_kind": "columns",
+// Picking one field for two slots drew each key against itself; the
+// second slot is asked again without it.
+func TestCompose_OneFieldForTwoSlotsIsAskedAgain(t *testing.T) {
+	g, judge := composer(t, map[string]string{"header_line": "0", "parse_kind": "columns",
 		"body": "keyvalue", "summary": "none", "label": "pkg", "value": "pkg"})
+	judge.again = map[string]string{"value": "secs"}
 	req := request()
 	req.Kind = "table"
 	req.Output = "pkg secs\n" + strings.Repeat("a 1.2\nb 3.4\n", 4)
-	_, err := g.Compose(context.Background(), req)
-	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
-}
-
-// fixed reads line 0 as its titles whatever it is told, so "no header"
-// has to mean a parse that can name columns by position.
-func TestCompose_NoHeaderIsNotFixed(t *testing.T) {
-	g, _ := composer(t, map[string]string{
-		"header_line": "none", "parse_kind": "fixed", "body": "table", "summary": "none"})
-	req := request()
-	req.Kind = "table"
-	req.Output = strings.Repeat("alpha  1  x\nbeta   2  y\n", 5)
 	got, err := g.Compose(context.Background(), req)
 	require.NoError(t, err)
-	assert.Equal(t, "columns", got.Spec.Parse.Kind)
-	assert.Equal(t, []string{"col1", "col2", "col3"}, got.Spec.Parse.Fields)
+	assert.Equal(t, []viewspec.Column{{Field: "pkg"}, {Field: "secs"}}, got.Spec.Blocks[0].Columns)
+}
+
+// A badge per distinct value of a field unique on every row is the
+// rows over again: four of eight summaries drawn were that.
+func TestCompose_ASummaryCountsOnlyValuesThatRepeat(t *testing.T) {
+	for field, want := range map[string]int{"status": 2, "pkg": 1} {
+		g, _ := composer(t, map[string]string{"header_line": "0", "parse_kind": "columns",
+			"body": "table", "summary": "badges", "summary_field": field})
+		req := request()
+		req.Kind = "table"
+		req.Output = "pkg status\n" + strings.Repeat("a ok\nb ok\nc FAIL\nd ok\n", 1) + "e ok\nf FAIL\n"
+		got, err := g.Compose(context.Background(), req)
+		require.NoError(t, err)
+		assert.Len(t, got.Spec.Blocks, want, "a summary of %s", field)
+	}
+}
+
+// Counting lines, a seven-line kubectl get nodes and a single line of
+// minified JSON holding four hundred records were never worth a view.
+func TestCompose_RecordsAreWorthAViewSoonerThanText(t *testing.T) {
+	g, _ := composer(t, map[string]string{
+		"header_line": "0", "parse_kind": "columns", "body": "table", "summary": "none"})
+	req := request()
+	req.Kind, req.Output = "table", "NAME STATUS\nnode-1 Ready\nnode-2 NotReady\n"
+	_, err := g.Compose(context.Background(), req)
+	assert.NoError(t, err, "three lines of a table")
+
+	req.Kind = "plain_text"
+	_, err = g.Compose(context.Background(), req)
+	assert.ErrorIs(t, err, viewgen.ErrNotWorth, "three lines of text")
+
+	g, _ = composer(t, map[string]string{
+		"header_line": "none", "parse_kind": "json", "body": "table", "summary": "none"})
+	req.Kind, req.Output = "structured_json", `[{"id":1,"sku":"a"},{"id":2,"sku":"b"}]`
+	_, err = g.Compose(context.Background(), req)
+	assert.NoError(t, err, "one line of JSON")
+}
+
+// kubectl describe parsed by indent and drew as a log, text offering
+// no tree; file content offered no table for a cat of /etc/hosts.
+func TestKinds_OfferWhatTheirOutputsHold(t *testing.T) {
+	offered := func(kind string) []string {
+		for _, k := range viewgen.Kinds() {
+			if k.Name == kind {
+				return k.Widgets
+			}
+		}
+		return nil
+	}
+	assert.Subset(t, offered(viewgen.KindText), []string{"tree", "keyvalue", "list"})
+	assert.Subset(t, offered(viewgen.KindContent), []string{"table", "keyvalue", "list"})
 }

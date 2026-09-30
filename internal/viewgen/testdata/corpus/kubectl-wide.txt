@@ -1,0 +1,16 @@
+NAME                         READY   STATUS             RESTARTS   AGE     IP            NODE     NOMINATED NODE   READINESS GATES
+api-5c4b2a3471-pzbcv         1/2     CrashLoopBackOff   17         3d2h    10.42.3.104   node-4   <none>           <none>
+web-6f7e1d4517-bcqqc         1/2     Running            17         2h14m   10.42.0.125   node-4   <none>           <none>
+worker-7d9f8b3028-hzzwb      2/2     Running            0          3d2h    10.42.0.50    node-1   <none>           <none>
+scheduler-6f7e1d3181-kqevd   2/2     Running            0          7s      10.42.1.114   node-2   <none>           <none>
+redis-6f7e1d4078-ndvcw       1/2     Running            3          90d     10.42.0.89    node-1   <none>           <none>
+postgres-6f7e1d8005-mrwrn    2/2     Running            0          90d     10.42.0.2     node-2   <none>           <none>
+nginx-7d9f8b2341-wktsm       2/2     Running            17         3d2h    10.42.0.244   node-3   <none>           <none>
+auth-7d9f8b9387-qfmes        2/2     Running            0          7s      10.42.0.20    node-2   <none>           <none>
+billing-6f7e1d6140-mnxsw     2/2     Running            0          12d     10.42.3.40    node-3   <none>           <none>
+search-5c4b2a2064-bkzwr      2/2     Pending            0          3d2h    10.42.2.156   node-3   <none>           <none>
+mailer-5c4b2a6823-fxdsb      1/2     Running            0          90d     10.42.3.33    node-1   <none>           <none>
+metrics-7d9f8b7519-pscfr     2/2     Running            0          2h14m   10.42.3.121   node-4   <none>           <none>
+gateway-6f7e1d5561-qnphe     1/2     Running            0          45m     10.42.3.81    node-1   <none>           <none>
+cache-6f7e1d4822-aswfj       2/2     Running            0          2h14m   10.42.1.28    node-3   <none>           <none>
+queue-6f7e1d7049-xwmet       1/2     Completed          17         2h14m   10.42.2.124   node-2   <none>           <none>

@@ -5,6 +5,7 @@ package viewgen
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -31,7 +32,7 @@ func (g *Generator) worthAsking(req Request) bool {
 	if !worthGenerating(req.Kind) {
 		return false
 	}
-	return lines(req.Output) >= MinLinesToCompose
+	return enough(req.Kind, req.Output)
 }
 
 // skipReason says which gate refused, since "no view appeared" is
@@ -39,6 +40,9 @@ func (g *Generator) worthAsking(req Request) bool {
 func (g *Generator) skipReason(req Request) string {
 	if !worthGenerating(req.Kind) {
 		return "this shape draws itself"
+	}
+	if k, ok := byName[req.Kind]; ok && k.Records {
+		return fmt.Sprintf("under %d records", MinRecordsToCompose)
 	}
 	return fmt.Sprintf("under %d lines", MinLinesToCompose)
 }
@@ -67,10 +71,10 @@ func (g *Generator) Existing(ctx context.Context, req Request) (Result, bool) {
 	return Result{}, false
 }
 
-// renderKind asks the judge only which shape output has, for output
-// nothing else judged. "" with no judge, or too little to draw.
-func (g *Generator) renderKind(ctx context.Context, command, output string) string {
-	if lines(output) < MinLinesToCompose {
+// Shape asks the judge only which shape output has, for output nothing
+// else judged. "" with no judge, or too little to draw.
+func (g *Generator) Shape(ctx context.Context, command, output string) string {
+	if len(nonBlank(output)) < MinRecordsToCompose && !isJSON(output) {
 		return ""
 	}
 	answers, _, ok := classify.AskOrFallback(ctx, g.Judge,
@@ -168,10 +172,27 @@ func head(s string, n int) string {
 	return s[:n] + "\n…[truncated]"
 }
 
-// MinLinesToCompose is the output below which no view is worth
-// asking about. Length lived inside render_kind once; it belongs here,
-// being a property of the output rather than of its shape.
+// MinLinesToCompose is the text below which no view is worth asking
+// about. Length lived inside render_kind once; it belongs here.
 const MinLinesToCompose = 8
+
+// MinRecordsToCompose is the same for records, which earn a view far
+// sooner: kubectl get nodes is seven lines, and minified JSON is one.
+const MinRecordsToCompose = 3
+
+// enough reports whether output is long enough for its shape to earn a view.
+func enough(kind, output string) bool {
+	if k, ok := byName[kind]; ok && k.Records {
+		return len(nonBlank(output)) >= MinRecordsToCompose || isJSON(output)
+	}
+	return lines(output) >= MinLinesToCompose
+}
+
+// isJSON reports whether output is one JSON document, however it is laid out.
+func isJSON(output string) bool {
+	s := strings.TrimSpace(output)
+	return (strings.HasPrefix(s, "[") || strings.HasPrefix(s, "{")) && json.Valid([]byte(s))
+}
 
 // ErrNotWorth means this output has no view worth a model call: a few
 // lines, or a shape already drawn well. Not a failure.

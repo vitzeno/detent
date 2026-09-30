@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/viewspec"
@@ -23,8 +25,8 @@ const (
 	// field per line holding the line.
 	wholeLine = `^(?P<line>.+)$`
 	// headerCandidates is how many opening lines are offered as the
-	// header. Four covers a total, a title and a blank.
-	headerCandidates = 4
+	// header: top prints five of summary and a blank before its own.
+	headerCandidates = 8
 )
 
 var (
@@ -118,7 +120,11 @@ func read(b viewspec.Block) []string {
 var parseCriteria = map[string]any{
 	"columns": map[string]any{
 		"what":    "whitespace-aligned columns under a header row, one record per line",
-		"not_for": "a bare list with no header, or headings that contain spaces",
+		"not_for": "a bare list with no header, headings that contain spaces, or a table drawn with | or │ borders",
+	},
+	"box": map[string]any{
+		"what":    "a table drawn with borders: | or │ between cells, rules of - or ─, as mysql, psql, sqlite -box and markdown print",
+		"not_for": "columns aligned by spaces alone, with no border characters",
 	},
 	"fixed": map[string]any{
 		"what":    "aligned columns whose header contains multi-word names, sliced at the header's own offsets",
@@ -235,18 +241,95 @@ func honour(chosen viewspec.Parse, skip int, output string) viewspec.Parse {
 		headerless.Header, headerless.Fields = false, positional(headerless, output)
 		return headerless
 	}
+	candidates := []viewspec.Parse{chosen}
+	for _, kind := range []string{"fixed", "columns"} {
+		p := chosen
+		p.Kind = kind
+		candidates = append(candidates, p)
+	}
+	if bordered(output) {
+		candidates = append(candidates, viewspec.Parse{Kind: "box", Header: true})
+	}
+	if tabbed(output, skip) {
+		candidates = append(candidates, viewspec.Parse{Kind: "delimited", Header: true, Sep: "\t"})
+	}
 	// The one reading the most rows: first to read at all, cal dropped
 	// its short first and last weeks where fixed read every one.
-	best, most := chosen, -1
+	best, most, width := chosen, -1, 0
 	best.Skip = skip
-	for _, kind := range append([]string{chosen.Kind}, "fixed", "columns") {
-		p := chosen
-		p.Kind, p.Skip = kind, skip
-		if b, err := bindWith(p, output); err == nil && len(b.Fields()) > 1 && b.Rows() > most {
-			best, most = p, b.Rows()
+	for _, p := range candidates {
+		p.Skip = skip
+		b, err := bindWith(p, output)
+		if err != nil || len(b.Fields()) < 2 || !named(b.Fields()) {
+			continue
+		}
+		n, f := b.Rows(), len(b.Fields())
+		if n > most || (n == most && breaksTie(p, f, width, output, skip)) {
+			best, most, width = p, n, f
 		}
 	}
 	return best
+}
+
+// breaksTie beats a parse as long: tabs, fixed losing no field, since on
+// spaces systemctl's ● shifted a row, or fewer where the header agrees.
+func breaksTie(p viewspec.Parse, fields, width int, output string, skip int) bool {
+	switch p.Kind {
+	case "delimited":
+		return p.Sep == "\t"
+	case "fixed":
+		if fields >= width {
+			return true
+		}
+		lines := nonBlank(output)
+		return skip < len(lines) && len(twoSpaced.Split(strings.TrimSpace(lines[skip]), -1)) == fields
+	}
+	return false
+}
+
+var twoSpaced = regexp.MustCompile(`\s{2,}`)
+
+// tabbed reports whether the header and most rows hold as many tabs:
+// helm pads with spaces too, and split on them "APP VERSION" broke.
+func tabbed(output string, skip int) bool {
+	lines := nonBlank(output)
+	if skip >= len(lines) {
+		return false
+	}
+	want := strings.Count(lines[skip], "\t")
+	if want == 0 {
+		return false
+	}
+	same := 0
+	for _, l := range lines[skip+1:] {
+		if strings.Count(l, "\t") == want {
+			same++
+		}
+	}
+	return same*5 >= len(lines[skip+1:])*4
+}
+
+// bordered reports whether most lines carry a table's border.
+func bordered(output string) bool {
+	lines := nonBlank(output)
+	n := 0
+	for _, l := range lines {
+		if strings.ContainsAny(l, "|│┃║") {
+			n++
+		}
+	}
+	return n*2 > len(lines)
+}
+
+// named reports whether every field is a word, not a border: split on
+// spaces, mysql's | came out as a column called "|".
+func named(fields []string) bool {
+	for _, f := range fields {
+		if !strings.ContainsFunc(f, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
+			return false
+		}
+	}
+	return true
 }
 
 // positional names a headerless table col1..colN, as wide as most lines:
@@ -256,13 +339,22 @@ func positional(p viewspec.Parse, output string) []string {
 	if p.Kind == "delimited" {
 		split = func(l string) []string { return strings.Split(l, p.Sep) }
 	}
-	counts := map[int]int{}
-	width := 0
+	// The width reading the most cells, rows kept times columns: the
+	// commonest tied in ip -br, and a floor lost go test -bench to its banner.
+	var widths []int
 	for _, line := range nonBlank(output) {
-		n := len(split(line))
-		counts[n]++
-		if counts[n] > counts[width] || (counts[n] == counts[width] && n > width) {
-			width = n
+		widths = append(widths, len(split(line)))
+	}
+	width, most := 0, 0
+	for _, w := range widths {
+		kept := 0
+		for _, n := range widths {
+			if n >= w {
+				kept++
+			}
+		}
+		if cells := kept * min(w, maxPositional); cells > most || (cells == most && w < width) {
+			width, most = w, cells
 		}
 	}
 	out := make([]string, min(width, maxPositional))

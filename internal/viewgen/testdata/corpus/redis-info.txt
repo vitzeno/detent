@@ -1,0 +1,10 @@
+# Memory
+used_memory:1043312
+used_memory_human:1018.86K
+used_memory_rss:7835648
+used_memory_peak:1101248
+used_memory_peak_human:1.05M
+maxmemory:0
+maxmemory_policy:noeviction
+mem_fragmentation_ratio:7.51
+mem_allocator:libc

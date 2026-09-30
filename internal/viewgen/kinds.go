@@ -46,6 +46,8 @@ type Kind struct {
 	// Generate is false where there is nothing to gain: a diff and a
 	// stack trace already draw themselves.
 	Generate bool
+	// Records marks a shape made of rows, worth a view from a few of them.
+	Records bool
 }
 
 var kinds = []Kind{
@@ -54,8 +56,10 @@ var kinds = []Kind{
 		What:     "unstructured text, read top to bottom: logs, build output, a few lines of status",
 		NotFor:   "text with a shape worth drawing: aligned columns, a listing, a diff, JSON, or a failure",
 		Examples: []string{"go test ./... output", "a docker build log", "pwd", "npm install"},
-		Widgets: []string{"log", "errors", "table", "histogram", "gantt", "badges",
-			viewspec.PanelKind, viewspec.RowKind},
+		// keyvalue and tree too: curl -I and kubectl describe are judged
+		// text, and without them drew as a log after parsing correctly.
+		Widgets: []string{"log", "errors", "table", "keyvalue", "tree", "list", "histogram",
+			"gantt", "badges", viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
 	},
 	{
@@ -67,6 +71,7 @@ var kinds = []Kind{
 			"boxplot", "series", "heatmap", "scatter", "gantt", "timeline",
 			"keyvalue", "badges", viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
+		Records:  true,
 	},
 	{
 		Name:     KindFiles,
@@ -76,13 +81,15 @@ var kinds = []Kind{
 		Widgets: []string{"list", "tree", "flow", "badges", "histogram",
 			viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
+		Records:  true,
 	},
 	{
 		Name:     KindContent,
 		What:     "a file's own prose or code body, read in full like a document",
 		NotFor:   "well-formed JSON even when it came from cat, which is structured_json",
 		Examples: []string{"cat main.go", "cat README.md"},
-		Widgets:  []string{"code", "markdown", "log"},
+		// A cat of /etc/hosts or go.sum is content with rows in it.
+		Widgets:  []string{"code", "markdown", "log", "table", "keyvalue", "list", "tree"},
 		Generate: true,
 	},
 	{
@@ -108,6 +115,7 @@ var kinds = []Kind{
 		Widgets: []string{"keyvalue", "table", "json", "histogram", "delta", "badges",
 			viewspec.PanelKind, viewspec.RowKind},
 		Generate: true,
+		Records:  true,
 	},
 }
 

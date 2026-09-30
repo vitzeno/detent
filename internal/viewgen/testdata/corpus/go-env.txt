@@ -1,0 +1,8 @@
+GOOS=darwin
+GOARCH=arm64
+GOPATH=/Users/ada/go
+GOPROXY=https://proxy.golang.org,direct
+GOFLAGS=
+GOVERSION=go1.26.6
+CGO_ENABLED=1
+GOAMD64=v1

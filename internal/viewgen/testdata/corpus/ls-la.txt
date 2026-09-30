@@ -1,0 +1,8 @@
+total 48
+-rw-r--r--  1 ada  staff   1203 Sep 29 18:44 go.mod
+-rw-r--r--  1 ada  staff   9812 Sep 29 18:44 go.sum
+-rw-r--r--  1 ada  staff    604 Sep 29 18:44 Makefile
+-rw-r--r--  1 ada  staff  14022 Sep 29 18:44 README.md
+-rw-r--r--  1 ada  staff    752 Sep 29 18:44 .detent.yaml
+-rw-r--r--  1 ada  staff   6148 Sep 29 18:44 .DS_Store
+lrwxr-xr-x  1 ada  staff      7 Sep 29 18:44 cc -> clang

@@ -3,6 +3,7 @@ package viewgen
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -86,6 +87,9 @@ func (c *composer) run(ctx context.Context) (*viewspec.Spec, error) {
 	if err != nil {
 		return nil, err
 	}
+	if parse.Kind == parseNone {
+		return c.asItCame(ctx)
+	}
 	fields, rows, err := readWith(parse, c.req.Output)
 	if err != nil {
 		return nil, fmt.Errorf("parse %q read nothing: %w", parse.Kind, err)
@@ -114,12 +118,9 @@ func (c *composer) parse(ctx context.Context) (viewspec.Parse, error) {
 	if err != nil {
 		return viewspec.Parse{}, err
 	}
-	if kind == parseNone {
-		return viewspec.Parse{}, errNothingToDraw
-	}
 	p := viewspec.Parse{Kind: kind}
 	switch kind {
-	case "columns", "fixed":
+	case "columns", "fixed", "box":
 		p.Header = true
 	case "delimited":
 		p.Header, p.Sep = true, sepOf(c.req.Output, delimiters)
@@ -150,7 +151,9 @@ func (c *composer) header(ctx context.Context) int {
 		"none": "None of these is a header. Every line is data, as in ls -la.",
 	}
 	for i := range min(len(lines), headerCandidates) {
-		criteria[strconv.Itoa(i)] = fmt.Sprintf("line %d: %s", i+1, head(lines[i], 120))
+		if strings.TrimSpace(lines[i]) != "" {
+			criteria[strconv.Itoa(i)] = fmt.Sprintf("line %d: %s", i+1, head(lines[i], 120))
+		}
 	}
 	answers, ok := c.ask(ctx, classify.Questions{
 		"header_line": {
@@ -244,6 +247,9 @@ func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 		}
 		picked = got
 	}
+	if err := c.distinctSlots(ctx, state, guide[chosen].Needs, fields, rows, picked); err != nil {
+		return nil, err
+	}
 
 	body := block(chosen, guide[chosen].Needs, picked, "")
 	if chosen == "tree" && parse.Kind == "indent" {
@@ -257,10 +263,86 @@ func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 	}
 	var out []viewspec.Block
 	if summary != choiceNone {
-		out = append(out, block(summary, guide[summary].Needs, picked, "summary_"))
+		sb := block(summary, guide[summary].Needs, picked, "summary_")
+		if sb.Field == "" || repeats(parse, c.req.Output, sb.Field) {
+			out = append(out, sb)
+		}
 	}
 	return append(out, body), nil
 }
+
+// asItCame chooses how to draw output with nothing to extract. Declining
+// instead, markdown was never composed and a README drew as code.
+func (c *composer) asItCame(ctx context.Context) (*viewspec.Spec, error) {
+	guide := describe(c.g.registry())
+	var raw []string
+	for _, k := range prune(c.g.registry(), c.req.Kind).Kinds() {
+		if guide[k].Raw {
+			raw = append(raw, k)
+		}
+	}
+	if len(raw) < 2 {
+		return nil, errNothingToDraw
+	}
+	answers, ok := c.ask(ctx, classify.Questions{
+		"body": {
+			Instructions: "Which widget should draw this output as it came?",
+			Choice:       &classify.ChoiceQuestion{Criteria: criteriaFor(guide, raw)},
+		},
+	})
+	if !ok {
+		return nil, errJudgeSilent
+	}
+	spec := &viewspec.Spec{Version: viewspec.Version, Parse: viewspec.Parse{Kind: parseNone},
+		Blocks: []viewspec.Block{{Kind: answers["body"].Choice}}}
+	if err := draws(spec, c.g.registry(), c.req.Output); err != nil {
+		return nil, fmt.Errorf("composed view does not draw: %w", err)
+	}
+	return spec, nil
+}
+
+// distinctSlots asks again for a slot given a field another already has:
+// asked together, git shortlog's bar came back count against count.
+func (c *composer) distinctSlots(ctx context.Context, state map[string]any,
+	needs []viewspec.Slot, fields []string, rows []viewspec.Row, picked classify.Answers) error {
+	used := map[string]bool{}
+	for _, s := range needs {
+		got := picked[s.Name].Choice
+		if !used[got] {
+			used[got] = true
+			continue
+		}
+		rest := slices.DeleteFunc(slices.Clone(fields), func(f string) bool { return used[f] })
+		if len(rest) == 0 {
+			return nil
+		}
+		answers, ok := c.askState(ctx, state, classify.Questions{s.Name: fieldQuestion(s, rest, rows)})
+		if !ok {
+			return errJudgeSilent
+		}
+		picked[s.Name] = answers[s.Name]
+		used[answers[s.Name].Choice] = true
+	}
+	return nil
+}
+
+// repeats reports whether field's values recur enough to count: a
+// badge per distinct value of a field unique on every row is the rows.
+func repeats(p viewspec.Parse, output, field string) bool {
+	b, err := bindWith(p, output)
+	if err != nil {
+		return false
+	}
+	rows := b.Sample(b.Rows())
+	seen := map[string]bool{}
+	for _, r := range rows {
+		seen[r[field]] = true
+	}
+	return len(seen) <= maxBadges && len(seen)*2 <= len(rows)
+}
+
+// maxBadges is the most distinct values a count summary is drawn for.
+const maxBadges = 12
 
 // ask and askState put one batch of questions and record the cost.
 func (c *composer) ask(ctx context.Context, qs classify.Questions) (classify.Answers, bool) {

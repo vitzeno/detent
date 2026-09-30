@@ -1,0 +1,10 @@
+NAME          ZONE            MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP  STATUS
+vm-api        europe-west2-b  e2-medium                   10.154.0.66  34.89.1.2    RUNNING
+vm-web        europe-west2-b  n2-standard-4               10.154.0.20               RUNNING
+vm-worker     europe-west2-b  n2-standard-4               10.154.0.40               RUNNING
+vm-scheduler  europe-west2-b  e2-medium                   10.154.0.86               TERMINATED
+vm-redis      europe-west2-b  n2-standard-4               10.154.0.38  34.89.1.2    RUNNING
+vm-postgres   europe-west2-b  n2-standard-4               10.154.0.69  34.89.1.2    RUNNING
+vm-nginx      europe-west2-b  e2-medium                   10.154.0.7   34.89.1.2    TERMINATED
+vm-auth       europe-west2-b  e2-medium      true         10.154.0.59  34.89.1.2    RUNNING
+vm-billing    europe-west2-b  e2-medium      true         10.154.0.35  34.89.1.2    TERMINATED

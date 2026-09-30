@@ -1,0 +1,14 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/vitzeno/detent/viewspec
+cpu: Apple M3 Pro
+BenchmarkCompile-12   	  3971062	   77162 ns/op	  8025 B/op	   0 allocs/op
+BenchmarkBind-12   	   614525	   51517 ns/op	  8648 B/op	  59 allocs/op
+BenchmarkDrawTable-12   	  3767069	   32766 ns/op	  1786 B/op	  28 allocs/op
+BenchmarkDrawBar-12   	  1296019	   20131 ns/op	  8558 B/op	  87 allocs/op
+BenchmarkDrawTree-12   	   914438	   85049 ns/op	  7492 B/op	  10 allocs/op
+BenchmarkExtract-12   	  4627324	    5383 ns/op	    22 B/op	  16 allocs/op
+BenchmarkNumber-12   	  1951995	   74830 ns/op	   615 B/op	  82 allocs/op
+BenchmarkMatch-12   	  2549310	   16972 ns/op	  4125 B/op	  67 allocs/op
+PASS
+ok  	github.com/vitzeno/detent/viewspec	12.412s

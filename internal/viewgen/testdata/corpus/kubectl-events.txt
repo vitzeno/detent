@@ -1,0 +1,13 @@
+LAST SEEN   TYPE      REASON      OBJECT                           MESSAGE
+2m          Normal    Scheduled   pod/api-5c4b2a3471-pzbcv         Successfully assigned default/x to node-2
+2m          Warning   Pulled      pod/web-6f7e1d4517-bcqqc         Back-off restarting failed container api in pod
+12s         Warning   Pulled      pod/worker-7d9f8b3028-hzzwb      Container image "api:1.4.2" already present on machine
+2m          Warning   BackOff     pod/scheduler-6f7e1d3181-kqevd   Stopping container web
+2m          Normal    BackOff     pod/redis-6f7e1d4078-ndvcw       Stopping container web
+40m         Normal    Created     pod/postgres-6f7e1d8005-mrwrn    Back-off restarting failed container api in pod
+12s         Warning   Pulled      pod/nginx-7d9f8b2341-wktsm       Successfully assigned default/x to node-2
+2m          Normal    Pulled      pod/auth-7d9f8b9387-qfmes        Stopping container web
+12s         Normal    BackOff     pod/billing-6f7e1d6140-mnxsw     Stopping container web
+12s         Normal    Pulled      pod/search-5c4b2a2064-bkzwr      Back-off restarting failed container api in pod
+5m          Normal    Scheduled   pod/mailer-5c4b2a6823-fxdsb      Stopping container web
+12s         Normal    Killing     pod/metrics-7d9f8b7519-pscfr     Container image "api:1.4.2" already present on machine

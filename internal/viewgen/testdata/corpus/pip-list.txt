@@ -1,0 +1,14 @@
+Package            Version
+------------------ -----------
+requests           2.32.3
+numpy              2.1.1
+pandas             2.2.3
+pytest             8.3.3
+black              24.8.0
+urllib3            2.2.3
+certifi            2024.8.30
+idna               3.10
+charset-normalizer 3.3.2
+six                1.16.0
+python-dateutil    2.9.0.post0
+pytz               2024.2

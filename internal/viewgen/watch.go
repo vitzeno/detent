@@ -92,7 +92,7 @@ func (w *watcher) shell(id uuid.UUID, p pending) {
 	w.slots <- struct{}{}
 	defer func() { <-w.slots }()
 	ctx := context.Background()
-	p.kind = w.gen.renderKind(ctx, p.command, outputOf(p.result))
+	p.kind = w.gen.Shape(ctx, p.command, outputOf(p.result))
 	got, ok := w.resolve(ctx, p)
 	if !ok {
 		// A Call's row falls back to its kind's view in ui; a Shell's
