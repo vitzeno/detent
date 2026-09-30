@@ -446,6 +446,56 @@ func firstBody(guide map[string]viewspec.Description, kinds []string) string {
 	return "log"
 }
 
+// Composition set no separator for delimited and always "=" for pairs,
+// so neither CSV nor "key: value" output ever parsed.
+func TestCompose_ReadsTheSeparatorOffTheOutput(t *testing.T) {
+	tests := []struct {
+		name, parse, output, sep string
+	}{
+		{"csv", "delimited", "name,lang,stars\n" + strings.Repeat("detent,go,120\nink,js,27000\n", 4), ","},
+		{"pipes", "delimited", "hash|author|subject\n" + strings.Repeat("ea5b20e|me|Draw views\n", 8), "|"},
+		{"colon pairs", "pairs", strings.Repeat("hw.ncpu: 12\nhw.memsize: 38654705664\n", 4), ":"},
+		{"equals pairs", "pairs", strings.Repeat("GOOS=darwin\nGOARCH=arm64\n", 4), "="},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g, _ := composer(t, map[string]string{
+				"header_line": "0", "parse_kind": tt.parse, "body": "table", "summary": "none"})
+			req := request()
+			req.Kind, req.Output = "table", tt.output
+			got, err := g.Compose(context.Background(), req)
+			require.NoError(t, err)
+			assert.Equal(t, tt.sep, got.Spec.Parse.Sep)
+		})
+	}
+}
+
+// Named from the widest line, a symlink's "a -> b" made every other
+// line of ls -la short, and the table fell back to "total" as a header.
+func TestCompose_AHeaderlessTableIsAsWideAsMostLines(t *testing.T) {
+	g, _ := composer(t, map[string]string{
+		"header_line": "none", "parse_kind": "columns", "body": "table", "summary": "none"})
+	req := request()
+	req.Kind = "table"
+	req.Output = "total 48\n" + strings.Repeat("-rw-r--r--  1 me  staff  1203 Sep 29 18:44 go.mod\n", 6) +
+		"lrwxr-xr-x  1 me  staff  7 Sep 29 18:44 cc -> clang\n"
+	got, err := g.Compose(context.Background(), req)
+	require.NoError(t, err)
+	assert.False(t, got.Spec.Parse.Header)
+	assert.Len(t, got.Spec.Parse.Fields, 9)
+}
+
+// A header of "##" read every line as one field: a table of one column.
+func TestCompose_OneColumnIsNoTable(t *testing.T) {
+	g, _ := composer(t, map[string]string{
+		"header_line": "0", "parse_kind": "columns", "body": "table", "summary": "none"})
+	req := request()
+	req.Kind = "table"
+	req.Output = "##\n" + strings.Repeat("# User Database\n", 8)
+	_, err := g.Compose(context.Background(), req)
+	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
+}
+
 // brew list --versions drew a list of names and lost every version.
 func TestCompose_AListOfOneFieldOfSeveralIsRefused(t *testing.T) {
 	g, _ := composer(t, map[string]string{
@@ -481,6 +531,21 @@ func TestExisting_AShippedViewThatHidesTheOutputIsNotUsed(t *testing.T) {
 	assert.True(t, ok, "the summary alone still draws with it")
 }
 
+// Taking the first parse that read at all, cal kept columns and lost its
+// short first and last weeks; fixed reads every one.
+func TestCompose_KeepsTheParseThatReadsTheMostRows(t *testing.T) {
+	g, _ := composer(t, map[string]string{
+		"header_line": "1", "parse_kind": "columns", "body": "table", "summary": "none"})
+	req := request()
+	req.Kind = "table"
+	req.Output = "   September 2026\nSu Mo Tu We Th Fr Sa\n       1  2  3  4  5\n 6  7  8  9 10 11 12\n" +
+		"13 14 15 16 17 18 19\n20 21 22 23 24 25 26\n27 28 29 30\n\n"
+	got, err := g.Compose(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "fixed", got.Spec.Parse.Kind)
+	assert.Equal(t, 1, got.Spec.Parse.Skip)
+}
+
 // Picking one field for two slots drew each key against itself.
 func TestCompose_OneFieldForTwoSlotsIsRefused(t *testing.T) {
 	g, _ := composer(t, map[string]string{"header_line": "0", "parse_kind": "columns",
@@ -490,4 +555,18 @@ func TestCompose_OneFieldForTwoSlotsIsRefused(t *testing.T) {
 	req.Output = "pkg secs\n" + strings.Repeat("a 1.2\nb 3.4\n", 4)
 	_, err := g.Compose(context.Background(), req)
 	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
+}
+
+// fixed reads line 0 as its titles whatever it is told, so "no header"
+// has to mean a parse that can name columns by position.
+func TestCompose_NoHeaderIsNotFixed(t *testing.T) {
+	g, _ := composer(t, map[string]string{
+		"header_line": "none", "parse_kind": "fixed", "body": "table", "summary": "none"})
+	req := request()
+	req.Kind = "table"
+	req.Output = strings.Repeat("alpha  1  x\nbeta   2  y\n", 5)
+	got, err := g.Compose(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "columns", got.Spec.Parse.Kind)
+	assert.Equal(t, []string{"col1", "col2", "col3"}, got.Spec.Parse.Fields)
 }

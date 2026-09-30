@@ -90,6 +90,9 @@ func (c *composer) run(ctx context.Context) (*viewspec.Spec, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse %q read nothing: %w", parse.Kind, err)
 	}
+	if tabular[parse.Kind] && len(fields) < 2 {
+		return nil, fmt.Errorf("parse %q read one column, which is no table", parse.Kind)
+	}
 
 	blocks, err := c.blocks(ctx, parse, fields, rows)
 	if err != nil {
@@ -116,10 +119,12 @@ func (c *composer) parse(ctx context.Context) (viewspec.Parse, error) {
 	}
 	p := viewspec.Parse{Kind: kind}
 	switch kind {
-	case "columns", "fixed", "delimited":
+	case "columns", "fixed":
 		p.Header = true
+	case "delimited":
+		p.Header, p.Sep = true, sepOf(c.req.Output, delimiters)
 	case "pairs":
-		p.Sep = "="
+		p.Sep = sepOf(c.req.Output, pairSeps)
 	case "lines":
 		// The one pattern composition writes, and it is fixed: one
 		// field holding the whole line. A pattern naming three parts

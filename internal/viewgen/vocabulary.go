@@ -37,6 +37,54 @@ var (
 	errHides         = errors.New("the view hides most of the output")
 )
 
+// tabular is the parse kinds reading a line as a row of columns.
+var tabular = map[string]bool{"columns": true, "fixed": true, "delimited": true}
+
+// Separators a parse may split on, most specific first, read off the
+// output: always "=" before, so CSV and "key: value" never parsed.
+var (
+	delimiters = []string{"\t", "|", ",", ";", ":"}
+	pairSeps   = []string{"=", ":"}
+)
+
+// sepOf is the candidate that most lines hold the same number of, or ""
+// when none is on at least half of them.
+func sepOf(output string, candidates []string) string {
+	lines := nonBlank(output)
+	best, most := "", 0
+	for _, sep := range candidates {
+		if n := mostCommon(lines, func(l string) int { return strings.Count(l, sep) }); n > most {
+			best, most = sep, n
+		}
+	}
+	if most*2 < len(lines) {
+		return ""
+	}
+	return best
+}
+
+// mostCommon is how many lines share the commonest non-zero count.
+func mostCommon(lines []string, count func(string) int) int {
+	seen, top := map[int]int{}, 0
+	for _, l := range lines {
+		if n := count(l); n > 0 {
+			seen[n]++
+			top = max(top, seen[n])
+		}
+	}
+	return top
+}
+
+func nonBlank(output string) []string {
+	var out []string
+	for _, l := range strings.Split(output, "\n") {
+		if strings.TrimSpace(l) != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
 // twice reports whether any field is read by more than one slot, as a
 // keyvalue once drew each key against itself.
 func twice(fields []string) bool {
@@ -180,30 +228,44 @@ func fieldQuestion(s viewspec.Slot, fields []string, rows []viewspec.Row) classi
 func honour(chosen viewspec.Parse, skip int, output string) viewspec.Parse {
 	if skip < 0 {
 		headerless := chosen
-		headerless.Header, headerless.Fields = false, positional(output)
-		if _, _, err := readWith(headerless, output); err == nil {
-			return headerless
+		// fixed has no headerless form: it read line 0 as titles anyway.
+		if headerless.Kind == "fixed" {
+			headerless.Kind = "columns"
 		}
-		return chosen
+		headerless.Header, headerless.Fields = false, positional(headerless, output)
+		return headerless
 	}
+	// The one reading the most rows: first to read at all, cal dropped
+	// its short first and last weeks where fixed read every one.
+	best, most := chosen, -1
+	best.Skip = skip
 	for _, kind := range append([]string{chosen.Kind}, "fixed", "columns") {
 		p := chosen
 		p.Kind, p.Skip = kind, skip
-		if fields, _, err := readWith(p, output); err == nil && len(fields) > 1 {
-			return p
+		if b, err := bindWith(p, output); err == nil && len(b.Fields()) > 1 && b.Rows() > most {
+			best, most = p, b.Rows()
 		}
 	}
-	return chosen
+	return best
 }
 
-// positional names a headerless table col1..colN. The names mean
-// nothing alone, which is why the field questions carry samples.
-func positional(output string) []string {
-	widest := 0
-	for _, line := range strings.Split(strings.TrimRight(output, "\n"), "\n") {
-		widest = max(widest, len(strings.Fields(line)))
+// positional names a headerless table col1..colN, as wide as most lines:
+// sized by the widest, one symlink in ls -la made every other line short.
+func positional(p viewspec.Parse, output string) []string {
+	split := strings.Fields
+	if p.Kind == "delimited" {
+		split = func(l string) []string { return strings.Split(l, p.Sep) }
 	}
-	out := make([]string, min(widest, maxPositional))
+	counts := map[int]int{}
+	width := 0
+	for _, line := range nonBlank(output) {
+		n := len(split(line))
+		counts[n]++
+		if counts[n] > counts[width] || (counts[n] == counts[width] && n > width) {
+			width = n
+		}
+	}
+	out := make([]string, min(width, maxPositional))
 	for i := range out {
 		out[i] = fmt.Sprintf("col%d", i+1)
 	}
@@ -228,12 +290,7 @@ func headerLine(output string, skip int) string {
 // readWith runs a parse and reports what it produced: the field names,
 // and enough rows to show what each field holds.
 func readWith(p viewspec.Parse, output string) ([]string, []viewspec.Row, error) {
-	c, err := viewspec.Compile(viewspec.Spec{Parse: p,
-		Blocks: []viewspec.Block{{Kind: "table"}}})
-	if err != nil {
-		return nil, nil, err
-	}
-	b, err := c.Bind(output)
+	b, err := bindWith(p, output)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -244,6 +301,16 @@ func readWith(p viewspec.Parse, output string) ([]string, []viewspec.Row, error)
 }
 
 const sampleRows = 3
+
+// bindWith runs a parse alone, under a table that draws every field.
+func bindWith(p viewspec.Parse, output string) (*viewspec.Bound, error) {
+	c, err := viewspec.Compile(viewspec.Spec{Parse: p,
+		Blocks: []viewspec.Block{{Kind: "table"}}})
+	if err != nil {
+		return nil, err
+	}
+	return c.Bind(output)
+}
 
 // describe reads what each registered widget says about itself.
 func describe(reg *viewspec.Registry) map[string]viewspec.Description {
