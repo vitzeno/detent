@@ -116,8 +116,14 @@ func draws(spec *viewspec.Spec, reg *viewspec.Registry, output string) error {
 	if err != nil {
 		return err
 	}
-	_, err = compiled.Bind(output)
-	return err
+	bound, err := compiled.Bind(output)
+	if err != nil {
+		return err
+	}
+	if bound.Hides() {
+		return errHides
+	}
+	return nil
 }
 
 // Request is one command's outcome, as the generator sees it.

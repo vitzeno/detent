@@ -61,3 +61,17 @@ func TestRaw_DrawsTheOutputAsItCame(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"one", "two"}, got.Lines)
 }
+
+// Most of a repeated go test run is cached, and a pattern that wanted
+// a time hid every such package.
+func TestGoTest_ReadsCachedPackages(t *testing.T) {
+	spec, ok := views.ForCommand("go test")
+	require.True(t, ok)
+	c, err := viewspec.Compile(*spec)
+	require.NoError(t, err)
+	b, err := c.Bind("ok  \tgithub.com/x/a\t(cached)\nok  \tgithub.com/x/b\t0.412s\n" +
+		"?   \tgithub.com/x/c\t[no test files]\nFAIL\tgithub.com/x/d\t1.2s\n")
+	require.NoError(t, err)
+	assert.Len(t, b.Sample(10), 3)
+	assert.False(t, b.Hides())
+}

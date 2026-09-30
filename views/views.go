@@ -82,11 +82,13 @@ var byKind = map[string]viewspec.Spec{
 
 // byCommand is keyed by the normalised command name.
 var byCommand = map[string]viewspec.Spec{
+	// A cached package prints no time, and matching only times hid most
+	// of any run that repeats one: 13 of 22 packages in detent's own.
 	"go test": {
 		Version: viewspec.Version,
 		Match:   "go test",
 		Parse: viewspec.Parse{Kind: "lines",
-			Pattern: `^(?P<status>ok|FAIL)\s+(?P<pkg>\S+)\s+(?P<secs>[\d.]+)s`},
+			Pattern: `^(?P<status>ok|FAIL)\s+(?P<pkg>\S+)\s+(?P<secs>[\d.]+s|\(cached\))`},
 		Blocks: []viewspec.Block{
 			{Kind: "meter", Title: "passed", CountWhere: "status=ok", Of: "*"},
 			{Kind: "table",

@@ -627,6 +627,33 @@ func TestFixed_TitleWordsWithNothingUnderThem(t *testing.T) {
 	assert.Equal(t, "Exited (137) 7 days ago", b.Sample(1)[0]["status"])
 }
 
+// A failing package's own output is what the human wants to read, and
+// a view of the summary lines alone hid it.
+func TestBound_HidesWhenMostLinesReachNoBlock(t *testing.T) {
+	failing := goTest + strings.Repeat("    b_test.go:12: want 3, got 4\n", 6)
+	summary := viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{{Kind: "table"}}}
+	assert.False(t, bind(t, summary, goTest).Hides(), "every line is a row")
+	assert.True(t, bind(t, summary, failing).Hides())
+
+	withText := summary
+	withText.Blocks = append(withText.Blocks, viewspec.Block{Kind: "log"})
+	assert.False(t, bind(t, withText, failing).Hides(), "the text is drawn beneath")
+	raw := viewspec.Spec{Parse: viewspec.Parse{Kind: "none"}, Blocks: []viewspec.Block{{Kind: "log"}}}
+	assert.False(t, bind(t, raw, failing).Hides())
+
+	// A JSON document spreads a record over lines; counting them means nothing.
+	doc := viewspec.Spec{Parse: viewspec.Parse{Kind: "json"}, Blocks: []viewspec.Block{{Kind: "table"}}}
+	assert.False(t, bind(t, doc, "[\n  {\n    \"id\": 1\n  },\n  {\n    \"id\": 2\n  }\n]\n").Hides())
+}
+
+func TestRegistry_SelectsIsTheKindsThatDrawARowPerLine(t *testing.T) {
+	reg := viewspec.Standard()
+	assert.True(t, reg.Selects("list"))
+	assert.True(t, reg.Selects("table"))
+	assert.False(t, reg.Selects("histogram"))
+	assert.False(t, reg.Selects("nonsense"))
+}
+
 // With one cursor for the whole view, the block that can be acted on
 // gets it, however the blocks are ordered.
 func TestSelectable_PrefersTheActionableBlock(t *testing.T) {

@@ -34,7 +34,35 @@ var (
 
 	errJudgeSilent   = errors.New("the judge did not answer")
 	errNothingToDraw = errors.New("no structure worth extracting")
+	errHides         = errors.New("the view hides most of the output")
 )
+
+// twice reports whether any field is read by more than one slot, as a
+// keyvalue once drew each key against itself.
+func twice(fields []string) bool {
+	seen := map[string]bool{}
+	for _, f := range fields {
+		if seen[f] {
+			return true
+		}
+		seen[f] = true
+	}
+	return false
+}
+
+// read is every field a block draws from.
+func read(b viewspec.Block) []string {
+	var out []string
+	for _, f := range []string{b.Field, b.Depth} {
+		if f != "" {
+			out = append(out, f)
+		}
+	}
+	for _, c := range b.Columns {
+		out = append(out, c.Field)
+	}
+	return out
+}
 
 // parseCriteria is how each parse kind is described to the judge. The
 // wording is load-bearing: it is the literal text a choice is made

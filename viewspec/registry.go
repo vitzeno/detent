@@ -172,6 +172,17 @@ func (r *Registry) widget(kind string) (Widget, bool) {
 	return w, ok
 }
 
+// Selects reports whether kind draws one row per line, the kinds a
+// cursor moves through and on_enter can act on.
+func (r *Registry) Selects(kind string) bool {
+	w, ok := r.widgets[kind]
+	if !ok {
+		return false
+	}
+	_, ok = w.(Selector)
+	return ok
+}
+
 // isContainer asks the registered widget rather than the kind's name,
 // so a consumer can register a layout of its own.
 func (r *Registry) isContainer(kind string) bool {

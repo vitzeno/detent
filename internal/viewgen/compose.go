@@ -240,11 +240,21 @@ func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 		picked = got
 	}
 
+	body := block(chosen, guide[chosen].Needs, picked, "")
+	if chosen == "tree" && parse.Kind == "indent" {
+		body.Depth = "depth"
+	}
+	if twice(read(body)) {
+		return nil, fmt.Errorf("%s would read one field twice", chosen)
+	}
+	if c.g.registry().Selects(chosen) && len(read(body)) < len(fields) && len(read(body)) == 1 {
+		return nil, fmt.Errorf("%s would show %s and hide %d other fields", chosen, body.Field, len(fields)-1)
+	}
 	var out []viewspec.Block
 	if summary != choiceNone {
 		out = append(out, block(summary, guide[summary].Needs, picked, "summary_"))
 	}
-	return append(out, block(chosen, guide[chosen].Needs, picked, "")), nil
+	return append(out, body), nil
 }
 
 // ask and askState put one batch of questions and record the cost.

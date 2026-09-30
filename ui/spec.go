@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/vitzeno/detent/event"
@@ -44,6 +45,9 @@ func boundView(r *callRow) (*viewspec.Bound, bool) {
 	output := r.text()
 	for _, c := range fallbackChain(r, output) {
 		b, err := c.Bind(output)
+		if err == nil && b.Hides() {
+			err = errHides
+		}
 		if err != nil {
 			// The chain ends at raw bytes, so this is recoverable.
 			// It is still the only trace that a kind's own rendering
@@ -66,7 +70,10 @@ func bindSpec(spec viewspec.Spec, output string) (*viewspec.Bound, bool) {
 	c, err := viewspec.Compile(spec, viewspec.WithRegistry(viewRegistry))
 	if err == nil {
 		var b *viewspec.Bound
-		if b, err = c.Bind(output); err == nil {
+		if b, err = c.Bind(output); err == nil && b.Hides() {
+			err = errHides
+		}
+		if err == nil {
 			return b, true
 		}
 	}
@@ -99,6 +106,9 @@ func fallbackChain(r *callRow, output string) []*viewspec.Compiled {
 	}
 	return append(chain, compiledPlain)
 }
+
+// errHides is a view that would leave most of the output undrawn.
+var errHides = errors.New("the view hides most of the output")
 
 // viewRegistry is Standard plus what only detent can provide. A widget
 // registered here reaches the model's schema too, since generation

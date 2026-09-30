@@ -174,8 +174,7 @@ func (failingJudge) Ask(context.Context, classify.State, classify.Questions) (cl
 
 // scriptedJudge answers each question by name, so a test can say what
 // the composition decided without a network. Unscripted questions take
-// the first criterion, which keeps a test to the decisions it is
-// actually about.
+// the first criterion not already given in the batch, as two slots would.
 type scriptedJudge struct {
 	mu   sync.Mutex
 	say  map[string]string
@@ -195,11 +194,20 @@ func (j *scriptedJudge) Ask(_ context.Context, state classify.State,
 	j.seen = append(j.seen, state)
 	j.asked = append(j.asked, slices.Sorted(maps.Keys(qs)))
 	out := classify.Answers{}
-	for name, q := range qs {
+	given := map[string]bool{}
+	for _, name := range slices.Sorted(maps.Keys(qs)) {
+		q := qs[name]
 		choice, ok := j.say[name]
 		if !ok {
 			choice = firstCriterion(q)
+			for _, c := range slices.Sorted(maps.Keys(q.Choice.Criteria)) {
+				if !given[c] {
+					choice = c
+					break
+				}
+			}
 		}
+		given[choice] = true
 		if _, valid := q.Choice.Criteria[choice]; !valid {
 			return nil, classify.Usage{}, fmt.Errorf("scripted %q for %q, which was not offered (have %v)",
 				choice, name, slices.Sorted(maps.Keys(q.Choice.Criteria)))
@@ -405,13 +413,21 @@ func TestCompose_EveryOfferedWidgetCanBeComposed(t *testing.T) {
 				role, other = "summary", firstBody(guide, k.Widgets)
 			}
 			t.Run(k.Name+"/"+w, func(t *testing.T) {
-				g, _ := composer(t, map[string]string{
+				say := map[string]string{
 					"header_line": "0", "parse_kind": "columns",
 					"body": other, "summary": "none", role: w,
-				})
+				}
+				output := columnar
+				// A list of one column from three hides the other two,
+				// so a listing is composed from a listing.
+				if k.Name == viewgen.KindFiles {
+					say["header_line"], say["parse_kind"] = "none", "lines"
+					output = strings.Repeat("cmd/detent/main.go\nui/view.go\n", 5)
+				}
+				g, _ := composer(t, say)
 				g.Registry = ui.Registry()
 				req := request()
-				req.Kind, req.Output = k.Name, columnar
+				req.Kind, req.Output = k.Name, output
 				_, err := g.Compose(context.Background(), req)
 				assert.NoError(t, err, "%s is offered for %s but cannot be composed", w, k.Name)
 			})
@@ -428,4 +444,50 @@ func firstBody(guide map[string]viewspec.Description, kinds []string) string {
 		}
 	}
 	return "log"
+}
+
+// brew list --versions drew a list of names and lost every version.
+func TestCompose_AListOfOneFieldOfSeveralIsRefused(t *testing.T) {
+	g, _ := composer(t, map[string]string{
+		"header_line": "none", "parse_kind": "prefix", "body": "list", "summary": "none", "field": "first"})
+	req := request()
+	req.Kind = viewgen.KindFiles
+	req.Output = strings.Repeat("abseil 20250127.1\naom 3.12.1\n", 5)
+	_, err := g.Compose(context.Background(), req)
+	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
+}
+
+// A tree over an indented outline reads its depth, not the text as a path.
+func TestCompose_ATreeOverAnOutlineReadsItsDepth(t *testing.T) {
+	g, _ := composer(t, map[string]string{
+		"header_line": "none", "parse_kind": "indent", "body": "tree", "summary": "none", "field": "text"})
+	req := request()
+	req.Kind = viewgen.KindFiles
+	req.Output = strings.Repeat("cmd\n  detent\n    main.go\nui\n  view.go\n", 2)
+	got, err := g.Compose(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "depth", got.Spec.Blocks[0].Depth)
+}
+
+// go test -v is mostly its tests' own lines, and the shipped view of
+// the summary alone hid them, a failure's message with them.
+func TestExisting_AShippedViewThatHidesTheOutputIsNotUsed(t *testing.T) {
+	g, _ := composer(t, nil)
+	verbose := strings.Repeat("=== RUN   TestX\n--- PASS: TestX (0.00s)\n", 5) +
+		"PASS\nok  \tgithub.com/x/p\t0.2s\n"
+	_, ok := g.Existing(context.Background(), viewgen.Request{Command: "go test -v ./...", Output: verbose})
+	assert.False(t, ok)
+	_, ok = g.Existing(context.Background(), viewgen.Request{Command: "go test ./...", Output: goTest})
+	assert.True(t, ok, "the summary alone still draws with it")
+}
+
+// Picking one field for two slots drew each key against itself.
+func TestCompose_OneFieldForTwoSlotsIsRefused(t *testing.T) {
+	g, _ := composer(t, map[string]string{"header_line": "0", "parse_kind": "columns",
+		"body": "keyvalue", "summary": "none", "label": "pkg", "value": "pkg"})
+	req := request()
+	req.Kind = "table"
+	req.Output = "pkg secs\n" + strings.Repeat("a 1.2\nb 3.4\n", 4)
+	_, err := g.Compose(context.Background(), req)
+	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
 }

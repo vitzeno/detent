@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/viewspec"
 )
 
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
@@ -941,4 +942,24 @@ func TestForgetPage_YPublishesTheIntent(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("y published nothing")
 	}
+}
+
+// git branch indents every branch but the current one, and the listing
+// view's pattern skips indented lines: it drew one branch of four.
+func TestBoundView_SkipsAViewThatHidesMostOfTheOutput(t *testing.T) {
+	const branches = "  agentic\n  dynamic-tui\n* main\n  mouse-scroll\n"
+	r := &callRow{command: "git branch", result: &event.Result{Stdout: branches},
+		post: &verdict{renderKind: "file_listing", fromJudge: true}}
+	b, ok := boundView(r)
+	require.True(t, ok)
+	assert.False(t, b.Hides())
+	assert.Equal(t, "built-in", r.viewSource)
+	assert.Contains(t, strings.Join(drawPlain(t, b), "\n"), "mouse-scroll")
+}
+
+func drawPlain(t *testing.T, b *viewspec.Bound) []string {
+	t.Helper()
+	out, err := b.Draw(viewspec.Frame{Width: 40})
+	require.NoError(t, err)
+	return out.Lines
 }

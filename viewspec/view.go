@@ -46,7 +46,7 @@ func (c *Compiled) Bind(output string) (*Bound, error) {
 		return nil, fmt.Errorf("viewspec: parse %q: %w", c.spec.Parse.Kind, err)
 	}
 	fields := fieldsOf(rows)
-	out := &Bound{c: c, raw: output, fields: fields, selSeq: -1}
+	out := &Bound{c: c, raw: output, fields: fields, rows: len(rows), selSeq: -1}
 	seq := 0
 	out.blocks, err = c.bindBlocks(c.spec.Blocks, rows, Data{
 		Rows: nil, Raw: output, Columns: orderedColumns(c.ext, fields)}, fields, &seq)
@@ -119,6 +119,7 @@ type Bound struct {
 	c      *Compiled
 	raw    string
 	fields []string
+	rows   int
 	blocks []boundBlock
 	selSeq int
 }
@@ -126,6 +127,42 @@ type Bound struct {
 // Fields lists the field names the parse actually produced, sorted.
 // Generation uses it to ask a closed question about real columns.
 func (b *Bound) Fields() []string { return slices.Clone(b.fields) }
+
+// Hides reports whether most of the output reaches no block: rows came
+// from under half its lines, and nothing draws the text as it came.
+func (b *Bound) Hides() bool {
+	if !perLine(b.c.ext) {
+		return false
+	}
+	for _, bb := range leaves(b.blocks) {
+		if _, raw := bb.w.(rawWidget); raw {
+			return false
+		}
+	}
+	lines := 0
+	for _, l := range splitLines(b.raw) {
+		if strings.TrimSpace(l) != "" {
+			lines++
+		}
+	}
+	return b.rows*2 < lines
+}
+
+// Rows is how many rows the parse produced, before any block filtered.
+func (b *Bound) Rows() int { return b.rows }
+
+// perLine reports whether an extractor reads a record per line, which
+// is what makes counting lines meaningful: a JSON document is not.
+func perLine(e Extractor) bool {
+	if s, ok := e.(skipExtractor); ok {
+		e = s.inner
+	}
+	switch e.(type) {
+	case noneExtractor, jsonExtractor:
+		return false
+	}
+	return true
+}
 
 // Sample returns up to n parsed rows. A name alone is thin for a field
 // called %iused and meaningless for one called col3, so a caller
