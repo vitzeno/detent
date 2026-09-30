@@ -135,7 +135,7 @@ func (b *Bound) Hides() bool {
 		return false
 	}
 	for _, bb := range leaves(b.blocks) {
-		if _, raw := bb.w.(rawWidget); raw {
+		if d, ok := bb.w.(Described); ok && d.Describe().Raw {
 			return false
 		}
 	}

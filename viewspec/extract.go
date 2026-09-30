@@ -1,6 +1,7 @@
 package viewspec
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // linesExtractor makes a row per line matching a named-capture
@@ -31,6 +33,7 @@ var (
 	_ ColumnOrder = pairsExtractor{}
 	_ ColumnOrder = delimitedExtractor{}
 	_ ColumnOrder = indentExtractor{}
+	_ ColumnOrder = boxExtractor{}
 )
 
 func (e linesExtractor) Columns() []Column { return e.order }
@@ -102,8 +105,12 @@ func newColumnsExtractor(p Parse) (Extractor, error) {
 
 func (e columnsExtractor) Extract(output string) ([]Row, error) {
 	var grid [][]string
-	for _, line := range splitLines(output) {
-		if strings.TrimSpace(line) == "" {
+	lines := splitLines(output)
+	if e.header {
+		lines = headed(lines)
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" || isRule(line) {
 			continue
 		}
 		grid = append(grid, strings.Fields(line))
@@ -349,6 +356,11 @@ func gutterSpans(header []rune, rows [][]rune) []span {
 	var out []span
 	for c, col := range cols {
 		i, ok := first[c]
+		if !ok && c == 0 {
+			// free -h labels its rows under a blank header.
+			out = append(out, span{title: "col1", start: col.start})
+			continue
+		}
 		if !ok {
 			continue // no title of its own: sliced into the column before it
 		}
@@ -426,13 +438,13 @@ func (e fixedExtractor) Columns() []Column {
 }
 
 func (e fixedExtractor) Extract(output string) ([]Row, error) {
-	lines := splitLines(output)
+	lines := headed(splitLines(output))
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
 		return nil, nil
 	}
 	var body [][]rune
 	for _, line := range lines[1:] {
-		if strings.TrimSpace(line) != "" {
+		if strings.TrimSpace(line) != "" && !isRule(line) {
 			body = append(body, []rune(line))
 		}
 	}
@@ -560,11 +572,15 @@ func (e delimitedExtractor) Columns() []Column {
 
 func (e delimitedExtractor) Extract(output string) ([]Row, error) {
 	var grid [][]string
-	for _, line := range splitLines(output) {
-		if strings.TrimSpace(line) == "" {
+	lines := splitLines(output)
+	if e.header {
+		lines = headed(lines)
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" || isRule(line) {
 			continue
 		}
-		parts := strings.Split(line, e.sep)
+		parts := splitQuoted(line, e.sep)
 		for i := range parts {
 			parts[i] = strings.TrimSpace(parts[i])
 		}
@@ -650,6 +666,128 @@ func (indentExtractor) Extract(output string) ([]Row, error) {
 		rows = append(rows, Row{"depth": strconv.Itoa(depthOf[e.indent]), "text": e.text})
 	}
 	return rows, nil
+}
+
+// splitQuoted splits a line the way CSV does, so a quoted "Smith, John"
+// is one cell; split on the comma alone, it was two and shifted the row.
+func splitQuoted(line, sep string) []string {
+	r, size := utf8.DecodeRuneInString(sep)
+	if size != len(sep) || r == '"' {
+		return strings.Split(line, sep)
+	}
+	cr := csv.NewReader(strings.NewReader(line))
+	cr.Comma, cr.LazyQuotes, cr.FieldsPerRecord = r, true, -1
+	cells, err := cr.Read()
+	if err != nil {
+		return strings.Split(line, sep)
+	}
+	return cells
+}
+
+// headed is a headed table's lines, cut at the first blank line after
+// its rows: systemctl's legend and top's second block are not rows.
+func headed(lines []string) []string {
+	start, rows := -1, 0
+	for i, l := range lines {
+		blank := strings.TrimSpace(l) == ""
+		switch {
+		case start < 0 && !blank:
+			start = i
+		case start >= 0 && blank && rows > 0:
+			return lines[start:i]
+		case start >= 0 && !blank && !isRule(l):
+			rows++
+		}
+	}
+	if start < 0 {
+		return nil
+	}
+	return lines[start:]
+}
+
+// boxExtractor reads a table drawn with borders: mysql, psql, sqlite
+// -box, markdown. Split on whitespace, every border became a column.
+type boxExtractor struct{ order *[]Column }
+
+func newBoxExtractor(p Parse) (Extractor, error) {
+	return skipping(p, boxExtractor{order: new([]Column)}), nil
+}
+
+func (e boxExtractor) Columns() []Column { return *e.order }
+
+// Extract takes the first bordered line as the header. A line with no
+// border is a title or a footer, like psql's "(12 rows)".
+func (e boxExtractor) Extract(output string) ([]Row, error) {
+	var grid [][]string
+	for _, line := range headed(splitLines(output)) {
+		if isRule(line) {
+			continue
+		}
+		if cells := boxCells(line); cells != nil {
+			grid = append(grid, cells)
+		}
+	}
+	if len(grid) == 0 {
+		return nil, nil
+	}
+	titles, names := grid[0], lower(grid[0])
+	cols := make([]Column, len(names))
+	for i, n := range names {
+		cols[i] = Column{Field: n, Title: titles[i]}
+	}
+	*e.order = cols
+	rows := make([]Row, 0, len(grid)-1)
+	for _, cells := range grid[1:] {
+		row := Row{}
+		for i, n := range names {
+			if i < len(cells) {
+				row[n] = cells[i]
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+// borders are what a drawn table puts between its cells.
+const borders = "|│┃║"
+
+// boxCells splits a line on its border, dropping what lies outside the
+// first and last one. nil when the line has no border.
+func boxCells(line string) []string {
+	trimmed := strings.TrimSpace(line)
+	i := strings.IndexAny(trimmed, borders)
+	if i < 0 {
+		return nil
+	}
+	border, _ := utf8.DecodeRuneInString(trimmed[i:])
+	cells := strings.Split(trimmed, string(border))
+	// Framed on both sides or not at all: psql's "2 | " ends in a
+	// border only because its last cell is empty.
+	b := string(border)
+	if len(cells) > 2 && strings.HasPrefix(trimmed, b) && strings.HasSuffix(trimmed, b) {
+		cells = cells[1 : len(cells)-1]
+	}
+	for i := range cells {
+		cells[i] = strings.TrimSpace(cells[i])
+	}
+	return cells
+}
+
+// isRule reports whether a line only rules a table off, as mysql's
+// +----+, psql's ----+----, markdown's |---| and pip's ------- do.
+func isRule(line string) bool {
+	dashes := 0
+	for _, r := range strings.TrimSpace(line) {
+		switch {
+		case strings.ContainsRune("-=─━═", r):
+			dashes++
+		case strings.ContainsRune("+|:┼├┤┌┐└┘┬┴╭╮╰╯╪╫╬╞╡╟╢╔╗╚╝╠╣╦╩│┃║ ", r):
+		default:
+			return false
+		}
+	}
+	return dashes >= 3
 }
 
 func plainColumns(fields []string) []Column {

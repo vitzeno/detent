@@ -417,8 +417,8 @@ adding a fat dependency fails with the transitive import named.
   stricter than anything else: it imports **only the standard
   library**, enforced by `TestPackage_DependsOnStdlibOnly`. A `Spec`
   says how to read a command's output (`Parse`) and how to draw what
-  was read (`Blocks`, over a closed widget vocabulary). Eight parse
-  kinds and thirty widgets, each in its own `widget_*.go`. Numbers are
+  was read (`Blocks`, over a closed widget vocabulary). Ten parse
+  kinds and thirty widgets, each widget in its own `widget_*.go`. Numbers are
   read by `number`, not `strconv.ParseFloat`, which rejected every
   column `df` prints: `45%`, `1.2G` and `1,024` all came back 0 and
   drew an empty bar rather than an error anyone could see. Three calls

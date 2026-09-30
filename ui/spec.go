@@ -148,6 +148,7 @@ func (w *markdownWidget) Draw(_ viewspec.Block, d viewspec.Data, f viewspec.Fram
 // every criteria list, since criteria are built from Described alone.
 func (*markdownWidget) Describe() viewspec.Description {
 	return viewspec.Description{
+		Raw:      true,
 		What:     "prose rendered as a document: headings, lists, emphasis, code blocks",
 		NotFor:   "source code or a config file, which code draws with its lines intact",
 		Examples: []string{"cat README.md", "a changelog", "generated documentation"},

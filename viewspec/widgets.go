@@ -16,6 +16,7 @@ var standard = func() *Registry {
 	must(r.Extractor("delimited", newDelimitedExtractor))
 	must(r.Extractor("indent", newIndentExtractor))
 	must(r.Extractor("prefix", newPrefixExtractor))
+	must(r.Extractor("box", newBoxExtractor))
 	must(r.Extractor("none", newNoneExtractor))
 	must(r.Widget(RowKind, rowWidget{}))
 	must(r.Widget(PanelKind, panelWidget{}))

@@ -1278,3 +1278,38 @@ func fieldOrder(b *viewspec.Bound) []string {
 	}
 	return strings.Fields(r.Lines[0])
 }
+
+// Split on whitespace, every border in a drawn table was a column of
+// its own and every rule a row.
+func TestBox_ReadsTablesDrawnWithBorders(t *testing.T) {
+	tests := map[string]string{
+		"mysql":    "+----+------+\n| id | name |\n+----+------+\n| 1  | ada  |\n| 2  |      |\n+----+------+\n2 rows in set (0.01 sec)\n",
+		"psql":     " id | name\n----+------\n  1 | ada\n  2 | \n(2 rows)\n",
+		"box":      "┌────┬──────┐\n│ id │ name │\n├────┼──────┤\n│ 1  │ ada  │\n│ 2  │      │\n└────┴──────┘\n",
+		"markdown": "| id | name |\n|----|------|\n| 1  | ada  |\n| 2  |      |\n",
+	}
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "box"}, Blocks: []viewspec.Block{{Kind: "table"}}}
+	for name, output := range tests {
+		t.Run(name, func(t *testing.T) {
+			b := bind(t, spec, output)
+			assert.Equal(t, []string{"id", "name"}, b.Fields())
+			assert.Equal(t, []viewspec.Row{{"id": "1", "name": "ada"}, {"id": "2", "name": ""}}, b.Sample(5))
+		})
+	}
+}
+
+// pip list rules its header off with dashes, which read as a package.
+func TestColumns_SkipsARuleUnderTheHeader(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "columns", Header: true}, Blocks: []viewspec.Block{{Kind: "table"}}}
+	b := bind(t, spec, "Package Version\n------- -------\nnumpy   2.1.1\n")
+	assert.Equal(t, []viewspec.Row{{"package": "numpy", "version": "2.1.1"}}, b.Sample(5))
+}
+
+// Split on the comma alone, a quoted "Smith, John" was two cells and
+// the rest of its row shifted right, with nothing to show it had.
+func TestDelimited_KeepsAQuotedSeparatorInItsCell(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "delimited", Header: true, Sep: ","},
+		Blocks: []viewspec.Block{{Kind: "table"}}}
+	b := bind(t, spec, "name,company,city\n\"Smith, John\",\"Acme, Inc.\",London\nAda,Initech,York\n")
+	assert.Equal(t, viewspec.Row{"name": "Smith, John", "company": "Acme, Inc.", "city": "London"}, b.Sample(1)[0])
+}

@@ -136,8 +136,11 @@ type Description struct {
 	// Summarises marks a kind drawing one fact about every row rather
 	// than the rows themselves. A caller asks for a body and a summary
 	// separately, and which a widget is belongs beside the widget.
-	Summarises bool     `json:"summarises,omitempty"`
-	Examples   []string `json:"examples,omitempty"`
+	Summarises bool `json:"summarises,omitempty"`
+	// Raw marks a kind drawing the output as it came, reading no rows,
+	// so a view holding one hides nothing whatever its parse read.
+	Raw      bool     `json:"raw,omitempty"`
+	Examples []string `json:"examples,omitempty"`
 }
 
 // Slot is one field a widget cannot be drawn without, named for the

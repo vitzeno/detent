@@ -96,6 +96,12 @@ func indentJSON(s string) (string, bool) {
 }
 
 func (w rawWidget) Describe() Description {
+	d := w.describe()
+	d.Raw = true
+	return d
+}
+
+func (w rawWidget) describe() Description {
 	switch w.mode {
 	case "errors":
 		return Description{
