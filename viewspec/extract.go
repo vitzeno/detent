@@ -286,8 +286,7 @@ func lower(in []string) []string {
 	return out
 }
 
-// fixedExtractor slices rows at the header's own column offsets,
-// found by splitting it on runs of two or more spaces. That is what
+// fixedExtractor slices rows between the values they line up, which
 // reads "CONTAINER ID" as one column where whitespace fields see two.
 type fixedExtractor struct{ order *[]Column }
 
@@ -301,38 +300,120 @@ type span struct {
 	end   int // -1 runs to the end of the line
 }
 
-// headerSpans finds each column's title and where it starts. Two
-// spaces separate columns; one space is inside a title.
-func headerSpans(header string) []span {
-	var out []span
-	runes := []rune(header)
-	i := 0
-	for i < len(runes) {
-		for i < len(runes) && runes[i] == ' ' {
-			i++
-		}
-		if i >= len(runes) {
-			break
-		}
-		start, last := i, i
-		for i < len(runes) {
-			if runes[i] == ' ' {
-				if i+1 < len(runes) && runes[i+1] == ' ' {
-					break
-				}
-				i++
-				continue
+// gutterSpans lets the rows decide the cuts and hangs each header word
+// on the column it is most over: cut at titles, 926Gi read as 9|26Gi.
+func gutterSpans(header []rune, rows [][]rune) []span {
+	cols := valueSpans(rows)
+	words := wordsOf(header)
+	at := make([]int, len(words))
+	for i, w := range words {
+		at[i] = -1
+		most := 0
+		for c, col := range cols {
+			if n := min(w.end, col.end) - max(w.start, col.start); n > most {
+				at[i], most = c, n
 			}
-			last = i
-			i++
 		}
-		out = append(out, span{title: string(runes[start : last+1]), start: start})
 	}
+	// A word with nothing under it belongs to the word one space away:
+	// "CONTAINER ID" over a short id, "DISK USAGE" over a right-aligned one.
+	for i := range words {
+		if at[i] < 0 && i > 0 && at[i-1] >= 0 && words[i].start-words[i-1].end == 1 {
+			at[i] = at[i-1]
+		}
+	}
+	for i := len(words) - 1; i >= 0; i-- {
+		if at[i] < 0 && i+1 < len(words) && at[i+1] >= 0 && words[i+1].start-words[i].end == 1 {
+			at[i] = at[i+1]
+		}
+	}
+	// What is left titles a column no row has a value in, like PORTS.
+	valued := len(cols)
+	for i := range words {
+		if at[i] >= 0 {
+			continue
+		}
+		if i > 0 && words[i].start-words[i-1].end == 1 && at[i-1] >= valued {
+			at[i] = at[i-1]
+			continue
+		}
+		cols = append(cols, span{start: words[i].start, end: words[i].end})
+		at[i] = len(cols) - 1
+	}
+	first := make(map[int]int)
+	for i := range words {
+		if _, ok := first[at[i]]; !ok {
+			first[at[i]] = i
+		}
+	}
+	var out []span
+	for c, col := range cols {
+		i, ok := first[c]
+		if !ok {
+			continue // no title of its own: sliced into the column before it
+		}
+		last := i
+		for j := range words {
+			if at[j] == c {
+				last = j
+			}
+		}
+		out = append(out, span{title: string(header[words[i].start:words[last].end]),
+			start: min(col.start, words[i].start)})
+	}
+	slices.SortFunc(out, func(a, b span) int { return a.start - b.start })
 	for i := range out {
 		out[i].end = -1
 		if i+1 < len(out) {
 			out[i].end = out[i+1].start
 		}
+	}
+	return out
+}
+
+// valueSpans is where the rows have values: runs no row leaves blank,
+// cut wherever no row has a value on both sides.
+func valueSpans(rows [][]rune) []span {
+	width := 0
+	for _, r := range rows {
+		width = max(width, len(r))
+	}
+	set := func(r []rune, i int) bool { return i < len(r) && r[i] != ' ' }
+	used := func(i int) bool {
+		return slices.ContainsFunc(rows, func(r []rune) bool { return set(r, i) })
+	}
+	bridged := func(i int) bool {
+		return slices.ContainsFunc(rows, func(r []rune) bool { return set(r, i-1) && set(r, i) })
+	}
+	var out []span
+	for i := 0; i < width; {
+		if !used(i) {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < width && used(i) && bridged(i) {
+			i++
+		}
+		out = append(out, span{start: start, end: i})
+	}
+	return out
+}
+
+// wordsOf is each space-separated word of a header and where it sits.
+func wordsOf(header []rune) []span {
+	var out []span
+	for i := 0; i < len(header); {
+		if header[i] == ' ' {
+			i++
+			continue
+		}
+		start := i
+		for i < len(header) && header[i] != ' ' {
+			i++
+		}
+		out = append(out, span{title: string(header[start:i]), start: start, end: i})
 	}
 	return out
 }
@@ -349,7 +430,13 @@ func (e fixedExtractor) Extract(output string) ([]Row, error) {
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
 		return nil, nil
 	}
-	spans := headerSpans(lines[0])
+	var body [][]rune
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) != "" {
+			body = append(body, []rune(line))
+		}
+	}
+	spans := gutterSpans([]rune(lines[0]), body)
 	if len(spans) < 2 {
 		return nil, fmt.Errorf("header has fewer than two columns")
 	}
@@ -360,12 +447,8 @@ func (e fixedExtractor) Extract(output string) ([]Row, error) {
 		}
 		*e.order = cols
 	}
-	var rows []Row
-	for _, line := range lines[1:] {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		runes := []rune(line)
+	rows := make([]Row, 0, len(body))
+	for _, runes := range body {
 		row := Row{}
 		for _, s := range spans {
 			row[strings.ToLower(s.title)] = strings.TrimSpace(slice(runes, s.start, s.end))

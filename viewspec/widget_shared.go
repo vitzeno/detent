@@ -52,9 +52,8 @@ func accentRole(b Block, r Row) Role {
 	return RoleDefault
 }
 
-// fitColumns shares width proportionally to the widest cell, with a
-// floor so every column stays visible. Cells truncate; the pane never
-// scrolls sideways.
+// fitColumns gives each column its widest cell, and when they do not
+// fit, cuts only the widest. Cells truncate; the pane never scrolls sideways.
 func fitColumns(cols []Column, rows []Row, total int, p Painter) []int {
 	const floor = 4
 	n := len(cols)
@@ -78,11 +77,19 @@ func fitColumns(cols []Column, rows []Row, total int, p Painter) []int {
 	if sum <= avail || sum == 0 {
 		return widest
 	}
+	// Shared in proportion instead, one long command squeezed PID to "776…".
+	limit := fairLimit(widest, avail)
 	out := make([]int, n)
 	rest := avail
 	for i, w := range widest {
-		out[i] = max(floor, w*avail/sum)
+		out[i] = max(min(floor, w), min(w, limit))
 		rest -= out[i]
+	}
+	for i := 0; rest > 0 && i < n; i++ {
+		if widest[i] > out[i] {
+			out[i]++
+			rest--
+		}
 	}
 	for i := 0; rest < 0; i, rest = (i+1)%n, rest+1 {
 		if out[i] > floor {
@@ -90,6 +97,25 @@ func fitColumns(cols []Column, rows []Row, total int, p Painter) []int {
 		}
 	}
 	return out
+}
+
+// fairLimit is the widest any column may be so all of them fit in
+// avail, with every column narrower than it drawn whole.
+func fairLimit(widest []int, avail int) int {
+	lo, hi := 0, slices.Max(widest)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		used := 0
+		for _, w := range widest {
+			used += min(w, mid)
+		}
+		if used <= avail {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return lo
 }
 
 func pad(s string, w int, p Painter) string {

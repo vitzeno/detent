@@ -579,6 +579,54 @@ const dfH = "Filesystem      Size  Used Avail Use% Mounted on\n" +
 	"/dev/disk3s5    926G  345G  560G  39% /System/Volumes/Data\n" +
 	"map auto_home     0B    0B    0B 100% /System/Volumes/Data/home\n"
 
+// Cut at the header's titles, the right-aligned 926Gi under "Size"
+// read as 9 and 26Gi, and single-spaced titles merged into one field.
+func TestFixed_KeepsAValueWiderThanItsTitleWhole(t *testing.T) {
+	const macDF = "Filesystem        Size    Used   Avail Capacity iused ifree %iused  Mounted on\n" +
+		"/dev/disk3s1s1   926Gi    12Gi   352Gi     4%    459k  3.7G    0%   /\n" +
+		"devfs            222Ki   222Ki     0Bi   100%     768     0  100%   /dev\n" +
+		"/dev/disk3s6     926Gi    16Gi   352Gi     5%      15  3.7G    0%   /System/Volumes/VM\n"
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "fixed"},
+		Blocks: []viewspec.Block{{Kind: "list", Field: "size"}}}
+	b := bind(t, spec, macDF)
+	assert.Equal(t, []string{"%iused", "avail", "capacity", "filesystem", "ifree", "iused",
+		"mounted on", "size", "used"}, b.Fields())
+	assert.Equal(t, viewspec.Row{"filesystem": "devfs", "size": "222Ki", "used": "222Ki",
+		"avail": "0Bi", "capacity": "100%", "iused": "768", "ifree": "0", "%iused": "100%",
+		"mounted on": "/dev"}, b.Sample(2)[1])
+
+	// "Capacity" runs over the rows' gap and 6434718 over the header's,
+	// so no column is blank on every line: the rows alone decide the cuts.
+	const macDFk = "Filesystem     1024-blocks      Used Available Capacity iused      ifree %iused  Mounted on\n" +
+		"/dev/disk3s1s1   971350180  12337596 369012392     4%  458732 3690123920    0%   /\n" +
+		"devfs                  222       222         0   100%     768          0  100%   /dev\n" +
+		"/dev/disk3s5     971350180 563019440 368956984    61% 6434718 3689569840    0%   /System/Volumes/Data\n"
+	table := viewspec.Spec{Parse: viewspec.Parse{Kind: "fixed"}, Blocks: []viewspec.Block{{Kind: "table"}}}
+	rows := bind(t, table, macDFk).Sample(3)
+	assert.Equal(t, "4%", rows[0]["capacity"])
+	assert.Equal(t, "458732", rows[0]["iused"])
+	assert.Equal(t, "61%", rows[2]["capacity"])
+	assert.Equal(t, "6434718", rows[2]["iused"])
+}
+
+// A title word with nothing under it joins its neighbour, before or
+// after; one with no neighbour is a column nothing filled in.
+func TestFixed_TitleWordsWithNothingUnderThem(t *testing.T) {
+	table := viewspec.Spec{Parse: viewspec.Parse{Kind: "fixed"}, Blocks: []viewspec.Block{{Kind: "table"}}}
+	images := "IMAGE          ID             DISK USAGE   CONTENT SIZE   EXTRA\n" +
+		"alpine:3.20    a4f4213abb84       13.6MB         4.09MB        \n" +
+		"busybox:1.36   b9598f8c98e2       6.14MB          1.9MB        \n"
+	assert.Equal(t, []string{"content size", "disk usage", "extra", "id", "image"},
+		bind(t, table, images).Fields())
+
+	ps := "CONTAINER ID   IMAGE    STATUS                      PORTS     NAMES\n" +
+		"0d4dd713bd0a   alpine   Exited (137) 7 days ago               web\n" +
+		"0e37e1d21d10   pause    Up 2 hours                            db\n"
+	b := bind(t, table, ps)
+	assert.Equal(t, []string{"container id", "image", "names", "ports", "status"}, b.Fields())
+	assert.Equal(t, "Exited (137) 7 days ago", b.Sample(1)[0]["status"])
+}
+
 // With one cursor for the whole view, the block that can be acted on
 // gets it, however the blocks are ordered.
 func TestSelectable_PrefersTheActionableBlock(t *testing.T) {
@@ -721,6 +769,16 @@ func TestTable_NamedColumnsKeepTheParseTitle(t *testing.T) {
 	require.Len(t, got, 2)
 	assert.Equal(t, "NAMES id", strings.Join(strings.Fields(got[0]), " "),
 		"the parse's title where the block gave none, the block's where it did")
+}
+
+// A long free-text column must not cost a short one its digits.
+func TestTable_NarrowColumnsKeepTheirWidth(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "columns", Header: true},
+		Blocks: []viewspec.Block{{Kind: "table"}}}
+	got := draw(t, spec, "PID RSS COMMAND\n77612 450123 "+strings.Repeat("x", 200)+"\n", 60)
+	require.Len(t, got, 2)
+	assert.True(t, strings.HasPrefix(got[1], "77612 450123 x"), "got %q", got[1])
+	assert.True(t, strings.HasSuffix(got[1], "…"), "the long column is the one cut")
 }
 
 func TestBar_ScalesToTheLargestValue(t *testing.T) {
