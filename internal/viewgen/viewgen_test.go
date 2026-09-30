@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -176,9 +177,12 @@ func (failingJudge) Ask(context.Context, classify.State, classify.Questions) (cl
 // the first criterion, which keeps a test to the decisions it is
 // actually about.
 type scriptedJudge struct {
+	mu   sync.Mutex
 	say  map[string]string
 	seen []classify.State
-	err  error
+	// asked is each batch's question names, sorted.
+	asked [][]string
+	err   error
 }
 
 func (j *scriptedJudge) Ask(_ context.Context, state classify.State,
@@ -186,7 +190,10 @@ func (j *scriptedJudge) Ask(_ context.Context, state classify.State,
 	if j.err != nil {
 		return nil, classify.Usage{}, j.err
 	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
 	j.seen = append(j.seen, state)
+	j.asked = append(j.asked, slices.Sorted(maps.Keys(qs)))
 	out := classify.Answers{}
 	for name, q := range qs {
 		choice, ok := j.say[name]

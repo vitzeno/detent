@@ -128,10 +128,7 @@ func resultQuestions() classify.Questions {
 				StatusEmpty:    "ran fine but produced no useful output",
 			}},
 		},
-		"render_kind": {
-			Instructions: "What shape is this output? Pick how a human should read it.",
-			Choice:       &classify.ChoiceQuestion{Criteria: viewgen.RenderKindCriteria()},
-		},
+		"render_kind": viewgen.RenderKindQuestion(),
 		"attention": {
 			Instructions: "Does this outcome need the human's attention before continuing — " +
 				"a failure, a surprise, a destructive result — rather than collapsing to one line?",

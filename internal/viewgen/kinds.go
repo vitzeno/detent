@@ -1,6 +1,9 @@
 package viewgen
 
-import "github.com/vitzeno/detent/viewspec"
+import (
+	"github.com/vitzeno/detent/internal/classify"
+	"github.com/vitzeno/detent/viewspec"
+)
 
 // Kind* name the shapes a command's output can take. One table below
 // defines all three things a kind is for, so they cannot drift:
@@ -130,6 +133,15 @@ func RenderKindCriteria() map[string]any {
 		}
 	}
 	return out
+}
+
+// RenderKindQuestion asks which shape an output has. The judge asks it
+// of a Call and viewgen of a Shell, so the wording lives in one place.
+func RenderKindQuestion() classify.Question {
+	return classify.Question{
+		Instructions: "What shape is this output? Pick how a human should read it.",
+		Choice:       &classify.ChoiceQuestion{Criteria: RenderKindCriteria()},
+	}
 }
 
 // worthGenerating reports whether this shape earns asking. A kind

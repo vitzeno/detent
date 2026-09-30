@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/logging"
+	"github.com/vitzeno/detent/views"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -63,6 +65,30 @@ func (g *Generator) Existing(ctx context.Context, req Request) (Result, bool) {
 		return Result{Spec: spec, Key: key, Source: SourceShipped}, true
 	}
 	return Result{}, false
+}
+
+// renderKind asks the judge only which shape output has, for output
+// nothing else judged. "" with no judge, or too little to draw.
+func (g *Generator) renderKind(ctx context.Context, command, output string) string {
+	if lines(output) < MinLinesToCompose {
+		return ""
+	}
+	answers, _, ok := classify.AskOrFallback(ctx, g.Judge,
+		classify.State(map[string]any{"command": command, "output": head(output, MaxJudgeBytes)}),
+		classify.Questions{"render_kind": RenderKindQuestion()})
+	if !ok {
+		return ""
+	}
+	return answers["render_kind"].Choice
+}
+
+// forKind is the spec detent ships for an output shape, when it draws.
+func (g *Generator) forKind(ctx context.Context, req Request) (Result, bool) {
+	spec, ok := views.ForKind(req.Kind)
+	if !ok || !g.usable(ctx, req, &spec, SourceShipped) {
+		return Result{}, false
+	}
+	return Result{Spec: &spec, Key: Key(req.Command, req.Kind), Source: SourceShipped}, true
 }
 
 // usable reports whether an existing spec can draw this output, and

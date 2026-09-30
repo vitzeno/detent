@@ -85,6 +85,9 @@ row, esc stops it
 
 Nothing flags it and nothing asks you to approve it
 
+It gets the same views as the agent's commands. With `views: generate`, Jev is
+asked what shape the output is, never whether it went well
+
 The model reads it afterwards, as a message in the transcript
 
 ```

@@ -147,7 +147,8 @@ in model round trips.
 A **Shell** is none of the other four: no model asked for it, so
 nothing assesses, approves or judges it, and it opens no Turn. It is
 its own noun precisely so it cannot be bolted onto Call and quietly
-break those three at once. `internal/humanshell` owns it.
+break those three at once. `internal/humanshell` owns it. Its output
+is still drawn: `viewgen` asks Jev its shape, never how it went.
 
 ### The transcript's atom is a Step
 
