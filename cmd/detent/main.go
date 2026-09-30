@@ -227,10 +227,10 @@ func run() error {
 			resolved.RiskThreshold))
 	}
 
-	// Connected before the engine, which takes the registry by value
-	// and would never see a tool added afterwards.
+	// Connected before the engine, which takes the registry by value.
+	// Headless reads none: config expands secrets, servers start processes.
 	tools := tool.Standard()
-	configured, err := mcppkg.Load(mcppkg.Files()...)
+	configured, err := loadMCPConfig(*prompt == "", mcppkg.Files())
 	if err != nil {
 		return err
 	}
@@ -259,7 +259,6 @@ func run() error {
 		judgepkg.Watch(bus, judge)
 		views(resolved.Views, judge).Watch(bus)
 	}
-	sd.unwatch = append(sd.unwatch, mcppkg.Watch(bus, servers))
 	sd.unwatch = append(sd.unwatch, forget.Watch(bus, sessionStore(events), sessionID,
 		forget.WithContainers(containerRemover(sandboxSocketFor(resolved)))))
 
@@ -272,11 +271,6 @@ func run() error {
 		ctx, untrap := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 		defer untrap()
 
-		// Waited for here: one prompt goes out immediately, and a tool
-		// that lands after it may as well not exist.
-		for _, e := range mcppkg.ConnectAll(ctx, tools, servers, configured, nil) {
-			fmt.Fprintln(os.Stderr, "warning:", e)
-		}
 		sd.engine = runEngine(ctx, eng)
 		approve := headless.Approver(nil)
 		if *unattended {
@@ -301,6 +295,7 @@ func run() error {
 	// see what the agent just did is not worth having.
 	shellRunner, shellWhere := runners.Select(event.UnknownRisk())
 	sd.shell = humanshell.Watch(bus, shellRunner, shellWhere)
+	sd.unwatch = append(sd.unwatch, mcppkg.Watch(bus, servers))
 	sd.connect = connectServers(ctx, bus, tools, servers, configured)
 	sd.engine = runEngine(ctx, eng)
 
@@ -461,6 +456,15 @@ func sandboxSocketFor(c config.Config) string {
 		return c.SandboxSocket
 	}
 	return defaultSandboxSocket()
+}
+
+// loadMCPConfig keeps MCP configuration out of headless runs entirely.
+// It is enabled for the TUI, where users can inspect and invoke servers.
+func loadMCPConfig(enabled bool, files []string) (map[string]mcppkg.Config, error) {
+	if !enabled {
+		return map[string]mcppkg.Config{}, nil
+	}
+	return mcppkg.Load(files...)
 }
 
 // connectServers wires MCP without holding up the first frame, and

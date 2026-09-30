@@ -20,6 +20,8 @@ make install                          # onto your PATH
 ./bin/detent -prompt "find go files over 1MB"
 ```
 
+Headless runs leave MCP out: no config is read and no server is started. MCP is TUI only
+
 ## Architecture
 
 Events are split into facts and intents, facts for what happened, intents for what someone wants to happen

@@ -35,7 +35,9 @@ make fmt-check     # fail if anything isn't gofmt'd
 ```
 
 Run one request headlessly: `./bin/detent -prompt "..."`, with
-`-unattended` to decline every flagged Call instead of asking.
+`-unattended` to decline every flagged Call instead of asking. Headless runs
+do not load MCP configuration or connect to MCP servers; MCP is available in
+the TUI.
 `-sessions` lists what can be resumed and `-resume <id>` (or
 `-resume last`) continues one.
 
