@@ -46,7 +46,8 @@ func (w *watcher) take(e event.Event) {
 	case event.TurnStarted:
 		clear(w.calls) // nothing from a finished Turn can still compose
 	case event.CallProposed:
-		w.calls[v.Call] = &pending{command: v.Tool}
+		// The command, not the tool: every bash call keyed as "bash" once.
+		w.calls[v.Call] = &pending{command: event.Command(v.Tool, v.Args)}
 	case event.CallEnded:
 		if p := w.calls[v.Call]; p != nil {
 			result := v.Result

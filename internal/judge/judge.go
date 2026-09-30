@@ -49,7 +49,7 @@ func Watch(bus *event.Bus, asker classify.Asker) func() {
 				prompt, turn = v.Prompt, v.Turn
 				clear(cmds)
 			case event.CallProposed:
-				cmds[v.Call] = v.Tool
+				cmds[v.Call] = event.Command(v.Tool, v.Args)
 			case event.CallEnded:
 				j := ResultJudge{Asker: asker, Prompt: prompt}
 				go j.publish(bus, turn, v, cmds[v.Call])
@@ -62,8 +62,8 @@ func Watch(bus *event.Bus, asker classify.Asker) func() {
 // publish judges one Call. Each runs on its own goroutine: several
 // Calls finish together, and one slow judgement must not hold up the
 // others or the events behind them.
-func (j ResultJudge) publish(bus *event.Bus, turn uuid.UUID, done event.CallEnded, tool string) {
-	got := j.Judge(context.Background(), tool, done.Result)
+func (j ResultJudge) publish(bus *event.Bus, turn uuid.UUID, done event.CallEnded, command string) {
+	got := j.Judge(context.Background(), command, done.Result)
 	got.Call = done.Call
 	bus.Publish(got)
 	if got.FromJudge && got.GoalAchieved >= GoalMet {
@@ -75,10 +75,10 @@ func (j ResultJudge) publish(bus *event.Bus, turn uuid.UUID, done event.CallEnde
 // Judge asks, and falls back to a heuristic when nothing answers. The
 // fallback is why FromJudge exists: the UI must never present a guess
 // as a verdict.
-func (j ResultJudge) Judge(ctx context.Context, tool string, res event.Result) event.CallJudged {
+func (j ResultJudge) Judge(ctx context.Context, command string, res event.Result) event.CallJudged {
 	out := heuristic(res)
 	answers, _, ok := classify.AskOrFallback(ctx, j.Asker,
-		classify.State(map[string]any{"request": j.Prompt, "tool": tool, "output": output(res),
+		classify.State(map[string]any{"request": j.Prompt, "command": command, "output": output(res),
 			"exit_code": res.ExitCode}),
 		resultQuestions())
 	if !ok {

@@ -14,6 +14,14 @@ import (
 	"github.com/vitzeno/detent/internal/classify"
 )
 
+// recordingAsker keeps the state it was asked about.
+type recordingAsker struct{ states chan classify.State }
+
+func (r recordingAsker) Ask(_ context.Context, s classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
+	r.states <- s
+	return classify.Answers{}, classify.Usage{}, nil
+}
+
 type fakeAsker struct {
 	answers classify.Answers
 	err     error
@@ -148,5 +156,26 @@ func TestWatch_AGuessNeverStopsATurn(t *testing.T) {
 	case <-intents:
 		t.Fatal("a heuristic asked a request to stop")
 	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// Shown only "bash", the judge classified a shape without knowing
+// which command printed it.
+func TestWatch_TheJudgeSeesTheCommand(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	asker := recordingAsker{states: make(chan classify.State, 1)}
+	defer Watch(bus, asker)()
+
+	call := uuid.Must(uuid.NewV7())
+	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "list it"})
+	bus.Publish(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "ls -la"}})
+	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "total 0\n"}})
+
+	select {
+	case s := <-asker.states:
+		assert.Equal(t, "ls -la", s.(map[string]any)["command"])
+	case <-time.After(3 * time.Second):
+		t.Fatal("the judge was never asked")
 	}
 }
