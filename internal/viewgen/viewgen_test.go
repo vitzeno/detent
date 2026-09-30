@@ -242,6 +242,32 @@ func TestCompose_AssemblesFromChoicesAndCaches(t *testing.T) {
 	assert.Len(t, judge.seen, before, "a saved spec asks nothing")
 }
 
+// Choosing columns for df reads one row of nine, all of it shifted a
+// column over. The header answer stands and the kind gives way.
+func TestCompose_AMisreadHeaderGivesWayToFixed(t *testing.T) {
+	g, _ := composer(t, map[string]string{
+		"header_line": "0",
+		"parse_kind":  "columns",
+		"body":        "table",
+		"summary":     "none",
+	})
+	req := request()
+	req.Kind, req.Output = "table", dfH
+	got, err := g.Compose(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "fixed", got.Spec.Parse.Kind)
+}
+
+const dfH = "Filesystem      Size  Used Avail Use% Mounted on\n" +
+	"/dev/disk3s1s1  926G   10G  560G   2% /\n" +
+	"devfs           205K  205K    0B 100% /dev\n" +
+	"/dev/disk3s6    926G  7.0G  560G   2% /System/Volumes/VM\n" +
+	"/dev/disk3s2    926G  7.6G  560G   2% /System/Volumes/Preboot\n" +
+	"/dev/disk3s4    926G  3.1M  560G   1% /System/Volumes/Update\n" +
+	"/dev/disk1s2    500M  6.0M  483M   2% /System/Volumes/xarts\n" +
+	"/dev/disk3s5    926G  345G  560G  39% /System/Volumes/Data\n" +
+	"map auto_home     0B    0B    0B 100% /System/Volumes/Data/home\n"
+
 // Every field the composition picks comes from a list the program
 // built out of what the parse actually produced.
 func TestCompose_OffersOnlyFieldsTheParseProduced(t *testing.T) {

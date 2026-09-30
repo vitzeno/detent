@@ -145,6 +145,12 @@ func (e columnsExtractor) Extract(output string) ([]Row, error) {
 		}
 		rows = append(rows, row)
 	}
+	// Most lines short of the header means the header was misread: df's
+	// "Mounted on" names one column too many, and the rows kept are wrong.
+	if len(rows)*2 < len(grid) {
+		return nil, fmt.Errorf("%d of %d lines have fewer fields than the %d columns named",
+			len(grid)-len(rows), len(grid), len(names))
+	}
 	return rows, nil
 }
 

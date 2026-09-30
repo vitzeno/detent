@@ -554,6 +554,31 @@ func TestColumns_KeysAreLowerAndTitlesAreNot(t *testing.T) {
 	assert.Equal(t, "id root", got)
 }
 
+// "Mounted on" names one column more than df prints, so the one row
+// kept was the misaligned one, drawn wrong in every cell.
+func TestColumns_AMisreadHeaderFailsRatherThanKeepingTheRowsItFits(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "columns", Header: true},
+		Blocks: []viewspec.Block{{Kind: "table"}}}
+	c, err := viewspec.Compile(spec)
+	require.NoError(t, err)
+	_, err = c.Bind(dfH)
+	assert.ErrorContains(t, err, "7 of 8 lines have fewer fields")
+
+	// One short line is a total or a footer, not a misread header.
+	_, err = c.Bind("NAME SIZE\na 1\nb 2\nc 3\ntotal\n")
+	assert.NoError(t, err)
+}
+
+const dfH = "Filesystem      Size  Used Avail Use% Mounted on\n" +
+	"/dev/disk3s1s1  926G   10G  560G   2% /\n" +
+	"devfs           205K  205K    0B 100% /dev\n" +
+	"/dev/disk3s6    926G  7.0G  560G   2% /System/Volumes/VM\n" +
+	"/dev/disk3s2    926G  7.6G  560G   2% /System/Volumes/Preboot\n" +
+	"/dev/disk3s4    926G  3.1M  560G   1% /System/Volumes/Update\n" +
+	"/dev/disk1s2    500M  6.0M  483M   2% /System/Volumes/xarts\n" +
+	"/dev/disk3s5    926G  345G  560G  39% /System/Volumes/Data\n" +
+	"map auto_home     0B    0B    0B 100% /System/Volumes/Data/home\n"
+
 // With one cursor for the whole view, the block that can be acted on
 // gets it, however the blocks are ordered.
 func TestSelectable_PrefersTheActionableBlock(t *testing.T) {
