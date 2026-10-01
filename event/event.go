@@ -61,6 +61,11 @@ const (
 	NoticeKind         Kind = "notice"
 	SessionsListedKind Kind = "sessions.listed"
 	ServersListedKind  Kind = "servers.listed"
+
+	// An MCP server asking a human to sign in, and how it ended.
+	AuthorizationWaitingKind Kind = "auth.waiting"
+	ServerAuthorizedKind     Kind = "auth.done"
+	AuthorizationFailedKind  Kind = "auth.failed"
 )
 
 // Intents. Imperative, published by anyone.
@@ -79,6 +84,8 @@ const (
 	RenameSessionKind   Kind = "do.rename_session"
 	RunCommandKind      Kind = "do.shell"
 	CancelCommandKind   Kind = "do.cancel_shell"
+	AuthorizeServerKind Kind = "do.authorize"
+	OpenAuthKind        Kind = "do.open_authorization"
 )
 
 // IsIntent splits what someone wants from what happened. The engine
@@ -91,6 +98,7 @@ var intents = map[Kind]bool{
 	RequestRollbackKind: true, ResetSessionKind: true, ListSessionsKind: true, RenameSessionKind: true,
 	ListServersKind: true, DeleteSessionKind: true,
 	RunCommandKind: true, CancelCommandKind: true,
+	AuthorizeServerKind: true, OpenAuthKind: true,
 }
 
 // fact is embedded by everything but OutputChunk.

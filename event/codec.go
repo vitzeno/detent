@@ -85,6 +85,10 @@ var codecs = map[Kind]func([]byte) (Event, error){
 	NoticeKind:          codec[Notice],
 	SessionsListedKind:  codec[SessionsListed],
 
+	AuthorizationWaitingKind: codec[AuthorizationWaiting],
+	ServerAuthorizedKind:     codec[ServerAuthorized],
+	AuthorizationFailedKind:  codec[AuthorizationFailed],
+
 	SubmitPromptKind:    codec[SubmitPrompt],
 	ResolveApprovalKind: codec[ResolveApproval],
 	NoteContextKind:     codec[NoteContext],
@@ -100,4 +104,6 @@ var codecs = map[Kind]func([]byte) (Event, error){
 	RenameSessionKind:   codec[RenameSession],
 	RunCommandKind:      codec[RunCommand],
 	CancelCommandKind:   codec[CancelCommand],
+	AuthorizeServerKind: codec[AuthorizeServer],
+	OpenAuthKind:        codec[OpenAuthorization],
 }

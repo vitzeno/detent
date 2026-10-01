@@ -103,6 +103,24 @@ type ListServers struct{ fact }
 
 func (ListServers) Kind() Kind { return ListServersKind }
 
+// AuthorizeServer asks for a fresh sign-in. Human-triggered, always:
+// nothing else may make a server register a client.
+type AuthorizeServer struct {
+	fact
+	Server string
+}
+
+func (AuthorizeServer) Kind() Kind { return AuthorizeServerKind }
+
+// OpenAuthorization asks for a waiting sign-in's link to be opened in
+// a browser. Whatever holds the link opens it; ui runs no processes.
+type OpenAuthorization struct {
+	fact
+	Server string
+}
+
+func (OpenAuthorization) Kind() Kind { return OpenAuthKind }
+
 // ListSessions asks what can be resumed. Whatever holds the log
 // answers with SessionsListed.
 type ListSessions struct{ fact }

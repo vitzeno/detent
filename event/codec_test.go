@@ -104,7 +104,12 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		ServersListed{Servers: []ServerSummary{
 			{Name: "github", Command: "docker", Tools: 12},
 			{Name: "broken", Command: "nope", Err: "no such file", Disabled: true},
+			{Name: "notion", Command: "https://mcp.notion.com/mcp", Auth: AuthWaiting},
 		}},
+		AuthorizationWaiting{Server: "notion", URL: "https://mcp.notion.com/authorize?state=s",
+			Until: time.UnixMilli(1_700_000_600_000).UTC()},
+		ServerAuthorized{Server: "notion", Tools: 12},
+		AuthorizationFailed{Server: "notion", Reason: "the link expired"},
 
 		SubmitPrompt{Text: "go"},
 		ResolveApproval{Call: call, Approved: true},
@@ -120,6 +125,8 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		ResetSession{},
 		RunCommand{Text: "git status"},
 		CancelCommand{Shell: shell},
+		AuthorizeServer{Server: "notion"},
+		OpenAuthorization{Server: "notion"},
 	}
 	require.Len(t, cases, len(codecs), "every kind needs a case here")
 
