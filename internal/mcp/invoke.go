@@ -47,6 +47,17 @@ func (i *Invokers) settle(s event.ServerSummary) {
 	i.status = append(i.status, s)
 }
 
+// setAuth records where a server's sign-in stands, for /mcp to draw.
+func (i *Invokers) setAuth(server, auth string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	for n := range i.status {
+		if i.status[n].Name == server {
+			i.status[n].Auth = auth
+		}
+	}
+}
+
 func NewInvokers() *Invokers { return &Invokers{tools: map[string]Tool{}} }
 
 // Add records what Register returned, which carries its own routing.

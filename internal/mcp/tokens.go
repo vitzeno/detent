@@ -20,12 +20,14 @@ type Tokens struct{ Dir string }
 // Saved is what a sign-in leaves: the client registered for it and the
 // endpoints a refresh needs, since the SDK writes none of it down.
 type Saved struct {
-	ClientID     string        `json:"client_id"`
-	ClientSecret string        `json:"client_secret,omitempty"`
-	AuthURL      string        `json:"auth_url"`
-	TokenURL     string        `json:"token_url"`
-	Scopes       []string      `json:"scopes,omitempty"`
-	Token        *oauth2.Token `json:"token"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret,omitempty"`
+	AuthURL      string `json:"auth_url"`
+	TokenURL     string `json:"token_url"`
+	// AuthStyle is how the token endpoint takes a client secret.
+	AuthStyle oauth2.AuthStyle `json:"auth_style,omitempty"`
+	Scopes    []string         `json:"scopes,omitempty"`
+	Token     *oauth2.Token    `json:"token"`
 }
 
 // TokensDir is beside the event store: secrets nobody authored belong

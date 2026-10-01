@@ -15,6 +15,8 @@ type Registry struct {
 	mu    sync.RWMutex
 	tools map[string]Tool
 	order []string
+	// fixed is how many of order are built-ins, kept in their own order.
+	fixed int
 }
 
 // Standard is what detent ships.
@@ -25,6 +27,7 @@ func Standard() *Registry {
 	r.Register(WriteFile{})
 	r.Register(ListDir{})
 	r.Register(WebSearch{})
+	r.fixed = len(r.order)
 	return r
 }
 
@@ -70,6 +73,9 @@ func (r *Registry) Register(t Tool) {
 	n := t.Name()
 	if _, dup := r.tools[n]; !dup {
 		r.order = append(r.order, n)
+		// Sorted after the built-ins, so the order the model sees does
+		// not depend on which MCP server answered first.
+		slices.Sort(r.order[r.fixed:])
 	}
 	r.tools[n] = t
 }
@@ -81,7 +87,7 @@ func (r *Registry) Lookup(name string) (Tool, bool) {
 	return t, ok
 }
 
-// Names are in registration order, which is the order the model sees.
+// Names are the built-ins, then the rest by name: the order the model sees.
 func (r *Registry) Names() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

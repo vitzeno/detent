@@ -108,7 +108,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		}},
 		AuthorizationWaiting{Server: "notion", URL: "https://mcp.notion.com/authorize?state=s",
 			Until: time.UnixMilli(1_700_000_600_000).UTC()},
-		ServerAuthorized{Server: "notion", Tools: 12},
+		ServerAuthorized{Server: "notion"},
 		AuthorizationFailed{Server: "notion", Reason: "the link expired"},
 
 		SubmitPrompt{Text: "go"},

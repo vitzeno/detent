@@ -1,0 +1,196 @@
+package mcp
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"html"
+	"net"
+	"net/http"
+	"net/url"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/auth"
+
+	"github.com/vitzeno/detent/event"
+)
+
+// signInMax is a backstop for a human who walked away, not a deadline
+// on signing in; esc stops a Call waiting on one sooner.
+const signInMax = 10 * time.Minute
+
+var errSignInExpired = errors.New("the sign-in link expired")
+
+// SignIns is every sign-in waiting on a human. It publishes the link
+// and waits for the browser to come back; it never opens one unasked.
+type SignIns struct {
+	bus    *event.Bus
+	in     *Invokers
+	tokens Tokens
+	open   func(string) error
+	wait   time.Duration
+
+	mu    sync.Mutex
+	live  map[string]string // server to the link waiting now
+	asked map[string]bool   // server to whether this sign-in showed one
+}
+
+// NewSignIns takes how to open a link rather than doing it itself, so
+// ui runs no process and a test needs no browser. in may be nil.
+func NewSignIns(bus *event.Bus, in *Invokers, tokens Tokens, open func(string) error) *SignIns {
+	return &SignIns{bus: bus, in: in, tokens: tokens, open: open, wait: signInMax,
+		live: map[string]string{}, asked: map[string]bool{}}
+}
+
+// Open opens a waiting link in a browser, for OpenAuthorization.
+func (s *SignIns) Open(server string) error {
+	s.mu.Lock()
+	link := s.live[server]
+	s.mu.Unlock()
+	if link == "" {
+		return fmt.Errorf("no sign-in is waiting for %s", server)
+	}
+	return s.open(link)
+}
+
+// fetcher is the SDK's browser leg: publish the link, then wait for
+// the redirect on loopback, the context, or the bound.
+func (s *SignIns) fetcher(server string, port int) auth.AuthorizationCodeFetcher {
+	return func(ctx context.Context, args *auth.AuthorizationArgs) (*auth.AuthorizationResult, error) {
+		// Nothing to show a link on: the -mcp listing, or a test.
+		if s.bus == nil {
+			return nil, fmt.Errorf("%s needs signing in, and nothing here can show the link", server)
+		}
+		want, err := stateOf(args.URL)
+		if err != nil {
+			return nil, err
+		}
+		// Loopback only: served on every interface, the redirect hands
+		// the code to the network.
+		addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			return nil, fmt.Errorf("listening for the sign-in: %w; /mcp auth %s tries another port", err, server)
+		}
+		back := make(chan callback, 1)
+		srv := &http.Server{Handler: s.callback(server, addr, want, back), ReadHeaderTimeout: 5 * time.Second}
+		go func() { _ = srv.Serve(ln) }()
+		defer srv.Close()
+
+		s.waiting(server, args.URL)
+		defer s.waiting(server, "")
+		timer := time.NewTimer(s.wait)
+		defer timer.Stop()
+		select {
+		case got := <-back:
+			return got.result, got.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timer.C:
+			return nil, errSignInExpired
+		}
+	}
+}
+
+// callback is what came back on the redirect.
+type callback struct {
+	result *auth.AuthorizationResult
+	err    error
+}
+
+// callback answers the browser. A request that is not this sign-in's
+// is refused and the wait goes on, so a stray one cannot end it.
+func (s *SignIns) callback(server, host, want string, back chan<- callback) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if r.Host != host || q.Get("state") != want {
+			http.Error(w, "This is not the sign-in detent is waiting for.", http.StatusBadRequest)
+			return
+		}
+		got := callback{result: &auth.AuthorizationResult{Code: q.Get("code"), State: want, Iss: q.Get("iss")}}
+		page := "Signed in to " + server + ". You can go back to the terminal."
+		if e := q.Get("error"); e != "" {
+			got = callback{err: fmt.Errorf("%s refused the sign-in: %s", server, e)}
+			page = "Not signed in to " + server + ": " + e + "."
+		}
+		select {
+		case back <- got:
+		default:
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, "<!doctype html><title>detent</title><p>%s</p>\n", html.EscapeString(page))
+	})
+	return mux
+}
+
+// waiting publishes the link, or forgets it when link is "".
+func (s *SignIns) waiting(server, link string) {
+	s.mu.Lock()
+	if link == "" {
+		delete(s.live, server)
+		s.mu.Unlock()
+		return
+	}
+	s.live[server], s.asked[server] = link, true
+	s.mu.Unlock()
+	s.status(server, event.AuthWaiting)
+	s.bus.Publish(event.AuthorizationWaiting{Server: server, URL: link, Until: time.Now().Add(s.wait)})
+}
+
+// begin and end bracket one Authorize, so a sign-in that showed a link
+// always says how it ended.
+func (s *SignIns) begin(server string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.asked[server] = false
+}
+
+func (s *SignIns) end(server string, err error) {
+	s.mu.Lock()
+	asked := s.asked[server]
+	s.mu.Unlock()
+	if !asked {
+		return
+	}
+	if err != nil {
+		s.status(server, event.AuthSignedOut)
+		s.bus.Publish(event.AuthorizationFailed{Server: server, Reason: reason(err)})
+		return
+	}
+	s.status(server, event.AuthSignedIn)
+	s.bus.Publish(event.ServerAuthorized{Server: server})
+}
+
+func (s *SignIns) status(server, auth string) {
+	if s.in == nil {
+		return
+	}
+	s.in.setAuth(server, auth)
+	s.bus.Publish(event.ServersListed{Servers: s.in.Status()})
+}
+
+func reason(err error) string {
+	switch {
+	case errors.Is(err, errSignInExpired):
+		return "the link expired"
+	case errors.Is(err, context.Canceled):
+		return "stopped"
+	}
+	return err.Error()
+}
+
+// stateOf is the state the redirect must carry back.
+func stateOf(link string) (string, error) {
+	u, err := url.Parse(link)
+	if err != nil {
+		return "", fmt.Errorf("the sign-in link: %w", err)
+	}
+	state := u.Query().Get("state")
+	if state == "" {
+		return "", errors.New("the sign-in link carries no state")
+	}
+	return state, nil
+}

@@ -307,11 +307,10 @@ type AuthorizationWaiting struct {
 
 func (AuthorizationWaiting) Kind() Kind { return AuthorizationWaitingKind }
 
-// ServerAuthorized says a sign-in worked and the server answered.
+// ServerAuthorized says a sign-in worked: a token was got and saved.
 type ServerAuthorized struct {
 	fact
 	Server string
-	Tools  int
 }
 
 func (ServerAuthorized) Kind() Kind { return ServerAuthorizedKind }

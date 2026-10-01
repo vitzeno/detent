@@ -137,7 +137,7 @@ func TestTransport_PicksByTypeAndRefusesTheRest(t *testing.T) {
 		{"neither", Config{}, "no command or url"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := c.cfg.transport()
+			got, err := c.cfg.transport(nil)
 			if c.err == "" {
 				require.NoError(t, err)
 				assert.NotNil(t, got)
@@ -185,6 +185,6 @@ func TestLoad_RefusesAuthItCannotUse(t *testing.T) {
 // A launched process holds its own credentials; signing in to one has
 // no meaning, so saying so beats silently ignoring the field.
 func TestTransport_RefusesAuthOnALaunchedServer(t *testing.T) {
-	_, err := Config{Command: "npx", Auth: &Auth{}}.transport()
+	_, err := Config{Command: "npx", Auth: &Auth{}}.transport(nil)
 	assert.ErrorContains(t, err, "auth is for a url")
 }

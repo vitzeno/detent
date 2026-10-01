@@ -8,6 +8,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/modelcontextprotocol/go-sdk/auth"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/vitzeno/detent/event"
@@ -33,8 +34,8 @@ type Config struct {
 }
 
 // transport is how this server is reached, and says so when the
-// config describes no server at all or two of them.
-func (c Config) transport() (sdk.Transport, error) {
+// config describes no server at all or two of them. oauth signs in.
+func (c Config) transport(oauth auth.OAuthHandler) (sdk.Transport, error) {
 	switch {
 	case c.Command != "" && c.URL != "":
 		return nil, errors.New("set command or url, not both")
@@ -44,7 +45,7 @@ func (c Config) transport() (sdk.Transport, error) {
 		// one is a remote server that forgot to say which kind.
 		switch c.Type {
 		case "", "http", "streamable-http":
-			return HTTP{URL: c.URL, Headers: c.Headers}.Transport(), nil
+			return HTTP{URL: c.URL, Headers: c.Headers, Auth: oauth}.Transport(), nil
 		}
 		return nil, fmt.Errorf("transport %q is not supported; use http", c.Type)
 
@@ -60,9 +61,23 @@ func (c Config) transport() (sdk.Transport, error) {
 	return nil, errors.New("no command or url configured")
 }
 
+// ConnectOption adds to how ConnectAll dials.
+type ConnectOption func(*connecting)
+
+type connecting struct{ signins *SignIns }
+
+// WithSignIns lets a server configured with auth ask a human to sign
+// in. Without it, such a server connects on a saved token or fails.
+func WithSignIns(s *SignIns) ConnectOption { return func(c *connecting) { c.signins = s } }
+
 // ConnectAll lists every server first, then fills in the enabled ones:
-// dialled concurrently, reported as each settles, registered by name.
-func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers map[string]Config, report func(event.ServerSummary)) []error {
+// dialled concurrently, registered and reported as each settles.
+func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers map[string]Config,
+	report func(event.ServerSummary), opts ...ConnectOption) []error {
+	var how connecting
+	for _, o := range opts {
+		o(&how)
+	}
 	names := sorted(servers)
 	seeded := make([]event.ServerSummary, len(names))
 	for i, name := range names {
@@ -71,10 +86,11 @@ func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers m
 	}
 	in.seed(seeded)
 
-	dialled := make([]result, len(names))
-	// Settling and reporting under one lock, so a listing drawn from
-	// a report cannot go backwards when two servers answer together.
+	// Registered as each settles, not after all: a server waiting ten
+	// minutes for a sign-in must not keep every other's tools away.
+	// One lock, so a listing drawn from a report cannot go backwards.
 	var reporting sync.Mutex
+	failed := make([]error, len(names))
 	var wg sync.WaitGroup
 	for i, name := range names {
 		if servers[name].Disabled {
@@ -83,16 +99,28 @@ func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers m
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			got := dial(ctx, name, servers[name])
-			dialled[i] = got
+			c := servers[name]
+			got := dial(ctx, name, c, how.signins)
 
 			st := seeded[i]
 			st.Connected, st.Tools = got.err == nil, len(got.tools)
 			if got.err != nil {
 				st.Err = got.err.Error()
 			}
+			if c.Auth != nil {
+				st.Auth = event.AuthSignedOut
+				if got.err == nil {
+					st.Auth = event.AuthSignedIn
+				}
+			}
 			reporting.Lock()
 			defer reporting.Unlock()
+			switch {
+			case got.err != nil:
+				failed[i] = got.err
+			case got.server != nil:
+				in.Add(Register(reg, got.server, got.tools)...)
+			}
 			in.settle(st)
 			if report != nil {
 				report(st)
@@ -100,21 +128,16 @@ func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers m
 		}()
 	}
 	wg.Wait()
-
 	var errs []error
-	for i := range names {
-		got := dialled[i]
-		switch {
-		case got.err != nil:
-			errs = append(errs, got.err)
-		case got.server != nil:
-			in.Add(Register(reg, got.server, got.tools)...)
+	for _, err := range failed {
+		if err != nil {
+			errs = append(errs, err)
 		}
 	}
 	return errs
 }
 
-// result is one server's answer, held so registering can be ordered.
+// result is one server's answer.
 type result struct {
 	server *Server
 	tools  []*sdk.Tool
@@ -122,8 +145,19 @@ type result struct {
 }
 
 // dial connects one server and asks what it offers.
-func dial(ctx context.Context, name string, c Config) result {
-	t, err := c.transport()
+func dial(ctx context.Context, name string, c Config, signins *SignIns) result {
+	var oauth auth.OAuthHandler
+	if c.Auth != nil && c.URL != "" {
+		if signins == nil {
+			signins = NewSignIns(nil, nil, Tokens{Dir: TokensDir()}, nil)
+		}
+		h, err := oauthHandler(name, c.Auth, HTTP{Headers: c.Headers}.client(), signins)
+		if err != nil {
+			return result{err: err}
+		}
+		oauth = h
+	}
+	t, err := c.transport(oauth)
 	if err != nil {
 		return result{err: fmt.Errorf("mcp: %s: %w", name, err)}
 	}

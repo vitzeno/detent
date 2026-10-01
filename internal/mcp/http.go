@@ -3,6 +3,7 @@ package mcp
 import (
 	"net/http"
 
+	"github.com/modelcontextprotocol/go-sdk/auth"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -11,16 +12,23 @@ import (
 type HTTP struct {
 	URL     string
 	Headers map[string]string
+	// Auth signs in when the server answers 401. Nil is headers only.
+	Auth auth.OAuthHandler
 }
 
 // Transport builds what Connect needs. The SDK takes no headers, so
 // they ride on a client of our own.
 func (h HTTP) Transport() sdk.Transport {
-	client := http.DefaultClient
+	return &sdk.StreamableClientTransport{Endpoint: h.URL, HTTPClient: h.client(), OAuthHandler: h.Auth}
+}
+
+// client is the one every request to this server goes out on, signing
+// in included, so configured headers ride along there too.
+func (h HTTP) client() *http.Client {
 	if len(h.Headers) > 0 {
-		client = &http.Client{Transport: headers(h.Headers)}
+		return &http.Client{Transport: headers(h.Headers)}
 	}
-	return &sdk.StreamableClientTransport{Endpoint: h.URL, HTTPClient: client}
+	return http.DefaultClient
 }
 
 // headers adds the configured headers to every request.
