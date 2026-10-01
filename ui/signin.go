@@ -127,11 +127,17 @@ func signInPageLines(s *signInState, width int) []string {
 func (m Model) signInKey(s *signInState, key string) (tea.Model, tea.Cmd, bool) {
 	switch key {
 	case "enter", "o":
-		if s.stage != stageWaiting {
-			m.noteOK("asking " + s.server + " for a new link")
-			return m, m.send(event.AuthorizeServer{Server: s.server}), true
+		switch s.stage {
+		case stageWaiting:
+			return m, m.send(event.OpenAuthorization{Server: s.server}), true
+		case stageSignedIn:
+			// Asking again forgets the token: pressed on a fresh sign-in,
+			// that threw a working one away and every launch asked anew.
+			m.noteOK(s.server + " is already signed in · /mcp auth " + s.server + " signs in again")
+			return m, nil, true
 		}
-		return m, m.send(event.OpenAuthorization{Server: s.server}), true
+		m.noteOK("asking " + s.server + " for a new link")
+		return m, m.send(event.AuthorizeServer{Server: s.server}), true
 	case "c":
 		if s.stage != stageWaiting {
 			return m, nil, false

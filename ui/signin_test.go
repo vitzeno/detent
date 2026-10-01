@@ -138,3 +138,21 @@ func TestSignIn_TheRowKeepsItsWordsWhenStyled(t *testing.T) {
 	row := ansi.Strip(strings.Join(m.rowLines(m.focused(), nil), ""))
 	assert.Contains(t, row, "notion · sign in · waiting until 14:32")
 }
+
+// Signed in, the row's keys must not ask again: that forgets the token,
+// and pressing enter on a fresh sign-in made every launch ask anew.
+func TestSignIn_KeysOnASignedInRowKeepTheToken(t *testing.T) {
+	k := newKeyed(t)
+	k.m.apply(waitingFor("notion"))
+	k.m.apply(event.ServerAuthorized{Server: "notion"})
+	k.m.nav.focus = focusHistory
+	for _, key := range []string{"enter", "o"} {
+		k.press(t, key)
+		assert.Contains(t, k.m.notice.text, "already signed in")
+	}
+	select {
+	case rec := <-k.seen:
+		t.Fatalf("a signed-in row published %s", rec.Event.Kind())
+	case <-time.After(200 * time.Millisecond):
+	}
+}
