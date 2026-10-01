@@ -28,6 +28,8 @@ type Config struct {
 	Type string `json:"type"`
 	// Disabled keeps a server configured but unconnected.
 	Disabled bool `json:"disabled"`
+	// Auth signs in to a remote server with OAuth. Absent is headers only.
+	Auth *Auth `json:"auth"`
 }
 
 // transport is how this server is reached, and says so when the
@@ -47,6 +49,9 @@ func (c Config) transport() (sdk.Transport, error) {
 		return nil, fmt.Errorf("transport %q is not supported; use http", c.Type)
 
 	case c.Command != "":
+		if c.Auth != nil {
+			return nil, errors.New("auth is for a url; a launched server holds its own credentials")
+		}
 		if c.Type != "" && c.Type != "stdio" {
 			return nil, fmt.Errorf("type %q takes a url, not a command", c.Type)
 		}

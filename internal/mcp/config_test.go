@@ -148,3 +148,43 @@ func TestTransport_PicksByTypeAndRefusesTheRest(t *testing.T) {
 		})
 	}
 }
+
+// "oauth" signs in by registering a client; the object form names one
+// instead. Anything else fails at load, not as a sign-in never started.
+func TestLoad_ReadsAuth(t *testing.T) {
+	t.Setenv("NOTION_SECRET", "s3cret")
+	path := write(t, t.TempDir(), "mcp.json", `{"mcpServers": {
+      "notion": {"url": "https://mcp.notion.com/mcp", "auth": "oauth"},
+      "byhand": {"url": "https://x/mcp", "auth": {"oauth": {"client_id": "id", "client_secret": "${NOTION_SECRET}"}}},
+      "plain":  {"url": "https://y/mcp"}
+    }}`)
+	got, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, &Auth{}, got["notion"].Auth)
+	assert.Equal(t, &Auth{ClientID: "id", ClientSecret: "s3cret"}, got["byhand"].Auth)
+	assert.Nil(t, got["plain"].Auth, "absent is headers only")
+}
+
+func TestLoad_RefusesAuthItCannotUse(t *testing.T) {
+	for name, auth := range map[string]string{
+		"another scheme":       `"basic"`,
+		"a typo in a field":    `{"oauth": {"clientid": "x"}}`,
+		"a secret with no id":  `{"oauth": {"client_secret": "x"}}`,
+		"an unknown wrapper":   `{"saml": {}}`,
+		"two wrappers at once": `{"oauth": {}, "saml": {}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := write(t, t.TempDir(), "mcp.json",
+				`{"mcpServers": {"s": {"url": "https://x/mcp", "auth": `+auth+`}}}`)
+			_, err := Load(path)
+			assert.Error(t, err)
+		})
+	}
+}
+
+// A launched process holds its own credentials; signing in to one has
+// no meaning, so saying so beats silently ignoring the field.
+func TestTransport_RefusesAuthOnALaunchedServer(t *testing.T) {
+	_, err := Config{Command: "npx", Auth: &Auth{}}.transport()
+	assert.ErrorContains(t, err, "auth is for a url")
+}

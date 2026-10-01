@@ -1,7 +1,9 @@
 package mcp
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,6 +43,45 @@ func Load(paths ...string) (map[string]Config, error) {
 	return out, nil
 }
 
+// Auth is how a remote server is signed in to: "oauth" in a file, or
+// {"oauth": {...}} naming a client rather than registering one.
+type Auth struct {
+	// ClientIDMetadataURL is a client metadata document to sign in as.
+	ClientIDMetadataURL string `json:"client_id_metadata_url"`
+	// ClientID and ClientSecret are a client registered by hand.
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+}
+
+// UnmarshalJSON takes both shapes and refuses anything else, so a typo
+// fails at load rather than as a sign-in that never starts.
+func (a *Auth) UnmarshalJSON(b []byte) error {
+	var name string
+	if json.Unmarshal(b, &name) == nil {
+		if name != "oauth" {
+			return fmt.Errorf("auth %q is not supported; use \"oauth\"", name)
+		}
+		*a = Auth{}
+		return nil
+	}
+	var outer map[string]json.RawMessage
+	if err := json.Unmarshal(b, &outer); err != nil || len(outer) != 1 || outer["oauth"] == nil {
+		return errors.New(`auth must be "oauth" or {"oauth": {...}}`)
+	}
+	type plain Auth
+	var p plain
+	dec := json.NewDecoder(bytes.NewReader(outer["oauth"]))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&p); err != nil {
+		return fmt.Errorf("auth.oauth: %w", err)
+	}
+	if p.ClientSecret != "" && p.ClientID == "" {
+		return errors.New("auth.oauth: client_secret needs a client_id")
+	}
+	*a = Auth(p)
+	return nil
+}
+
 // file is the shape on disk. mcpServers is the key every client uses.
 type file struct {
 	Servers map[string]Config `json:"mcpServers"`
@@ -54,6 +95,12 @@ func (c Config) expanded() Config {
 	c.Args = expandAll(c.Args)
 	c.Env = expandMap(c.Env)
 	c.Headers = expandMap(c.Headers)
+	if c.Auth != nil {
+		a := *c.Auth
+		a.ClientIDMetadataURL, a.ClientID = expand(a.ClientIDMetadataURL), expand(a.ClientID)
+		a.ClientSecret = expand(a.ClientSecret)
+		c.Auth = &a
+	}
 	return c
 }
 
