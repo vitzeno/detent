@@ -20,6 +20,7 @@
 //	slash.go        the slash registry
 //	panel.go        the /usage, /status and /help pages
 //	undo.go         the undo question
+//	signin.go       a server asking to be signed in to
 //
 //	spec.go         viewspec wiring: registry, binding, fallbacks
 //	spec_paint.go   viewspec's Painter, over lipgloss

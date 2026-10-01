@@ -78,6 +78,8 @@ type callRow struct {
 	executor string
 	// human is a command the person typed, not one the model proposed.
 	human bool
+	// signin is set on a row that is a server asking to be signed in to.
+	signin *signInState
 
 	risk    event.Risk
 	running bool

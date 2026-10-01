@@ -249,6 +249,9 @@ func (m Model) rowLines(r, focused *callRow) []string {
 	if focused != nil && r == focused {
 		mark = styleRowCursor.Render("▸ ")
 	}
+	if r.signin != nil {
+		return m.signInRowLines(mark, r.signin)
+	}
 	// The model speaking, not a command: no status badge, because
 	// nothing ran and there is no exit code to report.
 	if r.prose != "" {

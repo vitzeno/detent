@@ -99,6 +99,20 @@ func (m *Model) apply(ev event.Event) {
 	case event.ViewReady:
 		m.viewReady(v)
 
+	case event.AuthorizationWaiting:
+		m.addSignIn(v)
+
+	case event.ServerAuthorized:
+		if s := m.signInFor(v.Server); s != nil {
+			s.stage = stageSignedIn
+		}
+		m.noteOK("signed in to " + v.Server)
+
+	case event.AuthorizationFailed:
+		if s := m.signInFor(v.Server); s != nil {
+			s.stage, s.reason = stageFailed, v.Reason
+		}
+
 	case event.RolledBack:
 		m.rolledBack(v.Turn)
 
@@ -263,6 +277,7 @@ func (m Model) Restore(records []event.Record) Model {
 		m.apply(r.Event)
 	}
 	m.replaying = false
+	m.staleSignIns()
 	m.trackNewest()
 	m.backToInput()
 	return m

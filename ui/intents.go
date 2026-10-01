@@ -82,9 +82,32 @@ func (m Model) listSessions(string) (tea.Model, tea.Cmd) {
 // listServers opens the page and asks, since ui cannot reach the
 // servers itself. Asked every time: a page that drew a stale answer
 // would be worse than one that blanks for a frame.
-func (m Model) listServers(string) (tea.Model, tea.Cmd) {
-	next, _ := m.openPanel(panelMCP)
-	return next, m.send(event.ListServers{})
+func (m Model) listServers(input string) (tea.Model, tea.Cmd) {
+	args := strings.Fields(strings.TrimPrefix(input, "/mcp"))
+	if len(args) == 0 {
+		next, _ := m.openPanel(panelMCP)
+		return next, m.send(event.ListServers{})
+	}
+	if len(args) != 2 || args[0] != "auth" {
+		m.noteErr("usage: /mcp, or /mcp auth <server>")
+		return m, nil
+	}
+	if !m.signsIn(args[1]) {
+		m.noteErr(args[1] + " is not an MCP server with auth configured")
+		return m, nil
+	}
+	m.noteOK("asking " + args[1] + " for a new link")
+	return m, m.send(event.AuthorizeServer{Server: args[1]})
+}
+
+// signsIn reports whether the last listing named server with auth.
+func (m Model) signsIn(server string) bool {
+	for _, s := range m.servers {
+		if s.Name == server {
+			return s.Auth != ""
+		}
+	}
+	return false
 }
 
 // renameSession names this run so a listing shows something a human

@@ -243,10 +243,18 @@ func serverState(s event.ServerSummary) string {
 	switch {
 	case s.Disabled:
 		return styleFaint.Render("disabled")
+	case s.Auth == event.AuthWaiting:
+		return styleCaution.Render("waiting for you to sign in")
+	case s.Auth == event.AuthSignedOut:
+		return styleCaution.Render("signed out · /mcp auth " + s.Name)
 	case s.Err != "":
 		return styleDanger.Render("not connected")
 	case !s.Connected:
 		return styleFaint.Render("connecting…")
+	case s.Auth == event.AuthWaiting:
+		return styleCaution.Render("waiting for you to sign in")
+	case s.Auth == event.AuthSignedOut && !s.Connected:
+		return styleCaution.Render("signed out · /mcp auth " + s.Name)
 	case s.Tools == 0:
 		return styleCaution.Render("connected, offers nothing")
 	}

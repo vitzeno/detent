@@ -139,6 +139,10 @@ func (m *Model) refreshViewport() {
 		m.setViewContent(styleFaint.Render("(no output yet)"))
 		return
 	}
+	if r.signin != nil {
+		m.setViewContent(strings.Join(signInPageLines(r.signin, paneInner(m.layout.outputColW)), "\n"))
+		return
+	}
 	var body string
 	cursor := -1
 	switch {

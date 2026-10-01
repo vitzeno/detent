@@ -215,6 +215,11 @@ func (m Model) slashKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 
 // outputKey acts inside the detail component instead of moving rows.
 func (m Model) outputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if r := m.focused(); r != nil && r.signin != nil {
+		if next, cmd, ok := m.signInKey(r.signin, msg.String()); ok {
+			return next, cmd
+		}
+	}
 	switch msg.String() {
 	case "up":
 		return m.outputNav(-1)
@@ -243,6 +248,11 @@ func (m Model) outputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) historyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if r := m.focused(); r != nil && r.signin != nil {
+		if next, cmd, ok := m.signInKey(r.signin, msg.String()); ok {
+			return next, cmd
+		}
+	}
 	switch msg.String() {
 	case "up":
 		return m.navUp()
