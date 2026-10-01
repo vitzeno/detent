@@ -52,7 +52,42 @@ func (s *SignIns) Open(server string) error {
 	if link == "" {
 		return fmt.Errorf("no sign-in is waiting for %s", server)
 	}
+	if err := openable(link); err != nil {
+		return err
+	}
 	return s.open(link)
+}
+
+// waitingFor reports whether a link for server is out now.
+func (s *SignIns) waitingFor(server string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.live[server] != ""
+}
+
+// publish is a no-op with no bus, as for the -mcp listing.
+func (s *SignIns) publish(e event.Event) {
+	if s.bus != nil {
+		s.bus.Publish(e)
+	}
+}
+
+// openable allows https, or http to this machine. The address comes
+// from the server's own metadata, and "open" launches whatever it names.
+func openable(link string) error {
+	u, err := url.Parse(link)
+	if err != nil {
+		return fmt.Errorf("the sign-in link: %w", err)
+	}
+	host := u.Hostname()
+	ip := net.ParseIP(host)
+	switch {
+	case u.Scheme == "https":
+		return nil
+	case u.Scheme == "http" && (host == "localhost" || (ip != nil && ip.IsLoopback())):
+		return nil
+	}
+	return fmt.Errorf("refusing a sign-in link to %s://%s: only https is opened", u.Scheme, host)
 }
 
 // fetcher is the SDK's browser leg: publish the link, then wait for
@@ -62,6 +97,9 @@ func (s *SignIns) fetcher(server string, port int) auth.AuthorizationCodeFetcher
 		// Nothing to show a link on: the -mcp listing, or a test.
 		if s.bus == nil {
 			return nil, fmt.Errorf("%s needs signing in, and nothing here can show the link", server)
+		}
+		if err := openable(args.URL); err != nil {
+			return nil, err
 		}
 		want, err := stateOf(args.URL)
 		if err != nil {
@@ -169,7 +207,7 @@ func (s *SignIns) status(server, auth string) {
 		return
 	}
 	s.in.setAuth(server, auth)
-	s.bus.Publish(event.ServersListed{Servers: s.in.Status()})
+	s.publish(event.ServersListed{Servers: s.in.Status()})
 }
 
 func reason(err error) string {

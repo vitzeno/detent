@@ -80,6 +80,19 @@ func (r *Registry) Register(t Tool) {
 	r.tools[n] = t
 }
 
+// Unregister removes tools, as when an MCP server is dialled again and
+// its old session's tools must not outlive it.
+func (r *Registry) Unregister(names ...string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, n := range names {
+		if _, ok := r.tools[n]; ok {
+			delete(r.tools, n)
+			r.order = slices.DeleteFunc(r.order, func(o string) bool { return o == n })
+		}
+	}
+}
+
 func (r *Registry) Lookup(name string) (Tool, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

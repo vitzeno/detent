@@ -47,6 +47,23 @@ func (i *Invokers) settle(s event.ServerSummary) {
 	i.status = append(i.status, s)
 }
 
+// drop removes a server's tools, handing back their names and the
+// session to close.
+func (i *Invokers) drop(server string) (*Server, []string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	var old *Server
+	var names []string
+	for name, t := range i.tools {
+		if t.server.Name == server {
+			old = t.server
+			names = append(names, name)
+			delete(i.tools, name)
+		}
+	}
+	return old, names
+}
+
 // setAuth records where a server's sign-in stands, for /mcp to draw.
 func (i *Invokers) setAuth(server, auth string) {
 	i.mu.Lock()

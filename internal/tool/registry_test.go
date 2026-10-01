@@ -171,3 +171,15 @@ func TestRegistry_RegisterOverridesWithoutDuplicating(t *testing.T) {
 	r.Register(Bash{})
 	assert.Len(t, r.Names(), before, "re-registering a name must replace, not append")
 }
+
+// A server dialled again takes its old tools with it, so the model is
+// never offered one whose session is closed.
+func TestRegistry_UnregisterRemovesFromWhatTheModelSees(t *testing.T) {
+	r := Standard()
+	before := len(r.Names())
+	r.Unregister("bash", "no-such-tool")
+	_, ok := r.Lookup("bash")
+	assert.False(t, ok)
+	assert.Len(t, r.Names(), before-1)
+	assert.NotContains(t, r.Names(), "bash")
+}

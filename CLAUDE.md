@@ -195,12 +195,12 @@ subscribers:
 | `internal/store` | the SQLite log, answers `ListSessions` | resume stops, nothing else |
 | `internal/judge` | scores a finished Call, may `RequestStop` | rows lose their verdict |
 | `internal/viewgen` | composes the view for an output | rows fall back to text |
-| `internal/mcp` | answers `ListServers` | `/mcp` draws nothing |
+| `internal/mcp` | answers `ListServers`, signs in on `AuthorizeServer` | `/mcp` draws nothing, no server signs in |
 | `internal/forget` | answers `DeleteSession` | `/delete` does nothing |
 | `internal/humanshell` | runs `RunCommand`, the human's own | shift+tab stops working |
 
 **The engine is not the only intent subscriber**, and a sentence here
-once said it was. Four packages own an intent apiece. What holds is
+once said it was. Four packages own intents of their own. What holds is
 narrower: each intent kind has exactly one owner, and the engine owns
 the ones that drive the loop. Disjointness is what makes several
 subscribers sound, and it is why cancelling a command is its own
@@ -310,8 +310,10 @@ adding a fat dependency fails with the transitive import named.
   shares: `Result`, `StreamEvent`, `MaxOutputBytes`, `ScanCapped`. No
   `exec.Cmd` or containerd knowledge of its own.
 
-- **`internal/host`** — the only place `exec.Command` is called, all in
-  `shell.go`. A non-zero exit is a `Result`, not an error.
+- **`internal/host`** — runs a command on this machine, all in
+  `shell.go`. Not the only `exec.Command`: a stdio MCP server, the
+  worktree's git and opening a sign-in link each start their own
+  process. A non-zero exit is a `Result`, not an error.
 
 - **`internal/sandbox`** — `Container`, a session-scoped containerd
   Runner, one per session so filesystem state accumulates. Imports

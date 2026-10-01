@@ -101,18 +101,7 @@ func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers m
 			defer wg.Done()
 			c := servers[name]
 			got := dial(ctx, name, c, how.signins)
-
-			st := seeded[i]
-			st.Connected, st.Tools = got.err == nil, len(got.tools)
-			if got.err != nil {
-				st.Err = got.err.Error()
-			}
-			if c.Auth != nil {
-				st.Auth = event.AuthSignedOut
-				if got.err == nil {
-					st.Auth = event.AuthSignedIn
-				}
-			}
+			st := summarise(seeded[i], c, got)
 			reporting.Lock()
 			defer reporting.Unlock()
 			switch {
@@ -135,6 +124,58 @@ func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers m
 		}
 	}
 	return errs
+}
+
+// summarise is what /mcp shows of a server once dialling it settled.
+func summarise(st event.ServerSummary, c Config, got result) event.ServerSummary {
+	st.Connected, st.Tools = got.err == nil, len(got.tools)
+	if got.err != nil {
+		st.Err = got.err.Error()
+	}
+	if c.Auth != nil {
+		st.Auth = event.AuthSignedOut
+		if got.err == nil {
+			st.Auth = event.AuthSignedIn
+		}
+	}
+	return st
+}
+
+// Redialer dials one server again after forgetting its token, so an
+// AuthorizeServer always ends in a fresh sign-in, never a silent reuse.
+func Redialer(ctx context.Context, reg *tool.Registry, in *Invokers, servers map[string]Config,
+	signins *SignIns) func(string) error {
+	return func(name string) error {
+		c, ok := servers[name]
+		switch {
+		case !ok:
+			return fmt.Errorf("no MCP server is called %s", name)
+		case c.Auth == nil:
+			return fmt.Errorf(`%s has no auth configured; add "auth": "oauth" to its entry`, name)
+		case c.Disabled:
+			return fmt.Errorf("%s is disabled in the config", name)
+		case signins.waitingFor(name):
+			return fmt.Errorf("a sign-in for %s is already waiting", name)
+		}
+		if err := signins.tokens.Forget(name); err != nil {
+			return err
+		}
+		got := dial(ctx, name, c, signins)
+		st := summarise(event.ServerSummary{Name: name, Command: describeConfig(c)}, c, got)
+		if got.err == nil {
+			// Swapped, not added: the old session's tools go with it, or
+			// a re-registered tool would rename itself beside the stale one.
+			old, names := in.drop(name)
+			reg.Unregister(names...)
+			in.Add(Register(reg, got.server, got.tools)...)
+			if old != nil {
+				_ = old.Close()
+			}
+		}
+		in.settle(st)
+		signins.publish(event.ServersListed{Servers: in.Status()})
+		return got.err
+	}
 }
 
 // result is one server's answer.

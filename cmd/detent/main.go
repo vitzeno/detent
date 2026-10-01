@@ -295,8 +295,10 @@ func run() error {
 	// see what the agent just did is not worth having.
 	shellRunner, shellWhere := runners.Select(event.UnknownRisk())
 	sd.shell = humanshell.Watch(bus, shellRunner, shellWhere)
-	sd.unwatch = append(sd.unwatch, mcppkg.Watch(bus, servers))
-	sd.connect = connectServers(ctx, bus, tools, servers, configured)
+	signins := mcppkg.NewSignIns(bus, servers, mcppkg.Tokens{Dir: mcppkg.TokensDir()}, openBrowser)
+	sd.unwatch = append(sd.unwatch, mcppkg.Watch(bus, servers,
+		mcppkg.Redialer(ctx, tools, servers, configured, signins), signins))
+	sd.connect = connectServers(ctx, bus, tools, servers, configured, signins)
 	sd.engine = runEngine(ctx, eng)
 
 	// Altscreen is declared by ui.Model.View, not set here — under
@@ -471,17 +473,17 @@ func loadMCPConfig(enabled bool, files []string) (map[string]mcppkg.Config, erro
 // publishes each server as it settles so an open /mcp fills in. The
 // channel closes when it is done, which is what shutdown waits on.
 func connectServers(ctx context.Context, bus *event.Bus, tools *tool.Registry,
-	servers *mcppkg.Invokers, configured map[string]mcppkg.Config) <-chan struct{} {
+	servers *mcppkg.Invokers, configured map[string]mcppkg.Config, signins *mcppkg.SignIns) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		connectAll(ctx, bus, tools, servers, configured)
+		connectAll(ctx, bus, tools, servers, configured, signins)
 	}()
 	return done
 }
 
 func connectAll(ctx context.Context, bus *event.Bus, tools *tool.Registry,
-	servers *mcppkg.Invokers, configured map[string]mcppkg.Config) {
+	servers *mcppkg.Invokers, configured map[string]mcppkg.Config, signins *mcppkg.SignIns) {
 	if len(configured) == 0 {
 		return
 	}
@@ -490,7 +492,7 @@ func connectAll(ctx context.Context, bus *event.Bus, tools *tool.Registry,
 			bus.Publish(event.Notice{Level: "error", Text: s.Err})
 		}
 		bus.Publish(event.ServersListed{Servers: servers.Status()})
-	})
+	}, mcppkg.WithSignIns(signins))
 	if n := len(servers.Servers()); n > 0 && len(errs) == 0 {
 		bus.Publish(event.Notice{Level: "info", Text: fmt.Sprintf("%d mcp server(s) ready", n)})
 	}
