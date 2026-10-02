@@ -36,6 +36,8 @@ type Param struct {
 	Type     string // string, integer, boolean
 	Desc     string
 	Required bool
+	// Enum, when set, is every value the parameter may take.
+	Enum []string
 }
 
 // Args are one call's arguments, already validated against the Spec.

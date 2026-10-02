@@ -67,9 +67,11 @@ type Model struct {
 
 	// run is how this session described itself at startup, and
 	// sessions is what /sessions last heard back.
-	run      event.SessionStarted
-	sessions []event.SessionSummary
-	servers  []event.ServerSummary
+	run event.SessionStarted
+	// skillCmds are /<name> for the skills run names.
+	skillCmds []slashCmd
+	sessions  []event.SessionSummary
+	servers   []event.ServerSummary
 
 	welcomeFrame int
 	viewContent  string

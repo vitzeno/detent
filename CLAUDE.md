@@ -376,6 +376,15 @@ adding a fat dependency fails with the transitive import named.
   Capped at 128KB (about 32k tokens), outermost file cut first. The cap
   is fixed, not scaled to `context_tokens`, so a small window feels it.
 
+- **`internal/skills`**: Agent Skills, found in `.agents/skills` and
+  `.claude/skills` from the git root down, then the human's own. Parsing
+  is lenient, as the standard's guide says. `tool.Skill` loads one by
+  lowering to a read of its `SKILL.md`, not through the invoker, since
+  `mcpFloor` would flag every load. Its `name` is an enum, so under strict
+  mode the endpoint refuses a skill that does not exist. In the sandbox a
+  skill outside the working directory is a read-only mount
+  (`sandbox.WithReadOnly`).
+
 - **`internal/forget`**: what a deleted session leaves: its events,
   and the container nothing will resume. The log stays, since a
   diagnostic outliving the thing it describes is the point of one. The

@@ -31,6 +31,18 @@ type SessionStarted struct {
 	ContextTokens int
 	// Instructions are the project files the system prompt carries.
 	Instructions []string
+	// Skills are what the skill tool can load and the human can ask for.
+	Skills []SkillSummary
+}
+
+// SkillSummary is one skill found at startup.
+type SkillSummary struct {
+	Name        string
+	Description string
+	// Project is false for one from the human's home directory.
+	Project bool
+	// UserInvocable is false for a skill only the model may load.
+	UserInvocable bool
 }
 
 func (SessionStarted) Kind() Kind { return SessionStartedKind }

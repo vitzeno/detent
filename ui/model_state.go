@@ -69,6 +69,7 @@ const (
 	panelHelp
 	panelSessions
 	panelMCP
+	panelSkills
 )
 
 // forgetState is the session /delete is asking about.

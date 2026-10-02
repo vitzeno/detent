@@ -60,6 +60,7 @@ type Engine struct {
 	resumed   int
 	// instructions name the files the prompt carries, for SessionStarted.
 	instructions []string
+	skills       []event.SkillSummary
 
 	// intents is subscribed in New, not Run, so a caller publishing the
 	// moment New returns cannot lose it.
@@ -107,7 +108,7 @@ func (e *Engine) Run(ctx context.Context) {
 		Sandbox: mode == "sandbox",
 		Network: e.network, MaxSteps: e.maxSteps,
 		Recorded: e.recorded, Resumed: e.resumed,
-		ContextTokens: e.budget(), Instructions: e.instructions,
+		ContextTokens: e.budget(), Instructions: e.instructions, Skills: e.skills,
 	})
 	done := make(chan struct{}, 1)
 

@@ -143,6 +143,10 @@ func run() error {
 		return listServers()
 	}
 
+	// Found before the container, which has to mount the ones outside the working directory.
+	home, _ := os.UserHomeDir()
+	found := findSkills(model.LocalEnvironment().Dir, home, resolved.SandboxWorkspace, resolved.SandboxMode == "auto")
+
 	runners := routing.Selector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
 	var container *sandbox.Container
 	// The model is told where commands actually run, so it writes for
@@ -170,6 +174,7 @@ func run() error {
 			sandbox.WithMountPoint(resolved.SandboxWorkspace),
 			sandbox.WithRuntime(resolved.SandboxRuntime),
 			sandbox.WithNetwork(resolved.SandboxNetwork),
+			sandbox.WithReadOnly(found.mounts),
 		)
 		if err := container.Start(context.Background(), sessionID.String()); err != nil {
 			return fmt.Errorf("sandbox: starting container: %w", err)
@@ -216,6 +221,7 @@ func run() error {
 			resolved.SandboxNetwork != sandbox.NetworkNone, events != nil),
 		engine.WithContextTokens(resolved.ContextTokens),
 		engine.WithInstructions(instructions.Paths(files)),
+		engine.WithSkills(found.summaries),
 		engine.WithMaxSteps(resolved.Steps),
 		// The same endpoint compacts its own history when it outgrows
 		// that budget.
@@ -234,7 +240,7 @@ func run() error {
 
 	// Connected before the engine, which takes the registry by value.
 	// Headless reads none: config expands secrets, servers start processes.
-	tools := tool.Standard()
+	tools := tool.Standard(found.skillTools()...)
 	configured, err := loadMCPConfig(*prompt == "", mcppkg.Files())
 	if err != nil {
 		return err
@@ -276,6 +282,9 @@ func run() error {
 		ctx, untrap := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 		defer untrap()
 
+		for _, w := range found.warnings {
+			fmt.Fprintln(os.Stderr, w)
+		}
 		sd.engine = runEngine(ctx, eng)
 		approve := headless.Approver(nil)
 		if *unattended {
@@ -296,6 +305,9 @@ func run() error {
 	// Built before the engine runs: SessionStarted is published once,
 	// and a front-end that subscribes afterwards loses it.
 	model := ui.New(ctx, bus, info).Restore(restore)
+	for _, w := range found.warnings {
+		bus.Publish(event.Notice{Level: "warn", Text: w})
+	}
 	// The same runner the model's commands go to: a shell that cannot
 	// see what the agent just did is not worth having.
 	shellRunner, shellWhere := runners.Select(event.UnknownRisk())

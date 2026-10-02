@@ -43,6 +43,30 @@ func TestContainer_StatePersistsAcrossRuns(t *testing.T) {
 	assert.Equal(t, "hello\n", res.Stdout, "state from the first Run must persist into the second")
 }
 
+// A skill is mounted for reading: the model can load it, never rewrite it.
+func TestContainer_ReadOnlyMountsCannotBeWritten(t *testing.T) {
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	// Under the working directory, since colima shares only $HOME with its VM.
+	src := filepath.Join(wd, ".sandbox-test-skills")
+	require.NoError(t, os.MkdirAll(src, 0o755))
+	t.Cleanup(func() { os.RemoveAll(src) })
+	require.NoError(t, os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("be careful\n"), 0o644))
+
+	c := newTestContainer(t, WithReadOnly(map[string]string{src: "/opt/detent/skills/0"}))
+	ctx := context.Background()
+
+	res, err := c.Run(ctx, "cat /opt/detent/skills/0/SKILL.md", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "be careful\n", res.Stdout)
+
+	res, err = c.Run(ctx, "echo changed > /opt/detent/skills/0/SKILL.md", nil)
+	require.NoError(t, err)
+	assert.NotEqual(t, 0, res.ExitCode, "the write must fail")
+	got, _ := os.ReadFile(filepath.Join(src, "SKILL.md"))
+	assert.Equal(t, "be careful\n", string(got))
+}
+
 func TestContainer_WorkspaceMountParity(t *testing.T) {
 	c := newTestContainer(t)
 	ctx := context.Background()
@@ -475,12 +499,12 @@ func testContainerID(t *testing.T) string {
 	return strings.ReplaceAll(strings.ToLower(t.Name()), "/", "-") + "-" + hex.EncodeToString(b[:])
 }
 
-func newTestContainer(t *testing.T) *Container {
+func newTestContainer(t *testing.T, opts ...Option) *Container {
 	t.Helper()
 	if !daemonAvailable() {
 		t.Skip("containerd not reachable at", testSocket)
 	}
-	c := NewContainer(WithSocket(testSocket), WithNamespace("detent-test"))
+	c := NewContainer(append([]Option{WithSocket(testSocket), WithNamespace("detent-test")}, opts...)...)
 	id := testContainerID(t)
 	require.NoError(t, c.Start(context.Background(), id))
 	t.Cleanup(func() {

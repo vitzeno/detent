@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/vitzeno/detent/ui/welcome"
@@ -154,16 +153,6 @@ func (m *Model) scrollToLine(line int) {
 	case line+scrollMargin >= top+h:
 		m.output.SetYOffset(line + scrollMargin - h + 1)
 	}
-}
-
-// helpLines lists every slash command via matchSlash("/"), so there is
-// no separate list to keep in sync.
-func helpLines() []string {
-	var lines []string
-	for _, c := range matchSlash("/") {
-		lines = append(lines, fmt.Sprintf("  %-10s %s", c.Name, c.Desc))
-	}
-	return lines
 }
 
 // welcomePane hands the boot pane the facts it reports, so nothing in

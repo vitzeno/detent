@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/vitzeno/detent/event"
 )
 
 // Option configures an Engine at New.
@@ -79,6 +81,11 @@ func WithDescription(model, judge string, network, recorded bool) Option {
 // WithInstructions names the instruction files the model's prompt carries.
 func WithInstructions(paths []string) Option {
 	return func(e *Engine) { e.instructions = paths }
+}
+
+// WithSkills names the skills found at startup, for SessionStarted.
+func WithSkills(s []event.SkillSummary) Option {
+	return func(e *Engine) { e.skills = s }
 }
 
 // WithSessionID sets the session id, as a resume does.

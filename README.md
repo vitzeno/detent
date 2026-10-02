@@ -60,7 +60,7 @@ A Step can ask for several Calls and runs the read-only ones together. A Turn
 runs Steps until the model stops asking for tools, capped at 50. The cap asks
 whether to continue rather than stopping
 
-Current Tools: `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`, `grep`, `find_files`, `web_search`.
+Current Tools: `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`, `grep`, `find_files`, `web_search`, and `skill` when there are skills.
 
 `web_search` is just curl so no API key exists, it needs the sandbox to have network, which is the default
 
@@ -184,6 +184,16 @@ detent reads the instruction files a project keeps for coding agents and adds th
 `~/.config/detent/AGENTS.md` is your own, read first in every project
 
 Together they are capped at 128KB, about 32k tokens, cutting the outermost file first. That suits a large-window model, but on a small local one the files can take most of the context, so keep them short there. `/status` lists which were read
+
+## Skills
+
+Agent Skills ([agentskills.io](https://agentskills.io)) written for Claude Code, Codex, Cursor and the rest work unchanged: a folder holding a `SKILL.md` with a `name` and `description`
+
+Found in `.agents/skills/` and `.claude/skills/` from the git root down, then `~/.agents/skills/` and `~/.claude/skills/`. A project skill beats your own of the same name
+
+The model sees each name and description and loads a skill with the `skill` tool when a request fits. `/skills` lists them, and `/<name> what to do` asks for one by hand
+
+In the sandbox your own skills are mounted read-only, so they can be read and their scripts run but never changed. `allowed-tools` is ignored: nothing pre-approves a command
 
 ## Configuration
 

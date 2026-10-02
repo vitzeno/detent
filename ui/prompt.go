@@ -14,7 +14,9 @@ import (
 type prompt struct {
 	input   textarea.Model
 	matches []slashCmd
-	cursor  int
+	// extra are commands beyond the built-ins, a skill's /name.
+	extra  []slashCmd
+	cursor int
 
 	// richKeys is true once the terminal agreed to the Kitty keyboard
 	// protocol, without which shift+enter arrives as a plain enter.
@@ -121,9 +123,8 @@ func (p *prompt) Close() {
 	p.cursor = 0
 }
 
-// IsExactCommand reports whether what's typed is already a whole
-// command, so enter should run it rather than complete it.
-func (p prompt) IsExactCommand() bool { return exactSlash(p.input.Value()) }
+// SetExtraCommands adds commands beyond the built-ins to the dropdown.
+func (p *prompt) SetExtraCommands(cmds []slashCmd) { p.extra = cmds }
 
 // SetRichKeys records what the terminal agreed to, so the hint can
 // name a key that actually works there.
@@ -193,7 +194,7 @@ func (p *prompt) rematch() {
 		p.Close()
 		return
 	}
-	p.matches = matchSlash(p.input.Value())
+	p.matches = matchSlash(p.input.Value(), p.extra)
 	if p.cursor >= len(p.matches) {
 		p.cursor = 0
 	}

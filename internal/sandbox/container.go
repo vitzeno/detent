@@ -7,10 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,6 +64,8 @@ type Container struct {
 	limit      int
 	runtime    string
 	network    string
+	// readOnly maps host directories to where they appear, unwritable.
+	readOnly map[string]string
 
 	client    *containerd.Client
 	lease     *leases.Lease // roots this session's checkpoints, see snapshot.go
@@ -131,12 +135,7 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 		oci.WithImageConfig(img),
 		oci.WithProcessArgs("sh", "-c", "true"),
 		oci.WithProcessCwd(c.mountPoint),
-		oci.WithMounts([]specs.Mount{{
-			Type:        "bind",
-			Source:      workspace,
-			Destination: c.mountPoint,
-			Options:     []string{"rbind", "rw"},
-		}}),
+		oci.WithMounts(c.mounts(workspace)),
 	}
 	if c.network == NetworkHost {
 		// resolv.conf and hosts come too, or DNS resolves nothing.
@@ -370,4 +369,14 @@ func resolveImage(ctx context.Context, client *containerd.Client, ref string) (c
 // shellQuote single-quotes s for safe interpolation into a sh -c string.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// mounts is the workspace, writable, then each read-only directory in a
+// stable order so the spec is the same from run to run.
+func (c *Container) mounts(workspace string) []specs.Mount {
+	out := []specs.Mount{{Type: "bind", Source: workspace, Destination: c.mountPoint, Options: []string{"rbind", "rw"}}}
+	for _, src := range slices.Sorted(maps.Keys(c.readOnly)) {
+		out = append(out, specs.Mount{Type: "bind", Source: src, Destination: c.readOnly[src], Options: []string{"rbind", "ro"}})
+	}
+	return out
 }

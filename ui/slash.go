@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/vitzeno/detent/event"
 )
 
 // Input-bar commands: registry, prefix matching, dropdown. Each entry
@@ -37,6 +39,9 @@ func slashCommands() []slashCmd {
 			return m.openPanel(panelStatus)
 		}},
 		{Name: "/sessions", Desc: "list the sessions that can be resumed", run: Model.listSessions},
+		{Name: "/skills", Desc: "show the skills this session found", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
+			return m.openPanel(panelSkills)
+		}},
 		{Name: "/mcp", Desc: "show the MCP servers, or /mcp auth <server> to sign in again", run: Model.listServers},
 		{Name: "/rename", Desc: "name this session, e.g. /rename the sandbox bug",
 			run: Model.renameSession, answers: true},
@@ -56,9 +61,38 @@ func slashCommands() []slashCmd {
 	}
 }
 
+// skillCommands are /<name> for each skill the human may ask for. One
+// that shares a built-in's name is left out, since the built-in wins.
+func skillCommands(skills []event.SkillSummary) []slashCmd {
+	var out []slashCmd
+	for _, s := range skills {
+		name := "/" + s.Name
+		if !s.UserInvocable {
+			continue
+		}
+		if _, taken := lookupSlash(name, nil); taken {
+			continue
+		}
+		skill := s.Name
+		out = append(out, slashCmd{Name: name, Desc: "skill: " + s.Description,
+			run: func(m Model, input string) (tea.Model, tea.Cmd) { return m.useSkill(skill, input) }})
+	}
+	return out
+}
+
+// useSkill asks the model to load a skill, so a skill asked for by hand
+// is a skill Call like any other, and replays as one.
+func (m Model) useSkill(name, input string) (tea.Model, tea.Cmd) {
+	text := "Load the " + name + " skill and follow it."
+	if _, rest, ok := strings.Cut(strings.TrimSpace(input), " "); ok && strings.TrimSpace(rest) != "" {
+		text += " The request: " + strings.TrimSpace(rest)
+	}
+	return m.sendPrompt(text)
+}
+
 // runSlash dispatches input to the command its first word names.
 func (m Model) runSlash(input string) (tea.Model, tea.Cmd) {
-	c, ok := lookupSlash(input)
+	c, ok := lookupSlash(input, m.skillCmds)
 	if !ok {
 		m.noteErr("unknown command " + input + " (try /help)")
 		return m, nil
@@ -84,12 +118,12 @@ const maxSlashRows = 6
 
 // matchSlash returns registry entries with the given input as a
 // prefix. Input must start with "/", or nothing matches.
-func matchSlash(input string) []slashCmd {
+func matchSlash(input string, extra []slashCmd) []slashCmd {
 	if !strings.HasPrefix(input, "/") {
 		return nil
 	}
 	var out []slashCmd
-	for _, c := range slashCommands() {
+	for _, c := range append(slashCommands(), extra...) {
 		if strings.HasPrefix(c.Name, strings.ToLower(input)) {
 			out = append(out, c)
 		}
@@ -97,20 +131,14 @@ func matchSlash(input string) []slashCmd {
 	return out
 }
 
-// exactSlash reports whether input is exactly one registry command.
-func exactSlash(input string) bool {
-	_, ok := lookupSlash(input)
-	return ok
-}
-
 // lookupSlash finds the command named by the first word of input.
-func lookupSlash(input string) (slashCmd, bool) {
+func lookupSlash(input string, extra []slashCmd) (slashCmd, bool) {
 	fields := strings.Fields(input)
 	if len(fields) == 0 {
 		return slashCmd{}, false
 	}
 	name := strings.ToLower(fields[0])
-	for _, c := range slashCommands() {
+	for _, c := range append(slashCommands(), extra...) {
 		if c.Name == name {
 			return c, true
 		}

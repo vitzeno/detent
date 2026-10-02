@@ -19,8 +19,8 @@ type Registry struct {
 	fixed int
 }
 
-// Standard is what detent ships.
-func Standard() *Registry {
+// Standard is what detent ships, plus extra built-ins such as skill.
+func Standard(extra ...Tool) *Registry {
 	r := &Registry{tools: map[string]Tool{}}
 	r.Register(Bash{})
 	r.Register(ReadFile{})
@@ -30,6 +30,9 @@ func Standard() *Registry {
 	r.Register(Grep{})
 	r.Register(FindFiles{})
 	r.Register(WebSearch{})
+	for _, t := range extra {
+		r.Register(t)
+	}
 	r.fixed = len(r.order)
 	return r
 }
@@ -147,7 +150,18 @@ func schema(s Spec) map[string]any {
 		if !p.Required {
 			t = []string{p.Type, "null"}
 		}
-		props[p.Name] = map[string]any{"type": t, "description": p.Desc}
+		prop := map[string]any{"type": t, "description": p.Desc}
+		if len(p.Enum) > 0 {
+			values := make([]any, 0, len(p.Enum)+1)
+			for _, v := range p.Enum {
+				values = append(values, v)
+			}
+			if !p.Required {
+				values = append(values, nil)
+			}
+			prop["enum"] = values
+		}
+		props[p.Name] = prop
 		required = append(required, p.Name)
 	}
 	sort.Strings(required)
@@ -184,6 +198,10 @@ func validate(s Spec, args map[string]any) (Args, error) {
 		cast, err := coerce(p, v)
 		if err != nil {
 			return nil, err
+		}
+		// Strict mode enforces an enum, but not every endpoint is strict.
+		if s, ok := cast.(string); ok && len(p.Enum) > 0 && !slices.Contains(p.Enum, s) {
+			return nil, fmt.Errorf("parameter %q must be one of: %s, got %q", p.Name, strings.Join(p.Enum, ", "), s)
 		}
 		out[p.Name] = cast
 	}

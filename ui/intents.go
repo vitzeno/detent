@@ -23,6 +23,11 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 	if strings.HasPrefix(text, "/") {
 		return m.runSlash(text)
 	}
+	return m.sendPrompt(text)
+}
+
+// sendPrompt hands text to the engine as a request, or as steering.
+func (m Model) sendPrompt(text string) (tea.Model, tea.Cmd) {
 	// cur is nil between Turns, so it says whether the engine will read
 	// this as a note or start a Turn with it.
 	if m.cur == nil {

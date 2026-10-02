@@ -166,6 +166,8 @@ func panelName(k panelKind) string {
 		return "sessions"
 	case panelMCP:
 		return "mcp"
+	case panelSkills:
+		return "skills"
 	}
 	return "detent"
 }

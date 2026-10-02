@@ -36,6 +36,8 @@ func (m *Model) apply(ev event.Event) {
 	switch v := ev.(type) {
 	case event.SessionStarted:
 		m.run = v
+		m.skillCmds = skillCommands(v.Skills)
+		m.prompt.SetExtraCommands(m.skillCmds)
 
 	case event.SessionsListed:
 		m.sessions = v.Sessions

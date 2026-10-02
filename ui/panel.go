@@ -45,8 +45,31 @@ func (m *Model) panelLines() []string {
 		return m.sessionLines()
 	case panelMCP:
 		return m.mcpLines()
+	case panelSkills:
+		return m.skillLines()
 	}
 	return nil
+}
+
+// skillLines lists the skills found at startup, and who may ask for each.
+func (m *Model) skillLines() []string {
+	out := []string{styleGoal.Render("skills"), ""}
+	if len(m.run.Skills) == 0 {
+		return append(out, styleFaint.Render("  (none found, add one under .agents/skills/<name>/SKILL.md)"))
+	}
+	for _, s := range m.run.Skills {
+		where := "personal"
+		if s.Project {
+			where = "project"
+		}
+		ask := "/" + s.Name
+		if !s.UserInvocable {
+			ask = "model only"
+		}
+		out = append(out, "  "+styleGoal.Render(s.Name)+styleFaint.Render("  "+where+" · "+ask),
+			"    "+truncCell(s.Description, m.layout.outputColW-6), "")
+	}
+	return out
 }
 
 func (m *Model) usageLines() []string {
@@ -139,7 +162,7 @@ func (m Model) contextDetail() string {
 
 func (m *Model) helpLines() []string {
 	out := []string{styleGoal.Render("commands"), ""}
-	for _, c := range slashCommands() {
+	for _, c := range append(slashCommands(), m.skillCmds...) {
 		out = append(out, fmt.Sprintf("  %s  %s", styleGoal.Render(pad(c.Name, 12)),
 			styleFaint.Render(c.Desc)))
 	}

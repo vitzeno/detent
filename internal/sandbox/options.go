@@ -20,6 +20,12 @@ func NewContainer(opts ...Option) *Container {
 	return c
 }
 
+// WithReadOnly mounts each host directory at its destination, unwritable
+// from inside, as skills are.
+func WithReadOnly(dirs map[string]string) Option {
+	return func(c *Container) { c.readOnly = dirs }
+}
+
 // WithSocket sets the containerd socket path.
 func WithSocket(socket string) Option {
 	return func(c *Container) { c.socket = socket }
