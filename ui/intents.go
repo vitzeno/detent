@@ -79,9 +79,8 @@ func (m Model) listSessions(string) (tea.Model, tea.Cmd) {
 	return next, m.send(event.ListSessions{})
 }
 
-// listServers opens the page and asks, since ui cannot reach the
-// servers itself. Asked every time: a page that drew a stale answer
-// would be worse than one that blanks for a frame.
+// listServers asks for the page afresh each time, since a stale one is
+// worse than a blank frame; /mcp auth <server> asks for a new sign-in.
 func (m Model) listServers(input string) (tea.Model, tea.Cmd) {
 	args := strings.Fields(strings.TrimPrefix(input, "/mcp"))
 	if len(args) == 0 {

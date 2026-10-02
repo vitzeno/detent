@@ -65,8 +65,8 @@ type ConnectOption func(*connecting)
 
 type connecting struct{ signins *SignIns }
 
-// WithSignIns lets a server configured with auth ask a human to sign
-// in. Without it, such a server connects on a saved token or fails.
+// WithSignIns lets a server that answers 401 ask a human to sign in.
+// Without it, such a server connects on a saved token or fails.
 func WithSignIns(s *SignIns) ConnectOption { return func(c *connecting) { c.signins = s } }
 
 // ConnectAll lists every server first, then fills in the enabled ones:
