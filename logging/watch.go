@@ -62,7 +62,8 @@ func describe(e event.Event) (slog.Level, []any) {
 		return slog.LevelDebug, []any{KeyTurn, v.Turn, KeyStep, v.Step, "n", v.N}
 	case event.StepEnded:
 		return slog.LevelInfo, []any{KeyTurn, v.Turn, KeyStep, v.Step, "calls", v.Calls,
-			"tokens", v.Usage.Tokens(), KeyMS, v.Usage.Latency.Milliseconds()}
+			"tokens", v.Usage.Tokens(), "prompt_tokens", v.Usage.PromptTokens,
+			"completion_tokens", v.Usage.CompletionTokens, KeyMS, v.Usage.Latency.Milliseconds()}
 	case event.Appended:
 		// A prompt or a note belongs to no Step, one between Turns to
 		// no Turn, and a zero uuid in the field is worse than no field.
