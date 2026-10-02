@@ -76,6 +76,11 @@ func WithDescription(model, judge string, network, recorded bool) Option {
 	}
 }
 
+// WithInstructions names the instruction files the model's prompt carries.
+func WithInstructions(paths []string) Option {
+	return func(e *Engine) { e.instructions = paths }
+}
+
 // WithSessionID sets the session id, as a resume does.
 func WithSessionID(id uuid.UUID) Option {
 	return func(e *Engine) {

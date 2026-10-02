@@ -32,6 +32,8 @@ type Client struct {
 	SystemPrompt string
 	// Env is what the prompt says about where commands run.
 	Env Environment
+	// Instructions are the project's own, appended to the built-in prompt.
+	Instructions string
 }
 
 // Complete is one Step. tools is the registry's schemas, and nil asks
@@ -151,7 +153,10 @@ func (c *Client) systemPrompt() string {
 	if env.OS == "" {
 		env = LocalEnvironment()
 	}
-	return systemPrompt(env)
+	if c.Instructions == "" {
+		return systemPrompt(env)
+	}
+	return systemPrompt(env) + "\n\n" + c.Instructions
 }
 
 // snippet bounds an error body so a 2MB HTML error page cannot become

@@ -58,6 +58,8 @@ type Engine struct {
 	network   bool
 	recorded  bool
 	resumed   int
+	// instructions name the files the prompt carries, for SessionStarted.
+	instructions []string
 
 	// intents is subscribed in New, not Run, so a caller publishing the
 	// moment New returns cannot lose it.
@@ -105,7 +107,7 @@ func (e *Engine) Run(ctx context.Context) {
 		Sandbox: mode == "sandbox",
 		Network: e.network, MaxSteps: e.maxSteps,
 		Recorded: e.recorded, Resumed: e.resumed,
-		ContextTokens: e.budget(),
+		ContextTokens: e.budget(), Instructions: e.instructions,
 	})
 	done := make(chan struct{}, 1)
 

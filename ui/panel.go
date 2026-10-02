@@ -97,6 +97,7 @@ func (m *Model) statusLines() []string {
 		{"judge", orNone(m.run.Judge)},
 		{"runs in", m.runMode()},
 		{"step bound", fmt.Sprint(m.run.MaxSteps)},
+		{"instructions", orNone(strings.Join(m.run.Instructions, ", "))},
 		{"", ""},
 		{"session", m.run.Session.String()},
 		{"recording", recording(m.run)},

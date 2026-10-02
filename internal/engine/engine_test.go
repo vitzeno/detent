@@ -341,6 +341,12 @@ func TestSessionStarted_CarriesTheContextBudget(t *testing.T) {
 	assert.Equal(t, 9_000, started.ContextTokens)
 }
 
+func TestSessionStarted_NamesTheInstructionFiles(t *testing.T) {
+	r := newRig(t, nil, WithInstructions([]string{"../AGENTS.md", "CLAUDE.md"}))
+	started := r.await(event.SessionStartedKind).(event.SessionStarted)
+	assert.Equal(t, []string{"../AGENTS.md", "CLAUDE.md"}, started.Instructions)
+}
+
 // Unset means the default applies, not that there is no budget: a
 // front-end showing "no limit" would be wrong.
 func TestSessionStarted_ReportsTheDefaultBudgetWhenUnset(t *testing.T) {

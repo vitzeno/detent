@@ -29,6 +29,8 @@ type SessionStarted struct {
 	// ContextTokens is the transcript budget, which a Step's
 	// PromptTokens is measured against. Zero means nobody said.
 	ContextTokens int
+	// Instructions are the project files the system prompt carries.
+	Instructions []string
 }
 
 func (SessionStarted) Kind() Kind { return SessionStartedKind }

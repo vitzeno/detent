@@ -175,6 +175,16 @@ These calls run in detent's process, not the container, and no checkpoint
 undoes one. So every MCP call is confirmed, whatever the server says about
 itself
 
+## Instructions
+
+detent reads the instruction files a project keeps for coding agents and adds them to the model's prompt
+
+`AGENTS.md`, or `CLAUDE.md` where a directory has no `AGENTS.md`, in each directory from the git root down to where you started detent. The nearest one wins where they disagree
+
+`~/.config/detent/AGENTS.md` is your own, read first in every project
+
+Together they are capped at 128KB, about 32k tokens, cutting the outermost file first. That suits a large-window model, but on a small local one the files can take most of the context, so keep them short there. `/status` lists which were read
+
 ## Configuration
 
 `./.detent.yaml` or `~/.config/detent/config.yaml`

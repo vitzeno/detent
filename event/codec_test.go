@@ -61,7 +61,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 	spec := &viewspec.Spec{Blocks: []viewspec.Block{{Kind: "log"}}}
 
 	cases := []Event{
-		SessionStarted{Session: turn, Model: "m", Sandbox: true, Network: true, MaxSteps: 50},
+		SessionStarted{Session: turn, Model: "m", Sandbox: true, Network: true, MaxSteps: 50, Instructions: []string{"AGENTS.md"}},
 		SessionResumed{Session: turn, Records: 412, Sandbox: true},
 		TurnStarted{Turn: turn, N: 3, Prompt: "do it"},
 		TurnEnded{Turn: turn, Reason: EndDone, Summary: "did it",

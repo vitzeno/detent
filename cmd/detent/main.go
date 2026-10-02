@@ -27,6 +27,7 @@ import (
 	"github.com/vitzeno/detent/internal/headless"
 	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/humanshell"
+	"github.com/vitzeno/detent/internal/instructions"
 	judgepkg "github.com/vitzeno/detent/internal/judge"
 	mcppkg "github.com/vitzeno/detent/internal/mcp"
 	"github.com/vitzeno/detent/internal/model"
@@ -191,9 +192,14 @@ func run() error {
 			err, resolved.BaseURL, resolved.Model)
 	}
 
+	// Read on the host, where the files are, whichever runner the commands use.
+	files, err := instructions.Find(model.LocalEnvironment().Dir, instructions.Global())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "instructions:", err)
+	}
 	client := &model.Client{
 		BaseURL: resolved.BaseURL, Model: resolved.Model, APIKey: resolved.APIKey,
-		Headers: resolved.Headers, Env: env,
+		Headers: resolved.Headers, Env: env, Instructions: instructions.Prompt(files),
 	}
 
 	// Opened before the engine so it can say whether this session is
@@ -209,6 +215,7 @@ func run() error {
 		engine.WithDescription(resolved.Model, judgeName(resolved),
 			resolved.SandboxNetwork != sandbox.NetworkNone, events != nil),
 		engine.WithContextTokens(resolved.ContextTokens),
+		engine.WithInstructions(instructions.Paths(files)),
 		engine.WithMaxSteps(resolved.Steps),
 		// The same endpoint compacts its own history when it outgrows
 		// that budget.

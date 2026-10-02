@@ -281,7 +281,7 @@ func TestStatus_ReadsTheRunOffTheFact(t *testing.T) {
 	m.layout.width, m.layout.height = 120, 40
 	m.apply(event.SessionStarted{
 		Session: uuid.Must(uuid.NewV7()), Model: "a-model", Sandbox: true,
-		MaxSteps: 42, Recorded: true, Resumed: 9,
+		MaxSteps: 42, Recorded: true, Resumed: 9, Instructions: []string{"../AGENTS.md", "CLAUDE.md"},
 	})
 
 	got := stripANSI(strings.Join(m.statusLines(), "\n"))
@@ -289,6 +289,7 @@ func TestStatus_ReadsTheRunOffTheFact(t *testing.T) {
 	assert.Contains(t, got, "sandbox")
 	assert.Contains(t, got, "42")
 	assert.Contains(t, got, "9 records")
+	assert.Contains(t, got, "../AGENTS.md, CLAUDE.md")
 	assert.Equal(t, "sandbox", m.runMode())
 }
 

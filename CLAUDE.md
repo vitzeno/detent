@@ -368,6 +368,14 @@ adding a fat dependency fails with the transitive import named.
   as `strict` and `Prepare` leaves their arguments to the server, which
   the spec says must validate them anyway.
 
+- **`internal/instructions`**: the project's `AGENTS.md`, or `CLAUDE.md`
+  where a directory has none, from the git root down, after the human's
+  own `~/.config/detent/AGENTS.md`. Read once on the host at startup, so
+  the sandbox changes nothing, and appended to the built-in prompt rather
+  than replacing it. `SessionStarted.Instructions` names what was read.
+  Capped at 128KB (about 32k tokens), outermost file cut first. The cap
+  is fixed, not scaled to `context_tokens`, so a small window feels it.
+
 - **`internal/forget`**: what a deleted session leaves: its events,
   and the container nothing will resume. The log stays, since a
   diagnostic outliving the thing it describes is the point of one. The
