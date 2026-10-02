@@ -20,9 +20,9 @@ func TestPrepare_BadCallsExplainThemselves(t *testing.T) {
 	}{
 		{
 			name:  "unregistered tool lists what exists",
-			tool:  "edit_file",
+			tool:  "delete_file",
 			args:  map[string]any{"path": "x"},
-			wants: []string{"no tool named", "edit_file", "bash", "read_file"},
+			wants: []string{"no tool named", "delete_file", "bash", "read_file"},
 		},
 		{
 			name:  "missing required parameter names it",

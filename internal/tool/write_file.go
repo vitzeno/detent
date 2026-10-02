@@ -6,8 +6,7 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// WriteFile writes a whole file. With no editor, this and a shell
-// redirect are the only ways one changes.
+// WriteFile writes a whole file. edit_file changes part of one.
 type WriteFile struct{}
 
 func (WriteFile) Name() string { return "write_file" }

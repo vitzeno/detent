@@ -25,6 +25,7 @@ func Standard() *Registry {
 	r.Register(Bash{})
 	r.Register(ReadFile{})
 	r.Register(WriteFile{})
+	r.Register(EditFile{})
 	r.Register(ListDir{})
 	r.Register(WebSearch{})
 	r.fixed = len(r.order)

@@ -38,7 +38,7 @@ func TestTurn_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
 	}{
 		{
 			name:  "a tool that does not exist",
-			calls: []event.ToolCall{{ID: "c1", Name: "edit_file", Args: map[string]any{}}, bashCall("c2", "ls")},
+			calls: []event.ToolCall{{ID: "c1", Name: "delete_file", Args: map[string]any{}}, bashCall("c2", "ls")},
 			want:  []string{"no tool named", "Exit code"},
 		},
 		{
