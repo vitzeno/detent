@@ -29,8 +29,10 @@ type Config struct {
 	Type string `json:"type"`
 	// Disabled keeps a server configured but unconnected.
 	Disabled bool `json:"disabled"`
-	// Auth signs in to a remote server with OAuth. Absent is headers only.
-	Auth *Auth `json:"auth"`
+	// OAuth tunes a remote server's sign-in. Nil still signs in on a 401.
+	OAuth *OAuth `json:"oauth"`
+	// Auth is another client's field, read for what it can give OAuth.
+	Auth foreignAuth `json:"auth"`
 }
 
 // transport is how this server is reached, and says so when the
@@ -50,9 +52,6 @@ func (c Config) transport(oauth auth.OAuthHandler) (sdk.Transport, error) {
 		return nil, fmt.Errorf("transport %q is not supported; use http", c.Type)
 
 	case c.Command != "":
-		if c.Auth != nil {
-			return nil, errors.New("auth is for a url; a launched server holds its own credentials")
-		}
 		if c.Type != "" && c.Type != "stdio" {
 			return nil, fmt.Errorf("type %q takes a url, not a command", c.Type)
 		}
@@ -132,7 +131,7 @@ func summarise(st event.ServerSummary, c Config, got result) event.ServerSummary
 	if got.err != nil {
 		st.Err = got.err.Error()
 	}
-	if c.Auth != nil {
+	if got.oauth {
 		st.Auth = event.AuthSignedOut
 		if got.err == nil {
 			st.Auth = event.AuthSignedIn
@@ -150,8 +149,8 @@ func Redialer(ctx context.Context, reg *tool.Registry, in *Invokers, servers map
 		switch {
 		case !ok:
 			return fmt.Errorf("no MCP server is called %s", name)
-		case c.Auth == nil:
-			return fmt.Errorf(`%s has no auth configured; add "auth": "oauth" to its entry`, name)
+		case c.URL == "":
+			return fmt.Errorf("%s is launched, not reached: it holds its own credentials", name)
 		case c.Disabled:
 			return fmt.Errorf("%s is disabled in the config", name)
 		case signins.waitingFor(name):
@@ -183,21 +182,35 @@ type result struct {
 	server *Server
 	tools  []*sdk.Tool
 	err    error
+	// oauth is set when signing in played a part: a token, or a link shown.
+	oauth bool
 }
 
 // dial connects one server and asks what it offers.
 func dial(ctx context.Context, name string, c Config, signins *SignIns) result {
+	// Every remote server can sign in: a 401 says it must, as Claude Code,
+	// Gemini CLI and Codex all read it. One that never sends one never does.
 	var oauth auth.OAuthHandler
-	if c.Auth != nil && c.URL != "" {
+	var h *serial
+	if c.URL != "" {
 		if signins == nil {
 			signins = NewSignIns(nil, nil, Tokens{Dir: TokensDir()}, nil)
 		}
-		h, err := oauthHandler(name, c.Auth, HTTP{Headers: c.Headers}.client(), signins)
-		if err != nil {
+		var err error
+		if h, err = oauthHandler(name, c.OAuth, HTTP{Headers: c.Headers}.client(), signins); err != nil {
 			return result{err: err}
 		}
 		oauth = h
 	}
+	got := connect(ctx, name, c, oauth)
+	if h != nil {
+		got.oauth = h.used(ctx)
+	}
+	return got
+}
+
+// connect dials and lists what the server offers.
+func connect(ctx context.Context, name string, c Config, oauth auth.OAuthHandler) result {
 	t, err := c.transport(oauth)
 	if err != nil {
 		return result{err: fmt.Errorf("mcp: %s: %w", name, err)}

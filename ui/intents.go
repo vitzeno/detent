@@ -92,19 +92,20 @@ func (m Model) listServers(input string) (tea.Model, tea.Cmd) {
 		m.noteErr("usage: /mcp, or /mcp auth <server>")
 		return m, nil
 	}
-	if !m.signsIn(args[1]) {
-		m.noteErr(args[1] + " is not an MCP server with auth configured")
+	if !m.knowsServer(args[1]) {
+		m.noteErr(args[1] + " is not a configured MCP server")
 		return m, nil
 	}
 	m.noteOK("asking " + args[1] + " for a new link")
 	return m, m.send(event.AuthorizeServer{Server: args[1]})
 }
 
-// signsIn reports whether the last listing named server with auth.
-func (m Model) signsIn(server string) bool {
+// knowsServer reports whether the last listing named server. Whether it
+// can sign in is internal/mcp's to say: any reached server can.
+func (m Model) knowsServer(server string) bool {
 	for _, s := range m.servers {
 		if s.Name == server {
-			return s.Auth != ""
+			return true
 		}
 	}
 	return false

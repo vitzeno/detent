@@ -149,42 +149,57 @@ func TestTransport_PicksByTypeAndRefusesTheRest(t *testing.T) {
 	}
 }
 
-// "oauth" signs in by registering a client; the object form names one
-// instead. Anything else fails at load, not as a sign-in never started.
-func TestLoad_ReadsAuth(t *testing.T) {
+// Claude Code's own shape, since .mcp.json is its file first. Scopes
+// come spaced, as it writes them, or listed, as Gemini CLI does.
+func TestLoad_ReadsClaudeCodesOAuth(t *testing.T) {
 	t.Setenv("NOTION_SECRET", "s3cret")
 	path := write(t, t.TempDir(), "mcp.json", `{"mcpServers": {
-      "notion": {"url": "https://mcp.notion.com/mcp", "auth": "oauth"},
-      "byhand": {"url": "https://x/mcp", "auth": {"oauth": {"client_id": "id", "client_secret": "${NOTION_SECRET}"}}},
-      "plain":  {"url": "https://y/mcp"}
+      "spaced": {"type": "http", "url": "https://x/mcp", "oauth": {
+        "clientId": "id", "clientSecret": "${NOTION_SECRET}", "callbackPort": 8080, "scopes": "read write"}},
+      "listed": {"type": "http", "url": "https://y/mcp", "oauth": {"scopes": ["read"]}}
     }}`)
 	got, err := Load(path)
 	require.NoError(t, err)
-	assert.Equal(t, &Auth{}, got["notion"].Auth)
-	assert.Equal(t, &Auth{ClientID: "id", ClientSecret: "s3cret"}, got["byhand"].Auth)
-	assert.Nil(t, got["plain"].Auth, "absent is headers only")
+	assert.Equal(t, &OAuth{ClientID: "id", ClientSecret: "s3cret", CallbackPort: 8080,
+		Scopes: Scopes{"read", "write"}}, got["spaced"].OAuth)
+	assert.Equal(t, Scopes{"read"}, got["listed"].OAuth.Scopes)
 }
 
-func TestLoad_RefusesAuthItCannotUse(t *testing.T) {
+// The usual Notion entry, as written for Claude Code, needs nothing
+// added: signing in is the server's to ask for, with a 401.
+func TestLoad_AClaudeCodeEntryNeedsNothingAdded(t *testing.T) {
+	path := write(t, t.TempDir(), "mcp.json",
+		`{"mcpServers": {"notion": {"type": "http", "url": "https://mcp.notion.com/mcp"}}}`)
+	got, err := Load(path)
+	require.NoError(t, err)
+	assert.Nil(t, got["notion"].OAuth, "nothing to tune, and nothing needed")
+}
+
+// Cursor keeps a client registered by hand under "auth", spelt its way.
+func TestLoad_ReadsCursorsClientCredentials(t *testing.T) {
+	path := write(t, t.TempDir(), "mcp.json", `{"mcpServers": {"s": {"url": "https://x/mcp",
+      "auth": {"CLIENT_ID": "id", "CLIENT_SECRET": "sec", "scopes": ["read"]}}}}`)
+	got, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, &OAuth{ClientID: "id", ClientSecret: "sec", Scopes: Scopes{"read"}}, got["s"].OAuth)
+}
+
+// Strict, a Cursor entry in a shared file stopped detent starting. An
+// "auth" another client wrote is read for what it gives, or left alone.
+func TestLoad_AnotherClientsAuthNeverFailsTheLoad(t *testing.T) {
 	for name, auth := range map[string]string{
-		"another scheme":       `"basic"`,
-		"a typo in a field":    `{"oauth": {"clientid": "x"}}`,
-		"a secret with no id":  `{"oauth": {"client_secret": "x"}}`,
-		"an unknown wrapper":   `{"saml": {}}`,
-		"two wrappers at once": `{"oauth": {}, "saml": {}}`,
+		"the switch detent once needed": `"oauth"`,
+		"an unknown object":             `{"saml": {"x": 1}}`,
+		"a number":                      `42`,
+		"an old nested shape":           `{"oauth": {"client_id": "x"}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			path := write(t, t.TempDir(), "mcp.json",
-				`{"mcpServers": {"s": {"url": "https://x/mcp", "auth": `+auth+`}}}`)
-			_, err := Load(path)
-			assert.Error(t, err)
+			path := write(t, t.TempDir(), "mcp.json", `{"mcpServers": {
+              "s": {"url": "https://x/mcp", "auth": `+auth+`},
+              "other": {"url": "https://y/mcp"}}}`)
+			got, err := Load(path)
+			require.NoError(t, err)
+			assert.Len(t, got, 2, "every other server still loads")
 		})
 	}
-}
-
-// A launched process holds its own credentials; signing in to one has
-// no meaning, so saying so beats silently ignoring the field.
-func TestTransport_RefusesAuthOnALaunchedServer(t *testing.T) {
-	_, err := Config{Command: "npx", Auth: &Auth{}}.transport(nil)
-	assert.ErrorContains(t, err, "auth is for a url")
 }

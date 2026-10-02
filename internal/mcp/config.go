@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,42 +42,50 @@ func Load(paths ...string) (map[string]Config, error) {
 	return out, nil
 }
 
-// Auth is how a remote server is signed in to: "oauth" in a file, or
-// {"oauth": {...}} naming a client rather than registering one.
-type Auth struct {
-	// ClientIDMetadataURL is a client metadata document to sign in as.
-	ClientIDMetadataURL string `json:"client_id_metadata_url"`
-	// ClientID and ClientSecret are a client registered by hand.
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
+// OAuth is Claude Code's "oauth" object, for a sign-in discovery cannot
+// settle alone. A remote server signs in on a 401 whether or not it is set.
+type OAuth struct {
+	// ClientID and ClientSecret are a client registered by hand, for a
+	// provider that offers no registration of its own.
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+	// CallbackPort fixes the redirect's port, for a provider that only
+	// accepts the redirect it whitelisted. 0 picks a free one.
+	CallbackPort int    `json:"callbackPort"`
+	Scopes       Scopes `json:"scopes"`
 }
 
-// UnmarshalJSON takes both shapes and refuses anything else, so a typo
-// fails at load rather than as a sign-in that never starts.
-func (a *Auth) UnmarshalJSON(b []byte) error {
-	var name string
-	if json.Unmarshal(b, &name) == nil {
-		if name != "oauth" {
-			return fmt.Errorf("auth %q is not supported; use \"oauth\"", name)
-		}
-		*a = Auth{}
+// Scopes reads "a b c", as Claude Code writes them, or ["a", "b"], as
+// Gemini CLI does.
+type Scopes []string
+
+func (s *Scopes) UnmarshalJSON(b []byte) error {
+	var spaced string
+	if json.Unmarshal(b, &spaced) == nil {
+		*s = strings.Fields(spaced)
 		return nil
 	}
-	var outer map[string]json.RawMessage
-	if err := json.Unmarshal(b, &outer); err != nil || len(outer) != 1 || outer["oauth"] == nil {
-		return errors.New(`auth must be "oauth" or {"oauth": {...}}`)
+	var list []string
+	if err := json.Unmarshal(b, &list); err != nil {
+		return errors.New(`scopes must be "a b" or ["a", "b"]`)
 	}
-	type plain Auth
-	var p plain
-	dec := json.NewDecoder(bytes.NewReader(outer["oauth"]))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&p); err != nil {
-		return fmt.Errorf("auth.oauth: %w", err)
+	*s = list
+	return nil
+}
+
+// foreignAuth reads another client's "auth" for Cursor's credentials, and
+// never fails a load: one foreign entry must not stop every other server.
+type foreignAuth struct{ cursor *OAuth }
+
+func (a *foreignAuth) UnmarshalJSON(b []byte) error {
+	var c struct {
+		ClientID     string `json:"CLIENT_ID"`
+		ClientSecret string `json:"CLIENT_SECRET"`
+		Scopes       Scopes `json:"scopes"`
 	}
-	if p.ClientSecret != "" && p.ClientID == "" {
-		return errors.New("auth.oauth: client_secret needs a client_id")
+	if json.Unmarshal(b, &c) == nil && c.ClientID != "" {
+		a.cursor = &OAuth{ClientID: c.ClientID, ClientSecret: c.ClientSecret, Scopes: c.Scopes}
 	}
-	*a = Auth(p)
 	return nil
 }
 
@@ -95,11 +102,13 @@ func (c Config) expanded() Config {
 	c.Args = expandAll(c.Args)
 	c.Env = expandMap(c.Env)
 	c.Headers = expandMap(c.Headers)
-	if c.Auth != nil {
-		a := *c.Auth
-		a.ClientIDMetadataURL, a.ClientID = expand(a.ClientIDMetadataURL), expand(a.ClientID)
-		a.ClientSecret = expand(a.ClientSecret)
-		c.Auth = &a
+	if c.OAuth == nil {
+		c.OAuth = c.Auth.cursor
+	}
+	if c.OAuth != nil {
+		o := *c.OAuth
+		o.ClientID, o.ClientSecret = expand(o.ClientID), expand(o.ClientSecret)
+		c.OAuth = &o
 	}
 	return c
 }

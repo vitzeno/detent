@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -38,6 +39,7 @@ type fakeAuth struct {
 	refresh  map[string]bool
 	codes    map[string]string // code to its PKCE challenge
 	methods  []string          // code_challenge_method each authorize carried
+	scope    string            // the scope the last authorize asked for
 	redirect string            // the redirect URI registered last
 	secrets  []string          // every code and token issued, to look for later
 }
@@ -108,6 +110,7 @@ func (f *fakeAuth) authorize(w http.ResponseWriter, r *http.Request) {
 	answer := url.Values{"state": {q.Get("state")}}
 	f.mu.Lock()
 	f.methods = append(f.methods, q.Get("code_challenge_method"))
+	f.scope = q.Get("scope")
 	if f.deny {
 		answer.Set("error", "access_denied")
 	} else {
@@ -232,7 +235,7 @@ func TestSignIn_EndToEnd(t *testing.T) {
 	seen := record(t, r.bus)
 	browse(t, r.bus)
 
-	errs := r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp", Auth: &Auth{}}})
+	errs := r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp"}})
 	require.Empty(t, errs)
 	_, ok := r.reg.Lookup("notion__ping")
 	assert.True(t, ok, "the server's tools are offered once signed in")
@@ -258,7 +261,7 @@ func TestSignIn_PutsNoSecretOnTheBus(t *testing.T) {
 	r := rig(t, Tokens{Dir: t.TempDir()})
 	seen := record(t, r.bus)
 	browse(t, r.bus)
-	require.Empty(t, r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp", Auth: &Auth{}}}))
+	require.Empty(t, r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp"}}))
 
 	var published strings.Builder
 	for _, e := range seen() {
@@ -277,7 +280,7 @@ func TestSignIn_RedirectsToLoopback(t *testing.T) {
 	f := newFakeAuth(t)
 	r := rig(t, Tokens{Dir: t.TempDir()})
 	browse(t, r.bus)
-	require.Empty(t, r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp", Auth: &Auth{}}}))
+	require.Empty(t, r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp"}}))
 	redirect, err := url.Parse(f.redirect)
 	require.NoError(t, err)
 	assert.Equal(t, "127.0.0.1", redirect.Hostname())
@@ -289,7 +292,7 @@ func TestSignIn_ASecondLaunchSignsInFromTheSavedToken(t *testing.T) {
 	tokens := Tokens{Dir: t.TempDir()}
 	first := rig(t, tokens)
 	browse(t, first.bus)
-	servers := map[string]Config{"notion": {URL: f.url() + "/mcp", Auth: &Auth{}}}
+	servers := map[string]Config{"notion": {URL: f.url() + "/mcp"}}
 	require.Empty(t, first.connect(context.Background(), servers))
 
 	second := rig(t, tokens)
@@ -307,7 +310,7 @@ func TestSignIn_RefreshesAnExpiredTokenAndSavesIt(t *testing.T) {
 	tokens := Tokens{Dir: t.TempDir()}
 	first := rig(t, tokens)
 	browse(t, first.bus)
-	servers := map[string]Config{"notion": {URL: f.url() + "/mcp", Auth: &Auth{}}}
+	servers := map[string]Config{"notion": {URL: f.url() + "/mcp"}}
 	require.Empty(t, first.connect(context.Background(), servers))
 	before, err := tokens.Load("notion")
 	require.NoError(t, err)
@@ -328,7 +331,7 @@ func TestSignIn_ExpiresWhenNobodySignsIn(t *testing.T) {
 	r.signins.wait = 150 * time.Millisecond
 	seen := record(t, r.bus)
 
-	errs := r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp", Auth: &Auth{}}})
+	errs := r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp"}})
 	require.Len(t, errs, 1)
 	_, ok := r.reg.Lookup("notion__ping")
 	assert.False(t, ok)
@@ -347,7 +350,7 @@ func TestSignIn_StopsWithItsContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan []error)
 	go func() {
-		done <- r.connect(ctx, map[string]Config{"notion": {URL: f.url() + "/mcp", Auth: &Auth{}}})
+		done <- r.connect(ctx, map[string]Config{"notion": {URL: f.url() + "/mcp"}})
 	}()
 	<-waiting
 	cancel()
@@ -366,7 +369,7 @@ func TestSignIn_SaysWhenTheServerRefuses(t *testing.T) {
 	r := rig(t, Tokens{Dir: t.TempDir()})
 	seen := record(t, r.bus)
 	browse(t, r.bus)
-	require.Len(t, r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp", Auth: &Auth{}}}), 1)
+	require.Len(t, r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp"}}), 1)
 	var reason string
 	for _, e := range seen() {
 		if failed, ok := e.(event.AuthorizationFailed); ok {
@@ -398,7 +401,7 @@ func TestSignIn_RefusesAStrayRedirect(t *testing.T) {
 			}
 		}
 	}()
-	require.Empty(t, r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp", Auth: &Auth{}}}))
+	require.Empty(t, r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp"}}))
 	assert.Equal(t, http.StatusBadRequest, <-stray)
 }
 
@@ -415,7 +418,7 @@ func TestSignIns_OpensOnlyAWaitingLink(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		_ = r.connect(ctx, map[string]Config{"notion": {URL: f.url() + "/mcp", Auth: &Auth{}}})
+		_ = r.connect(ctx, map[string]Config{"notion": {URL: f.url() + "/mcp"}})
 	}()
 	link := (<-waiting).Event.(event.AuthorizationWaiting).URL
 	require.NoError(t, r.signins.Open("notion"))
@@ -433,7 +436,7 @@ func TestConnectAll_AWaitingSignInHoldsUpNoOtherServer(t *testing.T) {
 	defer cancel()
 	plainReady := make(chan bool, 1)
 	go ConnectAll(ctx, r.reg, r.in, map[string]Config{
-		"notion": {URL: f.url() + "/mcp", Auth: &Auth{}},
+		"notion": {URL: f.url() + "/mcp"},
 		"plain":  {URL: plain},
 	}, func(s event.ServerSummary) {
 		if s.Name == "plain" {
@@ -492,4 +495,36 @@ func TestSerial_SignsInOnceForRequestsRefusedTogether(t *testing.T) {
 	close(inner.release)
 	wg.Wait()
 	assert.Equal(t, int32(1), inner.calls.Load())
+}
+
+// A provider that whitelists one redirect needs the port fixed, and one
+// with scopes to choose needs them asked for: Claude Code's oauth fields.
+func TestSignIn_HonoursClaudeCodesOAuthFields(t *testing.T) {
+	f := newFakeAuth(t)
+	port, err := freePort()
+	require.NoError(t, err)
+	r := rig(t, Tokens{Dir: t.TempDir()})
+	browse(t, r.bus)
+	require.Empty(t, r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp",
+		OAuth: &OAuth{CallbackPort: port, Scopes: Scopes{"read", "write"}}}}))
+
+	redirect, err := url.Parse(f.redirect)
+	require.NoError(t, err)
+	assert.Equal(t, fmt.Sprint(port), redirect.Port())
+	// A set: the SDK merges scopes with any granted before, in no order.
+	assert.ElementsMatch(t, []string{"read", "write"}, strings.Fields(f.scope))
+}
+
+// Signing in is the server's to ask for. One that answers without a 401
+// is never asked about, never shown a link, and never called signed in.
+func TestSignIn_AServerThatNeverAsksIsNeverSignedIn(t *testing.T) {
+	plain := httpServer(t, nil) // before the rig, so it closes after the session
+	r := rig(t, Tokens{Dir: t.TempDir()})
+	seen := record(t, r.bus)
+	require.Empty(t, r.connect(context.Background(), map[string]Config{"plain": {URL: plain}}))
+	assert.NotContains(t, kinds(seen()), event.AuthorizationWaitingKind)
+	assert.Equal(t, "", r.in.Status()[0].Auth)
+	entries, err := os.ReadDir(r.tokens.Dir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "and nothing is registered or saved for it")
 }

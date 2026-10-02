@@ -58,6 +58,13 @@ func (s *SignIns) Open(server string) error {
 	return s.open(link)
 }
 
+// wasAsked reports whether the last sign-in for server showed a link.
+func (s *SignIns) wasAsked(server string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.asked[server]
+}
+
 // waitingFor reports whether a link for server is out now.
 func (s *SignIns) waitingFor(server string) bool {
 	s.mu.Lock()

@@ -61,7 +61,7 @@ func TestRedialer_SignsInAfresh(t *testing.T) {
 	f := newFakeAuth(t)
 	r := rig(t, Tokens{Dir: t.TempDir()})
 	browse(t, r.bus)
-	servers := map[string]Config{"notion": {URL: f.url() + "/mcp", Auth: &Auth{}}, "plain": {URL: "http://127.0.0.1:1"}}
+	servers := map[string]Config{"notion": {URL: f.url() + "/mcp"}, "local": {Command: "true"}}
 	_ = r.connect(context.Background(), servers)
 	before, err := r.tokens.Load("notion")
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestRedialer_SignsInAfresh(t *testing.T) {
 	}
 
 	assert.ErrorContains(t, redial("nobody"), "no MCP server is called nobody")
-	assert.ErrorContains(t, redial("plain"), "no auth configured")
+	assert.ErrorContains(t, redial("local"), "launched, not reached")
 }
 
 // The sign-in address comes from the server's own metadata, so only a

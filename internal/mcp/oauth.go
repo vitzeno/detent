@@ -15,10 +15,16 @@ import (
 
 // oauthHandler signs in to one server. The SDK does the protocol; this
 // supplies the browser leg, through signins, and the token file.
-func oauthHandler(server string, a *Auth, client *http.Client, signins *SignIns) (*serial, error) {
-	port, err := freePort()
-	if err != nil {
-		return nil, fmt.Errorf("mcp: %s: a port for the sign-in: %w", server, err)
+func oauthHandler(server string, o *OAuth, client *http.Client, signins *SignIns) (*serial, error) {
+	if o == nil {
+		o = &OAuth{}
+	}
+	port := o.CallbackPort
+	if port == 0 {
+		var err error
+		if port, err = freePort(); err != nil {
+			return nil, fmt.Errorf("mcp: %s: a port for the sign-in: %w", server, err)
+		}
 	}
 	redirect := fmt.Sprintf("http://127.0.0.1:%d/callback", port)
 	cfg := &auth.AuthorizationCodeHandlerConfig{
@@ -46,15 +52,15 @@ func oauthHandler(server string, a *Auth, client *http.Client, signins *SignIns)
 			},
 		},
 	}
-	if a.ClientIDMetadataURL != "" {
-		cfg.ClientIDMetadataDocumentConfig = &auth.ClientIDMetadataDocumentConfig{URL: a.ClientIDMetadataURL}
-	}
-	if a.ClientID != "" {
-		creds := &oauthex.ClientCredentials{ClientID: a.ClientID}
-		if a.ClientSecret != "" {
-			creds.ClientSecretAuth = &oauthex.ClientSecretAuth{ClientSecret: a.ClientSecret}
+	if o.ClientID != "" {
+		creds := &oauthex.ClientCredentials{ClientID: o.ClientID}
+		if o.ClientSecret != "" {
+			creds.ClientSecretAuth = &oauthex.ClientSecretAuth{ClientSecret: o.ClientSecret}
 		}
 		cfg.PreregisteredClient = creds
+	}
+	if len(o.Scopes) > 0 {
+		cfg.ScopeFilter = func([]string) []string { return o.Scopes }
 	}
 	saved, err := signins.tokens.Load(server)
 	if err != nil {
@@ -100,6 +106,15 @@ func (s *serial) Authorize(ctx context.Context, req *http.Request, resp *http.Re
 	err := s.inner.Authorize(ctx, req, resp)
 	s.signins.end(s.server, err)
 	return err
+}
+
+// used reports whether signing in played a part: a token is held, or a
+// link was shown. A server that never sent a 401 has neither.
+func (s *serial) used(ctx context.Context) bool {
+	if ts, err := s.inner.TokenSource(ctx); err == nil && ts != nil {
+		return true
+	}
+	return s.signins.wasAsked(s.server)
 }
 
 // renewed reports whether the token changed since req was sent.
