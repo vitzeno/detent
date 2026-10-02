@@ -10,8 +10,10 @@ func (Bash) Name() string { return "bash" }
 
 func (Bash) Describe() Spec {
 	return Spec{
-		Description: "Run a shell command. Use a more specific tool when one fits: " +
-			"they are cheaper, and their output is easier to read.",
+		Description: "Run a shell command: build, test, run, install, git. Not for files: " +
+			"read with read_file, search with grep and find_files, and change a file only with " +
+			"edit_file or write_file, never echo, printf, cat, tee, sed -i or a > redirect, " +
+			"since those two are how the human sees what changed.",
 		Params: []Param{
 			{Name: "command", Type: TypeString, Desc: "the command to run", Required: true},
 		},

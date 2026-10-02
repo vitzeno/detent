@@ -17,7 +17,9 @@ func (EditFile) Describe() Spec {
 	return Spec{
 		Description: "Replace an exact piece of text in an existing file. old_string must match the file " +
 			"exactly, whitespace included, and appear once unless replace_all is set. " +
-			"Include enough surrounding lines to make it unique. Read the file first.",
+			"Include enough surrounding lines to make it unique. Read the file first. " +
+			"To add lines, put the line they go next to in old_string, and that line plus the new ones " +
+			"in new_string. Appending to the end of a file works the same way, from its last line.",
 		Params: []Param{
 			{Name: "path", Type: TypeString, Desc: "path to the file", Required: true},
 			{Name: "old_string", Type: TypeString, Desc: "the exact text to replace", Required: true},
