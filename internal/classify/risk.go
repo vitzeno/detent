@@ -7,6 +7,9 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
+// DefaultRiskThreshold is the scope risk at which a command is flagged.
+const DefaultRiskThreshold = 0.5
+
 // RiskJudge adapts Jev to the engine's hook chain. It answers, it
 // never decides: Widen folds it with everyone else's.
 type RiskJudge struct {
@@ -19,6 +22,9 @@ type RiskJudge struct {
 func (j RiskJudge) Assess(ctx context.Context, command string, threshold float64) (event.Risk, error) {
 	if threshold <= 0 {
 		threshold = j.Threshold
+	}
+	if threshold <= 0 {
+		threshold = DefaultRiskThreshold
 	}
 	answers, _, ok := AskOrFallback(ctx, j.Asker, State(map[string]any{"command": command}), riskQuestions())
 	if !ok {

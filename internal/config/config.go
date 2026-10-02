@@ -113,6 +113,7 @@ func Default() Config {
 		Model:         DefaultModel,
 		ContextTokens: DefaultContextTokens,
 		JevModel:      classify.DefaultModel,
+		RiskThreshold: classify.DefaultRiskThreshold,
 		Theme:         DefaultTheme,
 		Views:         DefaultViews,
 		LogLevel:      DefaultLogLevel,
