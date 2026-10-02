@@ -28,6 +28,9 @@ type turnState struct {
 	// seeing it is not mistaken for one sent while the Turn still ran.
 	ended atomic.Bool
 
+	// changed is set once a Call that is not read-only has run.
+	changed bool
+
 	mu      sync.Mutex
 	notes   []string
 	stop    string
@@ -74,7 +77,7 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 	e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.user(t.n, t.prompt) })
 
 	var total event.Usage
-	limit, nudges := e.maxSteps, 0
+	limit, nudges, checked := e.maxSteps, 0, false
 	for step := 1; ; step++ {
 		t.drain()
 
@@ -126,6 +129,12 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 				e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(unfinishedNote) })
 				continue
 			}
+			if e.finishCheck && t.changed && !checked {
+				checked = true
+				e.notice("info", "asked the model to check its work against the request before finishing")
+				e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(finishNote) })
+				continue
+			}
 			e.endTurn(t, event.EndDone, reply.Text, total)
 			return
 		}
@@ -138,6 +147,12 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 // unfinishedNote answers a reply that ended with neither a call nor an answer.
 const unfinishedNote = "[your last reply ended with no answer and no tool call] " +
 	"Carry on with the request: call a tool, or give your final answer."
+
+// finishNote is sent once, the first time a Turn that changed something
+// would end, since a model tends to check its own reading of a request.
+const finishNote = "[before you finish] Re-read the request and check each thing it asks for against what you " +
+	"actually produced: run it, test it or measure it. If anything is missing, wrong or unchecked, carry on. " +
+	"Otherwise give your final answer again."
 
 func stopReason(s string) string {
 	if s == "" {

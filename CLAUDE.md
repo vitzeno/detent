@@ -277,7 +277,10 @@ adding a fat dependency fails with the transitive import named.
   (10m, `command_timeout`), host and sandbox alike, and one stopped by
   it says how long it ran. A declined Call returns a result saying
   so and its siblings still run: **declining stops a Call, not a
-  Turn.** `MaxSteps` defaults to 100 and is soft: hitting it publishes
+  Turn.** A reply with no calls that stopped short (cut off, errored,
+  empty or only reasoning) is nudged to carry on, twice at most, and a
+  Turn that ran anything not read-only is asked once to check its work
+  against the request before it ends (`finish_check`). `MaxSteps` defaults to 100 and is soft: hitting it publishes
   `BoundReached` and waits, because a human is watching and stopping
   dead is worse than asking.
 

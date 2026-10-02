@@ -144,7 +144,9 @@ func rigWith(t *testing.T, bus *event.Bus, fm *fakeModel, runner Runner, opts ..
 // shipped set does not have.
 func rigWithTools(t *testing.T, bus *event.Bus, fm *fakeModel, runner Runner, reg *tool.Registry, opts ...Option) *rig {
 	t.Helper()
-	eng := New(bus, fm, reg, fakeSelector{runner}, opts...)
+	// The finishing check adds a Step to most Turns, so tests that are not
+	// about it turn it off, and its own tests turn it back on.
+	eng := New(bus, fm, reg, fakeSelector{runner}, append([]Option{WithFinishCheck(false)}, opts...)...)
 	inner, _ := runner.(*fakeRunner)
 	if s, ok := runner.(*snapRunner); ok {
 		inner = s.fakeRunner

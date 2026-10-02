@@ -44,6 +44,9 @@ func (c *Config) apply(o Config) {
 	if o.CommandTimeout != "" {
 		c.CommandTimeout = o.CommandTimeout
 	}
+	if o.FinishCheck != nil {
+		c.FinishCheck = o.FinishCheck
+	}
 	if o.JevAPIKey != "" {
 		c.JevAPIKey = o.JevAPIKey
 	}
@@ -104,6 +107,16 @@ func envInt(key string) int {
 	return n
 }
 
+// envBool reads a true or false variable. Unset and unparseable both give nil,
+// which apply skips.
+func envBool(key string) *bool {
+	b, err := strconv.ParseBool(os.Getenv(key))
+	if err != nil {
+		return nil
+	}
+	return &b
+}
+
 // envConfig reads the environment as one layer. For aliased keys the
 // first set variable wins.
 func envConfig() Config {
@@ -117,6 +130,7 @@ func envConfig() Config {
 		),
 		ContextTokens:  envInt("DETENT_CONTEXT_TOKENS"),
 		CommandTimeout: os.Getenv("DETENT_COMMAND_TIMEOUT"),
+		FinishCheck:    envBool("DETENT_FINISH_CHECK"),
 		JevAPIKey:      os.Getenv("TYPESAFE_API_KEY"),
 		Theme:          os.Getenv("DETENT_THEME"),
 		Views:          os.Getenv("DETENT_VIEWS"),

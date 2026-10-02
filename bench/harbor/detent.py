@@ -28,6 +28,9 @@ class DetentOptions(InstalledAgentOptions):
     steps: Annotated[int | None, Cli("-steps")] = Field(
         default=None, description="Steps per request before detent stops (detent's default when unset)."
     )
+    finish_check: bool | None = Field(
+        default=None, description="Ask the model to check its work before finishing (detent's default, on, when unset)."
+    )
 
 
 class Detent(BaseInstalledAgent):
@@ -94,6 +97,8 @@ class Detent(BaseInstalledAgent):
         key = self._get_env("DETENT_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY")
         if key:
             env["DETENT_API_KEY"] = key
+        if self.options.finish_check is not None:
+            env["DETENT_FINISH_CHECK"] = str(self.options.finish_check).lower()
         if url := self._get_env("DETENT_BASE_URL"):
             env["DETENT_BASE_URL"] = url
         if self.model_name:

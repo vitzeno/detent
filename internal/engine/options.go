@@ -92,6 +92,11 @@ func WithCommandTimeout(d time.Duration) Option {
 	}
 }
 
+// WithFinishCheck turns the check before a changing Turn ends on or off. On by default.
+func WithFinishCheck(on bool) Option {
+	return func(e *Engine) { e.finishCheck = on }
+}
+
 // WithSkills names the skills found at startup, for SessionStarted.
 func WithSkills(s []event.SkillSummary) Option {
 	return func(e *Engine) { e.skills = s }

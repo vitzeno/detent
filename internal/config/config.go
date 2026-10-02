@@ -29,6 +29,9 @@ type Config struct {
 	// CommandTimeout stops a command still running after it, such as "30m".
 	// A string because YAML has no duration, and empty takes the built-in.
 	CommandTimeout string `yaml:"command_timeout"`
+	// FinishCheck asks the model to check its work before a request that changed
+	// something ends. A pointer so unset means on rather than false.
+	FinishCheck *bool `yaml:"finish_check"`
 
 	JevAPIKey     string  `yaml:"jev_api_key"`
 	JevModel      string  `yaml:"jev_model"`
@@ -60,6 +63,9 @@ type Config struct {
 	SandboxNetwork   string `yaml:"sandbox_network"`
 	SandboxWorkspace string `yaml:"sandbox_workspace"`
 }
+
+// FinishChecks is FinishCheck with its default, on.
+func (c Config) FinishChecks() bool { return c.FinishCheck == nil || *c.FinishCheck }
 
 // Timeout is CommandTimeout as a duration, the built-in when it is empty.
 func (c Config) Timeout() (time.Duration, error) {

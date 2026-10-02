@@ -22,6 +22,10 @@ steps: 0               # Steps per request before it asks to continue (100)
 # what it printed so far. Also DETENT_COMMAND_TIMEOUT.
 command_timeout: ""
 
+# Before a request that changed something ends, ask the model once to check its
+# work against the request (true). Also DETENT_FINISH_CHECK.
+finish_check:          # true or false (true)
+
 # Transcript budget in tokens (200000). Past it, the oldest Turns are
 # summarised. Set it below the window for a small local model.
 context_tokens: 0

@@ -58,6 +58,7 @@ harbor run -d terminal-bench@2.0 \
 | `-n 6` | trials at once. Each wants a CPU and 2GB or so |
 | `--job-name` | the folder under `jobs/`. Defaults to a timestamp |
 | `--ak steps=200` | detent's step bound (100 by default) |
+| `--ak finish_check=false` | skip detent's check before finishing (on by default) |
 | `-q` | less output while it runs |
 
 `DETENT_BASE_URL` points detent at another endpoint, and an `openrouter/`

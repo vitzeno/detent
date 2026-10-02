@@ -121,3 +121,15 @@ func TestTimeout_ReadsADurationOrTakesTheBuiltIn(t *testing.T) {
 		assert.Error(t, err, bad)
 	}
 }
+
+// Unset is on, and either the file or the environment can turn it off.
+func TestResolve_FinishCheckIsOnUnlessTurnedOff(t *testing.T) {
+	t.Setenv("DETENT_FINISH_CHECK", "")
+	assert.True(t, Resolve(Config{}, Config{}, -1).FinishChecks())
+
+	off := false
+	assert.False(t, Resolve(Config{FinishCheck: &off}, Config{}, -1).FinishChecks())
+
+	t.Setenv("DETENT_FINISH_CHECK", "false")
+	assert.False(t, Resolve(Config{}, Config{}, -1).FinishChecks())
+}

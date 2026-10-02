@@ -52,9 +52,11 @@ type Engine struct {
 	maxCalls int
 	// commandTimeout bounds every Call, host or sandbox alike.
 	commandTimeout time.Duration
-	contextTokens  int
-	summarizer     Summarizer
-	stopGrace      time.Duration
+	// finishCheck asks once for a check before a Turn that changed something ends.
+	finishCheck   bool
+	contextTokens int
+	summarizer    Summarizer
+	stopGrace     time.Duration
 
 	worktreer Worktreer
 
@@ -96,6 +98,7 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 		maxSteps:       DefaultMaxSteps,
 		maxCalls:       DefaultCallsPerStep,
 		commandTimeout: DefaultCommandTimeout,
+		finishCheck:    true,
 		contextTokens:  DefaultContextTokens,
 		stopGrace:      DefaultStopGrace,
 		repeat:         newRepeatHook(DefaultRepeatLimit),

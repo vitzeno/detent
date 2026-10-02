@@ -58,6 +58,9 @@ func (e *Engine) runStep(ctx context.Context, t *turnState, step uuid.UUID, repl
 			continue
 		}
 		e.execute(ctx, p)
+		if !p.risk.ReadOnly() {
+			t.changed = true
+		}
 	}
 
 	out := make(map[string]string, len(plans))

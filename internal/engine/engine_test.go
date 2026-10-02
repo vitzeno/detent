@@ -403,3 +403,41 @@ func (markdownTool) Describe() tool.Spec {
 	return tool.Spec{Description: "x", Mutability: event.MutRead, Renders: event.RendersMarkdown}
 }
 func (markdownTool) Lower(tool.Args) (string, error) { return "true", nil }
+
+// A Turn that changed something is asked once to check its work before it
+// ends, and the model's second answer is the one that stands.
+func TestTurn_AChangingTurnIsAskedToCheckOnce(t *testing.T) {
+	r := newRig(t, []model.Reply{
+		{Calls: []event.ToolCall{bashCall("c1", "touch out.txt")}},
+		{Text: "made out.txt", Stop: "stop"},
+		{Calls: []event.ToolCall{readCall("c2", "out.txt")}},
+		{Text: "made out.txt, and checked it", Stop: "stop"},
+		{Text: "never asked for", Stop: "stop"},
+	}, WithFinishCheck(true))
+	end := r.run("make out.txt")
+
+	assert.Equal(t, event.EndDone, end.Reason)
+	assert.Equal(t, "made out.txt, and checked it", end.Summary)
+	checks := 0
+	for _, m := range r.model.lastSent() {
+		if m.Role == event.RoleUser && m.Content == finishNote {
+			checks++
+		}
+	}
+	assert.Equal(t, 1, checks, "asked once, however the Turn goes on")
+	require.Len(t, r.of(event.NoticeKind), 1)
+	answered(t, r.eng)
+}
+
+// A Turn that only read is answered as it is, with no extra Step.
+func TestTurn_AReadOnlyTurnIsNotAskedToCheck(t *testing.T) {
+	r := newRig(t, []model.Reply{
+		{Calls: []event.ToolCall{readCall("c1", "a.go")}},
+		{Text: "a.go holds main", Stop: "stop"},
+	}, WithFinishCheck(true))
+	end := r.run("what is in a.go")
+
+	assert.Equal(t, "a.go holds main", end.Summary)
+	assert.Len(t, r.of(event.StepEndedKind), 2)
+	assert.Empty(t, r.of(event.NoticeKind))
+}

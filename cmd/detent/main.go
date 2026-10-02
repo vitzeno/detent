@@ -232,6 +232,7 @@ func run() error {
 			resolved.SandboxNetwork != sandbox.NetworkNone, events != nil),
 		engine.WithContextTokens(resolved.ContextTokens),
 		engine.WithCommandTimeout(timeout),
+		engine.WithFinishCheck(resolved.FinishChecks()),
 		engine.WithInstructions(instructions.Paths(files)),
 		engine.WithSkills(found.summaries),
 		engine.WithMaxSteps(resolved.Steps),

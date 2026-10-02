@@ -47,8 +47,9 @@ func TestWiring_TypingReachesTheEngineAndComesBack(t *testing.T) {
 	m = pump(t, m, tea.Batch(cmds...), func(m ui.Model) bool { return m.Idle() && m.RowCount() > 0 })
 
 	assert.True(t, m.Idle(), "the request must finish")
-	// Two Steps, so two lots of prose, plus the one call between them.
-	assert.Equal(t, 3, m.RowCount())
+	// Three Steps of prose, the finishing check's second answer being the
+	// last, plus the one call. bash is not read-only, so the check runs.
+	assert.Equal(t, 4, m.RowCount())
 }
 
 // pump is a minimal Bubble Tea runtime: it runs every command in its
