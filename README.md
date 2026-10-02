@@ -20,6 +20,7 @@ make build && ./bin/detent            # sandboxed, needs containerd
 make install                          # onto your PATH
 ./bin/detent -sandbox host            # no container
 ./bin/detent -prompt "find go files over 1MB"
+./bin/detent -prompt "..." -approve-all   # runs flagged commands too, for a throwaway container
 ```
 
 Headless runs leave MCP out: no config is read and no server is started. MCP is TUI only
@@ -197,6 +198,22 @@ Declining stops that Call, the agent reads the refusal and tries
 something else
 
 Typing while it works steers it
+
+## Finishing
+
+A request ends when the model replies without asking for a tool, and two things stop that happening too early
+
+If the reply stopped short, cut off, errored, empty or only its reasoning, the model is told to carry on, twice in a row at most
+
+If the request changed anything, the model is asked once to re-read it and check each part against what it actually produced, and its second answer stands. `finish_check: false` turns this off
+
+Both show up as a notice and go into the transcript like any other message
+
+With Jev set, the judge can also end a request early, once a command's output reads as the answer
+
+## Benchmarking
+
+[`bench/harbor`](bench/harbor) runs detent on Terminal-Bench through Harbor, against other agents on the same model
 
 ## Resuming
 
