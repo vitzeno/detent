@@ -5,6 +5,7 @@ package host
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -17,6 +18,9 @@ import (
 
 // DefaultTimeout bounds a single command.
 const DefaultTimeout = 30 * time.Second
+
+// waitDelay is how long output is still read after sh exits.
+const waitDelay = time.Second
 
 // Shell runs commands directly on the host, unsandboxed. It satisfies
 // engine.Runner structurally.
@@ -37,15 +41,14 @@ func (s *Shell) Run(ctx context.Context, command string, events chan<- StreamEve
 		defer cancel()
 	}
 
+	// Writers, not StdoutPipe: Wait then waits for exec's own copy, where
+	// StdoutPipe's reader could lose output Wait closed under it.
+	outR, outW := io.Pipe()
+	errR, errW := io.Pipe()
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return Result{}, fmt.Errorf("host: stdout pipe: %w", err)
-	}
-	stderrPipe, err := cmd.StderrPipe()
-	if err != nil {
-		return Result{}, fmt.Errorf("host: stderr pipe: %w", err)
-	}
+	cmd.Stdout, cmd.Stderr = outW, errW
+	// A backgrounded child keeps the pipes open, so stop reading soon after sh exits.
+	cmd.WaitDelay = waitDelay
 
 	if err := cmd.Start(); err != nil {
 		return Result{}, fmt.Errorf("host: %w", err)
@@ -56,15 +59,21 @@ func (s *Shell) Run(ctx context.Context, command string, events chan<- StreamEve
 	scan := func(pipe io.Reader, isStderr bool, buf *bytes.Buffer) {
 		defer wg.Done()
 		capture.ScanCapped(pipe, isStderr, buf, s.limit, events)
+		_, _ = io.Copy(io.Discard, pipe)
 	}
 	wg.Add(2)
-	go scan(stdoutPipe, false, &stdout)
-	go scan(stderrPipe, true, &stderr)
+	go scan(outR, false, &stdout)
+	go scan(errR, true, &stderr)
 
 	waitErr := cmd.Wait()
+	_ = outW.Close()
+	_ = errW.Close()
 	wg.Wait()
 	if events != nil {
 		close(events)
+	}
+	if errors.Is(waitErr, exec.ErrWaitDelay) {
+		waitErr = nil
 	}
 
 	res := Result{

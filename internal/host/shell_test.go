@@ -55,6 +55,15 @@ func TestShell_OutputBounded(t *testing.T) {
 	assert.Greater(t, len(events), 0)
 }
 
+func TestShell_ABackgroundedChildDoesNotHoldTheResult(t *testing.T) {
+	start := time.Now()
+	res, err := NewShell().Run(context.Background(), "echo hi; sleep 20 &", nil)
+	require.NoError(t, err)
+	assert.Equal(t, 0, res.ExitCode)
+	assert.Equal(t, "hi\n", res.Stdout)
+	assert.Less(t, time.Since(start), 10*time.Second)
+}
+
 func TestShell_EmptyCommandRejected(t *testing.T) {
 	_, err := NewShell().Run(context.Background(), "  ", nil)
 	assert.ErrorContains(t, err, "empty command")
