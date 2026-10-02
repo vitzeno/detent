@@ -35,9 +35,10 @@ make fmt-check     # fail if anything isn't gofmt'd
 ```
 
 Run one request headlessly: `./bin/detent -prompt "..."`, with
-`-unattended` to decline every flagged Call instead of asking. Headless runs
-do not load MCP configuration or connect to MCP servers. MCP is available in
-the TUI.
+`-unattended` to decline every flagged Call instead of asking, or
+`-approve-all` to run them all, for a throwaway container like a
+benchmark's. Headless runs do not load MCP configuration or connect to MCP
+servers. MCP is available in the TUI.
 `-sessions` lists what can be resumed and `-resume <id>` (or
 `-resume last`) continues one.
 
@@ -276,7 +277,7 @@ adding a fat dependency fails with the transitive import named.
   (10m, `command_timeout`), host and sandbox alike, and one stopped by
   it says how long it ran. A declined Call returns a result saying
   so and its siblings still run: **declining stops a Call, not a
-  Turn.** `MaxSteps` defaults to 50 and is soft: hitting it publishes
+  Turn.** `MaxSteps` defaults to 100 and is soft: hitting it publishes
   `BoundReached` and waits, because a human is watching and stopping
   dead is worse than asking.
 

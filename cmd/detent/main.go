@@ -58,6 +58,7 @@ func run() error {
 	configPath := flag.String("config", "", "config file path (default: ./.detent.yaml, then ~/.config/detent/config.yaml)")
 	prompt := flag.String("prompt", "", "run one request through the agent loop and exit")
 	unattended := flag.Bool("unattended", false, "with -prompt, decline every flagged command instead of asking")
+	approveAll := flag.Bool("approve-all", false, "with -prompt, run every flagged command without asking, only where nothing can be harmed, like a throwaway container")
 	steps := flag.Int("steps", -1, "steps per request before it asks to continue (default: config file)")
 	themeName := flag.String("theme", "", "color scheme: "+strings.Join(theme.Names(), ", ")+" (default: config file, else "+config.DefaultTheme+")")
 	sandboxMode := flag.String("sandbox", "", "sandbox mode: auto, host (default: config file, else auto)")
@@ -75,6 +76,9 @@ func run() error {
 	}
 	if *sessions {
 		return listSessions()
+	}
+	if *unattended && *approveAll {
+		return fmt.Errorf("-unattended declines every flagged command and -approve-all runs them, so pick one")
 	}
 
 	fileCfg, err := config.Load(*configPath)
@@ -295,8 +299,11 @@ func run() error {
 		}
 		sd.engine = runEngine(ctx, eng)
 		approve := headless.Approver(nil)
-		if *unattended {
+		switch {
+		case *unattended:
 			approve = headless.AutoDecline
+		case *approveAll:
+			approve = headless.AutoApprove
 		}
 		reason := headless.Run(ctx, bus, *prompt, approve)
 		fmt.Printf("\nrequest ended: %s\n", reason)
