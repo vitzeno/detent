@@ -1,10 +1,10 @@
 .PHONY: help build install uninstall run run-headless test vet fmt fmt-check clean
 
 BINARY := bin/detent
-GOAL   ?= what files are in this directory?
+PROMPT ?= what files are in this directory?
 
 # Where install puts it. Go's own bin directory by default, which is
-# already on PATH and needs no sudo; override for a system-wide one:
+# already on PATH and needs no sudo, override for a system-wide one:
 #   sudo make install PREFIX=/usr/local/bin
 PREFIX ?= $(shell go env GOBIN)
 ifeq ($(PREFIX),)
@@ -16,7 +16,7 @@ help:
 	@echo "make install     build and put it in $(PREFIX)"
 	@echo "make uninstall   remove it from there"
 	@echo "make run         launch the TUI (go run, no build step)"
-	@echo "make run-headless run one goal headlessly — GOAL=\"...\" to set the goal"
+	@echo "make run-headless run one request headlessly, PROMPT=\"...\" sets it"
 	@echo "make test        go test ./..."
 	@echo "make vet       go vet ./..."
 	@echo "make fmt       gofmt -w every .go file"
@@ -40,7 +40,7 @@ run:
 	@go run ./cmd/detent
 
 run-headless:
-	@go run ./cmd/detent -goal "$(GOAL)"
+	@go run ./cmd/detent -prompt "$(PROMPT)"
 
 test:
 	go test ./...

@@ -8,10 +8,10 @@
 # override. The alternatives further down stay commented because YAML
 # will not take the same key twice.
 
-# --- Proposer: any OpenAI-compatible /chat/completions endpoint ---
+# --- Model: any OpenAI-compatible /chat/completions endpoint ---
 
 # The default: a hosted endpoint with a large window, which needs a
-# key. A local LM Studio works too — http://localhost:1234/v1 with
+# key. A local LM Studio works too: http://localhost:1234/v1 with
 # whatever model it has loaded, and no key.
 base_url: https://openrouter.ai/api/v1
 model: openai/gpt-6-luna
@@ -31,15 +31,15 @@ headers: {}
 #   base_url: https://api.openai.com/v1
 #   model: gpt-4o-mini
 
-# Per-goal step cap. 0 means unbounded: the human confirm on every
-# dangerous command is the bound.
+# Steps per request before it asks whether to continue. 0 takes the
+# built-in 50.
 steps: 0
 
 # How much of the model's context window the transcript may fill.
-# Every proposal resends the whole thing, so without a ceiling a long
+# Every Step resends the whole thing, so without a ceiling a long
 # session gets steadily more expensive and eventually overruns the
 # window. Past it, the oldest turns are replaced by a summary the same
-# model writes; what's left is the recent half plus that summary.
+# model writes. What's left is the recent half plus that summary.
 # 0 takes the built-in 200000, which suits a large-window model. Set
 # it lower for a small local one: compaction is what keeps a request
 # inside the window, so a budget above the window never fires and the
@@ -48,7 +48,7 @@ context_tokens: 0
 
 # --- Judge (Jev): classifier for confirm emphasis and row rendering ---
 # Leave jev_api_key empty (and TYPESAFE_API_KEY unset) to run without a
-# judge; rows stay heuristic and confirms stay neutral.
+# judge. Rows stay heuristic and confirms stay neutral.
 
 jev_api_key: ""
 jev_model: ""
@@ -64,7 +64,7 @@ theme: ""
 
 # --- Sandbox: per-command host vs. containerd-backed execution ---
 
-# "auto" sandboxes by default; "host" never sandboxes. Empty takes auto.
+# "auto" sandboxes by default, "host" never sandboxes. Empty takes auto.
 sandbox_mode: ""
 
 # Containerd socket. Empty picks the OS-conventional path (colima
@@ -76,9 +76,9 @@ sandbox_socket: ""
 # Image sandboxed commands run in. Must be a fully qualified ref:
 # unlike docker and nerdctl, containerd's client does not expand Docker
 # Hub shorthand itself. Empty takes Ubuntu plus git and curl, which is
-# what makes goals work under sandbox_network: none. With no network
+# what makes requests work under sandbox_network: none. With no network
 # the container cannot install tooling itself, so pick an image that
-# already carries whatever your goals need.
+# already carries whatever your requests need.
 sandbox_image: ""
 
 # OCI runtime handle. Empty is containerd's own default, plain runc.
@@ -88,7 +88,7 @@ sandbox_runtime: ""
 
 # What the container can reach. "host" shares the network of whatever
 # machine runs containerd: on macOS that is the colima VM, so your Mac
-# stays behind the VM boundary; on Linux it is this machine, localhost
+# stays behind the VM boundary. On Linux it is this machine, localhost
 # services and LAN included. "none" leaves the container with loopback
 # only, no DNS and nothing fetchable. Empty takes host.
 sandbox_network: ""
@@ -125,7 +125,7 @@ views: saved
 #
 # It is a single stream rather than a file per component, because the
 # thing anyone investigates is a step and a step crosses four or five
-# of them. Every record carries session, goal, step, component and
+# of them. Every record carries session, turn, step, component and
 # event, so filtering is a field match and correlating is too:
 #
 #   jq 'select(.step == 7)'                    everything about step 7

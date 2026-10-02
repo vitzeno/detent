@@ -14,6 +14,8 @@ Needs an OpenAI-compatible `/chat/completions` endpoint with tool calling.
 LM Studio, OpenRouter and OpenAI all work
 
 ```sh
+go install github.com/vitzeno/detent/cmd/detent@latest
+
 make build && ./bin/detent            # sandboxed, needs containerd
 make install                          # onto your PATH
 ./bin/detent -sandbox host            # no container
@@ -26,7 +28,7 @@ Headless runs leave MCP out: no config is read and no server is started. MCP is 
 
 Events are split into facts and intents, facts for what happened, intents for what someone wants to happen
 
-Facts only come from the engine, intents can come from anyone
+Either can come from anyone. The engine publishes most facts, but the store, the judge and MCP publish their own
 
 ```
   publishes                   bus      subscribes
@@ -115,7 +117,7 @@ Your working directory is mounted at `/workspace`, outside the snapshot
 The output pane draws from a view spec: a parse for reading bytes into rows,
 blocks for drawing them
 
-Currently thirty widgets over eight parse kinds, including
+Currently thirty widgets over nine parse kinds, including
 gauges, histograms, box plots, gantt charts, braille scatter plots and
 heatmaps
 
@@ -162,6 +164,12 @@ Also `${VAR}` expands from the environment, so a committed file can name a token
 
 `./bin/detent -mcp` connects and lists what each offers. `/mcp` shows the
 same from inside
+
+A remote server that answers 401 gets a sign-in link in the output pane. `o` opens
+it, `c` copies it, and the token is kept in `~/.local/state/detent/mcp/` so the
+next launch does not ask again. Claude Code's `oauth` object (`clientId`,
+`clientSecret`, `callbackPort`, `scopes`) is read for providers that need it.
+`/mcp auth <server>` signs in again
 
 These calls run in detent's process, not the container, and no checkpoint
 undoes one. So every MCP call is confirmed, whatever the server says about

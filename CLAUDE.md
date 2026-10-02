@@ -5,20 +5,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 detent is a TUI harness pairing a model with a human at the terminal.
-You state a request; the agent calls tools until it has answered,
+You state a request. The agent calls tools until it has answered,
 publishing everything it does on a bus the front-end subscribes to.
 
 There is no closed capability registry. `bash` is one of the tools, so
 the model can run anything, and the safety story rests entirely on the
 Dangerous flag rather than on structural restriction. A Call flagged
 Dangerous is shown to a human who reads the literal command and must
-approve it; everything else runs straight through.
+approve it. Everything else runs straight through.
 
 Dangerous comes from a **hook chain** (`internal/engine/hooks.go`),
 cheapest first: each tool's declared mutability, a regex backstop, a
 repeat check, then TypeSafe's Jev over the network. The chain folds
 every answer with `event.Risk.Widen`, which takes a max and ORs
-Dangerous, so **a hook can widen a verdict and never narrow it** —
+Dangerous, so **a hook can widen a verdict and never narrow it**:
 arithmetic, not a convention. Widening what counts as Dangerous means
 registering one more `Assessor`.
 
@@ -36,7 +36,7 @@ make fmt-check     # fail if anything isn't gofmt'd
 
 Run one request headlessly: `./bin/detent -prompt "..."`, with
 `-unattended` to decline every flagged Call instead of asking. Headless runs
-do not load MCP configuration or connect to MCP servers; MCP is available in
+do not load MCP configuration or connect to MCP servers. MCP is available in
 the TUI.
 `-sessions` lists what can be resumed and `-resume <id>` (or
 `-resume last`) continues one.
@@ -60,7 +60,7 @@ SQLite driver the only option when persistence lands.
 
 Precedence: flags > environment > config file > built-ins. Config file
 is `./.detent.yaml` (repo-local, gitignored) or
-`~/.config/detent/config.yaml`; see `detent.example.yaml` for every
+`~/.config/detent/config.yaml`. See `detent.example.yaml` for every
 key. Relevant env vars: `DETENT_BASE_URL`, `DETENT_MODEL`,
 `DETENT_API_KEY` (falls back to `OPENROUTER_API_KEY` then
 `OPENAI_API_KEY`), `TYPESAFE_API_KEY` (enables the Jev hook),
@@ -69,7 +69,7 @@ names). A `.env` in the repo root is also loaded at startup, and real
 env vars always win over it.
 
 At startup `main.go` pings the endpoint's `/models` and fails fast
-with a clear message — don't remove it, it's the difference between a
+with a clear message. Don't remove it: it's the difference between a
 useful error and a raw dial failure on the first request. It also
 applies the theme before building the TUI: `theme.Apply` sets the
 colors, `ui.RefreshStyles` rebuilds every style baked from the old
@@ -99,7 +99,7 @@ colima start --cpu 6 --memory 8 --disk 30 --kubernetes=false
 #### Swapping with a project that does want k8s
 
 The cluster lives on the VM disk at `/var/lib/rancher/k3s` and
-**survives being disabled** — `--kubernetes=false` stops the service,
+**survives being disabled**: `--kubernetes=false` stops the service,
 it does not reset it. `colima kubernetes reset` is the one that
 destroys it.
 
@@ -142,8 +142,8 @@ is how a bug gets written:
 | **Call** | one tool invocation | the row, approval, parallelism |
 | **Shell** | one command the human ran themselves | looking, not working |
 
-A Step holds zero or more Calls; a Turn holds Steps until the model
-stops asking for tools. Steps are never shown — a human does not think
+A Step holds zero or more Calls. A Turn holds Steps until the model
+stops asking for tools. Steps are never shown, since a human does not think
 in model round trips.
 
 A **Shell** is none of the other four: no model asked for it, so
@@ -181,7 +181,7 @@ which is a whole number of Steps by construction.
 interface between components. Facts are past tense, intents are
 imperative, and either may come from anyone: the engine publishes most
 facts, but a subscriber answering a question publishes one too. An extension
-listens, publishes, or both — there is no second mechanism.
+listens, publishes, or both. There is no second mechanism.
 
 Nothing calls the engine. Every part of the program is one of ten
 subscribers:
@@ -241,7 +241,7 @@ routing     →  engine, sandbox
 ```
 
 `ui` imports **nothing** under `internal/`. That used to need a
-translation layer (`internal/resolver`) mirroring every type; now both
+translation layer (`internal/resolver`) mirroring every type. Now both
 sides import `event` directly and the layer is gone. `event` earns
 that by depending on almost nothing, and the rule is a property rather
 than a list: **every non-stdlib package `event` imports must itself
@@ -249,12 +249,12 @@ import only the standard library.** `viewspec` and `google/uuid` both
 qualify. `event/event_test.go` walks the imports and checks it, so
 adding a fat dependency fails with the transitive import named.
 
-- **`event`** — the shared vocabulary and the `Bus`. `Publish` never
+- **`event`**: the shared vocabulary and the `Bus`. `Publish` never
   blocks, whoever is listening and however slowly, so publishing from
   inside a handler is safe and cannot deadlock. Each subscriber has
   its own queue: a lagging one grows it and drops only events that say
   they are `Lossy`, which is `OutputChunk` and nothing else. A dropped
-  live line costs a redraw; a dropped `CallEnded` is a row that never
+  live line costs a redraw. A dropped `CallEnded` is a row that never
   finishes. `Record` carries a gapless `Ordinal`, so a subscriber
   that filters or drops can be told apart from one that lost
   something. Ids are `uuid.UUID` directly, with no
@@ -262,63 +262,63 @@ adding a fat dependency fails with the transitive import named.
   as well as across them, which matters because a Step mints all its
   Call ids inside one.
 
-- **`internal/engine`** — the loop, and it drives itself. One
+- **`internal/engine`**: the loop, and it drives itself. One
   goroutine, blocking and linear, reading intents and publishing
-  facts; `Run` is the actor and `runTurn` reads top to bottom. That is
+  facts. `Run` is the actor and `runTurn` reads top to bottom. That is
   what lets front-ends subscribe rather than call, and why there is
   one loop instead of a blocking one for headless and a shattered one
   for the TUI. `New` subscribes to intents, not `Run`, so a caller
   that publishes the moment it returns cannot lose the intent.
   `Abort` is handled in `dispatch` rather than queued to the Turn: a
   blocked Call never reaches a boundary, and the inbox is only drained
-  at one. Read-only Calls run concurrently, capped; anything else runs
+  at one. Read-only Calls run concurrently, capped. Anything else runs
   serially in the order asked. A declined Call returns a result saying
-  so and its siblings still run — **declining stops a Call, not a
+  so and its siblings still run: **declining stops a Call, not a
   Turn.** `MaxSteps` defaults to 50 and is soft: hitting it publishes
   `BoundReached` and waits, because a human is watching and stopping
   dead is worse than asking.
 
-- **`internal/tool`** — the closed set a model may call, each lowered
+- **`internal/tool`**: the closed set a model may call, each lowered
   to one shell command so the sandbox stays the only executor. A Tool
   is pure: `args → command`, which is why the whole layer tests with
-  no I/O. `bash` is not privileged — same registry, same schema, same
+  no I/O. `bash` is not privileged: same registry, same schema, same
   hook chain. If it ever needs a code path the others don't have, the
   registry is wrong. Every bad call comes back as a **tool result**,
   never a Go error: an unregistered name, arguments failing the
   schema, a hallucinated parameter. The model reads it and corrects
   itself, which is the entire point of a loop. Under `strict: true`
   every property must appear in `required`, so an optional parameter
-  is nullable rather than omitted — found by running it, not by
+  is nullable rather than omitted, found by running it, not by
   asserting on it. `web_search` is what proves the rule holds even for
   the network: it lowers to one curl against a **keyless** engine, so
   there is no API key to put in the container, in the command, or in
   the log. Reading a result stays an ordinary `bash` curl, which is the
-  distinction worth keeping — searching is the harness reaching out,
+  distinction worth keeping: searching is the harness reaching out,
   fetching is a command, and only the second goes through flagging.
 
-- **`internal/model`** — the tool-calling client. `Complete` is one
+- **`internal/model`**: the tool-calling client. `Complete` is one
   Step. The transcript's own types (`Message`, `ToolCall`, `Role`)
   live in `event`, not here: `event.Appended` carries them and `model`
   imports `event` already, so the other direction is a cycle. Same
   reasoning as `event.Usage`. A call whose `arguments` will not parse is **kept**, with
   `Err` set: the assistant message already named that id, so dropping
   it leaves the transcript owing an answer. `Environment` is what the
-  prompt says about where commands run — describing this process while
+  prompt says about where commands run. Describing this process while
   they run in a container is how BSD flags end up in a Linux one.
 
-- **`internal/capture`** — the bounded-output primitives every backend
+- **`internal/capture`**: the bounded-output primitives every backend
   shares: `Result`, `StreamEvent`, `MaxOutputBytes`, `ScanCapped`. No
   `exec.Cmd` or containerd knowledge of its own.
 
-- **`internal/host`** — runs a command on this machine, all in
+- **`internal/host`**: runs a command on this machine, all in
   `shell.go`. Not the only `exec.Command`: a stdio MCP server, the
   worktree's git and opening a sign-in link each start their own
   process. A non-zero exit is a `Result`, not an error.
 
-- **`internal/sandbox`** — `Container`, a session-scoped containerd
+- **`internal/sandbox`**: `Container`, a session-scoped containerd
   Runner, one per session so filesystem state accumulates. Imports
   `capture`, never `host` or `engine`, which is what lets it satisfy
-  `engine.Runner` and `engine.Snapshotter` **structurally** — no
+  `engine.Runner` and `engine.Snapshotter` **structurally**, with no
   adapter needed, since its checkpoints were already plain strings.
   Output is captured by shell-redirecting into files and polling them
   (`tail.go`), not containerd's FIFO streaming: a FIFO needs the shim
@@ -327,9 +327,9 @@ adding a fat dependency fails with the transitive import named.
   task and one spec per container, so parallel Calls overwrote each
   other's and returned exit 0 with no output. Real parallelism needs
   one long-lived task and `task.Exec` per Call. **A rollback does not revert the
-  workspace** — that is a bind mount to the user's real directory,
+  workspace**: that is a bind mount to the user's real directory,
   deliberately outside the snapshot. Checkpoints are held by a
-  per-session lease; without one the GC sweeps them and rollback works
+  per-session lease. Without one the GC sweeps them and rollback works
   exactly once. Only `Close` deletes a container and its lease, and the
   ids are per session, so a killed process leaves leftovers its own
   resume would collide with: `clearStale` removes them at startup, and
@@ -337,24 +337,24 @@ adding a fat dependency fails with the transitive import named.
   Both refuse a container whose task still runs, which is another
   detent holding that session rather than a leftover.
 
-- **`internal/worktree`** — checkpoints the human's own directory,
+- **`internal/worktree`**: checkpoints the human's own directory,
   which the container snapshot never covers. Git plumbing against a
   scratch `GIT_INDEX_FILE`, so it captures tracked *and* untracked
-  files without touching the index, branch or stash — and `.gitignore`
+  files without touching the index, branch or stash, and `.gitignore`
   is honoured for free.
 
-- **`internal/classify`** — `JevJudge`, the HTTP adapter, and
-  `RiskJudge`, which adapts it to the engine's hook chain. It answers;
-  it never decides, because `Widen` folds its answer with everyone
+- **`internal/classify`**: `JevJudge`, the HTTP adapter, and
+  `RiskJudge`, which adapts it to the engine's hook chain. It answers.
+  It never decides, because `Widen` folds its answer with everyone
   else's.
 
-- **`internal/mcp`** — tools an MCP server holds, so a credentialed
+- **`internal/mcp`**: tools an MCP server holds, so a credentialed
   service can be called without its credentials entering the sandbox.
-  A server is launched over stdio or reached over Streamable HTTP; the
+  A server is launched over stdio or reached over Streamable HTTP. The
   SDK takes no headers, so a bearer token rides on a client of ours.
   Servers are configured in `.mcp.json`, not `.detent.yaml`, because
   that file and its `mcpServers` shape are what every MCP client reads
-  — one written for another client works here unchanged. The user's
+  so one written for another client works here unchanged. The user's
   and the project's are merged nearest-last, an entry at a time rather
   than field by field, and `${VAR}` expands from the environment so a
   committed file can name a token it does not hold.
@@ -368,33 +368,33 @@ adding a fat dependency fails with the transitive import named.
   as `strict` and `Prepare` leaves their arguments to the server, which
   the spec says must validate them anyway.
 
-- **`internal/forget`** — what a deleted session leaves: its events,
+- **`internal/forget`**: what a deleted session leaves: its events,
   and the container nothing will resume. The log stays, since a
   diagnostic outliving the thing it describes is the point of one. The
   store and the container remover are taken rather than imported, so
   the one path that destroys things tests with nothing to destroy. The
   running session is refused: its store and container are both open.
 
-- **`internal/headless`** — one prompt on a terminal, no TUI. A bus
+- **`internal/headless`**: one prompt on a terminal, no TUI. A bus
   subscriber like any front-end, which is what makes it a fair test of
   the engine's interface.
 
-- **`internal/viewgen`** — writes a spec by asking the judge closed
+- **`internal/viewgen`**: writes a spec by asking the judge closed
   questions and assembling the answers, rather than asking a model to
   write JSON. That path existed, ran 31s median against 300ms, and
   could name a widget, a role or a field that did not exist. All three
-  happened; none is representable from a list the program built.
+  happened. None is representable from a list the program built.
 
-- **`ui`** — the TUI, and nothing but a projection of the event
+- **`ui`**: the TUI, and nothing but a projection of the event
   stream. `SessionStarted` is the one description of a run: model,
   sandbox, network, step bound, whether anything is recording it and
   how much it resumed from. `ui.SessionInfo` carries only what no
-  fact does, so the panes and the log cannot disagree about what ran. `apply.go` folds facts in and is the one place it learns
-  anything; `intents.go` publishes and is the one place it asks for
+  fact does, so the panes and the log cannot disagree about what ran. `facts.go` folds facts in and is the one place it learns
+  anything. `intents.go` publishes and is the one place it asks for
   anything. Seven `tea.Cmd` constructors and eight message types
   collapsed to one of each, so a test drives it with a sequence of
   events and no harness at all. `ui/doc.go` is the file map and the
-  naming rules; read it before adding a file.
+  naming rules. Read it before adding a file.
 
   **Drawing costs what is on screen, not what the session has done.**
   Five things hold that, and `ui/bench_test.go` catches a regression:
@@ -414,10 +414,10 @@ adding a fat dependency fails with the transitive import named.
   subpackages and nothing else is: they take values and return
   strings. The compiler enforces it, since a subpackage importing
   `ui` would be an import cycle. Rendering could go the same way once
-  Model's state is passed to it as values — worth doing if a second
+  Model's state is passed to it as values. Worth doing if a second
   front-end ever wants the same drawing, not for one.
 
-- **`viewspec`** — the view interpreter, outside `internal/` and
+- **`viewspec`**: the view interpreter, outside `internal/` and
   stricter than anything else: it imports **only the standard
   library**, enforced by `TestPackage_DependsOnStdlibOnly`. A `Spec`
   says how to read a command's output (`Parse`) and how to draw what
@@ -427,32 +427,32 @@ adding a fat dependency fails with the transitive import named.
   column `df` prints: `45%`, `1.2G` and `1,024` all came back 0 and
   drew an empty bar rather than an error anyone could see. Three calls
   priced by frequency: `Compile` once per spec, `Bind` once per
-  output, `Draw` per frame — `Painter` is on `Frame`, not `Compiled`,
+  output, `Draw` per frame. `Painter` is on `Frame`, not `Compiled`,
   so the first two are pure data and test with no styling at all.
   `Frame.Height` says how tall the pane is for widgets that can grow
   into it and **clips nothing**, because clipping is what would stop a
-  long view scrolling. A widget must implement `Widget`; `Validator`,
+  long view scrolling. A widget must implement `Widget`. `Validator`,
   `Selector`, `Described` and `Container` are optional and found by
   type assertion. `Selector` is load-bearing: only a kind that can say
   which line the cursor is on may carry `on_enter`, because accepting
   it elsewhere drew a spec that looked right and did nothing when the
   human pressed enter.
 
-- **`logging`** — the structured log, stdlib only so anything may
+- **`logging`**: the structured log, stdlib only so anything may
   import it. **One JSONL stream per session**, never one file per
   component: the unit anyone investigates is a step, and a step
   crosses four or five components, so splitting by component would
   make filtering easy and correlating impossible. `events.go` is the
-  closed vocabulary; an event name is a record's primary key, since a
+  closed vocabulary. An event name is a record's primary key, since a
   query cannot match free text reliably. `Body` withholds prompts,
   replies and output unless `log_bodies` is set.
 
-- **`views`** — every spec detent ships, keyed by command name
+- **`views`**: every spec detent ships, keyed by command name
   (`ForCommand`) and by judged output shape (`ForKind`). Imports
   `viewspec` and nothing else, which is what lets both `ui` and
   `viewgen` read it without either importing the other.
 
-- **`internal/store`** — a session's events on disk, so it can be
+- **`internal/store`**: a session's events on disk, so it can be
   replayed rather than reconstructed. Speaks `event.Record` and knows
   nothing about the engine. A `sessions` header and an append-only
   `events` log with a foreign key between them: the header is written
@@ -466,12 +466,12 @@ adding a fat dependency fails with the transitive import named.
   store holding its own type list would decode every old record and
   silently drop a new one, so `event/codec.go` owns it and a test
   parses the package to prove no type lacks a codec. `Watch` is the
-  subscriber, wired beside `logging.Watch`; it skips `OutputChunk`
+  subscriber, wired beside `logging.Watch`. It skips `OutputChunk`
   because a replayed Call has already finished and `CallEnded` carries
   the whole output. It also answers `ListSessions` over the bus, since
   `ui` cannot import it to ask directly.
 
-- **`version`** — what this build calls itself, and nothing else.
+- **`version`**: what this build calls itself, and nothing else.
 
 ### Adding or changing a widget
 
@@ -487,7 +487,7 @@ which, because three of them fail *silently* when missed. Adding
 | anything needing more than stdlib | registered in `ui/spec.go` | n/a |
 
 `Describe()` is optional so a consumer can register a plain function as
-a widget, which is right; the cost is that a widget without one is
+a widget, which is right. The cost is that a widget without one is
 registered, drawable, and invisible to the judge with no error
 anywhere. `Summarises` lives there too, rather than in a list in
 viewgen, so registering a widget is enough to have it offered as a
@@ -512,15 +512,15 @@ before anything is judged and with no Driver at all.
 Start from what the feature actually is:
 
 - **Pure UI** (a keybinding, a different rendering of data an event
-  already carries) — `ui` only. Drive `apply` with events; no harness
+  already carries): `ui` only. Drive `apply` with events, no harness
   is needed.
-- **Pure engine** (a new hook, a bound, a loop rule) —
+- **Pure engine** (a new hook, a bound, a loop rule):
   `internal/engine` only, with its own tests.
-- **A new tool** — `internal/tool`: one file, a `Spec`, and a `Lower`.
+- **A new tool**: `internal/tool`, one file, a `Spec`, and a `Lower`.
   Nothing else changes.
-- **Anything crossing the boundary** (new data a front-end must see) —
+- **Anything crossing the boundary** (new data a front-end must see):
   add the field to the fact in `event`, publish it in `engine`, fold
-  it in `ui/apply.go`. Three edits, each provable on its own, and the
+  it in `ui/facts.go`. Three edits, each provable on its own, and the
   compiler catches the first two.
 
 A tool that knows how its output should be read says so in
@@ -532,11 +532,11 @@ output.
 
 There is no DTO mirror to keep in step any more. The thing that
 replaced it is the rule that `event` may import nothing but the
-standard library and `viewspec` — break that and the boundary is back.
+standard library and `viewspec`. Break that and the boundary is back.
 
 ## Conventions
 
-- Tests use `testify` (`require`/`assert`) with table-driven cases —
+- Tests use `testify` (`require`/`assert`) with table-driven cases:
   follow `internal/model/client_test.go` (`httptest`-backed),
   `internal/engine/engine_test.go` (a bus rig) and `ui/apply_test.go`
   (events in, state out).
@@ -549,7 +549,7 @@ standard library and `viewspec` — break that and the boundary is back.
   should not get one.
 - Commit messages: short and concise, no body, no references to plan
   documents or section numbers.
-- `docs/` is gitignored — planning documents live there but are never
+- `docs/` is gitignored: planning documents live there but are never
   committed to the repo.
 - Confirm is conditional on `event.Risk.Dangerous`, not universal. A
   Call nobody answers blocks its Turn rather than running, which is
