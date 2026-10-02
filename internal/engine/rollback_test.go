@@ -2,6 +2,7 @@ package engine
 
 import (
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -90,4 +91,17 @@ func TestRollback_ForgetsTheTurnAndEverythingAfter(t *testing.T) {
 	n := r.awaitNth(event.NoticeKind, 1).(event.Notice)
 	assert.Contains(t, n.Text, "no such request")
 	assert.Empty(t, r.eng.Transcript())
+}
+
+// TurnEnded is published a moment before the Turn's goroutine is done.
+// An intent sent on seeing it must find the Turn over, not still running.
+func TestTurn_AnIntentSentOnSeeingTheEndFindsTheTurnOver(t *testing.T) {
+	snap := &snapRunner{fakeRunner: &fakeRunner{out: "ok\n"}}
+	fm := &fakeModel{replies: []model.Reply{{Text: "a"}}}
+	r := rigWith(t, event.New(), fm, snap)
+	r.eng.lingerAfterTurn = func() { time.Sleep(50 * time.Millisecond) }
+
+	turn := r.run("one").Turn
+	r.bus.Publish(event.RequestRollback{Turn: turn})
+	r.await(event.RolledBackKind)
 }

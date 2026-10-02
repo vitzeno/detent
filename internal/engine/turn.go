@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 
@@ -22,6 +23,9 @@ type turnState struct {
 
 	inbox  chan event.Event
 	cancel context.CancelFunc
+	// ended is set before TurnEnded is published, so an intent sent on
+	// seeing it is not mistaken for one sent while the Turn still ran.
+	ended atomic.Bool
 
 	mu      sync.Mutex
 	notes   []string
@@ -54,6 +58,9 @@ func (e *Engine) startTurn(ctx context.Context, prompt string, done chan struct{
 		defer cancel()
 		defer func() { done <- struct{}{} }()
 		e.runTurn(tctx, t)
+		if e.lingerAfterTurn != nil {
+			e.lingerAfterTurn()
+		}
 	}()
 }
 
@@ -127,6 +134,7 @@ func (e *Engine) endTurn(t *turnState, why event.EndReason, summary string, used
 	for _, n := range t.takeNotes() {
 		e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(n) })
 	}
+	t.ended.Store(true)
 	e.bus.Publish(event.TurnEnded{Turn: t.id, Reason: why, Summary: summary, Usage: used})
 }
 

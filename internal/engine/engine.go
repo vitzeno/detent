@@ -68,6 +68,8 @@ type Engine struct {
 
 	// gauge turns bytes into tokens, learning the ratio from each Step.
 	gauge gauge
+	// lingerAfterTurn widens the gap between a Turn's end and its goroutine's, for tests.
+	lingerAfterTurn func()
 
 	// intents is subscribed in New, not Run, so a caller publishing the
 	// moment New returns cannot lose it.
@@ -131,6 +133,11 @@ func (e *Engine) Run(ctx context.Context) {
 		case rec, ok := <-e.intents:
 			if !ok {
 				return
+			}
+			// A Turn that published its end is over, whatever its goroutine has left.
+			if t := e.current(); t != nil && t.ended.Load() {
+				<-done
+				e.finishTurn()
 			}
 			e.dispatch(ctx, rec.Event, done)
 		}
