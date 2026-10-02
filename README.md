@@ -35,7 +35,7 @@ Either can come from anyone. The engine publishes most facts, but the store, the
                                │
   engine ───── facts ───────→  │  ──→  engine     intents only
     │                          │  ──→  ui         draws, publishes back intent (e.g. new prompt)
-    ├── tool                   │  ──→  headless   one Turn, no TUI
+    ├── tool                   │  ──→  headless   one request, no TUI
     ├── model                  │  ──→  logging    the JSONL stream
     └── routing                │  ──→  store      SQLite allows resume
           ├── host             │  ──→  judge      how the Call went
@@ -48,35 +48,89 @@ Either can come from anyone. The engine publishes most facts, but the store, the
 
 All extensions listen, publish, or both
 
-## Turns, Steps and Calls
+## Configuration
 
-|      | Is                                       | Unit of                 |
-| ---- | ---------------------------------------- | ----------------------- |
-| Turn | your prompt and everything done about it | undo, one history block |
-| Step | one model round trip                     | the transcript's atom   |
-| Call | one tool invocation                      | one row, one approval   |
+`./.detent.yaml` or `~/.config/detent/config.yaml`
 
-A Step can ask for several Calls and runs the read-only ones together. A Turn
-runs Steps until the model stops asking for tools, capped at 50. The cap asks
-whether to continue rather than stopping
+All keys are documented in [`detent.example.yaml`](detent.example.yaml)
 
-Current Tools: `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`, `grep`, `find_files`, `web_search`, and `skill` when there are skills.
+## MCP
 
-`web_search` is just curl so no API key exists, it needs the sandbox to have network, which is the default
+Servers go in `.mcp.json`, pretty much the standard so one written for another client works here
 
-## Approving
+`~/.config/detent/mcp.json` and `./.mcp.json` merge, nearest wins
+Also `${VAR}` expands from the environment, so a committed file can name a token it does not hold
 
-A Call runs without asking unless it is flagged dangerous, you see the
-literal command and answer it.
+```json
+{
+	"mcpServers": {
+		"github": {
+			"command": "docker",
+			"args": ["run", "-i", "--rm", "ghcr.io/github/github-mcp-server"]
+		},
+		"linear": { "type": "http", "url": "https://mcp.linear.app/mcp" }
+	}
+}
+```
 
-Flagging is a chain: the tool's own declared mutability, a regex backstop, a
-repeat check, then TypeSafe's Jev if a key is set. Each link can raise the
-verdict but none can lower it
+`./bin/detent -mcp` connects and lists what each offers. `/mcp` shows the
+same from inside
 
-Declining stops that Call, the agent reads the refusal and tries
-something else
+A remote server that answers 401 gets a sign-in link in the output pane. `o` opens
+it, `c` copies it, and the token is kept in `~/.local/state/detent/mcp/` so the
+next launch does not ask again. Claude Code's `oauth` object (`clientId`,
+`clientSecret`, `callbackPort`, `scopes`) is read for providers that need it.
+`/mcp auth <server>` signs in again
 
-Typing while it works steers it
+These calls run in detent's process, not the container, and no checkpoint
+undoes one. So every MCP call is confirmed, whatever the server says about
+itself
+
+## Skills
+
+A skill is a folder with a `SKILL.md` in it: a name, a description, and instructions for one kind of task. They follow the [Agent Skills](https://agentskills.io) format, so ones written for Claude Code, Codex or Cursor work here as they are
+
+```
+.agents/skills/release/
+├── SKILL.md
+└── scripts/tag.sh
+```
+
+detent looks in `.agents/skills/` and `.claude/skills/` from the git root down, then in `~/.agents/skills/` and `~/.claude/skills/`. If two share a name, the project's wins
+
+The model only sees names and descriptions until a request fits one, then it loads that skill. You can ask for one yourself with `/release cut v2.1`, and `/skills` lists what was found
+
+`disable-model-invocation: true` keeps a skill for you to call by hand, `user-invocable: false` leaves it to the model
+
+Scripts in a skill run like any other command, through the same approvals. In the sandbox your own skills are mounted read-only
+
+## Instructions
+
+detent reads the instruction files a project keeps for coding agents and adds them to the model's prompt
+
+`AGENTS.md`, or `CLAUDE.md` where a directory has no `AGENTS.md`, in each directory from the git root down to where you started detent. The nearest one wins where they disagree
+
+`~/.config/detent/AGENTS.md` is your own, read first in every project
+
+Together they are capped at 128KB, about 32k tokens, cutting the outermost file first. That suits a large-window model, but on a small local one the files can take most of the context, so keep them short there. `/status` lists which were read
+
+## Tools
+
+| Tool         | Does                              |
+| ------------ | --------------------------------- |
+| `bash`       | runs a command                    |
+| `read_file`  | reads a file, a window at a time  |
+| `write_file` | writes a whole file               |
+| `edit_file`  | replaces an exact piece of a file |
+| `list_dir`   | lists a directory                 |
+| `grep`       | searches file contents            |
+| `find_files` | finds files by name               |
+| `web_search` | searches the web                  |
+| `skill`      | loads a skill, when there are any |
+
+Each one is a shell command underneath, so it runs in the sandbox like everything else and goes through the same checks. The read-only ones run together
+
+`web_search` is a curl to DuckDuckGo so there is no API key but it needs the sandbox to have network, which is the default
 
 ## Your own commands
 
@@ -112,23 +166,6 @@ Commands you ran yourself go back with it, if they ran after that snapshot
 
 Your working directory is mounted at `/workspace`, outside the snapshot
 
-## Output
-
-The output pane draws from a view spec: a parse for reading bytes into rows,
-blocks for drawing them
-
-Currently thirty widgets over nine parse kinds, including
-gauges, histograms, box plots, gantt charts, braille scatter plots and
-heatmaps
-
-With `views: generate` and a Jev key it designs a spec for output nothing
-covers
-
-Jev answers closed questions rather than writing JSON, so it cannot
-name a widget or field that does not exist
-
-All takes about 600ms, then cached
-
 ## Sandboxing
 
 ```sh
@@ -143,63 +180,19 @@ process left behind, but a session you never come back to keeps its
 container and snapshot. `./bin/detent -prune` drops those, and leaves
 alone anything still running.
 
-## MCP
+## Approving
 
-Servers go in `.mcp.json`, pretty much the standard so one written for another client works here
+A Call runs without asking unless it is flagged dangerous, you see the
+literal command and answer it.
 
-`~/.config/detent/mcp.json` and `./.mcp.json` merge, nearest wins
-Also `${VAR}` expands from the environment, so a committed file can name a token it does not hold
+Flagging is a chain: the tool's own declared mutability, a regex backstop, a
+repeat check, then TypeSafe's Jev if a key is set. Each link can raise the
+verdict but none can lower it
 
-```json
-{
-	"mcpServers": {
-		"github": {
-			"command": "docker",
-			"args": ["run", "-i", "--rm", "ghcr.io/github/github-mcp-server"]
-		},
-		"linear": { "type": "http", "url": "https://mcp.linear.app/mcp" }
-	}
-}
-```
+Declining stops that Call, the agent reads the refusal and tries
+something else
 
-`./bin/detent -mcp` connects and lists what each offers. `/mcp` shows the
-same from inside
-
-A remote server that answers 401 gets a sign-in link in the output pane. `o` opens
-it, `c` copies it, and the token is kept in `~/.local/state/detent/mcp/` so the
-next launch does not ask again. Claude Code's `oauth` object (`clientId`,
-`clientSecret`, `callbackPort`, `scopes`) is read for providers that need it.
-`/mcp auth <server>` signs in again
-
-These calls run in detent's process, not the container, and no checkpoint
-undoes one. So every MCP call is confirmed, whatever the server says about
-itself
-
-## Instructions
-
-detent reads the instruction files a project keeps for coding agents and adds them to the model's prompt
-
-`AGENTS.md`, or `CLAUDE.md` where a directory has no `AGENTS.md`, in each directory from the git root down to where you started detent. The nearest one wins where they disagree
-
-`~/.config/detent/AGENTS.md` is your own, read first in every project
-
-Together they are capped at 128KB, about 32k tokens, cutting the outermost file first. That suits a large-window model, but on a small local one the files can take most of the context, so keep them short there. `/status` lists which were read
-
-## Skills
-
-Agent Skills ([agentskills.io](https://agentskills.io)) written for Claude Code, Codex, Cursor and the rest work unchanged: a folder holding a `SKILL.md` with a `name` and `description`
-
-Found in `.agents/skills/` and `.claude/skills/` from the git root down, then `~/.agents/skills/` and `~/.claude/skills/`. A project skill beats your own of the same name
-
-The model sees each name and description and loads a skill with the `skill` tool when a request fits. `/skills` lists them, and `/<name> what to do` asks for one by hand
-
-In the sandbox your own skills are mounted read-only, so they can be read and their scripts run but never changed. `allowed-tools` is ignored: nothing pre-approves a command
-
-## Configuration
-
-`./.detent.yaml` or `~/.config/detent/config.yaml`
-
-All keys are documented in [`detent.example.yaml`](detent.example.yaml)
+Typing while it works steers it
 
 ## Resuming
 
@@ -220,12 +213,29 @@ and a name another session already has are all refused when you set
 them.
 
 A resumed session gets its transcript and its history back. It does
-not get the container: those checkpoints died with it, so a Turn from
+not get the container: those checkpoints died with it, so a request from
 before the restart is not offered for undo.
 
 `/status` says whether anything is recording the session at all. If
 nothing is, it cannot be resumed, and it is better to know while you
 are working than when you try.
+
+## Output
+
+The output pane draws from a view spec: a parse for reading bytes into rows,
+blocks for drawing them
+
+Currently thirty widgets over nine parse kinds, including
+gauges, histograms, box plots, gantt charts, braille scatter plots and
+heatmaps
+
+With `views: generate` and a Jev key it designs a spec for output nothing
+covers
+
+Jev answers closed questions rather than writing JSON, so it cannot
+name a widget or field that does not exist
+
+All takes about 600ms, then cached
 
 ## Logs
 
