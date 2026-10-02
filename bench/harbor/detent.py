@@ -59,7 +59,7 @@ class Detent(BaseInstalledAgent):
 
     @override
     async def install(self, environment: BaseEnvironment) -> None:
-        await self.ensure_system_dependencies(environment, ("perl", "diff", "ca_certificates"))
+        await self._ensure_tools(environment)
         machine = (await environment.exec(command="uname -m")).stdout.strip()
         arch = GOARCH.get(machine)
         if arch is None:
@@ -73,6 +73,21 @@ class Detent(BaseInstalledAgent):
             )
             await environment.upload_file(binary, "/installed-agent/detent")
         await self.exec_as_root(environment, command="install -m 755 /installed-agent/detent /usr/local/bin/detent")
+
+    async def _ensure_tools(self, environment: BaseEnvironment) -> None:
+        # Only what is missing, and never fatal: an image with stale apt lists
+        # 404s on install, and detent runs without these, just less well.
+        want = [name for name, check in (
+            ("perl", "command -v perl"),
+            ("diff", "command -v diff"),
+            ("ca_certificates", "test -s /etc/ssl/certs/ca-certificates.crt"),
+        ) if (await environment.exec(command=check)).return_code != 0]
+        if not want:
+            return
+        try:
+            await self.ensure_system_dependencies(environment, tuple(want))
+        except Exception as exc:
+            self.logger.warning("could not install %s, running without: %s", ", ".join(want), exc)
 
     def _model_env(self) -> dict[str, str]:
         env = {"DETENT_LOG_DIR": LOG_DIR, "DETENT_LOG_BODIES": "1"}
