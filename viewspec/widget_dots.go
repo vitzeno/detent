@@ -2,9 +2,8 @@ package viewspec
 
 import "fmt"
 
-// dots leads each row with a status glyph, for output whose point is
-// which rows are healthy. A list with an accent colours the text; this
-// gives the state its own column, so the left edge answers it.
+// dots leads each row with a status glyph, giving the state its own
+// column so the left edge says which rows are healthy.
 type dotsWidget struct{}
 
 var (

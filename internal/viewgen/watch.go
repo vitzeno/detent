@@ -25,14 +25,16 @@ func (g *Generator) Watch(bus *event.Bus) func() {
 	return stop
 }
 
-// pending is what is known about one Call so far. Composition needs
-// the command, the output and the judged kind, which arrive in three
-// separate facts.
+// pending is what is known about one Call so far: the command, output
+// and judged kind arrive in three separate facts.
 type pending struct {
 	command string
 	result  *event.Result
 	kind    string
 }
+
+// maxComposing caps concurrent composition.
+const maxComposing = 2
 
 type watcher struct {
 	gen   *Generator
@@ -40,8 +42,8 @@ type watcher struct {
 	calls map[uuid.UUID]*pending
 	// shells is the command each running Shell was started with.
 	shells map[uuid.UUID]string
-	// slots caps concurrent composition: parallel Calls finish
-	// together and each costs a judge round trip.
+	// slots holds maxComposing: parallel Calls finish together and each
+	// costs a judge round trip.
 	slots chan struct{}
 }
 
@@ -50,7 +52,7 @@ func (w *watcher) take(e event.Event) {
 	case event.TurnStarted:
 		clear(w.calls) // nothing from a finished Turn can still compose
 	case event.CallProposed:
-		// The command, not the tool: every bash call keyed as "bash" once.
+		// The command, not the tool, or every bash call would key as "bash".
 		w.calls[v.Call] = &pending{command: event.Command(v.Tool, v.Args)}
 	case event.CallEnded:
 		if p := w.calls[v.Call]; p != nil {
@@ -95,7 +97,7 @@ func (w *watcher) shell(id uuid.UUID, p pending) {
 	p.kind = w.gen.Shape(ctx, p.command, outputOf(p.result))
 	got, ok := w.resolve(ctx, p)
 	if !ok {
-		// A Call's row falls back to its kind's view in ui; a Shell's
+		// A Call's row falls back to its kind's view in ui, but a Shell's
 		// row has no kind there, so the fallback is sent from here.
 		got, ok = w.gen.forKind(ctx, w.request(p))
 	}
@@ -122,8 +124,6 @@ func (w *watcher) request(p pending) Request {
 func (w *watcher) publish(call uuid.UUID, got Result) {
 	w.bus.Publish(event.ViewReady{Call: call, Spec: got.Spec, Source: string(got.Source)})
 }
-
-const maxComposing = 2
 
 func outputOf(r *event.Result) string {
 	switch {

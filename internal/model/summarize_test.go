@@ -2,12 +2,13 @@ package model
 
 import (
 	"context"
-	"github.com/vitzeno/detent/event"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/event"
 )
 
 func TestSummarize_FlattensStepsAndAsksForProse(t *testing.T) {

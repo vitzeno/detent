@@ -11,10 +11,9 @@ import (
 // kind is one tool as the generator uses it, in one entry so a tool
 // cannot be half-added.
 type kind struct {
-	name string
-	// executor names what ran a Call that is not a shell command.
+	name     string
 	runner   string
-	executor string
+	executor string // what ran a Call that is not a shell command
 	render   string
 	renders  string
 	args     func(*rand.Rand) map[string]any
@@ -73,7 +72,7 @@ var tools = []kind{
 		result: issueResult,
 	},
 	{
-		name: "quran__search_quran", runner: "host", executor: "mcp:quran", render: "markdown", renders: event.RendersMarkdown,
+		name: "docs__search_docs", runner: "host", executor: "mcp:docs", render: "markdown", renders: event.RendersMarkdown,
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"q": pick(r, queries), "limit": 5}
 		},
@@ -250,7 +249,7 @@ var logLines = []string{
 	"--- PASS: TestApply_BuildsABlockPerRequest (0.00s)",
 	"level=info msg=\"call started\" tool=bash runner=sandbox",
 	"level=warn msg=\"subscriber lagging\" queue=412",
-	"2026/09/25 12:07:41 connected quran (15 tools)",
+	"2026/09/25 12:07:41 connected docs (15 tools)",
 	"pulling image docker.io/library/debian:stable-slim",
 }
 

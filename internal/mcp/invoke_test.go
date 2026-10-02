@@ -11,19 +11,6 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// wired is a registry and an Invokers built from one live server,
-// which is how a session will have them.
-func wired(t *testing.T, s *Server) (*tool.Registry, *Invokers) {
-	t.Helper()
-	tools, err := s.Tools(context.Background())
-	require.NoError(t, err)
-
-	reg := tool.Standard()
-	in := NewInvokers()
-	in.Add(Register(reg, s, tools)...)
-	return reg, in
-}
-
 // Prepare to result, against a server that actually answers.
 func TestInvoke_AnsweredByTheServerThatOfferedIt(t *testing.T) {
 	s := serve(t, text("greet", &sdk.TextContent{Text: "hello there"}))
@@ -37,7 +24,7 @@ func TestInvoke_AnsweredByTheServerThatOfferedIt(t *testing.T) {
 	assert.Zero(t, res.ExitCode)
 }
 
-// The namespaced name is detent's; the server only knows its own.
+// The namespaced name is detent's. The server only knows its own.
 func TestInvoke_CallsTheServersOwnName(t *testing.T) {
 	var got string
 	s := serve(t, fake{name: "create_issue", handle: func(_ context.Context, r *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
@@ -79,4 +66,17 @@ func TestInvokers_CloseEndsEveryServer(t *testing.T) {
 
 	assert.NotZero(t, a.Call(context.Background(), "one", nil).ExitCode)
 	assert.NotZero(t, b.Call(context.Background(), "two", nil).ExitCode)
+}
+
+// wired is a registry and an Invokers built from one live server,
+// which is how a session will have them.
+func wired(t *testing.T, s *Server) (*tool.Registry, *Invokers) {
+	t.Helper()
+	tools, err := s.Tools(context.Background())
+	require.NoError(t, err)
+
+	reg := tool.Standard()
+	in := NewInvokers()
+	in.Add(Register(reg, s, tools)...)
+	return reg, in
 }

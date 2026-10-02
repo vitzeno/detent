@@ -37,12 +37,12 @@ const (
 type Change struct {
 	Path string
 	Kind Kind
-	// Unseen marks a path that changed after the last checkpoint, so
-	// nothing detent ran can account for it. Reverting throws that
-	// work away, which is the case worth making loud.
+	// Unseen marks a path changed after the last checkpoint, which nothing
+	// detent ran accounts for, so reverting it throws work away.
 	Unseen bool
 }
 
+// String reads as what a restore would do to the path.
 func (c Change) String() string { return string(c.Kind) + " " + c.Path }
 
 // Available reports whether dir is inside a git work tree, which is
@@ -99,9 +99,8 @@ func Diff(ctx context.Context, dir string, to Checkpoint) ([]Change, error) {
 	return changes, nil
 }
 
-// Restore puts dir back to the checkpoint: files that changed or were
-// deleted come back, files created since are removed. Paths git
-// ignores are left alone, having never been captured.
+// Restore puts dir back to the checkpoint: changed or deleted files come
+// back, files created since are removed, and ignored paths are left alone.
 func Restore(ctx context.Context, dir string, to Checkpoint) error {
 	changes, err := Diff(ctx, dir, to)
 	if err != nil {
@@ -148,7 +147,7 @@ func scratchIndex(dir string) (path string, cleanup func(), err error) {
 	}
 	name := f.Name()
 	f.Close()
-	// git wants to create it itself; an empty file is not a valid index.
+	// git wants to create it itself, since an empty file is not a valid index.
 	os.Remove(name)
 	return name, func() { os.Remove(name) }, nil
 }

@@ -1,9 +1,6 @@
-// Package island wraps a zone (title + lines) in a rounded border of
-// the caller's colour. One place owns padding and sizing so every zone
-// tiles the terminal identically. Every line is truncated to the inner
-// width: a wrapped line would render as two physical lines and push the
-// session bar off the top, so the island guarantees one line in, one
-// line out — with a visible … where it cuts.
+// Package island wraps a zone (title and lines) in a rounded border of
+// the caller's colour. Every line is truncated to the inner width with a
+// visible …, since a wrapped line would push the session bar off the top.
 package island
 
 import (
@@ -38,8 +35,7 @@ func Render(title string, border color.Color, lines []string, width, height int)
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(border).
 		Padding(0, 1)
-	// lipgloss v2's Width is the total rendered width, border included —
-	// under v1 it was the content width and the border sat outside it.
+	// lipgloss v2's Width is the total rendered width, border included.
 	return style.Width(width).Render(strings.Join(body, "\n"))
 }
 

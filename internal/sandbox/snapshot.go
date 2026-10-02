@@ -11,9 +11,8 @@ import (
 	"github.com/containerd/containerd/leases"
 )
 
-// Snapshot commits the container's active snapshot as a read-only
-// checkpoint, then re-points it at a fresh active snapshot layered on
-// top so Run keeps working. Returns the checkpoint's key.
+// Snapshot commits the active snapshot as a checkpoint and re-points the
+// container at a fresh one on top. Returns the checkpoint's key.
 func (c *Container) Snapshot(ctx context.Context) (string, error) {
 	if c.container == nil {
 		return "", fmt.Errorf("sandbox: Start not called")
@@ -61,10 +60,8 @@ func (c *Container) Rollback(ctx context.Context, id string) error {
 	return nil
 }
 
-// leased roots every snapshot made under ctx in the session's lease.
-// containerd's GC collects anything no container or lease references,
-// which caught both the checkpoints and the gap between preparing an
-// active snapshot and pointing the container at it.
+// leased roots every snapshot made under ctx in the session's lease, so
+// the GC spares checkpoints and a snapshot not yet pointed at.
 func (c *Container) leased(ctx context.Context) context.Context {
 	if c.lease == nil {
 		return ctx

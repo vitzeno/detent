@@ -14,9 +14,8 @@ import (
 	"github.com/vitzeno/detent/internal/host"
 )
 
-// Everything here drives the package with a bus and a fake Runner:
-// no engine, no TUI, which is the whole point of it being its own
-// subscriber rather than a second thing the engine does.
+// Everything here drives the package with a bus and a fake Runner, no
+// engine and no TUI.
 
 func TestWatch_RunsACommandAndTellsTheModel(t *testing.T) {
 	bus := event.New()
@@ -45,8 +44,7 @@ func TestWatch_RunsACommandAndTellsTheModel(t *testing.T) {
 }
 
 // The message is an intent, not a fact: only the engine may touch the
-// transcript, and it already has an operation that lands at a
-// boundary.
+// transcript.
 func TestWatch_AsksTheEngineToAppendRatherThanAppending(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
@@ -115,9 +113,8 @@ func TestWatch_RefusesASecondCommandWhileOneRuns(t *testing.T) {
 	assert.Equal(t, []string{"sleep 45"}, r.commands())
 }
 
-// The one thing shutdown depends on: stop must not return until the
-// last facts are on the bus, or they are published after the drain
-// and nothing records them.
+// Stop must not return until the last facts are on the bus, or they
+// land after the drain and nothing records them.
 func TestWatch_StopPublishesTheEndBeforeItReturns(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
@@ -144,8 +141,7 @@ func TestWatch_EmptyCommandDoesNothing(t *testing.T) {
 
 	bus.Publish(event.RunCommand{Text: "   "})
 	stop()
-	// The intent itself is on the bus; what must not be is any fact
-	// saying a command ran.
+	// The intent itself is on the bus, but no fact saying a command ran.
 	assert.Empty(t, c.of(event.ShellStartedKind))
 	assert.Empty(t, c.of(event.ShellEndedKind))
 	assert.Empty(t, c.of(event.NoteContextKind))
@@ -185,6 +181,35 @@ func TestWatch_DoesNotInheritTheTimeoutMeantForTheModel(t *testing.T) {
 	assert.Greater(t, r.left, host.DefaultTimeout,
 		"a deadline is set here precisely so host.Shell does not apply its own")
 	assert.LessOrEqual(t, r.left, shellMax, "but it is still bounded")
+}
+
+// Against the real runner, because a fake that closes its output
+// channel correctly hides a package that depends on it doing so.
+func TestWatch_AgainstTheRealHostShell(t *testing.T) {
+	bus := event.New()
+	c := collect(t, bus)
+	stop := Watch(bus, host.NewShell(), "host")
+	t.Cleanup(stop)
+
+	bus.Publish(event.RunCommand{Text: "printf 'one\\ntwo\\n'; printf 'oops\\n' >&2; exit 3"})
+
+	ended := c.await(t, event.ShellEndedKind).(event.ShellEnded)
+	assert.Equal(t, 3, ended.Result.ExitCode)
+	assert.Equal(t, "one\ntwo\n", ended.Result.Stdout)
+	assert.Equal(t, "oops\n", ended.Result.Stderr)
+	assert.Empty(t, ended.Result.Err, "a non-zero exit is a result, not an error")
+
+	note := c.await(t, event.NoteContextKind).(event.NoteContext)
+	assert.Equal(t, "[human ran a command on the host]\n"+
+		"$ printf 'one\\ntwo\\n'; printf 'oops\\n' >&2; exit 3\n"+
+		"exit 3\none\ntwo\noops", note.Text)
+
+	var lines []string
+	for _, e := range c.of(event.OutputChunkKind) {
+		lines = append(lines, e.(event.OutputChunk).Line)
+	}
+	assert.ElementsMatch(t, []string{"one", "two", "oops"}, lines,
+		"every line reached the bus, and the channel was closed")
 }
 
 // fakeRunner replies with canned output, and holds when asked.
@@ -300,33 +325,4 @@ func (c *collector) kinds() []event.Kind {
 		out = append(out, r.Event.Kind())
 	}
 	return out
-}
-
-// Against the real runner, because a fake that closes its output
-// channel correctly hides a package that depends on it doing so.
-func TestWatch_AgainstTheRealHostShell(t *testing.T) {
-	bus := event.New()
-	c := collect(t, bus)
-	stop := Watch(bus, host.NewShell(), "host")
-	t.Cleanup(stop)
-
-	bus.Publish(event.RunCommand{Text: "printf 'one\\ntwo\\n'; printf 'oops\\n' >&2; exit 3"})
-
-	ended := c.await(t, event.ShellEndedKind).(event.ShellEnded)
-	assert.Equal(t, 3, ended.Result.ExitCode)
-	assert.Equal(t, "one\ntwo\n", ended.Result.Stdout)
-	assert.Equal(t, "oops\n", ended.Result.Stderr)
-	assert.Empty(t, ended.Result.Err, "a non-zero exit is a result, not an error")
-
-	note := c.await(t, event.NoteContextKind).(event.NoteContext)
-	assert.Equal(t, "[human ran a command on the host]\n"+
-		"$ printf 'one\\ntwo\\n'; printf 'oops\\n' >&2; exit 3\n"+
-		"exit 3\none\ntwo\noops", note.Text)
-
-	var lines []string
-	for _, e := range c.of(event.OutputChunkKind) {
-		lines = append(lines, e.(event.OutputChunk).Line)
-	}
-	assert.ElementsMatch(t, []string{"one", "two", "oops"}, lines,
-		"every line reached the bus, and the channel was closed")
 }

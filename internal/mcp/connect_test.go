@@ -35,7 +35,7 @@ func TestConnectAll_OneBadServerDoesNotStopTheRest(t *testing.T) {
 	assert.True(t, ok, "the working server's tools are missing")
 }
 
-// Disabled is a choice and says nothing; configured with neither a
+// Disabled is a choice and says nothing. Configured with neither a
 // command nor a url is a mistake and says so.
 func TestConnectAll_SkipsDisabledButReportsEmpty(t *testing.T) {
 	bin, err := fakeServer()
@@ -53,82 +53,6 @@ func TestConnectAll_SkipsDisabledButReportsEmpty(t *testing.T) {
 	assert.Empty(t, in.Servers(), "neither one connected")
 	_, ok := reg.Lookup("off__echo")
 	assert.False(t, ok, "a disabled server registered tools")
-}
-
-// Config names what a server gets. detent's own keys are not part of
-// that, or every server would hold the model's credentials.
-func TestEnviron_CarriesWhatIsNamedAndNotWhatIsNot(t *testing.T) {
-	t.Setenv("DETENT_API_KEY", "should-not-travel")
-	t.Setenv("PATH", "/usr/bin")
-
-	got := environ(map[string]string{"GITHUB_TOKEN": "named"})
-
-	assert.Contains(t, got, "GITHUB_TOKEN=named")
-	assert.Contains(t, got, "PATH=/usr/bin", "a server needs PATH to run at all")
-	for _, e := range got {
-		assert.NotContains(t, e, "should-not-travel", "detent's own key reached a server")
-	}
-}
-
-// The environment a server actually receives, not just what we built.
-func TestConnectAll_TheServerSeesItsConfiguredEnv(t *testing.T) {
-	bin, err := fakeServer()
-	require.NoError(t, err)
-	t.Setenv("DETENT_MARKER", "from-detent")
-
-	reg := tool.Standard()
-	in := NewInvokers()
-	errs := ConnectAll(context.Background(), reg, in, map[string]Config{
-		"demo": {Command: bin, Env: map[string]string{"DETENT_MARKER": "from-config"}},
-	}, nil)
-	require.Empty(t, errs)
-	t.Cleanup(func() { _ = in.Close() })
-
-	call, err := reg.Prepare("demo__echo", nil)
-	require.NoError(t, err)
-	res := in.Invoke(context.Background(), call)
-	assert.Contains(t, res.Stdout, "env=from-config")
-}
-
-// Sorted, so the tool order a model sees does not shuffle per run and
-// cost a prompt cache hit.
-func TestConnectAll_RegistersInAStableOrder(t *testing.T) {
-	bin, err := fakeServer()
-	require.NoError(t, err)
-
-	var runs [][]string
-	for range 3 {
-		reg := tool.Standard()
-		in := NewInvokers()
-		_ = ConnectAll(context.Background(), reg, in, map[string]Config{
-			"zulu": {Command: bin}, "alpha": {Command: bin}, "mike": {Command: bin},
-		}, nil)
-		runs = append(runs, reg.Names())
-		_ = in.Close()
-	}
-	assert.Equal(t, runs[0], runs[1])
-	assert.Equal(t, runs[1], runs[2])
-	assert.Less(t, indexOf(runs[0], "alpha__echo"), indexOf(runs[0], "mike__echo"))
-}
-
-func indexOf(names []string, want string) int {
-	for i, n := range names {
-		if n == want {
-			return i
-		}
-	}
-	return -1
-}
-
-func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "detent-mcp")
-	if err != nil {
-		panic(err)
-	}
-	buildDir = dir
-	code := m.Run()
-	os.RemoveAll(dir)
-	os.Exit(code)
 }
 
 // /mcp draws from this, so it has to hold every configured server,
@@ -157,6 +81,27 @@ func TestConnectAll_StatusHoldsEveryServer(t *testing.T) {
 	assert.True(t, byName["off"].Disabled)
 	assert.Zero(t, byName["off"].Tools)
 	assert.NotEmpty(t, byName["unnamed"].Err, "a server with no command says nothing")
+}
+
+// Dialled concurrently but registered sorted, so the tool order a model
+// sees does not shuffle per run and cost a prompt cache hit.
+func TestConnectAll_RegistersInAStableOrder(t *testing.T) {
+	bin, err := fakeServer()
+	require.NoError(t, err)
+
+	var runs [][]string
+	for range 3 {
+		reg := tool.Standard()
+		in := NewInvokers()
+		_ = ConnectAll(context.Background(), reg, in, map[string]Config{
+			"zulu": {Command: bin}, "alpha": {Command: bin}, "mike": {Command: bin},
+		}, nil)
+		runs = append(runs, reg.Names())
+		_ = in.Close()
+	}
+	assert.Equal(t, runs[0], runs[1])
+	assert.Equal(t, runs[1], runs[2])
+	assert.Less(t, indexOf(runs[0], "alpha__echo"), indexOf(runs[0], "mike__echo"))
 }
 
 // A quick failure must not wait on a slow neighbour: report is called
@@ -191,26 +136,6 @@ func TestConnectAll_ReportsAFailureWithoutWaiting(t *testing.T) {
 	}
 }
 
-// Dialling concurrently must not cost the fixed order a model sees:
-// the spec asks for it, since it is what makes a prompt cache hit.
-func TestConnectAll_ConcurrentButStillOrdered(t *testing.T) {
-	bin, err := fakeServer()
-	require.NoError(t, err)
-
-	var runs [][]string
-	for range 3 {
-		reg, in := tool.Standard(), NewInvokers()
-		_ = ConnectAll(context.Background(), reg, in, map[string]Config{
-			"zulu": {Command: bin}, "alpha": {Command: bin}, "mike": {Command: bin},
-		}, nil)
-		runs = append(runs, reg.Names())
-		_ = in.Close()
-	}
-	assert.Equal(t, runs[0], runs[1])
-	assert.Equal(t, runs[1], runs[2])
-	assert.Less(t, indexOf(runs[0], "alpha__echo"), indexOf(runs[0], "mike__echo"))
-}
-
 // Every configured server is listed before any answers, so /mcp draws
 // a slow one as still connecting rather than leaving it out.
 func TestConnectAll_ListsAServerBeforeItAnswers(t *testing.T) {
@@ -243,4 +168,59 @@ func TestConnectAll_ListsAServerBeforeItAnswers(t *testing.T) {
 	require.Len(t, byName, 2, "a server that has not answered is missing from the page")
 	assert.False(t, byName["slow"].Connected, "a pending server is drawn as connected")
 	assert.Empty(t, byName["slow"].Err, "a pending server is drawn as failed")
+}
+
+// The environment a server actually receives, not just what we built.
+func TestConnectAll_TheServerSeesItsConfiguredEnv(t *testing.T) {
+	bin, err := fakeServer()
+	require.NoError(t, err)
+	t.Setenv("DETENT_MARKER", "from-detent")
+
+	reg := tool.Standard()
+	in := NewInvokers()
+	errs := ConnectAll(context.Background(), reg, in, map[string]Config{
+		"demo": {Command: bin, Env: map[string]string{"DETENT_MARKER": "from-config"}},
+	}, nil)
+	require.Empty(t, errs)
+	t.Cleanup(func() { _ = in.Close() })
+
+	call, err := reg.Prepare("demo__echo", nil)
+	require.NoError(t, err)
+	res := in.Invoke(context.Background(), call)
+	assert.Contains(t, res.Stdout, "env=from-config")
+}
+
+// Config names what a server gets. detent's own keys are not part of
+// that, or every server would hold the model's credentials.
+func TestEnviron_CarriesWhatIsNamedAndNotWhatIsNot(t *testing.T) {
+	t.Setenv("DETENT_API_KEY", "should-not-travel")
+	t.Setenv("PATH", "/usr/bin")
+
+	got := environ(map[string]string{"GITHUB_TOKEN": "named"})
+
+	assert.Contains(t, got, "GITHUB_TOKEN=named")
+	assert.Contains(t, got, "PATH=/usr/bin", "a server needs PATH to run at all")
+	for _, e := range got {
+		assert.NotContains(t, e, "should-not-travel", "detent's own key reached a server")
+	}
+}
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "detent-mcp")
+	if err != nil {
+		panic(err)
+	}
+	buildDir = dir
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+func indexOf(names []string, want string) int {
+	for i, n := range names {
+		if n == want {
+			return i
+		}
+	}
+	return -1
 }

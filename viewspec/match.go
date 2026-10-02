@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// matcher is a "field=value" filter. The zero value matches nothing;
-// parseMatch("") returns one that matches everything.
+// matcher is a "field=value" filter. The zero value matches nothing,
+// and parseMatch("") returns one that matches everything.
 type matcher struct {
 	field string
 	value string
@@ -48,8 +48,7 @@ func (m matcher) count(rows []Row) int {
 }
 
 // placeholder is the only templating there is: a field name in braces,
-// substituted from one row. No expressions, no pipelines. A spec you
-// can read and fix by hand is the payoff for caching them to disk.
+// substituted from one row, so a spec stays readable by hand.
 var placeholder = regexp.MustCompile(`\{([a-z_][a-z0-9_]*)\}`)
 
 func substitute(tmpl string, r Row) (string, error) {

@@ -12,7 +12,7 @@ import (
 // comes back arrives as a fact, through apply.
 
 // submit sends the prompt. Typed while a request runs it is steering,
-// not a new request — the engine makes that call, not this.
+// not a new request, and the engine decides that, not this.
 func (m Model) submit() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.prompt.Value())
 	if text == "" {
@@ -80,7 +80,7 @@ func (m Model) listSessions(string) (tea.Model, tea.Cmd) {
 }
 
 // listServers asks for the page afresh each time, since a stale one is
-// worse than a blank frame; /mcp auth <server> asks for a new sign-in.
+// worse than a blank frame. /mcp auth <server> asks for a new sign-in.
 func (m Model) listServers(input string) (tea.Model, tea.Cmd) {
 	args := strings.Fields(strings.TrimPrefix(input, "/mcp"))
 	if len(args) == 0 {
@@ -134,7 +134,7 @@ func (m Model) onQuit(repeat string) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	m.quitArmed = true
-	m.noteErr("a request is running — " + repeat + " again to quit, or /abort it")
+	m.noteErr("a request is running: " + repeat + " again to quit, or /abort it")
 	return m, nil
 }
 

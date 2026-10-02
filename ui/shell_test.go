@@ -244,20 +244,6 @@ func TestShell_TheRenderedBorderFollowsTheMode(t *testing.T) {
 	assert.Equal(t, stripStyle(inPrompt), stripStyle(inShell), "and nothing but the colour moved")
 }
 
-// inputTopBorder is the input island's top edge, which is the last one
-// drawn: the panes above it are rendered side by side before it.
-func inputTopBorder(t *testing.T, m Model) string {
-	t.Helper()
-	lines := strings.Split(m.baseView(), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.Contains(lines[i], "╭") {
-			return lines[i]
-		}
-	}
-	t.Fatal("no input island was drawn")
-	return ""
-}
-
 // Nothing subscribes ShellEnded to the judge, on purpose, so a row
 // that said "judging…" would wait for a verdict that never comes.
 func TestShell_TheRowNeverPromisesAVerdict(t *testing.T) {
@@ -348,6 +334,20 @@ func TestResume_ASeamIsNotAnUndoTarget(t *testing.T) {
 	m := feed(t, event.SessionResumed{Records: 3})
 	_, err := m.undoTarget("/undo 0")
 	assert.Equal(t, "no request 0", err)
+}
+
+// inputTopBorder is the input island's top edge, which is the last one
+// drawn: the panes above it are rendered side by side before it.
+func inputTopBorder(t *testing.T, m Model) string {
+	t.Helper()
+	lines := strings.Split(m.baseView(), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.Contains(lines[i], "╭") {
+			return lines[i]
+		}
+	}
+	t.Fatal("no input island was drawn")
+	return ""
 }
 
 // seamLineOf is the drawn seam, so an assertion about its width is

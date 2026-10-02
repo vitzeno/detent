@@ -10,28 +10,8 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-const dfOut = `Filesystem Size Used Capacity Mounted
-disk1 926G 822G 95% /
-disk2 926G 2.0G 45% /System
-disk3 100G 50G 78% /Data
-`
-
-func cols(fields ...string) []viewspec.Column {
-	out := make([]viewspec.Column, len(fields))
-	for i, f := range fields {
-		out[i] = viewspec.Column{Field: f}
-	}
-	return out
-}
-
-func colsParse() viewspec.Parse { return viewspec.Parse{Kind: "columns", Header: true} }
-
-func fills(line string) int { return strings.Count(line, "█") }
-
-// Every numeric widget read 0 from df's own columns before this: a
-// percentage, a size and a separated count are all things ParseFloat
-// rejects outright, and the chart came out empty rather than wrong in
-// a way anyone could see.
+// A percentage, a size and a separated count are all things ParseFloat
+// rejects, so a chart drawn from them would come out empty.
 func TestNumber_ReadsWhatAShellPrints(t *testing.T) {
 	const sizes = `Name Amount
 kilo 900M
@@ -72,14 +52,6 @@ func TestGauge_IsFixedWhereBarIsRelative(t *testing.T) {
 	assert.Less(t, fills(got[0]), maxFill(got)+1)
 	assert.NotEqual(t, fills(bar[1]), fills(got[1]),
 		"the same 45% draws differently under the two scales")
-}
-
-func maxFill(lines []string) int {
-	n := 0
-	for _, l := range lines {
-		n = max(n, fills(l))
-	}
-	return n
 }
 
 // histogram is the only widget that counts, which is the whole reason
@@ -231,4 +203,30 @@ redis failed
 	require.Len(t, got, 2)
 	assert.True(t, strings.HasPrefix(got[0], "● nginx"))
 	assert.Contains(t, got[1], "failed", "the state stays readable beside the glyph")
+}
+
+const dfOut = `Filesystem Size Used Capacity Mounted
+disk1 926G 822G 95% /
+disk2 926G 2.0G 45% /System
+disk3 100G 50G 78% /Data
+`
+
+func cols(fields ...string) []viewspec.Column {
+	out := make([]viewspec.Column, len(fields))
+	for i, f := range fields {
+		out[i] = viewspec.Column{Field: f}
+	}
+	return out
+}
+
+func colsParse() viewspec.Parse { return viewspec.Parse{Kind: "columns", Header: true} }
+
+func fills(line string) int { return strings.Count(line, "█") }
+
+func maxFill(lines []string) int {
+	n := 0
+	for _, l := range lines {
+		n = max(n, fills(l))
+	}
+	return n
 }

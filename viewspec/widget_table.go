@@ -51,11 +51,23 @@ func (tableWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return lines, nil
 }
 
+func (tableWidget) CursorLine(_ Block, d Data, f Frame) int {
+	if n := rowCursor(d, f); n >= 0 {
+		return n + 1 // the header sits above the rows
+	}
+	return -1
+}
+
+func (tableWidget) Describe() Description {
+	return Description{
+		What:     "rows in aligned columns, for reading several fields per record",
+		NotFor:   "comparing one number across rows, where bar shows the shape at a glance",
+		Examples: []string{"docker ps", "ps aux", "a package list with status and duration"},
+	}
+}
+
 // tableColumns is the block's own columns, or every parsed field in
-// source order when it names none. That lets one table spec serve
-// output whose columns are not known until it is parsed. A block
-// column with no title of its own takes the parse's, so naming a
-// column does not cost you the heading the output printed.
+// source order when it names none. An untitled column takes the parse's title.
 func tableColumns(b Block, d Data) []Column {
 	if len(b.Columns) == 0 {
 		return d.Columns
@@ -74,21 +86,4 @@ func tableColumns(b Block, d Data) []Column {
 		out[i] = c
 	}
 	return out
-}
-
-// The two row widgets draw a cursor, so both report where it landed.
-// A table's header sits above its rows; a list's does not.
-func (tableWidget) CursorLine(_ Block, d Data, f Frame) int {
-	if n := rowCursor(d, f); n >= 0 {
-		return n + 1 // the header sits above the rows
-	}
-	return -1
-}
-
-func (tableWidget) Describe() Description {
-	return Description{
-		What:     "rows in aligned columns, for reading several fields per record",
-		NotFor:   "comparing one number across rows, where bar shows the shape at a glance",
-		Examples: []string{"docker ps", "ps aux", "a package list with status and duration"},
-	}
 }

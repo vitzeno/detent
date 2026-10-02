@@ -6,9 +6,8 @@ import (
 	"strconv"
 )
 
-// histogram is the one widget that aggregates: it groups rows by a
-// field and charts how many landed in each. The model cannot do this
-// for itself, since it writes no data and a count is data.
+// histogram groups rows by a field and charts how many landed in each.
+// A spec carries no data, so counting has to happen here.
 type histogramWidget struct{}
 
 var (

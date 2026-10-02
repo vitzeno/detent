@@ -2,22 +2,20 @@ package ui
 
 import (
 	"fmt"
-	"github.com/vitzeno/detent/event"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/status"
 )
 
-// The history pane: one block per request, each with its calls
-// under it. Everything here is pure — View calls it on a throwaway
-// copy of Model, so nothing may write back.
+// The history pane: one block per request, its calls under it. View
+// calls this on a throwaway copy of Model, so nothing may write back.
 
-// historyLines renders every history entry and reports which entry the
-// cursor is on, rather than writing that to shared state on the way
-// past. Pure, so sizeViewport can call it before anything is committed.
+// historyLines renders every entry and reports which one the cursor is
+// on. Pure, so sizeViewport can call it before anything is committed.
 func (m Model) historyLines() (lines []string, cursorEntry int) {
 	focused := m.focusedRow()
 	for bi, b := range m.blocks {
@@ -88,9 +86,8 @@ func (m Model) blockKey(b *turnBlock, focused *callRow) blockKey {
 	return k
 }
 
-// spinnerFrame is the frame a live block is drawing, and "" when none
-// is. The whole history turns over with it, by the same rule blockKey
-// follows for one block.
+// spinnerFrame is the frame a live block is drawing, or "" when none
+// is. The whole history turns over with it, as blockKey does per block.
 func (m Model) spinnerFrame() string {
 	for _, b := range m.blocks {
 		if !b.ended && (anyRunning(b) || (b == m.cur && m.waiting)) {
@@ -192,8 +189,7 @@ const railWidth = 2
 func (m Model) blockWidth() int { return max(12, m.layout.histColW-4-railWidth) }
 
 // railed draws a block's rows against a coloured bar spanning all of
-// them. A divider marks where blocks meet; a rail marks how far one
-// reaches, and its colour says how the request went.
+// them, whose colour says how the request went.
 func (m Model) railed(b *turnBlock, block []string) []string {
 	bar := m.railStyle(b).Render("┃") + " "
 	out := make([]string, len(block))
@@ -213,8 +209,6 @@ func (m Model) railStyle(b *turnBlock) lipgloss.Style {
 		// Nothing ends a shell block, so the live colour would stay on
 		// it for the rest of the session.
 		return styleMuted
-	case b == m.cur && !b.ended:
-		return styleRowCursor
 	case !b.ended:
 		return styleRowCursor
 	case b.err != "" || b.end == event.EndError:
@@ -226,20 +220,6 @@ func (m Model) railStyle(b *turnBlock) lipgloss.Style {
 	default:
 		return styleCaution
 	}
-}
-
-func (m *Model) cursorClamped() int {
-	rows := m.rows()
-	if len(rows) == 0 {
-		return -1
-	}
-	if m.nav.cursor < 0 {
-		return 0
-	}
-	if m.nav.cursor >= len(rows) {
-		return len(rows) - 1
-	}
-	return m.nav.cursor
 }
 
 // rowLines draws one row: the model's words, or a call with its badge
@@ -290,9 +270,8 @@ func (m Model) rowLines(r, focused *callRow) []string {
 		icon = styleGoal.Render("$") + icon
 	}
 
-	// Truncated, not wrapped: a command is often one unbreakable
-	// token. Measured from the pieces, since the detail varies; where
-	// there is no room for both, the command wins.
+	// Truncated, not wrapped: a command is often one unbreakable token.
+	// Where there is no room for both, the command beats the detail.
 	head := lipgloss.Width(stripStyle(mark)) + lipgloss.Width(icon) + 1
 	tail := "· " + detail
 	if m.blockWidth()-head-1-lipgloss.Width(tail) < minCommandCells {
@@ -388,9 +367,8 @@ func previewLines(r *callRow, width int) []string {
 // paragraph under its label, not flush against the pane edge.
 const contPrefix = "    "
 
-// wrapPlain word-wraps unstyled text — history wraps rather than
-// truncates, unlike the output pane, since a human may be looking for
-// exactly the part that would get cut.
+// wrapPlain word-wraps unstyled text. History wraps rather than
+// truncates, since the part that would be cut may be the one wanted.
 func wrapPlain(s string, width int) []string {
 	if width < 8 {
 		width = 8
@@ -403,9 +381,8 @@ func wrapPlain(s string, width int) []string {
 	return lines
 }
 
-// wrapStyled styles each physical line; the first gets prefix, every
-// continuation gets contPrefix, so a multi-line banner indents like a
-// wrapped prompt or command.
+// wrapStyled styles each physical line, indenting every continuation
+// by contPrefix so a multi-line banner reads as one paragraph.
 func wrapStyled(style lipgloss.Style, text string, width int) []string {
 	lines := wrapPlain(text, width)
 	out := make([]string, len(lines))
@@ -420,8 +397,7 @@ func wrapStyled(style lipgloss.Style, text string, width int) []string {
 }
 
 // plainProse drops the markup a one-line row cannot render, so a
-// summary written as markdown reads as a sentence rather than as its
-// own source. The pane still draws the real thing.
+// markdown summary reads as a sentence. The pane draws the real thing.
 func plainProse(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.TrimLeft(s, "#-*> \t")

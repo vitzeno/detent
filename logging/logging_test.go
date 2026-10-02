@@ -14,26 +14,6 @@ import (
 	"github.com/vitzeno/detent/logging"
 )
 
-// records reads what has been written so far. A half-written trailing
-// line is skipped rather than failed on: a subscriber writes while a
-// test is polling, and a partial record is a moment, not a fault.
-func records(t *testing.T, dir, session string) []map[string]any {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(dir, session+".jsonl"))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	require.NoError(t, err)
-	var out []map[string]any
-	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
-		var m map[string]any
-		if json.Unmarshal([]byte(line), &m) == nil {
-			out = append(out, m)
-		}
-	}
-	return out
-}
-
 // One stream, and a component field rather than a file per component:
 // filtering stays easy and the join across components survives.
 func TestSetup_WritesOneQueryableStreamPerSession(t *testing.T) {
@@ -101,10 +81,8 @@ func TestSetup_LevelFiltersAsAsked(t *testing.T) {
 	assert.Equal(t, slog.LevelWarn.String(), got[0]["level"])
 }
 
-// Every event name is distinct: a name is a record's primary key, so
-// two things sharing one makes a query return both. These are only
-// the names the bus never carries — a fact is logged under its own
-// event.Kind, which event's own test already proves unique.
+// An event name is a record's primary key, so two sharing one makes a
+// query return both. Facts use event.Kind, which event's tests cover.
 func TestEvents_NamesAreUnique(t *testing.T) {
 	names := map[string]int{}
 	for _, e := range []string{
@@ -118,8 +96,8 @@ func TestEvents_NamesAreUnique(t *testing.T) {
 	}
 }
 
-// No name may say "goal": the unit is a Turn now, and a log that
-// still calls it a goal is a query that finds nothing.
+// No name may say "goal": the unit is a Turn, and a query for the
+// wrong word finds nothing.
 func TestEvents_NoNameSaysGoal(t *testing.T) {
 	for _, e := range []string{
 		logging.SessionOpen, logging.LLMRequest, logging.LLMReply, logging.LLMError,
@@ -129,4 +107,23 @@ func TestEvents_NoNameSaysGoal(t *testing.T) {
 	} {
 		assert.NotContains(t, e, "goal", "%q still names a goal", e)
 	}
+}
+
+// records reads what has been written so far, skipping a half-written
+// trailing line since a subscriber may be mid-write while a test polls.
+func records(t *testing.T, dir, session string) []map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, session+".jsonl"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	require.NoError(t, err)
+	var out []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		var m map[string]any
+		if json.Unmarshal([]byte(line), &m) == nil {
+			out = append(out, m)
+		}
+	}
+	return out
 }

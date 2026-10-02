@@ -35,21 +35,18 @@ type Row map[string]string
 type Data struct {
 	Rows []Row
 	Raw  string
-	// Columns is the row keys in parse order, spelled as the output
-	// spelled them. A Row, being a map, can carry neither.
+	// Columns is the row keys in parse order and the output's spelling, which a map cannot keep.
 	Columns []Column
 }
 
-// Block configures one widget. Kind decides which fields are read; the
-// rest are ignored. Flat rather than a per-kind union so the whole
-// spec is one fixed object shape under strict JSON schema.
+// Block configures one widget. Kind decides which fields are read. Flat
+// rather than a per-kind union, so strict JSON schema sees one shape.
 type Block struct {
 	Kind string `json:"kind"`
 
 	Title string `json:"title,omitempty"`
 	Field string `json:"field,omitempty"`
-	// Depth is the field holding a tree row's nesting level. Empty
-	// means Field is a path and the hierarchy comes from its slashes.
+	// Depth is a tree's level field. Empty reads Field as a path.
 	Depth string `json:"depth,omitempty"`
 
 	Columns []Column `json:"columns,omitempty"`
@@ -57,30 +54,25 @@ type Block struct {
 	Sort    *Sort    `json:"sort,omitempty"`
 	Accent  *Accent  `json:"accent,omitempty"`
 
-	// CountWhere and Of are computed from rows by the interpreter. A
-	// meter's numbers are counted here, never written by the model.
+	// CountWhere and Of count rows, so a meter's numbers are never model-written.
 	CountWhere string `json:"count_where,omitempty"`
 	Of         string `json:"of,omitempty"`
 
 	OnEnter string `json:"on_enter,omitempty"`
 
-	// Panes is set only on a row: the columns it lays side by side.
-	// Nesting is capped at one level, so a pane holds leaves only.
+	// Panes is set only on a container. Nesting stops at one level.
 	Panes []Pane `json:"panes,omitempty"`
 }
 
-// Pane is one column of a row. Weight shares the width; 0 means an
+// Pane is one column of a row. Weight shares the width, and 0 means an
 // equal share with every other 0.
 type Pane struct {
 	Weight int     `json:"weight,omitempty"`
 	Blocks []Block `json:"blocks"`
 }
 
-// RowKind lays its panes side by side. PanelKind frames its one pane
-// in a border. Both are drawn by the interpreter rather than by a
-// widget: a Widget is handed a Block and Data, never the registry, so
-// it could not resolve its children's widgets. Layout is geometry, and
-// geometry belongs to the interpreter.
+// RowKind lays its panes side by side and PanelKind frames its one pane.
+// The interpreter draws both, since a Widget never sees the registry.
 const (
 	RowKind   = "row"
 	PanelKind = "panel"

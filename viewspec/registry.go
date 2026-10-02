@@ -7,8 +7,7 @@ import (
 )
 
 // Registry is the vocabulary a spec is compiled against, and the
-// extension point: a consumer registers its own widgets and parse
-// kinds rather than forking the package.
+// extension point for a consumer's own widgets and parse kinds.
 type Registry struct {
 	widgets    map[string]Widget
 	extractors map[string]func(Parse) (Extractor, error)
@@ -23,16 +22,14 @@ func NewRegistry() *Registry {
 	}
 }
 
-// Widget draws one block kind. Returning an error drops the whole
-// view, never just this block. A table rendering three real columns
-// beside one silently empty one is a lie with a border around it.
+// Widget draws one block kind. An error drops the whole view, never
+// just this block, since one silently empty column is a lie with a border.
 type Widget interface {
 	Draw(b Block, d Data, f Frame) ([]string, error)
 }
 
 // Widget registers a widget under kind, replacing any built-in of the
-// same name. That is how a consumer swaps in a richer table without
-// this package learning what its table library is.
+// same name, so a consumer can swap in its own without forking.
 func (r *Registry) Widget(kind string, w Widget) error {
 	if kind == "" {
 		return fmt.Errorf("viewspec: widget kind must not be empty")
@@ -64,10 +61,7 @@ func (r *Registry) Extractor(kind string, mk func(Parse) (Extractor, error)) err
 }
 
 // Subset returns a registry holding only the named widget kinds, with
-// every parse kind intact. Narrowing what a model may choose from is
-// what keeps a many-way choice calibrated; compiling against the same
-// subset is what stops it choosing outside the set anyway. Unknown
-// names are ignored, so a caller can name kinds it isn't sure exist.
+// every parse kind intact. Unknown names are ignored.
 func (r *Registry) Subset(kinds ...string) *Registry {
 	out := NewRegistry()
 	maps.Copy(out.extractors, r.extractors)
@@ -85,96 +79,6 @@ func (r *Registry) Kinds() []string { return slices.Sorted(maps.Keys(r.widgets))
 // ParseKinds lists every registered parse kind, sorted.
 func (r *Registry) ParseKinds() []string { return slices.Sorted(maps.Keys(r.extractors)) }
 
-// WidgetFunc adapts a plain function, as http.HandlerFunc does.
-type WidgetFunc func(Block, Data, Frame) ([]string, error)
-
-func (fn WidgetFunc) Draw(b Block, d Data, f Frame) ([]string, error) { return fn(b, d, f) }
-
-// Validator is an optional Widget extension. Bind calls it with the
-// fields the parse actually produced, so a widget can reject a block
-// before any frame is drawn rather than failing mid-render.
-type Validator interface {
-	Validate(b Block, fields []string) error
-}
-
-// Selector is an optional Widget extension: a widget drawing a cursor
-// reports which of its own lines the cursor sits on, so a caller can
-// scroll to a selection it cannot see the layout of.
-type Selector interface {
-	CursorLine(b Block, d Data, f Frame) int
-}
-
-// Container is an optional Widget extension: a kind that arranges
-// other blocks instead of drawing data. The interpreter resolves and
-// draws the children, because a Widget never sees the registry, then
-// hands them back here to be put together.
-type Container interface {
-	// Accept reports whether this is a shape the kind can arrange.
-	Accept(panes []Pane) error
-	// Widths is how wide each pane should be drawn.
-	Widths(panes []Pane, total int) ([]int, error)
-	// Arrange assembles the drawn panes and reports where each one's
-	// first line landed. A single offset would do for a row or a
-	// panel and not for a layout that stacks, where how far a pane
-	// moved depends on how tall the panes above it came out.
-	Arrange(cols [][]string, widths []int, b Block, f Frame) (lines []string, paneAt []int)
-}
-
-// Description is what a widget is for, stated the way a many-way
-// choice needs: structured, with a counter-case. Flat one-liners lose
-// a model's calibration once there are more than a handful of options.
-type Description struct {
-	What   string `json:"what"`
-	NotFor string `json:"not_for,omitempty"`
-	// Needs are the fields this kind cannot draw without, in the order
-	// it reads them. One slot fills Block.Field, two or more fill
-	// Block.Columns in order, and a kind needing something that is not
-	// a field declares none. Structured rather than prose because
-	// whatever composes a block has to ask for each one, and a
-	// sentence has to be kept in step with that by hand.
-	Needs []Slot `json:"needs,omitempty"`
-	// Summarises marks a kind drawing one fact about every row rather
-	// than the rows themselves. A caller asks for a body and a summary
-	// separately, and which a widget is belongs beside the widget.
-	Summarises bool `json:"summarises,omitempty"`
-	// Raw marks a kind drawing the output as it came, reading no rows,
-	// so a view holding one hides nothing whatever its parse read.
-	Raw      bool     `json:"raw,omitempty"`
-	Examples []string `json:"examples,omitempty"`
-}
-
-// Slot is one field a widget cannot be drawn without, named for the
-// part it plays so a caller can ask for it in those terms.
-type Slot struct {
-	Name string `json:"name"`
-	// What it should hold, phrased as the answer to "which field".
-	What string `json:"what"`
-}
-
-// Described is an optional Widget extension carrying that description
-// into Registry.Schema, so the model choosing a widget reads the same
-// criteria the author wrote.
-type Described interface {
-	Describe() Description
-}
-
-// ColumnOrder is an optional Extractor extension reporting the order
-// fields appeared in and how the output spelled them. Without it they
-// sort alphabetically and display by key.
-type ColumnOrder interface {
-	Columns() []Column
-}
-
-// ExtractorFunc adapts a plain function.
-type ExtractorFunc func(string) ([]Row, error)
-
-func (fn ExtractorFunc) Extract(output string) ([]Row, error) { return fn(output) }
-
-func (r *Registry) widget(kind string) (Widget, bool) {
-	w, ok := r.widgets[kind]
-	return w, ok
-}
-
 // Selects reports whether kind draws one row per line, the kinds a
 // cursor moves through and on_enter can act on.
 func (r *Registry) Selects(kind string) bool {
@@ -184,6 +88,94 @@ func (r *Registry) Selects(kind string) bool {
 	}
 	_, ok = w.(Selector)
 	return ok
+}
+
+// Describe returns what a registered widget says about itself, or false
+// for one with no Describe, which stays drawable but is never offered.
+func (r *Registry) Describe(kind string) (Description, bool) {
+	w, ok := r.widgets[kind]
+	if !ok {
+		return Description{}, false
+	}
+	d, ok := w.(Described)
+	if !ok {
+		return Description{}, false
+	}
+	return d.Describe(), true
+}
+
+// WidgetFunc adapts a plain function, as http.HandlerFunc does.
+type WidgetFunc func(Block, Data, Frame) ([]string, error)
+
+func (fn WidgetFunc) Draw(b Block, d Data, f Frame) ([]string, error) { return fn(b, d, f) }
+
+// ExtractorFunc adapts a plain function.
+type ExtractorFunc func(string) ([]Row, error)
+
+func (fn ExtractorFunc) Extract(output string) ([]Row, error) { return fn(output) }
+
+// Validator is an optional Widget extension. Bind calls it with the
+// fields the parse produced, so a block is rejected before any drawing.
+type Validator interface {
+	Validate(b Block, fields []string) error
+}
+
+// Selector is an optional Widget extension reporting which of its own
+// lines the cursor sits on, so a caller can scroll to the selection.
+type Selector interface {
+	CursorLine(b Block, d Data, f Frame) int
+}
+
+// Container is an optional Widget extension: a kind that arranges
+// other blocks, which the interpreter resolves and draws for it.
+type Container interface {
+	// Accept reports whether this is a shape the kind can arrange.
+	Accept(panes []Pane) error
+	// Widths is how wide each pane should be drawn.
+	Widths(panes []Pane, total int) ([]int, error)
+	// Arrange assembles the drawn panes and reports where each one's
+	// first line landed, which for a stacking layout depends on heights.
+	Arrange(cols [][]string, widths []int, b Block, f Frame) (lines []string, paneAt []int)
+}
+
+// Described is an optional Widget extension carrying that description
+// into Registry.Schema.
+type Described interface {
+	Describe() Description
+}
+
+// Description is what a widget is for, structured with a counter-case,
+// since flat one-liners lose a model's calibration over many options.
+type Description struct {
+	What   string `json:"what"`
+	NotFor string `json:"not_for,omitempty"`
+	// Needs are the fields it cannot draw without: one fills Block.Field,
+	// more fill Block.Columns in order, and a non-field need declares none.
+	Needs []Slot `json:"needs,omitempty"`
+	// Summarises marks a kind drawing one fact about every row, not the rows.
+	Summarises bool `json:"summarises,omitempty"`
+	// Raw marks a kind drawing the output as it came, reading no rows.
+	Raw      bool     `json:"raw,omitempty"`
+	Examples []string `json:"examples,omitempty"`
+}
+
+// Slot is one field a widget cannot be drawn without, named for the
+// part it plays so a caller can ask for it in those terms.
+type Slot struct {
+	Name string `json:"name"`
+	// What it holds, phrased as the answer to "which field".
+	What string `json:"what"`
+}
+
+// ColumnOrder is an optional Extractor extension reporting the fields'
+// order and spelling. Without it they sort alphabetically.
+type ColumnOrder interface {
+	Columns() []Column
+}
+
+func (r *Registry) widget(kind string) (Widget, bool) {
+	w, ok := r.widgets[kind]
+	return w, ok
 }
 
 // isContainer asks the registered widget rather than the kind's name,
@@ -214,25 +206,8 @@ func (r *Registry) clone() *Registry {
 	return out
 }
 
-// Describe returns what a registered widget says about itself. A
-// widget with no Describe reports false: it is drawable and invisible
-// to anything choosing between kinds, which is how a plain WidgetFunc
-// opts out.
-func (r *Registry) Describe(kind string) (Description, bool) {
-	w, ok := r.widgets[kind]
-	if !ok {
-		return Description{}, false
-	}
-	d, ok := w.(Described)
-	if !ok {
-		return Description{}, false
-	}
-	return d.Describe(), true
-}
-
 // describe returns every registered widget's description, keyed by
-// kind. A widget that says nothing is simply absent, which is how a
-// consumer-registered widget opts out.
+// kind. A widget that says nothing is absent.
 func (r *Registry) describe() map[string]Description {
 	out := make(map[string]Description, len(r.widgets))
 	for kind, w := range r.widgets {

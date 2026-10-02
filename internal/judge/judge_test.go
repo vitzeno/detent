@@ -3,36 +3,16 @@ package judge
 import (
 	"context"
 	"errors"
-	"github.com/google/uuid"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/classify"
 )
-
-// recordingAsker keeps the state it was asked about.
-type recordingAsker struct{ states chan classify.State }
-
-func (r recordingAsker) Ask(_ context.Context, s classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
-	r.states <- s
-	return classify.Answers{}, classify.Usage{}, nil
-}
-
-type fakeAsker struct {
-	answers classify.Answers
-	err     error
-}
-
-func (f fakeAsker) Ask(context.Context, classify.State, classify.Questions) (classify.Answers, classify.Usage, error) {
-	if f.err != nil {
-		return nil, classify.Usage{}, f.err
-	}
-	return f.answers, classify.Usage{}, nil
-}
 
 func TestJudge_ReadsWhatTheJudgeSaid(t *testing.T) {
 	j := ResultJudge{Asker: fakeAsker{answers: classify.Answers{
@@ -50,9 +30,8 @@ func TestJudge_ReadsWhatTheJudgeSaid(t *testing.T) {
 	assert.Equal(t, 0.95, got.GoalAchieved)
 }
 
-// The heuristic is what a row reads as with no judge wired, and must
-// never claim to be one: the UI tells a verdict from a guess by
-// FromJudge alone.
+// The heuristic must never claim to be a verdict: the UI tells the two
+// apart by FromJudge alone.
 func TestJudge_FallsBackWithoutClaimingToBeAVerdict(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -77,9 +56,8 @@ func TestJudge_FallsBackWithoutClaimingToBeAVerdict(t *testing.T) {
 	}
 }
 
-// The gap your own logs found: goal_achieved was measured after every
-// command and never acted on, so a model ran the same thing twelve
-// times. It now becomes an advisory stop.
+// A judged-met request becomes an advisory stop, so a model does not
+// keep re-running what already answered it.
 func TestWatch_AHighScoreAsksTheTurnToStop(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
@@ -178,4 +156,24 @@ func TestWatch_TheJudgeSeesTheCommand(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("the judge was never asked")
 	}
+}
+
+// recordingAsker keeps the state it was asked about.
+type recordingAsker struct{ states chan classify.State }
+
+func (r recordingAsker) Ask(_ context.Context, s classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
+	r.states <- s
+	return classify.Answers{}, classify.Usage{}, nil
+}
+
+type fakeAsker struct {
+	answers classify.Answers
+	err     error
+}
+
+func (f fakeAsker) Ask(context.Context, classify.State, classify.Questions) (classify.Answers, classify.Usage, error) {
+	if f.err != nil {
+		return nil, classify.Usage{}, f.err
+	}
+	return f.answers, classify.Usage{}, nil
 }

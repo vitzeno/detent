@@ -11,9 +11,8 @@ import (
 	"github.com/vitzeno/detent/version"
 )
 
-// The frame around the panes, in the order it appears on screen: the
-// session bar across the top, each pane's own header, and the status
-// line above the input bar.
+// The frame around the panes, in screen order: the session bar, each
+// pane's header, and the status line above the input bar.
 
 func (m Model) sessionBar() string {
 	jev := styleFaint.Render("jev ○ off")
@@ -57,8 +56,7 @@ func (m Model) contextStyle() lipgloss.Style {
 }
 
 // fitSegments drops the least useful first: name, run mode and judge
-// are what a human checks. lipgloss.Width ignores styling, which is
-// why this works after rendering.
+// are what a human checks. lipgloss.Width ignores styling.
 func fitSegments(segs []string, width int) string {
 	keep := make([]bool, len(segs))
 	for i := range keep {
@@ -115,8 +113,7 @@ func (m Model) viewportHeader() string {
 	label := "output"
 	switch {
 	case r.prose != "":
-		// Not the judged kind: nothing here is a file or a command's
-		// output. It is the model talking.
+		// The model talking, not a file or a command's output.
 		label = "summary"
 	case r.kind() != "":
 		label = status.KindLabel(r.kind())
@@ -127,8 +124,7 @@ func (m Model) viewportHeader() string {
 		width -= len(note) + 3
 	}
 	head := fmt.Sprintf("%s %s%s", paneMark(active), paneLabel(label, active), mark)
-	// Prose has no command, and a dash with nothing after it reads as
-	// a truncation.
+	// Prose has no command, and a dangling dash reads as a truncation.
 	if r.command == "" {
 		return head
 	}
@@ -139,9 +135,8 @@ func (m Model) viewportHeader() string {
 // was drawn.
 const viewSourceMark = "✦"
 
-// viewNote says how the pane was drawn, and usually says nothing.
-// Only framing a model had a hand in is worth a word; detent's own
-// renderings are the baseline and naming them on every row was noise.
+// viewNote says how the pane was drawn, and usually says nothing: only
+// framing a model had a hand in is worth a word.
 func viewNote(r *callRow) string {
 	switch r.viewSource {
 	case "composed", "saved":
@@ -216,9 +211,7 @@ func (m Model) statusHint() string {
 		}
 		return "[tab] input · [↑/↓] inside · " + esc
 	case ownerHistory:
-		// esc aborts from here too, and saying so is the difference
-		// between a human knowing they can stop a run and thinking
-		// they can't.
+		// esc aborts from here too, and a human needs to know they can stop a run.
 		if m.cur != nil {
 			return "[esc] abort · [tab] output · [↑/↓] move · [space] expand"
 		}
@@ -243,7 +236,7 @@ func (m Model) statusHint() string {
 }
 
 // runModeBadge says where commands actually run. Host is called out
-// rather than left implicit: it's the unsandboxed case.
+// rather than left implicit, since it is the unsandboxed case.
 func runModeBadge(mode string) string {
 	if mode == "sandbox" {
 		return styleSafe.Render("sandbox ●")

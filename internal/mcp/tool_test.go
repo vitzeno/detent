@@ -12,18 +12,6 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// legal is what a chat-completions request accepts, which is narrower
-// than what MCP allows: no dots, and half the length.
-func legal(t *testing.T, name string) {
-	t.Helper()
-	require.LessOrEqual(t, len(name), 64, "%q is too long for an endpoint", name)
-	require.NotEmpty(t, name)
-	for _, r := range name {
-		ok := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-'
-		require.True(t, ok, "%q holds %q, which no endpoint accepts", name, r)
-	}
-}
-
 func TestToolName_IsNamespacedAndEndpointLegal(t *testing.T) {
 	for _, c := range []struct{ server, remote, want string }{
 		{"github", "create_issue", "github__create_issue"},
@@ -105,17 +93,24 @@ func TestRegister_PassesTheSchemaThrough(t *testing.T) {
 	assert.Equal(t, schema, parameters(t, reg, added[0].Name()))
 }
 
-// parameters is the schema a request would carry for one tool.
-func parameters(t *testing.T, reg *tool.Registry, name string) map[string]any {
-	t.Helper()
-	for _, s := range reg.Schemas() {
-		fn := s["function"].(map[string]any)
-		if fn["name"] == name {
-			return fn["parameters"].(map[string]any)
-		}
-	}
-	t.Fatalf("%q is not in the schemas", name)
-	return nil
+// End to end against a real server: list, register, prepare.
+func TestRegister_FromALiveServer(t *testing.T) {
+	s := serve(t, text("alpha", &sdk.TextContent{Text: "ok"}), text("beta"))
+
+	tools, err := s.Tools(context.Background())
+	require.NoError(t, err)
+
+	reg := tool.Standard()
+	added := Register(reg, s, tools)
+	assert.ElementsMatch(t, []string{"fake__alpha", "fake__beta"}, names(added))
+
+	call, err := reg.Prepare("fake__alpha", nil)
+	require.NoError(t, err)
+	require.Equal(t, "fake", call.Executor)
+
+	tl, ok := reg.Lookup("fake__alpha")
+	require.True(t, ok)
+	assert.Equal(t, "alpha", tl.(Tool).Remote(), "the server's own name was lost")
 }
 
 // Strict mode demands every property in required and optionals
@@ -186,24 +181,29 @@ func TestPrepare_AShellToolHasNoExecutor(t *testing.T) {
 	assert.Equal(t, "ls", call.Command)
 }
 
-// End to end against a real server: list, register, prepare.
-func TestRegister_FromALiveServer(t *testing.T) {
-	s := serve(t, text("alpha", &sdk.TextContent{Text: "ok"}), text("beta"))
+// legal is what a chat-completions request accepts, which is narrower
+// than what MCP allows: no dots, and half the length.
+func legal(t *testing.T, name string) {
+	t.Helper()
+	require.LessOrEqual(t, len(name), 64, "%q is too long for an endpoint", name)
+	require.NotEmpty(t, name)
+	for _, r := range name {
+		ok := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-'
+		require.True(t, ok, "%q holds %q, which no endpoint accepts", name, r)
+	}
+}
 
-	tools, err := s.Tools(context.Background())
-	require.NoError(t, err)
-
-	reg := tool.Standard()
-	added := Register(reg, s, tools)
-	assert.ElementsMatch(t, []string{"fake__alpha", "fake__beta"}, names(added))
-
-	call, err := reg.Prepare("fake__alpha", nil)
-	require.NoError(t, err)
-	require.Equal(t, "fake", call.Executor)
-
-	tl, ok := reg.Lookup("fake__alpha")
-	require.True(t, ok)
-	assert.Equal(t, "alpha", tl.(Tool).Remote(), "the server's own name was lost")
+// parameters is the schema a request would carry for one tool.
+func parameters(t *testing.T, reg *tool.Registry, name string) map[string]any {
+	t.Helper()
+	for _, s := range reg.Schemas() {
+		fn := s["function"].(map[string]any)
+		if fn["name"] == name {
+			return fn["parameters"].(map[string]any)
+		}
+	}
+	t.Fatalf("%q is not in the schemas", name)
+	return nil
 }
 
 // names is what Register registered, for asserting on.

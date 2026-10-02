@@ -1,8 +1,6 @@
 // Package status renders run status: history-row badges and the bottom
-// status bar. Inputs are plain primitives, never a core-package struct.
-// Badge/KindLabel/statusWord switch on the same Status*/Kind* values
-// ui.PostJudgment carries, duplicated here as literals rather than
-// imported, to stay decoupled from the core harness.
+// status bar. Inputs are plain primitives, and the judge's status and
+// kind values are duplicated as literals to stay decoupled from event.
 package status
 
 import (
@@ -14,7 +12,7 @@ import (
 	"github.com/vitzeno/detent/ui/theme"
 )
 
-// AttentionThreshold auto-expands a row at or above this Noul.
+// AttentionThreshold auto-expands a row at or above this attention score.
 const AttentionThreshold = 0.7
 
 var (
@@ -30,8 +28,8 @@ func init() {
 	RefreshStyles()
 }
 
-// RefreshStyles rebuilds status's styles from the current theme — call
-// after theme.Apply.
+// RefreshStyles rebuilds status's styles from the current theme. Call
+// it after theme.Apply.
 func RefreshStyles() {
 	muted = lipgloss.NewStyle().Foreground(theme.TextMuted)
 	faint = lipgloss.NewStyle().Foreground(theme.TextFaint)
@@ -41,26 +39,23 @@ func RefreshStyles() {
 	hint = lipgloss.NewStyle().Foreground(theme.TextFaint).Italic(true)
 }
 
-// Row is one history step's render inputs.
+// Row is one history row's render inputs.
 type Row struct {
 	Running   bool
 	HasResult bool
 	ExitCode  int
-	Summary   string // e.g. host.Result.Summary()
+	Summary   string // e.g. capture.Result.Summary()
 	LiveLines int
 	Dropped   int
 	Judged    bool
-	Status    string // agent Status* value, or ""
+	Status    string // the judge's status, or ""
 	Attention float64
-	// Err is set when it could not run, as opposed to ran and failed.
-	Err bool
-	// NoVerdict says nothing will ever judge this one.
-	NoVerdict bool
+	Err       bool // it could not run, as opposed to ran and failed
+	NoVerdict bool // nothing will ever judge it
 }
 
-// Badge splits status into icon and detail text: exit-code styling
-// first, judged styling once the post batch lands. Detail is unstyled;
-// the caller composes `icon command detail`.
+// Badge splits status into icon and unstyled detail: exit-code styling
+// first, judged styling once the verdict lands.
 func Badge(s Row, spinner string) (icon, detail string) {
 	if s.Running {
 		detail = fmt.Sprintf("%d live lines", s.LiveLines)
@@ -77,8 +72,7 @@ func Badge(s Row, spinner string) (icon, detail string) {
 		if s.ExitCode != 0 || s.Err {
 			icon = danger.Render("✗")
 		}
-		// Nothing judges a command the human ran, so saying it is being
-		// judged is a promise that never lands.
+		// Nothing judges a command the human ran.
 		if s.NoVerdict {
 			return icon, s.Summary
 		}
@@ -122,24 +116,8 @@ func KindLabel(k string) string {
 	}
 }
 
-func statusWord(s string) string {
-	switch s {
-	case "clean_success":
-		return "clean"
-	case "success_with_warnings":
-		return "warnings"
-	case "failed":
-		return "failed"
-	case "empty":
-		return "no output"
-	default:
-		return "done"
-	}
-}
-
 // Notice is the one-shot flash at the end of the bar: what just
-// happened and whether it worked. Bad and a trailing bool argument
-// would read identically at a call site, so it travels as a value.
+// happened and whether it worked.
 type Notice struct {
 	Text string
 	Bad  bool
@@ -183,5 +161,20 @@ func Tokens(n int) string {
 		return fmt.Sprintf("%.1fk", float64(n)/1000)
 	default:
 		return fmt.Sprintf("%.1fM", float64(n)/1000000)
+	}
+}
+
+func statusWord(s string) string {
+	switch s {
+	case "clean_success":
+		return "clean"
+	case "success_with_warnings":
+		return "warnings"
+	case "failed":
+		return "failed"
+	case "empty":
+		return "no output"
+	default:
+		return "done"
 	}
 }

@@ -100,6 +100,7 @@ func (m *Model) note(n noticeState) {
 	}
 	m.notice = n
 }
+
 func (m *Model) clearNotice() { m.notice = noticeState{} }
 
 // noteLevel routes an engine Notice to the same flash.

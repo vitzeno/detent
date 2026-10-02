@@ -1,29 +1,15 @@
 package event
 
 import (
-	"github.com/google/uuid"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func drainN(t *testing.T, ch <-chan Record, n int) []Record {
-	t.Helper()
-	out := make([]Record, 0, n)
-	for range n {
-		select {
-		case r := <-ch:
-			out = append(out, r)
-		case <-time.After(2 * time.Second):
-			t.Fatalf("timed out after %d of %d records", len(out), n)
-		}
-	}
-	return out
-}
 
 func TestBus_DeliversInOrderWithGaplessOrdinals(t *testing.T) {
 	b := New()
@@ -40,9 +26,8 @@ func TestBus_DeliversInOrderWithGaplessOrdinals(t *testing.T) {
 	}
 }
 
-// The delivery policy, which is the whole reason the Bus exists rather
-// than a plain channel: a lagging subscriber loses live output and
-// keeps everything else.
+// The reason the Bus is not a plain channel: a lagging subscriber loses
+// live output and keeps everything else.
 func TestBus_DropsLossyOnlyWhenBehind(t *testing.T) {
 	b := New()
 	ch, stop := b.Subscribe(nil)
@@ -252,10 +237,6 @@ func TestBus_DrainGivesUpRatherThanHanging(t *testing.T) {
 	assert.Less(t, time.Since(start), 3*time.Second, "a wedged consumer must not hold up exit")
 }
 
-// testID makes a deterministic uuid from a readable name, so a test
-// can still say "c1" and mean it.
-func testID(name string) uuid.UUID { return uuid.NewSHA1(uuid.Nil, []byte(name)) }
-
 // A resumed session mints ordinals in a fresh process, so without
 // continuing from the stored ones it would overwrite them.
 func TestBus_ResumeContinuesTheOrdinals(t *testing.T) {
@@ -297,3 +278,21 @@ func TestBus_SettleDeliversThenCarriesOn(t *testing.T) {
 	b.Settle(3 * time.Second)
 	assert.EqualValues(t, 51, got.Load(), "and the bus still works")
 }
+
+func drainN(t *testing.T, ch <-chan Record, n int) []Record {
+	t.Helper()
+	out := make([]Record, 0, n)
+	for range n {
+		select {
+		case r := <-ch:
+			out = append(out, r)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out after %d of %d records", len(out), n)
+		}
+	}
+	return out
+}
+
+// testID makes a deterministic uuid from a readable name, so a test
+// can still say "c1" and mean it.
+func testID(name string) uuid.UUID { return uuid.NewSHA1(uuid.Nil, []byte(name)) }

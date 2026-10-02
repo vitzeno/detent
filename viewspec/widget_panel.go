@@ -27,8 +27,7 @@ func (panelWidget) Accept(panes []Pane) error {
 }
 
 // Widths keeps the border out of the pane: four columns for two edges
-// and their padding, so what is inside is drawn narrower than the
-// frame rather than clipped at it.
+// and their padding, so the inside is drawn narrower rather than clipped.
 func (panelWidget) Widths(_ []Pane, total int) ([]int, error) {
 	if total-4 < 1 {
 		return nil, errors.New("no width left to frame")
@@ -47,15 +46,6 @@ func (panelWidget) Arrange(cols [][]string, widths []int, b Block, f Frame) ([]s
 		f.Paint.Paint(RoleFaint, "╰"+strings.Repeat("─", f.Width-2)+"╯")), []int{1}
 }
 
-// panelTop writes the title into the top edge, the way a fieldset does.
-func panelTop(title string, f Frame) string {
-	if title == "" {
-		return "╭" + strings.Repeat("─", f.Width-2) + "╮"
-	}
-	head := "╭─ " + f.Paint.Truncate(title, max(f.Width-6, 1)) + " "
-	return head + strings.Repeat("─", max(f.Width-f.Paint.Width(head)-1, 0)) + "╮"
-}
-
 func (panelWidget) Describe() Description {
 	return Description{
 		What: "frames one pane of blocks in a border, with its title written into the top edge",
@@ -64,4 +54,13 @@ func (panelWidget) Describe() Description {
 		NotFor:   "putting two things side by side, which is row",
 		Examples: []string{"a summary set apart from the listing beneath it"},
 	}
+}
+
+// panelTop writes the title into the top edge, the way a fieldset does.
+func panelTop(title string, f Frame) string {
+	if title == "" {
+		return "╭" + strings.Repeat("─", f.Width-2) + "╮"
+	}
+	head := "╭─ " + f.Paint.Truncate(title, max(f.Width-6, 1)) + " "
+	return head + strings.Repeat("─", max(f.Width-f.Paint.Width(head)-1, 0)) + "╮"
 }

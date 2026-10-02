@@ -1,9 +1,9 @@
 package engine
 
 import (
-	"github.com/google/uuid"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -25,7 +25,7 @@ func TestRollback_RestoresTheTurnsCheckpoint(t *testing.T) {
 
 	r.run("first request")
 	afterFirst := len(r.eng.Transcript())
-	second := r.run("second request")
+	r.run("second request")
 	require.Greater(t, len(r.eng.Transcript()), afterFirst)
 
 	turns := r.of(event.TurnStartedKind)
@@ -34,7 +34,6 @@ func TestRollback_RestoresTheTurnsCheckpoint(t *testing.T) {
 
 	back := r.await(event.RolledBackKind).(event.RolledBack)
 	assert.Equal(t, turns[1].(event.TurnStarted).Turn, back.Turn)
-	_ = second
 
 	snap.mu.Lock()
 	restored := append([]string(nil), snap.restored...)

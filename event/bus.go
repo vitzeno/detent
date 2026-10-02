@@ -7,25 +7,25 @@ import (
 )
 
 // Bus fans Records out. Publish never blocks, so publishing from
-// inside a handler is safe. Each subscriber has its own queue; a
+// inside a handler is safe. Each subscriber has its own queue, and a
 // lagging one grows it and drops only Lossy events past queueDepth.
 type Bus struct {
 	mu      sync.Mutex
 	subs    map[int]*sub
 	next    int
 	ordinal uint64
-	// shut stops new publishes; closed tears the subscriptions down.
+	// shut stops new publishes, closed tears the subscriptions down.
 	// Two states, because Drain is the first without the second.
 	shut    bool
 	closed  bool
 	dropped atomic.Uint64
 }
 
+// New returns an open Bus with no subscribers.
 func New() *Bus { return &Bus{subs: map[int]*sub{}} }
 
-// Resume continues a stored session's ordinals, so a record published
-// now cannot land on one already on disk. Call it before anything
-// publishes; a replay never goes on the bus itself.
+// Resume continues a stored session's ordinals, so a new record cannot
+// land on one already on disk. Call it before anything publishes.
 func (b *Bus) Resume(from uint64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -84,8 +84,7 @@ func (b *Bus) Subscribe(f Filter) (<-chan Record, func()) {
 }
 
 // Drain stops accepting publishes, then waits up to timeout for every
-// subscriber to receive what is already queued. Shutdown wants this
-// and unsubscribing does not: one that has gone away is owed nothing.
+// subscriber to receive what is already queued, then closes.
 func (b *Bus) Drain(timeout time.Duration) {
 	b.mu.Lock()
 	b.shut = true
@@ -95,8 +94,7 @@ func (b *Bus) Drain(timeout time.Duration) {
 }
 
 // Settle waits up to timeout for every subscriber to receive what is
-// queued, without shutting anything, so it orders one thing after
-// another rather than only ending a session.
+// queued, without shutting anything.
 func (b *Bus) Settle(timeout time.Duration) {
 	b.mu.Lock()
 	subs := make([]*sub, 0, len(b.subs))
@@ -113,7 +111,7 @@ func (b *Bus) Settle(timeout time.Duration) {
 	}
 }
 
-// Close stops every subscription; publishing afterwards is a no-op.
+// Close stops every subscription. Publishing afterwards is a no-op.
 func (b *Bus) Close() {
 	b.mu.Lock()
 	if b.closed {
@@ -149,9 +147,11 @@ func Only(kinds ...Kind) Filter {
 	return func(e Event) bool { return want[e.Kind()] }
 }
 
-// Intents is what the engine listens to, Facts what a front-end does.
+// Intents takes what someone wants, which the engine and other owners listen to.
 func Intents() Filter { return func(e Event) bool { return e.Kind().IsIntent() } }
-func Facts() Filter   { return func(e Event) bool { return !e.Kind().IsIntent() } }
+
+// Facts takes what happened, which a front-end listens to.
+func Facts() Filter { return func(e Event) bool { return !e.Kind().IsIntent() } }
 
 // queueDepth: past this, a lagging subscriber drops lossy events.
 const queueDepth = 512

@@ -3,8 +3,7 @@ package viewspec
 import "slices"
 
 // Schema describes the registry's vocabulary as a JSON Schema, strict
-// enough for a structured-output request. Register a widget and the
-// model's schema includes it; a hand-written list would rot silently.
+// enough for a structured-output request, so a registered widget is offered.
 func (r *Registry) Schema() map[string]any {
 	return map[string]any{
 		"type": "object",
@@ -17,10 +16,7 @@ func (r *Registry) Schema() map[string]any {
 				"description": "widgets, drawn top to bottom",
 				"items":       r.blockSchema(true),
 			},
-			// Structured {what, not_for, examples} per kind, not one
-			// shared blurb: with this many widgets a flat description
-			// costs the model's calibration. Same lesson as the
-			// render_kind criteria in internal/agent/judge.go.
+			// Structured per kind, since one flat blurb costs a model's calibration.
 			"widget_guide": map[string]any{
 				"type":        "object",
 				"description": "what each block kind is for. Read before choosing kind; ignore when emitting.",
@@ -54,10 +50,8 @@ func (r *Registry) parseSchema() map[string]any {
 	}
 }
 
-// blockSchema spells a container's panes out in full rather than pointing
-// back at itself. Nesting is capped at one level, so the schema is
-// finite. Strict mode needs that: a recursive $ref is where backend
-// portability gets thin.
+// blockSchema spells a container's panes out in full rather than with a
+// recursive $ref, which strict mode handles unevenly across backends.
 func (r *Registry) blockSchema(allowContainers bool) map[string]any {
 	kinds := r.Kinds()
 	if !allowContainers {

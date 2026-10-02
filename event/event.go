@@ -12,9 +12,8 @@ type Event interface {
 	Lossy() bool
 }
 
-// Record is one Event plus what the Bus stamped on it. Ordinal counts
-// publishes and is gapless, so a subscriber that filters or drops can
-// be told apart from one that lost something.
+// Record is one Event plus what the Bus stamped on it. Ordinal is gapless,
+// so a subscriber that filters can be told apart from one that lost something.
 type Record struct {
 	Ordinal uint64
 	At      time.Time
@@ -24,7 +23,7 @@ type Record struct {
 // Kind names an Event. Closed: a log query and a reducer both key on it.
 type Kind string
 
-// Facts. Past tense, published by the engine.
+// Facts. Past tense, mostly published by the engine.
 const (
 	SessionStartedKind Kind = "session.started"
 

@@ -30,8 +30,7 @@ const (
 )
 
 var (
-	// ErrNoJudge says composition was asked for without a judge. There
-	// is no second path: the judge is how a spec is written now.
+	// ErrNoJudge says composition was asked for without a judge.
 	ErrNoJudge = errors.New("viewgen: composing a view needs a judge")
 
 	errJudgeSilent   = errors.New("the judge did not answer")
@@ -42,81 +41,15 @@ var (
 // tabular is the parse kinds reading a line as a row of columns.
 var tabular = map[string]bool{"columns": true, "fixed": true, "delimited": true}
 
-// Separators a parse may split on, most specific first, read off the
-// output: always "=" before, so CSV and "key: value" never parsed.
+// Separators a parse may split on, most specific first. Read off the
+// output, since no single one fits both CSV and "key: value".
 var (
 	delimiters = []string{"\t", "|", ",", ";", ":"}
 	pairSeps   = []string{"=", ":"}
 )
 
-// sepOf is the candidate that most lines hold the same number of, or ""
-// when none is on at least half of them.
-func sepOf(output string, candidates []string) string {
-	lines := nonBlank(output)
-	best, most := "", 0
-	for _, sep := range candidates {
-		if n := mostCommon(lines, func(l string) int { return strings.Count(l, sep) }); n > most {
-			best, most = sep, n
-		}
-	}
-	if most*2 < len(lines) {
-		return ""
-	}
-	return best
-}
-
-// mostCommon is how many lines share the commonest non-zero count.
-func mostCommon(lines []string, count func(string) int) int {
-	seen, top := map[int]int{}, 0
-	for _, l := range lines {
-		if n := count(l); n > 0 {
-			seen[n]++
-			top = max(top, seen[n])
-		}
-	}
-	return top
-}
-
-func nonBlank(output string) []string {
-	var out []string
-	for _, l := range strings.Split(output, "\n") {
-		if strings.TrimSpace(l) != "" {
-			out = append(out, l)
-		}
-	}
-	return out
-}
-
-// twice reports whether any field is read by more than one slot, as a
-// keyvalue once drew each key against itself.
-func twice(fields []string) bool {
-	seen := map[string]bool{}
-	for _, f := range fields {
-		if seen[f] {
-			return true
-		}
-		seen[f] = true
-	}
-	return false
-}
-
-// read is every field a block draws from.
-func read(b viewspec.Block) []string {
-	var out []string
-	for _, f := range []string{b.Field, b.Depth} {
-		if f != "" {
-			out = append(out, f)
-		}
-	}
-	for _, c := range b.Columns {
-		out = append(out, c.Field)
-	}
-	return out
-}
-
 // parseCriteria is how each parse kind is described to the judge. The
-// wording is load-bearing: it is the literal text a choice is made
-// from, not guidance around a schema.
+// wording is load-bearing: it is the literal text a choice is made from.
 var parseCriteria = map[string]any{
 	"columns": map[string]any{
 		"what":    "whitespace-aligned columns under a header row, one record per line",
@@ -161,11 +94,75 @@ var parseCriteria = map[string]any{
 	},
 }
 
-// split sorts the offered kinds into the ones that draw the rows and
-// the ones that draw a fact about all of them, so a single question
-// never offers a meter against a table: they answer different
-// questions. Each widget says which it is in its own Describe, so
-// registering one is enough to be offered.
+// logger is what a composer records through.
+type logger = *slog.Logger
+
+// sepOf is the candidate that most lines hold the same number of, or ""
+// when none is on at least half of them.
+func sepOf(output string, candidates []string) string {
+	lines := nonBlank(output)
+	best, most := "", 0
+	for _, sep := range candidates {
+		if n := mostCommon(lines, func(l string) int { return strings.Count(l, sep) }); n > most {
+			best, most = sep, n
+		}
+	}
+	if most*2 < len(lines) {
+		return ""
+	}
+	return best
+}
+
+// mostCommon is how many lines share the commonest non-zero count.
+func mostCommon(lines []string, count func(string) int) int {
+	seen, top := map[int]int{}, 0
+	for _, l := range lines {
+		if n := count(l); n > 0 {
+			seen[n]++
+			top = max(top, seen[n])
+		}
+	}
+	return top
+}
+
+func nonBlank(output string) []string {
+	var out []string
+	for _, l := range strings.Split(output, "\n") {
+		if strings.TrimSpace(l) != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// twice reports whether any field is read by more than one slot.
+func twice(fields []string) bool {
+	seen := map[string]bool{}
+	for _, f := range fields {
+		if seen[f] {
+			return true
+		}
+		seen[f] = true
+	}
+	return false
+}
+
+// read is every field a block draws from.
+func read(b viewspec.Block) []string {
+	var out []string
+	for _, f := range []string{b.Field, b.Depth} {
+		if f != "" {
+			out = append(out, f)
+		}
+	}
+	for _, c := range b.Columns {
+		out = append(out, c.Field)
+	}
+	return out
+}
+
+// split sorts the offered kinds into those drawing the rows and those
+// summarising them, so one question never offers a meter against a table.
 func split(guide map[string]viewspec.Description, offered []string) (body, summary []string) {
 	for _, kind := range offered {
 		d, ok := guide[kind]
@@ -182,10 +179,8 @@ func split(guide map[string]viewspec.Description, offered []string) (body, summa
 	return body, summary
 }
 
-// block assembles one widget from the fields chosen for its slots.
-// One slot fills Field and more than one fills Columns in order, which
-// is the rule viewspec.Slot states and every widget's Validate
-// already enforces.
+// block assembles one widget from the fields chosen for its slots. One
+// slot fills Field, more fill Columns in order, as viewspec.Slot states.
 func block(kind string, needs []viewspec.Slot, answers classify.Answers, prefix string) viewspec.Block {
 	b := viewspec.Block{Kind: kind}
 	for _, s := range needs {
@@ -202,9 +197,8 @@ func block(kind string, needs []viewspec.Slot, answers classify.Answers, prefix 
 	return b
 }
 
-// fieldQuestion offers the fields the parse produced, each shown with
-// a value it holds. A name alone is thin for %iused and meaningless
-// for col3.
+// fieldQuestion offers the fields the parse produced, each with a value
+// it holds. A name alone is thin for %iused and meaningless for col3.
 func fieldQuestion(s viewspec.Slot, fields []string, rows []viewspec.Row) classify.Question {
 	criteria := map[string]any{}
 	for _, f := range fields {
@@ -226,11 +220,8 @@ func fieldQuestion(s viewspec.Slot, fields []string, rows []viewspec.Row) classi
 	}
 }
 
-// honour treats the header answer as fact and the kind as a
-// preference. netstat is why: the header is located at 0.99 and
-// columns could not read it, splitting "Local Address" into two names
-// and dropping every row. So the kind gives way, tried against the
-// interpreter rather than argued about.
+// honour treats the header answer as fact and the kind as a preference,
+// since columns splits netstat's "Local Address" header and drops every row.
 func honour(chosen viewspec.Parse, skip int, output string) viewspec.Parse {
 	if skip < 0 {
 		headerless := chosen
@@ -429,6 +420,3 @@ func withNone(in map[string]any) map[string]any {
 	in[choiceNone] = map[string]any{"what": "no summary; the body speaks for itself"}
 	return in
 }
-
-// logger is what a composer records through.
-type logger = *slog.Logger

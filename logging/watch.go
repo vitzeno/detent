@@ -2,15 +2,15 @@ package logging
 
 import (
 	"context"
-	"github.com/google/uuid"
 	"log/slog"
+
+	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 )
 
-// Watch writes one record per fact and returns a stop func. This is
-// the whole of how a session gets logged: correlation comes off the
-// event, so no call site has to thread it and none can get it wrong.
+// Watch writes one record per fact and returns a stop func. Correlation
+// ids come off the event, so no call site has to thread them.
 func Watch(bus *event.Bus) func() {
 	facts, unsub := bus.Subscribe(worthKeeping)
 	log := For(Engine)
@@ -24,17 +24,15 @@ func Watch(bus *event.Bus) func() {
 		}
 	}()
 	// The stop waits for the last record to be written, not merely
-	// received: a log that loses its tail at exit is worse than a
-	// slow one.
+	// received: a log that loses its tail at exit is worse than a slow one.
 	return func() {
 		unsub()
 		<-done
 	}
 }
 
-// worthKeeping takes every fact but live output: a line at a time is
-// the one thing too noisy to keep, and CallEnded carries the whole of
-// it anyway.
+// worthKeeping takes every fact but live output, which is too noisy and
+// arrives whole in CallEnded anyway.
 func worthKeeping(e event.Event) bool {
 	return !e.Kind().IsIntent() && e.Kind() != event.OutputChunkKind
 }
@@ -77,14 +75,13 @@ func describe(e event.Event) (slog.Level, []any) {
 		}
 		return slog.LevelDebug, append(out, "messages", len(v.Messages))
 	case event.Compacted:
-		// Info, not Debug: compaction rewrites the front of the
-		// transcript and used to tell nobody at all.
+		// Info, not Debug: compaction rewrites the front of the transcript.
 		return slog.LevelInfo, []any{KeyTurn, v.Turn, "dropped", v.Dropped, "note", Body(v.Note)}
 	case event.ModelText:
 		return slog.LevelDebug, []any{KeyStep, v.Step, "text", Body(v.Text)}
 	case event.CallProposed:
-		// The command, not just the tool: 27 of 30 calls are bash, and
-		// a log that cannot say what ran cannot answer anything.
+		// The command, not just the tool: most calls are bash, and a log
+		// that cannot say what ran answers nothing.
 		return slog.LevelInfo, []any{KeyCall, v.Call, KeyStep, v.Step, "tool", v.Tool,
 			"command", Body(event.Command(v.Tool, v.Args))}
 	case event.CallAssessed:

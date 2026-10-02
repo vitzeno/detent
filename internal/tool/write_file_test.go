@@ -11,10 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The heredoc has to survive content that attacks it: a delimiter
-// inside the body, shell expansions, quotes. Run the command rather
-// than assert on its text, because the thing under test is what `sh`
-// does with it.
+// The heredoc has to survive content that attacks it, so this runs the
+// command: what is under test is what `sh` does with it.
 func TestWriteFile_RoundTripsThroughARealShell(t *testing.T) {
 	bodies := map[string]string{
 		"plain":                "hello\nworld\n",

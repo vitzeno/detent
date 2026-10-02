@@ -1,7 +1,6 @@
 // Package welcome fills the output pane before anything has run: what
 // this session is wired to, and somewhere to start. It is handed facts
-// rather than reading the harness, so it can't reach past the pane it
-// draws.
+// rather than reading the harness.
 package welcome
 
 import (
@@ -20,14 +19,21 @@ import (
 // TickRate is how often the detent animation advances.
 const TickRate = 420 * time.Millisecond
 
+const (
+	notches = 5
+	labelW  = 16
+	// compactBelow is the pane height under which the banner gives up
+	// its breathing room and tagline, so where commands run still fits.
+	compactBelow = 22
+)
+
 // Facts is what the pane reports about this run.
 type Facts struct {
-	// Version is what this build calls itself.
 	Version  string
 	Proposer string
 	Judge    string // "" when no judge is wired
 	RunMode  string // "host" or "sandbox"
-	// Sandbox wiring; empty in host mode.
+	// Sandbox wiring, empty in host mode.
 	Image   string
 	Mount   string
 	Runtime string // "" means containerd's own default
@@ -45,8 +51,7 @@ type Facts struct {
 }
 
 // Lines renders the pane at width by height, frame advancing the
-// animation. Sections drop from the bottom when it's too short to fit
-// them, since a cut mid-row reads worse than one section fewer.
+// animation. Whole sections drop from the bottom when it is too short.
 func Lines(f Facts, width, height, frame int) []string {
 	sections := [][]string{
 		banner(f, width, frame, height < compactBelow),
@@ -69,8 +74,56 @@ func Lines(f Facts, width, height, frame int) []string {
 	return centreVertically(out, height)
 }
 
+// Track draws the namesake mechanism: a pawl that advances one notch
+// and is held there, stepped since a detent has no positions between.
+func Track(frame int) []string {
+	seated := frame % notches
+	var t strings.Builder
+	for i := range notches {
+		if i > 0 {
+			t.WriteString(faint.Render("━━━"))
+		}
+		switch {
+		case i < seated:
+			t.WriteString(muted.Render("●"))
+		case i == seated:
+			t.WriteString(brand.Render("◆"))
+		default:
+			t.WriteString(faint.Render("○"))
+		}
+	}
+	// Each notch is one glyph plus three of rail, so the pawl lands
+	// under its notch at 4 columns per step.
+	pawl := strings.Repeat(" ", seated*4) + brand.Render("▲")
+	return []string{t.String(), pawl}
+}
+
+var (
+	brand   lipgloss.Style
+	goal    lipgloss.Style
+	muted   lipgloss.Style
+	faint   lipgloss.Style
+	safe    lipgloss.Style
+	caution lipgloss.Style
+	hint    lipgloss.Style
+)
+
+func init() { RefreshStyles() }
+
+// RefreshStyles rebuilds this package's styles from the current
+// theme. Call it after theme.Apply.
+func RefreshStyles() {
+	brand = lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
+	goal = lipgloss.NewStyle().Foreground(theme.TextPrimary)
+	muted = lipgloss.NewStyle().Foreground(theme.TextMuted)
+	faint = lipgloss.NewStyle().Foreground(theme.TextFaint)
+	safe = lipgloss.NewStyle().Foreground(theme.Safe)
+	caution = lipgloss.NewStyle().Foreground(theme.Caution).Bold(true)
+	hint = lipgloss.NewStyle().Foreground(theme.TextFaint).Italic(true)
+}
+
 // banner is the namesake mechanism, the name, and one line on what the
-// harness does — centred as a block so the pawl stays under its notch.
+// harness does, centred as a block so the pawl stays under its notch.
 func banner(f Facts, width, frame int, compact bool) []string {
 	var out []string
 	if !compact {
@@ -87,9 +140,7 @@ func banner(f Facts, width, frame int, compact bool) []string {
 	return append(out,
 		"",
 		centreLine(brand.Render("d e t e n t")+faint.Render("  "+f.Version), width),
-		// Checkpointing is a sandbox thing; on the host the
-		// environment section below carries the correction rather than
-		// the tagline hedging it.
+		// On the host, the environment section corrects this tagline.
 		centreLine(faint.Render("an agent at your terminal, every request checkpointed and undoable"), width),
 	)
 }
@@ -201,34 +252,8 @@ func section(title string, width int, body []string) []string {
 	return append([]string{head}, body...)
 }
 
-// Track draws the namesake mechanism: a pawl that advances one notch
-// and is held there. Stepped rather than slid on purpose, since a
-// detent has no positions in between.
-func Track(frame int) []string {
-	seated := frame % notches
-	var t strings.Builder
-	for i := range notches {
-		if i > 0 {
-			t.WriteString(faint.Render("━━━"))
-		}
-		switch {
-		case i < seated:
-			t.WriteString(muted.Render("●"))
-		case i == seated:
-			t.WriteString(brand.Render("◆"))
-		default:
-			t.WriteString(faint.Render("○"))
-		}
-	}
-	// Each notch is one glyph plus three of rail, so the pawl lands
-	// under its notch at 4 columns per step.
-	pawl := strings.Repeat(" ", seated*4) + brand.Render("▲")
-	return []string{t.String(), pawl}
-}
-
 func row(label, val string) string {
-	// Pad the label before styling: padding after would count the
-	// escape bytes and silently drop it.
+	// Pad before styling, or the escape bytes count toward the width.
 	return "  " + faint.Render(fmt.Sprintf("%-*s", labelW, label)) + val
 }
 
@@ -265,7 +290,6 @@ func centreVertically(lines []string, height int) []string {
 	return append(make([]string, pad), lines...)
 }
 
-// plural counts a thing without the "(s)" hedge.
 // allTime says nothing rather than zero until a listing arrives:
 // "0 sessions" would read as none recorded, not as not yet asked.
 func allTime(f Facts) string {
@@ -276,6 +300,7 @@ func allTime(f Facts) string {
 		faint.Render("  resume one with /sessions")
 }
 
+// plural counts a thing without the "(s)" hedge.
 func plural(n int, thing string) string {
 	if n == 1 {
 		return "1 " + thing
@@ -289,36 +314,4 @@ func countLines(sections [][]string) int {
 		n += len(s)
 	}
 	return n
-}
-
-const (
-	notches = 5
-	labelW  = 16
-	// compactBelow is the pane height under which the banner gives up
-	// its breathing room and tagline, so where commands run still fits.
-	compactBelow = 22
-)
-
-var (
-	brand   lipgloss.Style
-	goal    lipgloss.Style
-	muted   lipgloss.Style
-	faint   lipgloss.Style
-	safe    lipgloss.Style
-	caution lipgloss.Style
-	hint    lipgloss.Style
-)
-
-func init() { RefreshStyles() }
-
-// RefreshStyles rebuilds this package's styles from the current
-// theme — call after theme.Apply.
-func RefreshStyles() {
-	brand = lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
-	goal = lipgloss.NewStyle().Foreground(theme.TextPrimary)
-	muted = lipgloss.NewStyle().Foreground(theme.TextMuted)
-	faint = lipgloss.NewStyle().Foreground(theme.TextFaint)
-	safe = lipgloss.NewStyle().Foreground(theme.Safe)
-	caution = lipgloss.NewStyle().Foreground(theme.Caution).Bold(true)
-	hint = lipgloss.NewStyle().Foreground(theme.TextFaint).Italic(true)
 }

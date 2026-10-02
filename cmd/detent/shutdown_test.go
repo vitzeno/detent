@@ -16,9 +16,8 @@ import (
 	"github.com/vitzeno/detent/internal/store"
 )
 
-// The whole order exists for this: the engine stops, publishes what
-// its abandoned Turn owes, and only then does the bus drain. Draining
-// first swallows those facts and the session stops being resumable.
+// The engine stops and publishes what its abandoned Turn owes before the
+// bus drains. Draining first swallows those facts and breaks resume.
 func TestShutdown_DrainsOnlyAfterTheEngineHasStopped(t *testing.T) {
 	bus := event.New()
 	facts, unsub := bus.Subscribe(event.Facts())
@@ -54,9 +53,8 @@ func TestShutdown_DrainsOnlyAfterTheEngineHasStopped(t *testing.T) {
 	assert.Contains(t, got, event.TurnEndedKind, "the last fact was lost: the bus closed before the engine stopped")
 }
 
-// The same rule as the engine, one step earlier. The command's end
-// must be published before anything closes, and before the engine
-// goes, or the message it owes the transcript lands nowhere.
+// The same rule one step earlier: the command's end is published before
+// the engine goes, or the message it owes the transcript lands nowhere.
 func TestShutdown_StopsTheShellBeforeTheEngineAndTheDrain(t *testing.T) {
 	bus := event.New()
 	records, unsub := bus.Subscribe(nil)
@@ -166,9 +164,8 @@ func TestShutdown_ReportsHowItWentAndHowToResume(t *testing.T) {
 	}
 }
 
-// Invokers.Close walks its servers serially and the SDK allows each
-// ten seconds to die, so the deadline is what stops three sulking ones
-// holding the terminal for thirty.
+// Invokers.Close is serial and the SDK gives each server ten seconds,
+// so the deadline is what keeps a few slow ones from holding the terminal.
 func TestBounded_ReturnsWhenTheCloseWillNot(t *testing.T) {
 	err := bounded(50*time.Millisecond, "mcp servers", func() error {
 		time.Sleep(10 * time.Second)
@@ -181,9 +178,8 @@ func TestBounded_ReturnsWhenTheCloseWillNot(t *testing.T) {
 	assert.EqualError(t, bounded(time.Second, "mcp servers", func() error { return errors.New("boom") }), "boom")
 }
 
-// Servers must not close while the background dial is still going: one
-// that lands after Close is a process nothing owns. Bounded, because
-// the dial's own context is already cancelled by then.
+// Servers must not close mid-dial, or one that lands after Close is a
+// process nothing owns. Bounded, since the dial's context is cancelled.
 func TestWait_HoldsForTheBackgroundDialButNotForever(t *testing.T) {
 	settled := make(chan struct{})
 	close(settled)

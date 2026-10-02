@@ -13,7 +13,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// oauthHandler signs in to one server. The SDK does the protocol; this
+// oauthHandler signs in to one server. The SDK does the protocol, and this
 // supplies the browser leg, through signins, and the token file.
 func oauthHandler(server string, o *OAuth, client *http.Client, signins *SignIns) (*serial, error) {
 	if o == nil {
@@ -172,7 +172,7 @@ func (s *Saved) config(redirect string) *oauth2.Config {
 }
 
 // freePort picks the redirect's port now, since the SDK takes the URI up
-// front; it is listened on only if a sign-in happens.
+// front. It is listened on only if a sign-in happens.
 func freePort() (int, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

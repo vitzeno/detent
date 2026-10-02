@@ -15,8 +15,7 @@ import (
 // A NoteContext published rather than typed as a prompt, which is how
 // anything but the input box sends one.
 
-// Idle, this used to reach dispatch's default branch and be dropped,
-// so the note never reached the Turn it was meant to steer.
+// Idle, the note goes in at once so the next Turn sees it.
 func TestNoteContext_LandsWhenNothingIsRunning(t *testing.T) {
 	r := newRig(t, nil)
 
@@ -85,10 +84,8 @@ func TestNoteContext_MidTurnOpensNoTurn(t *testing.T) {
 		"prompt, note, the Step, and the closing say")
 }
 
-// The shape a resume actually has: a transcript replayed from the
-// store, then a note saying what of it is still true, then the next
-// prompt. The note has to sit between them or it describes steps the
-// model has already read as current.
+// A resume replays the transcript, then notes what of it is still true,
+// then sends the next prompt. The note must sit between the two.
 func TestNoteContext_ResumeLandsBetweenTheOldTranscriptAndTheNewPrompt(t *testing.T) {
 	r := newRig(t, nil)
 	r.eng.Restore([]event.Record{{Ordinal: 1, Event: event.Appended{

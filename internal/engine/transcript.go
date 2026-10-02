@@ -6,15 +6,15 @@ import (
 	"strings"
 
 	"github.com/vitzeno/detent/event"
-
 	"github.com/vitzeno/detent/internal/model"
 )
 
 // DefaultContextTokens caps the transcript, resent whole every Step.
-// Sized for a large window; a small local one wants context_tokens.
+// Sized for a large window, so a small local model wants context_tokens.
 const (
 	DefaultContextTokens = 200_000
-	BytesPerToken        = 4
+	// BytesPerToken is the rough ratio a token budget is measured in.
+	BytesPerToken = 4
 	// MaxResultBytes bounds one result, so one loud command cannot
 	// crowd out the rest of the transcript.
 	MaxResultBytes = 4 * 1024
@@ -22,6 +22,12 @@ const (
 	// be worth a summariser round trip when it cannot reach budget.
 	minCompactShare = 10
 )
+
+// Summarizer condenses dropped Steps. Nil means they become a note
+// saying they are gone.
+type Summarizer interface {
+	Summarize(ctx context.Context, msgs []event.Message) (string, error)
+}
 
 // transcript is the model's input. Its atom is a Step, which nothing
 // may split, so every mutation lives here.
@@ -35,9 +41,8 @@ type transcript struct {
 	dropped int
 }
 
-// step appends one Step atomically: the assistant message, then one
-// answer per call in order. Missing answers are filled rather than
-// skipped, because a call nothing answers breaks the next Step.
+// step appends one Step atomically, filling any missing answer, since
+// a call nothing answers breaks the next Step.
 func (t *transcript) step(reply model.Reply, answers map[string]string) []event.Message {
 	added := []event.Message{{
 		Role: event.RoleAssistant, Content: reply.Text, Calls: reply.Calls,
@@ -111,12 +116,6 @@ func msgBytes(msgs []event.Message) int {
 	return n
 }
 
-// Summarizer condenses dropped Steps. Nil means they become a note
-// saying they are gone.
-type Summarizer interface {
-	Summarize(ctx context.Context, msgs []event.Message) (string, error)
-}
-
 // compact drops whole Steps off the front until the transcript fits.
 // Whole, because half a Step is a transcript no endpoint accepts.
 func (t *transcript) compact(ctx context.Context, budgetTokens int, s Summarizer) (dropped int, note string) {
@@ -157,8 +156,7 @@ func (t *transcript) compact(ctx context.Context, budgetTokens int, s Summarizer
 }
 
 // cutPoint is the first unit boundary bringing the tail under budget,
-// never past what the open Turn protects. An impossible budget drops
-// everything droppable rather than giving up and staying full.
+// never past the open Turn. An impossible budget drops all it can.
 func (t *transcript) cutPoint(budget int) int {
 	tail := t.bytes()
 	last := 0

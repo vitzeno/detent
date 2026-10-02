@@ -9,13 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func write(t *testing.T, dir, name, body string) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
-	return path
-}
-
 // The shape every MCP client reads, so a file written for one of them
 // works here without being rewritten.
 func TestLoad_ReadsTheStandardShape(t *testing.T) {
@@ -184,14 +177,14 @@ func TestLoad_ReadsCursorsClientCredentials(t *testing.T) {
 	assert.Equal(t, &OAuth{ClientID: "id", ClientSecret: "sec", Scopes: Scopes{"read"}}, got["s"].OAuth)
 }
 
-// Strict, a Cursor entry in a shared file stopped detent starting. An
-// "auth" another client wrote is read for what it gives, or left alone.
+// An "auth" another client wrote is read for what it gives, or left
+// alone, so one foreign entry in a shared file never stops detent starting.
 func TestLoad_AnotherClientsAuthNeverFailsTheLoad(t *testing.T) {
 	for name, auth := range map[string]string{
-		"the switch detent once needed": `"oauth"`,
-		"an unknown object":             `{"saml": {"x": 1}}`,
-		"a number":                      `42`,
-		"an old nested shape":           `{"oauth": {"client_id": "x"}}`,
+		"a bare string":       `"oauth"`,
+		"an unknown object":   `{"saml": {"x": 1}}`,
+		"a number":            `42`,
+		"an old nested shape": `{"oauth": {"client_id": "x"}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := write(t, t.TempDir(), "mcp.json", `{"mcpServers": {
@@ -202,4 +195,11 @@ func TestLoad_AnotherClientsAuthNeverFailsTheLoad(t *testing.T) {
 			assert.Len(t, got, 2, "every other server still loads")
 		})
 	}
+}
+
+func write(t *testing.T, dir, name, body string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+	return path
 }

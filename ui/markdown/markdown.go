@@ -1,5 +1,5 @@
-// Package markdown renders file prose through glamour. Jev's file
-// kind decides WHEN; Wants gates glamour to actual markdown because it
+// Package markdown renders file prose through glamour. Jev's file kind
+// decides when, and Wants gates glamour to actual markdown because it
 // reads worse than plain text on anything else.
 package markdown
 

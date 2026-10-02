@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -149,12 +148,8 @@ func TestWatch_WithholdsBodiesUnlessAsked(t *testing.T) {
 	}
 }
 
-// testID makes a deterministic uuid from a readable name, so a test
-// can still say "c1" and mean it.
-func testID(name string) uuid.UUID { return uuid.NewSHA1(uuid.Nil, []byte(name)) }
-
-// The log is what you ask "what did it actually run", and it could
-// only answer "bash". The command rides through Body like any content.
+// The log must say what actually ran, not just "bash". The command
+// rides through Body like any content.
 func TestWatch_RecordsTheCommand(t *testing.T) {
 	dir := t.TempDir()
 	closer, err := logging.Setup("c", logging.WithDir(dir), logging.WithLevel("debug"), logging.WithBodies(true))
@@ -206,3 +201,6 @@ func TestWatch_NeverWritesTwoLevelKeys(t *testing.T) {
 	assert.Equal(t, "INFO", records(t, dir, "n")[0]["level"])
 	assert.Equal(t, "info", records(t, dir, "n")[0]["severity"])
 }
+
+// testID makes a deterministic uuid from a readable name.
+func testID(name string) uuid.UUID { return uuid.NewSHA1(uuid.Nil, []byte(name)) }

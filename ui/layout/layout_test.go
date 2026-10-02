@@ -51,10 +51,8 @@ func TestRow_JoinsLeftToRight(t *testing.T) {
 	assert.Equal(t, "ac\nbd", Row("a\nb", "c\nd"))
 }
 
-// A command spanning lines drew its tail outside the pane, over
-// whatever was beside it: history rows lost their rail, and the output
-// pane header ran through its own border. Every caller is placing this
-// inside a frame, so one line is what it has to return.
+// Every caller places this inside a frame, so a newline would put the
+// tail outside it.
 func TestTruncate_ReturnsOneLine(t *testing.T) {
 	const heredoc = "python3 - <<'EOF'\nimport re\np = 'ui/goal_flow.go'\nEOF"
 

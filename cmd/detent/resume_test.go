@@ -70,18 +70,11 @@ func TestWasSandboxed_ReadsTheLastHeader(t *testing.T) {
 	assert.False(t, known, "nothing recorded says nothing about the mode")
 	assert.False(t, was)
 
-	// A session resumed twice has two headers; the last one ran.
+	// A session resumed twice has two headers, and the last one ran.
 	twice := append(started(true), started(false)...)
 	was, known = wasSandboxed(twice)
 	require.True(t, known)
 	assert.False(t, was, "the most recent run is the one that set the machine up")
-}
-
-func started(sandboxed bool) []event.Record {
-	return []event.Record{{
-		Ordinal: 1,
-		Event:   event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Sandbox: sandboxed},
-	}}
 }
 
 // The seam first: history draws the boundary, the note explains it.
@@ -113,4 +106,11 @@ func TestAnnounceResume_SaysNothingWithoutARestore(t *testing.T) {
 
 	_, ok := (<-seen).Event.(event.Notice)
 	assert.True(t, ok, "the first thing on the bus is what came after it")
+}
+
+func started(sandboxed bool) []event.Record {
+	return []event.Record{{
+		Ordinal: 1,
+		Event:   event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Sandbox: sandboxed},
+	}}
 }

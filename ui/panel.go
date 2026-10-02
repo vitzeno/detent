@@ -2,11 +2,11 @@ package ui
 
 import (
 	"fmt"
-	"github.com/vitzeno/detent/event"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/status"
 	"github.com/vitzeno/detent/version"
 )
@@ -66,7 +66,7 @@ func (m *Model) usageLines() []string {
 }
 
 // sessionLines is what can be resumed. Read-only, because resuming
-// is a process rather than a keystroke; the id is here to be copied.
+// is a process rather than a keystroke. The id is here to be copied.
 func (m *Model) sessionLines() []string {
 	out := []string{styleGoal.Render("sessions"), "",
 		styleFaint.Render("  resume one with  detent -resume <id or name>"), ""}
@@ -122,6 +122,20 @@ func (m *Model) statusLines() []string {
 	return out
 }
 
+// contextDetail spells out what the bar compresses to a percentage,
+// which is the wrong thing when you want to know how much room is left.
+func (m Model) contextDetail() string {
+	budget := m.run.ContextTokens
+	if budget <= 0 {
+		return "no budget set"
+	}
+	if m.context <= 0 {
+		return fmt.Sprintf("nothing measured yet, budget %s", status.Tokens(budget))
+	}
+	return fmt.Sprintf("%d%%  %s of %s", m.context*100/budget,
+		status.Tokens(m.context), status.Tokens(budget))
+}
+
 func (m *Model) helpLines() []string {
 	out := []string{styleGoal.Render("commands"), ""}
 	for _, c := range slashCommands() {
@@ -135,6 +149,27 @@ func (m *Model) helpLines() []string {
 		"  "+styleFaint.Render("enter     seed the prompt from a view's selection"),
 		"  "+styleFaint.Render("esc       back out, or abort a running request"),
 		"  "+styleFaint.Render("ctrl+c    quit"))
+}
+
+// mcpLines draws what connected, what failed, and why. Colour carries
+// the state: it is what a human opens this page to see.
+func (m *Model) mcpLines() []string {
+	out := []string{styleGoal.Render("mcp servers"), ""}
+
+	if len(m.servers) == 0 {
+		return append(out, styleFaint.Render("  (none configured, see .mcp.json)"))
+	}
+	for _, s := range m.servers {
+		out = append(out, fmt.Sprintf("  %s %s  %s",
+			serverMark(s), styleGoal.Render(pad(s.Name, 14)), serverState(s)))
+		if s.Command != "" {
+			out = append(out, styleFaint.Render("     "+s.Command))
+		}
+		if s.Err != "" {
+			out = append(out, styleDanger.Render("     "+s.Err))
+		}
+	}
+	return append(out, "", styleFaint.Render("  [esc] close"))
 }
 
 // recording says so when nothing is writing this down, because the
@@ -152,6 +187,41 @@ func resumed(run event.SessionStarted) string {
 	}
 	return fmt.Sprintf("%s %s", countOf(run.Resumed, "record"),
 		styleFaint.Render("restored"))
+}
+
+// serverMark is the glyph the eye lands on first: connected, off,
+// still dialling, or broken.
+func serverMark(s event.ServerSummary) string {
+	switch {
+	case s.Disabled:
+		return styleFaint.Render("○")
+	case s.Err != "":
+		return styleDanger.Render("✗")
+	case !s.Connected:
+		return styleFaint.Render("◌")
+	case s.Tools == 0:
+		return styleCaution.Render("●")
+	}
+	return styleSafe.Render("●")
+}
+
+// serverState names what the glyph means: a colour alone is not one.
+func serverState(s event.ServerSummary) string {
+	switch {
+	case s.Disabled:
+		return styleFaint.Render("disabled")
+	case s.Auth == event.AuthWaiting:
+		return styleCaution.Render("waiting for you to sign in")
+	case s.Auth == event.AuthSignedOut:
+		return styleCaution.Render("signed out · /mcp auth " + s.Name)
+	case s.Err != "":
+		return styleDanger.Render("not connected")
+	case !s.Connected:
+		return styleFaint.Render("connecting…")
+	case s.Tools == 0:
+		return styleCaution.Render("connected, offers nothing")
+	}
+	return styleSafe.Render(countOf(s.Tools, "tool"))
 }
 
 func countOf(n int, thing string) string {
@@ -184,79 +254,4 @@ func truncCell(s string, w int) string {
 		return string(r)
 	}
 	return string(r[:w-1]) + "…"
-}
-
-// contextDetail spells out what the bar compresses to a percentage,
-// since a share is the right thing at a glance and the wrong thing
-// when you want to know how much room is left.
-func (m Model) contextDetail() string {
-	budget := m.run.ContextTokens
-	if budget <= 0 {
-		return "no budget set"
-	}
-	if m.context <= 0 {
-		return fmt.Sprintf("nothing measured yet, budget %s", status.Tokens(budget))
-	}
-	return fmt.Sprintf("%d%%  %s of %s", m.context*100/budget,
-		status.Tokens(m.context), status.Tokens(budget))
-}
-
-// mcpLines draws what connected, what failed, and why. Colour carries
-// the state: it is what a human opens this page to see.
-func (m *Model) mcpLines() []string {
-	out := []string{styleGoal.Render("mcp servers"), ""}
-
-	if len(m.servers) == 0 {
-		return append(out, styleFaint.Render("  (none configured — see mcp: in the config file)"))
-	}
-	for _, s := range m.servers {
-		out = append(out, fmt.Sprintf("  %s %s  %s",
-			serverMark(s), styleGoal.Render(pad(s.Name, 14)), serverState(s)))
-		if s.Command != "" {
-			out = append(out, styleFaint.Render("     "+s.Command))
-		}
-		if s.Err != "" {
-			out = append(out, styleDanger.Render("     "+s.Err))
-		}
-	}
-	return append(out, "", styleFaint.Render("  [esc] close"))
-}
-
-// serverMark is the glyph the eye lands on first: connected, off,
-// still dialling, or broken.
-func serverMark(s event.ServerSummary) string {
-	switch {
-	case s.Disabled:
-		return styleFaint.Render("○")
-	case s.Err != "":
-		return styleDanger.Render("✗")
-	case !s.Connected:
-		return styleFaint.Render("◌")
-	case s.Tools == 0:
-		return styleCaution.Render("●")
-	}
-	return styleSafe.Render("●")
-}
-
-// serverState names what the glyph means: a colour alone is not one.
-func serverState(s event.ServerSummary) string {
-	switch {
-	case s.Disabled:
-		return styleFaint.Render("disabled")
-	case s.Auth == event.AuthWaiting:
-		return styleCaution.Render("waiting for you to sign in")
-	case s.Auth == event.AuthSignedOut:
-		return styleCaution.Render("signed out · /mcp auth " + s.Name)
-	case s.Err != "":
-		return styleDanger.Render("not connected")
-	case !s.Connected:
-		return styleFaint.Render("connecting…")
-	case s.Auth == event.AuthWaiting:
-		return styleCaution.Render("waiting for you to sign in")
-	case s.Auth == event.AuthSignedOut && !s.Connected:
-		return styleCaution.Render("signed out · /mcp auth " + s.Name)
-	case s.Tools == 0:
-		return styleCaution.Render("connected, offers nothing")
-	}
-	return styleSafe.Render(countOf(s.Tools, "tool"))
 }

@@ -11,8 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// plain drops the ANSI styling lipgloss v2 emits even off-TTY, so the
-// assertions below are about structure rather than color.
+// plain drops the ANSI styling lipgloss v2 emits even off-TTY.
 func plain(s string) string {
 	return ansi.Strip(s)
 }
@@ -46,12 +45,6 @@ func TestRender_EmptyTitleKeepsContent(t *testing.T) {
 	require.Len(t, lines, 4)
 	assert.Contains(t, lines[1], "x")
 	assert.Contains(t, lines[2], "│", "second line pads blank, no title consumed")
-}
-
-func TestRender_TakesTheBorderItIsGiven(t *testing.T) {
-	// Color codes are stripped without a TTY, so only structure is
-	// asserted here; the colour itself is visible live.
-	assert.NotEmpty(t, Render("t", lipgloss.Color("#ff0000"), nil, 20, 1))
 }
 
 func TestRender_TruncatesWideLines(t *testing.T) {

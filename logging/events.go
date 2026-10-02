@@ -1,8 +1,7 @@
 package logging
 
-// Names for records the bus never carries. Everything published as a
-// fact is logged under its own event.Kind instead, so there is one
-// vocabulary rather than two kept in step by hand.
+// Names for records the bus never carries. A fact is logged under its
+// own event.Kind, so there is one vocabulary rather than two.
 const (
 	SessionOpen = "session.open"
 

@@ -8,9 +8,16 @@ import (
 	"strings"
 )
 
-// Compile validates spec against the vocabulary: every block kind
-// exists, the parse kind exists and its pattern compiles, and every
-// static field is present. Once per spec.
+// Compiled is a validated spec. Reusable across outputs and frames,
+// and cheap to keep: it holds no data and no styling.
+type Compiled struct {
+	spec Spec
+	reg  *Registry
+	ext  Extractor
+}
+
+// Compile validates spec against the vocabulary: block and parse kinds
+// exist, a pattern compiles, and every static field is present.
 func Compile(spec Spec, opts ...Option) (*Compiled, error) {
 	o := options{reg: Standard()}
 	for _, fn := range opts {
@@ -38,6 +45,9 @@ func Compile(spec Spec, opts ...Option) (*Compiled, error) {
 	return &Compiled{spec: spec, reg: o.reg, ext: ext}, nil
 }
 
+// Spec returns what was compiled.
+func (c *Compiled) Spec() Spec { return c.spec }
+
 // Bind resolves every binding against the rows that actually came
 // out. Anything unresolved fails the whole view, never one block.
 func (c *Compiled) Bind(output string) (*Bound, error) {
@@ -59,10 +69,19 @@ func (c *Compiled) Bind(output string) (*Bound, error) {
 	return out, nil
 }
 
-// Draw assembles lines at a size. Called on every resize, scroll and
-// focus change, so it parses nothing and validates nothing. It always
-// draws the view whole: windowing belongs to the caller, which is what
-// lets a long view scroll.
+// Bound is one output resolved against a compiled spec: parsed,
+// filtered and sorted, with every binding checked. Once per output.
+type Bound struct {
+	c      *Compiled
+	raw    string
+	fields []string
+	rows   int
+	blocks []boundBlock
+	selSeq int
+}
+
+// Draw assembles lines at a size. It runs every frame, so it parses
+// nothing, and draws the view whole so the caller can window it.
 func (b *Bound) Draw(f Frame) (Render, error) {
 	if f.Paint == nil {
 		f.Paint = Plain()
@@ -77,9 +96,8 @@ func (b *Bound) Draw(f Frame) (Render, error) {
 	return Render{Lines: lines, CursorLine: cursor}, nil
 }
 
-// Action resolves the on_enter template for the cursor row. A string
-// and nothing else: this package has no idea what a prompt or a shell
-// is.
+// Action resolves the on_enter template for the cursor row. What the
+// string is for is the caller's business.
 func (b *Bound) Action(f Frame) (string, bool) {
 	bb, ok := b.selectable()
 	if !ok || bb.block.OnEnter == "" || f.Cursor < 0 || f.Cursor >= len(bb.data.Rows) {
@@ -102,30 +120,7 @@ func (b *Bound) SelectableRows() (int, bool) {
 	return len(bb.data.Rows), true
 }
 
-// Compiled is a validated spec. Reusable across outputs and frames,
-// and cheap to keep: it holds no data and no styling.
-type Compiled struct {
-	spec Spec
-	reg  *Registry
-	ext  Extractor
-}
-
-// Spec returns what was compiled.
-func (c *Compiled) Spec() Spec { return c.spec }
-
-// Bound is one output resolved against a compiled spec: parsed,
-// filtered and sorted, with every binding checked. Once per output.
-type Bound struct {
-	c      *Compiled
-	raw    string
-	fields []string
-	rows   int
-	blocks []boundBlock
-	selSeq int
-}
-
 // Fields lists the field names the parse actually produced, sorted.
-// Generation uses it to ask a closed question about real columns.
 func (b *Bound) Fields() []string { return slices.Clone(b.fields) }
 
 // Hides reports whether most of the output reaches no block: rows came
@@ -151,22 +146,8 @@ func (b *Bound) Hides() bool {
 // Rows is how many rows the parse produced, before any block filtered.
 func (b *Bound) Rows() int { return b.rows }
 
-// perLine reports whether an extractor reads a record per line, which
-// is what makes counting lines meaningful: a JSON document is not.
-func perLine(e Extractor) bool {
-	if s, ok := e.(skipExtractor); ok {
-		e = s.inner
-	}
-	switch e.(type) {
-	case noneExtractor, jsonExtractor:
-		return false
-	}
-	return true
-}
-
-// Sample returns up to n parsed rows. A name alone is thin for a field
-// called %iused and meaningless for one called col3, so a caller
-// asking which field to draw can show what the field holds.
+// Sample returns up to n parsed rows, so a caller asking which field to
+// draw can show what each one holds.
 func (b *Bound) Sample(n int) []Row {
 	for _, bb := range leaves(b.blocks) {
 		if len(bb.data.Rows) == 0 {
@@ -187,13 +168,10 @@ type Render struct {
 }
 
 // Frame is everything Draw needs that Bind could not know. Painter is
-// here, not on Compiled, so Compile and Bind stay pure data and test
-// with no styling at all.
+// here so Compile and Bind stay pure data.
 type Frame struct {
-	// Width is what a block has to draw in, and every widget fills it.
 	Width int
-	// Height is how tall the pane is, for the widgets that can grow
-	// into it. 0 means unknown, and nothing is ever clipped to it.
+	// Height is for widgets that grow into the pane. 0 is unknown, and it clips nothing.
 	Height  int
 	Focused bool
 	Cursor  int
@@ -208,9 +186,7 @@ func WithRegistry(r *Registry) Option { return func(o *options) { o.reg = r } }
 
 type options struct{ reg *Registry }
 
-// BindError says which block failed to resolve and why. Callers fall
-// back on any error; errors.As is here for one that wants to report
-// which block it was.
+// BindError says which block failed to resolve and why.
 type BindError struct {
 	Block int
 	Kind  string
@@ -240,9 +216,7 @@ func checkBlock(b Block, reg *Registry, topLevel bool) error {
 		return &BindError{Kind: b.Kind,
 			Err: fmt.Errorf("unknown block kind (have %s)", strings.Join(reg.Kinds(), ", "))}
 	}
-	// A kind that cannot say which row the cursor is on cannot act on
-	// one either. Accepting on_enter there drew a spec that looked
-	// right and did nothing when the human pressed enter.
+	// A kind that cannot say which row the cursor is on cannot act on one.
 	if b.OnEnter != "" {
 		if _, ok := w.(Selector); !ok {
 			return &BindError{Kind: b.Kind,
@@ -317,10 +291,9 @@ type boundBlock struct {
 	block Block
 	w     Widget
 	data  Data
-	// panes is set only on a row; its widget is never called.
+	// panes is set only on a container, whose Draw is never called.
 	panes [][]boundBlock
-	// seq numbers leaves in draw order, so Draw can tell which one
-	// holds the cursor without comparing values.
+	// seq numbers leaves in draw order, to find the one holding the cursor.
 	seq int
 }
 
@@ -395,8 +368,7 @@ func drawBlocks(blocks []boundBlock, f Frame, sel int) ([]string, int, error) {
 }
 
 // drawContainer draws a container's panes at the widths it asks for
-// and hands them back to it to assemble. The geometry loop is shared;
-// what differs between a row and a panel is only the arrangement.
+// and hands them back to it to assemble.
 func drawContainer(bb boundBlock, f Frame, sel int) ([]string, int, error) {
 	c, ok := bb.w.(Container)
 	if !ok {
@@ -428,9 +400,8 @@ func drawContainer(bb boundBlock, f Frame, sel int) ([]string, int, error) {
 	return out, cursor, nil
 }
 
-// selectable is the block the cursor addresses. Navigable and
-// actionable are separate: a table is worth moving through even when
-// nothing can be run from it. With one cursor, on_enter wins.
+// selectable is the block the cursor addresses: the first with on_enter,
+// else the first that draws a cursor at all.
 func (b *Bound) selectable() (boundBlock, bool) {
 	var first boundBlock
 	found := false
@@ -438,8 +409,6 @@ func (b *Bound) selectable() (boundBlock, bool) {
 		if _, ok := bb.w.(Selector); !ok {
 			continue
 		}
-		// One that can be acted on wins over one that can only be
-		// read, however they are ordered.
 		if bb.block.OnEnter != "" {
 			return bb, true
 		}
@@ -448,6 +417,19 @@ func (b *Bound) selectable() (boundBlock, bool) {
 		}
 	}
 	return first, found
+}
+
+// perLine reports whether an extractor reads a record per line, which
+// is what makes counting lines meaningful: a JSON document is not.
+func perLine(e Extractor) bool {
+	if s, ok := e.(skipExtractor); ok {
+		e = s.inner
+	}
+	switch e.(type) {
+	case noneExtractor, jsonExtractor:
+		return false
+	}
+	return true
 }
 
 // selectRows applies a block's Where filter then its Sort. Both are
@@ -494,9 +476,8 @@ func cmpFloat(a, b float64) int {
 	return 0
 }
 
-// orderedColumns prefers the extractor's own order and spelling,
-// keeping only what the rows actually produced. Alphabetical by key is
-// the fallback: defined, but rarely the order the output meant.
+// orderedColumns prefers the extractor's own order and spelling, keeping
+// only what the rows produced, and falls back to alphabetical by key.
 func orderedColumns(ext Extractor, present []string) []Column {
 	plain := func(fields []string) []Column {
 		out := make([]Column, len(fields))

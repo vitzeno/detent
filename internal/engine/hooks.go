@@ -10,10 +10,16 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
+// Judge is the classifier the jev hook speaks to, declared here at its
+// consumer. internal/classify ships the implementation.
+type Judge interface {
+	Assess(ctx context.Context, command string, threshold float64) (event.Risk, error)
+}
+
 // The hooks detent ships, cheapest first.
 
 // toolFloor is what the tool itself declares. read_file is read-only
-// by construction; bash is unknown until something else speaks.
+// by construction, bash is unknown until something else speaks.
 type toolFloor struct{}
 
 func (toolFloor) Name() string { return "tool" }
@@ -36,7 +42,7 @@ func (mcpFloor) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Risk
 }
 
 // regexHook is the backstop. It only ever adds emphasis, which Widen
-// now guarantees rather than merely documenting.
+// guarantees.
 type regexHook struct{}
 
 func (regexHook) Name() string { return "regex" }
@@ -67,8 +73,8 @@ var dangerPatterns = []struct {
 	{regexp.MustCompile(`\bsudo\b`), event.MutSystem, 0.7, "runs as root"},
 }
 
-// repeatHook is why a model ran `git log -1` twelve times and nothing
-// noticed. It cannot stop the call, only make it visible.
+// repeatHook notices a command run again and again. It cannot stop
+// the call, only make it visible.
 type repeatHook struct {
 	seen  map[string]int
 	limit int
@@ -109,12 +115,6 @@ func (h jevHook) Assess(ctx context.Context, c tool.Call, _ event.Risk) (event.R
 		return event.Risk{}, nil
 	}
 	return h.judge.Assess(ctx, c.Command, h.threshold)
-}
-
-// Judge is the classifier the jev hook speaks to, declared here at its
-// consumer. internal/classify ships the implementation.
-type Judge interface {
-	Assess(ctx context.Context, command string, threshold float64) (event.Risk, error)
 }
 
 // describe renders a Risk for a human, for the approval prompt.

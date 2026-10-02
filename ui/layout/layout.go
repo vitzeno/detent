@@ -1,7 +1,6 @@
 // Package layout provides small arrangement primitives: Split divides a
-// budget of cells among weighted regions, Row and Column join
-// pre-rendered blocks. Rearranging the screen becomes a data change to
-// weights, not a sizing-math rewrite.
+// budget of cells among weighted regions, Row joins pre-rendered blocks
+// and Truncate fits a string to one line.
 package layout
 
 import (
@@ -73,16 +72,14 @@ func split(total int, weights []int, min int, out []int, floored []bool) []int {
 	return out
 }
 
-// Row joins pre-rendered, equal-height blocks left to right. Blocks
-// must already be the height the caller intended — Row only arranges,
-// never pads or truncates.
+// Row joins pre-rendered, equal-height blocks left to right. It only
+// arranges, and never pads or truncates.
 func Row(blocks ...string) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, blocks...)
 }
 
-// Truncate fits s into one line of at most w columns. One line is the
-// point: a newline through it puts the tail outside the caller's
-// frame. Runes, not bytes, so nothing is cut mid-character.
+// Truncate fits s into one line of at most w columns, so no tail lands
+// outside the caller's frame. It cuts runes, never mid-character.
 func Truncate(s string, w int) string {
 	if w < 4 {
 		w = 4
@@ -96,8 +93,7 @@ func Truncate(s string, w int) string {
 }
 
 // flatten collapses a multi-line string into one, indentation and all.
-// A string already on one line is returned untouched: its spacing is
-// the command as written, and a row should not restate it.
+// One already on one line is untouched, its spacing as written.
 func flatten(s string) string {
 	if strings.IndexFunc(s, isBreak) < 0 {
 		return s

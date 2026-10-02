@@ -27,9 +27,8 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// DefaultImage is Ubuntu (GNU coreutils, not BusyBox) with git and
-// curl already in it, so goals have them under NetworkNone too.
-// Fully qualified: containerd's client doesn't expand Hub shorthand.
+// DefaultImage is Ubuntu (GNU coreutils) with git and curl, so they work
+// under NetworkNone too. Fully qualified, since containerd won't expand it.
 const DefaultImage = "docker.io/library/buildpack-deps:24.04-scm"
 
 // Network postures. Host means the daemon's host: the colima VM on
@@ -50,14 +49,11 @@ const DefaultNamespace = "detent"
 // fallback, wrong once the client and the daemon run on different OSes.
 const defaultSnapshotter = "overlayfs"
 
-// defaultRuntime is the standard runc shim; this daemon's NewContainer
-// doesn't default it for us the way some client versions do.
+// defaultRuntime is the runc shim, which NewContainer does not default.
 const defaultRuntime = "io.containerd.runc.v2"
 
-// Container is a session-scoped containerd Runner, satisfied
-// structurally: it imports neither host nor engine. An isolated
-// bridge network would need CNI, which go-cni cannot drive from
-// macOS.
+// Container is a session-scoped containerd Runner, satisfied structurally:
+// it imports neither host nor engine.
 type Container struct {
 	socket     string
 	namespace  string
@@ -71,19 +67,17 @@ type Container struct {
 	lease     *leases.Lease // roots this session's checkpoints, see snapshot.go
 	img       containerd.Image
 	container containerd.Container
-	workspace string // host directory bind-mounted in; always os.Getwd()
+	workspace string // host directory bind-mounted in, always os.Getwd()
 	fifoDir   string // client-side dir for cio's stdio FIFOs
 	sessionID string
 
 	// running serialises Run: one task and one spec per container, so
-	// parallel commands overwrote each other's and returned exit 0
-	// with no output.
+	// parallel commands would overwrite each other's.
 	running sync.Mutex
 }
 
 // Start connects to the daemon and creates the session's container,
-// named from sessionID so it correlates with the owning agent.Session.
-// Must be called once before Run.
+// named from sessionID. Must be called once before Run.
 func (c *Container) Start(ctx context.Context, sessionID string) error {
 	workspace, err := os.Getwd()
 	if err != nil {
@@ -92,9 +86,8 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 	c.workspace = workspace
 	c.sessionID = sessionID
 
-	// The shim opening these FIFOs runs wherever the daemon does (e.g.
-	// inside colima's VM), so the dir must be one it actually shares
-	// with us (colima virtiofs-mounts $HOME), not the OS temp dir.
+	// The shim opening these FIFOs runs where the daemon does, so the dir
+	// must be shared with it (colima mounts $HOME), not the OS temp dir.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("sandbox: home dir: %w", err)
@@ -115,9 +108,8 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 	}
 	c.client = client
 
-	// Checkpoints need a root of their own, or the GC reclaims them as
-	// soon as a rollback drops them out of the active branch. Close
-	// releases this, which is also what cleans them up.
+	// Checkpoints need a lease of their own, or the GC reclaims them once a
+	// rollback leaves their branch. Close releases it.
 	if err := clearStale(ctx, client, sessionID); err != nil {
 		return err
 	}
@@ -134,9 +126,7 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 	c.img = img
 
 	specOpts := []oci.SpecOpts{
-		// The daemon (and every container it runs) is always Linux,
-		// regardless of the client's own OS; without this the spec
-		// would default to the client's OS instead.
+		// The daemon is always Linux, whatever the client's OS is.
 		oci.WithDefaultSpecForPlatform("linux/" + runtime.GOARCH),
 		oci.WithImageConfig(img),
 		oci.WithProcessArgs("sh", "-c", "true"),
@@ -149,8 +139,7 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 		}}),
 	}
 	if c.network == NetworkHost {
-		// resolv.conf and hosts come too, or DNS resolves nothing
-		// despite the interfaces being right there.
+		// resolv.conf and hosts come too, or DNS resolves nothing.
 		specOpts = append(specOpts,
 			oci.WithHostNamespace(specs.NetworkNamespace),
 			oci.WithHostResolvconf,
@@ -180,10 +169,8 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 // own subdirectory of stdout/stderr capture files (see Run).
 const sandboxOutputDir = ".detent-sandbox"
 
-// Run creates a task per command against the container's current
-// snapshot, one at a time, so filesystem state carries over. Output
-// is shell-redirected into the workspace mount rather than captured
-// via cio, whose FIFOs need the shim and reader on one kernel.
+// Run runs one command at a time as a task on the current snapshot, so
+// state carries over. Output goes to files, since cio's FIFOs need one kernel.
 func (c *Container) Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error) {
 	if c.container == nil {
 		return capture.Result{}, fmt.Errorf("sandbox: Start not called")
@@ -191,8 +178,7 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 	c.running.Lock()
 	defer c.running.Unlock()
 
-	// Session-scoped, not shared directly: recreating the same
-	// directory path across back-to-back containers on a virtiofs
+	// Session-scoped: recreating one path across containers on a virtiofs
 	// mount can serve the guest a stale, empty view of it.
 	hostOutDir := filepath.Join(c.workspace, sandboxOutputDir, c.sessionID)
 	if err := os.MkdirAll(hostOutDir, 0o755); err != nil {
@@ -211,9 +197,8 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 	if err != nil {
 		return capture.Result{}, fmt.Errorf("sandbox: read spec: %w", err)
 	}
-	// exec redirects then gets out of the way, so the command keeps
-	// its own line structure. "( cmd ) >out" glued that tail onto the
-	// last line and broke every heredoc.
+	// exec redirects then gets out of the way, so the command keeps its
+	// own lines. A "( cmd ) >out" wrapper would break every heredoc.
 	spec.Process.Args = []string{"sh", "-c",
 		fmt.Sprintf("exec >%s 2>%s\n%s\n",
 			shellQuote(containerOutPath), shellQuote(containerErrPath), command)}
@@ -276,13 +261,43 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 
 // Close tears down the container, its current snapshot, and the
 // client connection. Safe to call even if Start failed partway.
+func (c *Container) Close(ctx context.Context) error {
+	var errs []error
+	if c.container != nil {
+		if err := c.container.Delete(ctx, containerd.WithSnapshotCleanup); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	// Dropping the lease is what lets the GC reclaim this session's checkpoints.
+	if c.lease != nil && c.client != nil {
+		if err := c.client.LeasesService().Delete(ctx, *c.lease); err != nil {
+			errs = append(errs, err)
+		}
+		c.lease = nil
+	}
+	if c.client != nil {
+		if err := c.client.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if c.fifoDir != "" {
+		if err := os.RemoveAll(c.fifoDir); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if c.workspace != "" {
+		// Only this session's subdirectory, never the shared parent (see Run).
+		_ = os.RemoveAll(filepath.Join(c.workspace, sandboxOutputDir, c.sessionID))
+	}
+	return errors.Join(errs...)
+}
+
 // ErrSessionLive marks a container another detent still holds, so
 // neither starting over it nor pruning it may touch it.
 var ErrSessionLive = errors.New("already running somewhere")
 
-// clearStale removes what a killed process left behind. Only Close
-// deletes a container and its lease, so a kill leaves both, and the
-// ids are per session: resuming one would collide with its own corpse.
+// clearStale removes what a killed process left behind, since its ids
+// are per session and resuming it would otherwise collide with them.
 func clearStale(ctx context.Context, client *containerd.Client, sessionID string) error {
 	cont, err := client.LoadContainer(ctx, containerID(sessionID))
 	switch {
@@ -324,47 +339,13 @@ func dropLease(ctx context.Context, client *containerd.Client, sessionID string)
 	return nil
 }
 
-func (c *Container) Close(ctx context.Context) error {
-	var errs []error
-	if c.container != nil {
-		if err := c.container.Delete(ctx, containerd.WithSnapshotCleanup); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	// Dropping the lease is what lets the GC reclaim this session's
-	// checkpoints; without it they would outlive the session forever.
-	if c.lease != nil && c.client != nil {
-		if err := c.client.LeasesService().Delete(ctx, *c.lease); err != nil {
-			errs = append(errs, err)
-		}
-		c.lease = nil
-	}
-	if c.client != nil {
-		if err := c.client.Close(); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if c.fifoDir != "" {
-		if err := os.RemoveAll(c.fifoDir); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if c.workspace != "" {
-		// Only this session's own subdirectory; Run's comment explains
-		// why the shared sandboxOutputDir parent is never removed.
-		_ = os.RemoveAll(filepath.Join(c.workspace, sandboxOutputDir, c.sessionID))
-	}
-	return errors.Join(errs...)
-}
-
-// containerID correlates the containerd container with the
-// agent.Session that owns it, rather than inventing a second identity.
-// containerPrefix is what marks a container as detent's own, which is
-// the whole of how Prune tells ours from anything else in the namespace.
+// containerPrefix marks a container as detent's own, which is how Prune
+// tells ours from anything else in the namespace.
 const containerPrefix = "detent-"
 
 const leaseSuffix = "-checkpoints"
 
+// containerID names a container after the session that owns it.
 func containerID(sessionID string) string { return containerPrefix + sessionID }
 
 func leaseID(sessionID string) string { return containerID(sessionID) + leaseSuffix }

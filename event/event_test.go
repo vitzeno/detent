@@ -1,22 +1,19 @@
 package event
 
 import (
-	"github.com/google/uuid"
 	"go/build"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// This package is imported by ui and by the engine alike, which is
-// what removes the translation layer between them. It can only stay
-// that way while nothing it pulls in can drag either side anywhere.
-// So the rule is a property rather than a list: every non-stdlib
-// import must itself import only the standard library.
+// ui and the engine both import event, so nothing it pulls in may drag
+// either anywhere: every non-stdlib import must itself be stdlib only.
 func TestPackage_DependsOnlyOnStdlibOnlyPackages(t *testing.T) {
 	pkg, err := build.ImportDir(".", 0)
 	require.NoError(t, err)
@@ -37,16 +34,8 @@ func TestPackage_DependsOnlyOnStdlibOnlyPackages(t *testing.T) {
 	}
 }
 
-// external reports whether an import path leaves the standard
-// library. Stdlib paths have no dot in their first segment.
-func external(path string) bool {
-	first, _, _ := strings.Cut(path, "/")
-	return strings.Contains(first, ".")
-}
-
-// Every Kind must name exactly one event type, and every event type
-// must have a Kind. A duplicate makes a log query match two things and
-// a reducer switch on the wrong one.
+// Every Kind names exactly one event type. A duplicate makes a log query
+// match two things and a reducer switch on the wrong one.
 func TestKinds_AreUniqueAndComplete(t *testing.T) {
 	all := []Event{
 		SessionStarted{}, SessionResumed{}, TurnStarted{}, TurnEnded{}, CheckpointTaken{},
@@ -93,10 +82,8 @@ func TestLossy_IsOutputChunkAlone(t *testing.T) {
 	}
 }
 
-// Ordering across the whole system rests on this: a Step mints all
-// its Call ids inside one millisecond, and plain UUIDv7 only orders
-// across them. google/uuid's is monotonic within one too, which is a
-// dependency contract worth pinning against a version bump.
+// A Step mints all its Call ids inside one millisecond, so ordering rests
+// on google/uuid's v7 being monotonic within one. Pinned against a bump.
 func TestNewV7_OrdersWithinOneMillisecond(t *testing.T) {
 	const n = 500
 	ids := make([]string, n)
@@ -109,4 +96,11 @@ func TestNewV7_OrdersWithinOneMillisecond(t *testing.T) {
 
 	assert.True(t, slices.IsSorted(ids), "ids must sort by creation")
 	assert.Len(t, slices.Compact(slices.Clone(ids)), n, "and be unique")
+}
+
+// external reports whether an import path leaves the standard
+// library. Stdlib paths have no dot in their first segment.
+func external(path string) bool {
+	first, _, _ := strings.Cut(path, "/")
+	return strings.Contains(first, ".")
 }

@@ -18,14 +18,14 @@ import (
 // DefaultTimeout bounds a single command.
 const DefaultTimeout = 30 * time.Second
 
-// Shell runs commands directly on the host, unsandboxed.
-// Satisfies agent.Runner structurally; callers wire it explicitly.
+// Shell runs commands directly on the host, unsandboxed. It satisfies
+// engine.Runner structurally.
 type Shell struct {
 	limit int
 }
 
 // Run executes command via sh -c, sending each output line on events as
-// it arrives. events may be nil; Run closes it once output ends.
+// it arrives. events may be nil, and Run closes it once output ends.
 func (s *Shell) Run(ctx context.Context, command string, events chan<- StreamEvent) (Result, error) {
 	if strings.TrimSpace(command) == "" {
 		return Result{}, fmt.Errorf("host: empty command")

@@ -14,7 +14,7 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Model is a projection of the event stream: apply.go folds facts in,
+// Model is a projection of the event stream: facts.go folds facts in,
 // and every key publishes an intent.
 type Model struct {
 	bus *event.Bus
@@ -31,7 +31,7 @@ type Model struct {
 	// Model that View works on can still fill it.
 	hist *histCache
 	// histRev moves whenever block content does, and every block cache
-	// is keyed on it. apply bumps it; so does toggleExpand.
+	// is keyed on it. Bumped by apply and toggleExpand.
 	histRev int
 	// detail is the key the output pane's content was last drawn for.
 	detail detailKey
@@ -82,7 +82,7 @@ type Model struct {
 // SessionInfo is what only the wiring knows. What SessionStarted
 // carries is read off that, so a run has one description.
 type SessionInfo struct {
-	// Sandbox detail for the welcome pane; empty in host mode.
+	// Sandbox detail for the welcome pane, empty in host mode.
 	Image   string
 	Mount   string
 	Runtime string
@@ -108,6 +108,7 @@ func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 	}
 }
 
+// Init starts the fact pump, the welcome animation and a session listing.
 func (m Model) Init() tea.Cmd {
 	// Asked at startup so the welcome pane can say what is resumable,
 	// and /sessions has an answer before it is opened.
@@ -126,6 +127,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updated.sizeViewport()
 	return updated, cmd
 }
+
+// Idle reports whether no request is open or awaited. It and RowCount
+// exist for wiring tests outside ui, which cannot reach unexported state.
+func (m Model) Idle() bool { return m.cur == nil && !m.waiting }
+
+// RowCount is how many rows history holds.
+func (m Model) RowCount() int { return len(m.rows()) }
 
 func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -151,8 +159,7 @@ func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
-	// Eight message types and seven command constructors collapsed to
-	// one of each: the UI learns everything the same way.
+	// One message type for every fact: the UI learns everything the same way.
 	case factMsg:
 		spinning := m.spinning()
 		for _, e := range msg.events {
@@ -317,8 +324,3 @@ func (m *Model) trackNewest() {
 	}
 	m.nav.cursor = len(m.rows()) - 1
 }
-
-// Idle and RowCount expose just enough for a wiring test in
-// cmd/detent, which cannot reach unexported state.
-func (m Model) Idle() bool    { return m.cur == nil && !m.waiting }
-func (m Model) RowCount() int { return len(m.rows()) }

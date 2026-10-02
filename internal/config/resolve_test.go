@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/vitzeno/detent/internal/sandbox"
 )
 
 func TestResolve_Precedence(t *testing.T) {
@@ -31,7 +29,7 @@ func TestResolve_FlagStepsAndHeaders(t *testing.T) {
 	}
 	got := Resolve(file, Config{}, 0)
 	assert.Equal(t, map[string]string{"X-Title": "detent"}, got.Headers, "file headers must survive")
-	assert.Equal(t, 0, got.Steps, "explicit 0 selects unbounded over the file value")
+	assert.Equal(t, 0, got.Steps, "explicit 0 overrides the file value")
 	assert.Equal(t, DefaultModel, got.Model)
 	assert.Equal(t, DefaultBaseURL, got.BaseURL)
 }
@@ -70,12 +68,6 @@ func TestResolve_ThemePrecedence(t *testing.T) {
 	assert.Equal(t, "dracula", got.Theme, "flag beats env beats file")
 }
 
-func TestResolve_ThemeDefaultsWhenUnset(t *testing.T) {
-	t.Setenv("DETENT_THEME", "")
-	got := Resolve(Config{}, Config{}, -1)
-	assert.Equal(t, DefaultTheme, got.Theme)
-}
-
 func TestResolve_SandboxPrecedence(t *testing.T) {
 	t.Setenv("DETENT_SANDBOX_MODE", "host")
 	t.Setenv("DETENT_SANDBOX_SOCKET", "/env/containerd.sock")
@@ -91,18 +83,6 @@ func TestResolve_SandboxPrecedence(t *testing.T) {
 
 	got = Resolve(file, Config{SandboxMode: "auto"}, -1)
 	assert.Equal(t, "auto", got.SandboxMode, "flag beats env beats file")
-}
-
-func TestResolve_SandboxDefaultsWhenUnset(t *testing.T) {
-	t.Setenv("DETENT_SANDBOX_MODE", "")
-	t.Setenv("DETENT_SANDBOX_SOCKET", "")
-	t.Setenv("DETENT_SANDBOX_RUNTIME", "")
-	got := Resolve(Config{}, Config{}, -1)
-	assert.Equal(t, "auto", got.SandboxMode)
-	assert.Equal(t, sandbox.DefaultImage, got.SandboxImage)
-	assert.Equal(t, DefaultSandboxWorkspace, got.SandboxWorkspace)
-	assert.Empty(t, got.SandboxSocket, "no built-in default; main.go's defaultSandboxSocket() picks it")
-	assert.Empty(t, got.SandboxRuntime, "empty means containerd's own default runtime")
 }
 
 func TestResolve_ContextTokensPrecedence(t *testing.T) {

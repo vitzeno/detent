@@ -1,20 +1,12 @@
 // Package views holds every spec detent ships, keyed by a command's
-// name or by the shape its output turned out to have.
-//
-// They live together because they had started to overlap: the table
-// shape spec and the shipped ps spec are nearly the same object, and
-// the ps one had already drifted, drawing nothing for ps aux.
-//
-// It imports viewspec and nothing else, which is what lets ui and
-// viewgen both read it without either importing the other.
+// name or by the shape of its output. It imports only viewspec, so ui
+// and viewgen can both read it without importing each other.
 package views
 
 import "github.com/vitzeno/detent/viewspec"
 
-// ForCommand is the spec detent ships for a command, by its
-// normalised name. A seed rather than a default: a saved spec is read
-// first, and composition is tried before falling back here, so this is
-// a floor and not a ceiling.
+// ForCommand is the spec detent ships for a command, by its normalised
+// name. A floor, not a default: a saved or composed spec beats it.
 func ForCommand(name string) (*viewspec.Spec, bool) {
 	spec, ok := byCommand[name]
 	if !ok {
@@ -23,10 +15,8 @@ func ForCommand(name string) (*viewspec.Spec, bool) {
 	return &spec, true
 }
 
-// ForKind is the spec for output judged to have a given shape, used
-// when nothing is keyed to the command. The kind strings are spelled
-// out below rather than imported: ui reads this package, and imports
-// nothing under internal.
+// ForKind is the spec for output judged to have a given shape. The kind
+// strings are spelled out rather than imported, since ui reads this package.
 func ForKind(kind string) (viewspec.Spec, bool) {
 	spec, ok := byKind[kind]
 	return spec, ok
@@ -61,7 +51,7 @@ func Raw(widget string) viewspec.Spec {
 }
 
 // byKind is what a render kind draws with when no spec is keyed to the
-// command. One block each: these were a switch statement once.
+// command.
 var byKind = map[string]viewspec.Spec{
 	"plain_text":      Raw("log"),
 	"error_text":      Raw("errors"),
@@ -82,8 +72,7 @@ var byKind = map[string]viewspec.Spec{
 
 // byCommand is keyed by the normalised command name.
 var byCommand = map[string]viewspec.Spec{
-	// A cached package prints no time, and matching only times hid most
-	// of any run that repeats one: 13 of 22 packages in detent's own.
+	// A cached package prints no time, so the pattern accepts "(cached)" too.
 	"go test": {
 		Version: viewspec.Version,
 		Match:   "go test",
@@ -100,7 +89,7 @@ var byCommand = map[string]viewspec.Spec{
 		},
 	},
 	// Porcelain v1 is two status chars then the path, so the code keeps
-	// its leading space. The class is what excludes --branch's "## "..
+	// its leading space. The class is what excludes --branch's "## ".
 	"git status": {
 		Version: viewspec.Version,
 		Match:   "git status",
@@ -114,7 +103,7 @@ var byCommand = map[string]viewspec.Spec{
 				OnEnter: "git diff -- {path}"},
 		},
 	},
-	// fixed slices at the header's own offsets, which is what reads
+	// Fixed slices at the header's own offsets, which is what reads
 	// "CONTAINER ID" as one column where whitespace fields see two.
 	"docker ps": {
 		Version: viewspec.Version,

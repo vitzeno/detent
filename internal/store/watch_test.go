@@ -69,9 +69,8 @@ func TestWatch_SkipsLiveOutputAndIntents(t *testing.T) {
 	assert.Equal(t, event.CallEndedKind, got[1].Event.Kind())
 }
 
-// Stopping must wait for the last write, not merely for the last
-// receive: a session that loses its tail at exit cannot be resumed to
-// where it actually got to.
+// Stopping must wait for the last write, not the last receive, or a
+// session loses its tail at exit.
 func TestWatch_StopWaitsForTheLastWrite(t *testing.T) {
 	s := open(t)
 	session := uuid.Must(uuid.NewV7())
@@ -116,9 +115,8 @@ func TestWatch_AnUnwritableStoreDoesNotBlockTheSession(t *testing.T) {
 	stop()
 }
 
-// Two processes, one session: the second must continue the ordinals
-// rather than mint 1 again, or INSERT OR REPLACE silently overwrites
-// what the first one recorded.
+// A second process must continue the ordinals rather than mint 1 again,
+// or INSERT OR REPLACE overwrites what the first recorded.
 func TestWatch_AResumedSessionDoesNotOverwriteTheFirst(t *testing.T) {
 	s := open(t)
 	session := uuid.Must(uuid.NewV7())
@@ -183,8 +181,7 @@ func TestWatch_RenameSticksAcrossAResume(t *testing.T) {
 	// The resume: a second SessionStarted for the same session.
 	bus.Publish(event.SessionStarted{Session: session, Model: "m", Resumed: 2})
 	bus.Drain(3 * time.Second)
-	// Drain says delivered, not written. Reading before the watcher
-	// has stopped races its own last write for the database lock.
+	// Drain says delivered, not written, so stop before reading.
 	stop()
 
 	all, err := s.Sessions()
@@ -194,8 +191,7 @@ func TestWatch_RenameSticksAcrossAResume(t *testing.T) {
 		"a later run describes itself, it does not rename itself")
 }
 
-// A rename says whether it took, because the UI cannot know and must
-// not guess: it claimed success before the store had spoken.
+// A rename says whether it took, because only the store knows.
 func TestWatch_RenameSaysWhetherItTook(t *testing.T) {
 	s := open(t)
 	session := uuid.Must(uuid.NewV7())

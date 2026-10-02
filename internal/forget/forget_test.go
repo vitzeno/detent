@@ -14,67 +14,6 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// fakeSessions stands in for the store, so the one path that destroys
-// things is testable without anything to destroy.
-type fakeSessions struct {
-	mu      sync.Mutex
-	deleted []uuid.UUID
-	gone    bool
-	err     error
-}
-
-func (f *fakeSessions) Delete(id uuid.UUID) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.deleted = append(f.deleted, id)
-	return f.gone, f.err
-}
-
-func (f *fakeSessions) calls() []uuid.UUID {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]uuid.UUID(nil), f.deleted...)
-}
-
-// rig wires a watcher to a bus and collects what it says.
-type rig struct {
-	bus      *event.Bus
-	notices  chan event.Notice
-	relisted chan struct{}
-}
-
-func start(t *testing.T, sessions Sessions, current uuid.UUID, opts ...Option) *rig {
-	t.Helper()
-	bus := event.New()
-	facts, unsub := bus.Subscribe(event.Only(event.NoticeKind, event.ListSessionsKind))
-	stop := Watch(bus, sessions, current, opts...)
-	t.Cleanup(func() { stop(); unsub(); bus.Close() })
-
-	r := &rig{bus: bus, notices: make(chan event.Notice, 8), relisted: make(chan struct{}, 8)}
-	go func() {
-		for rec := range facts {
-			switch e := rec.Event.(type) {
-			case event.Notice:
-				r.notices <- e
-			case event.ListSessions:
-				r.relisted <- struct{}{}
-			}
-		}
-	}()
-	return r
-}
-
-func (r *rig) notice(t *testing.T) event.Notice {
-	t.Helper()
-	select {
-	case n := <-r.notices:
-		return n
-	case <-time.After(2 * time.Second):
-		t.Fatal("nothing was said about the delete")
-		return event.Notice{}
-	}
-}
-
 func TestForget_DeletesAndSaysSo(t *testing.T) {
 	store := &fakeSessions{gone: true}
 	var removed []string
@@ -146,12 +85,20 @@ func TestForget_AContainerThatStaysIsStillADelete(t *testing.T) {
 	require.Len(t, store.calls(), 1, "the delete itself should still have happened")
 }
 
-// No sandbox this run means nothing to remove, not a nil call.
+// No sandbox this run, by omitting the option or passing nil, means
+// nothing to remove rather than a nil call.
 func TestForget_NoSandboxIsNotAFailure(t *testing.T) {
-	r := start(t, &fakeSessions{gone: true}, uuid.Must(uuid.NewV7()))
-	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
+	for name, opts := range map[string][]Option{
+		"no option":           nil,
+		"WithContainers(nil)": {WithContainers(nil)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := start(t, &fakeSessions{gone: true}, uuid.Must(uuid.NewV7()), opts...)
+			r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
 
-	assert.Equal(t, "info", r.notice(t).Level)
+			assert.Equal(t, "info", r.notice(t).Level)
+		})
+	}
 }
 
 func TestForget_NoStoreSaysSo(t *testing.T) {
@@ -163,11 +110,63 @@ func TestForget_NoStoreSaysSo(t *testing.T) {
 	assert.Contains(t, n.Text, "nothing is recording")
 }
 
-// WithContainers(nil) is what a run with no sandbox passes, and it
-// has to mean "nothing to remove" rather than a nil call.
-func TestWithContainers_NilMeansNothingToRemove(t *testing.T) {
-	r := start(t, &fakeSessions{gone: true}, uuid.Must(uuid.NewV7()), WithContainers(nil))
-	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
+// fakeSessions stands in for the store, so the one path that destroys
+// things is testable without anything to destroy.
+type fakeSessions struct {
+	mu      sync.Mutex
+	deleted []uuid.UUID
+	gone    bool
+	err     error
+}
 
-	assert.Equal(t, "info", r.notice(t).Level)
+func (f *fakeSessions) Delete(id uuid.UUID) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deleted = append(f.deleted, id)
+	return f.gone, f.err
+}
+
+func (f *fakeSessions) calls() []uuid.UUID {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]uuid.UUID(nil), f.deleted...)
+}
+
+// rig wires a watcher to a bus and collects what it says.
+type rig struct {
+	bus      *event.Bus
+	notices  chan event.Notice
+	relisted chan struct{}
+}
+
+func start(t *testing.T, sessions Sessions, current uuid.UUID, opts ...Option) *rig {
+	t.Helper()
+	bus := event.New()
+	facts, unsub := bus.Subscribe(event.Only(event.NoticeKind, event.ListSessionsKind))
+	stop := Watch(bus, sessions, current, opts...)
+	t.Cleanup(func() { stop(); unsub(); bus.Close() })
+
+	r := &rig{bus: bus, notices: make(chan event.Notice, 8), relisted: make(chan struct{}, 8)}
+	go func() {
+		for rec := range facts {
+			switch e := rec.Event.(type) {
+			case event.Notice:
+				r.notices <- e
+			case event.ListSessions:
+				r.relisted <- struct{}{}
+			}
+		}
+	}()
+	return r
+}
+
+func (r *rig) notice(t *testing.T) event.Notice {
+	t.Helper()
+	select {
+	case n := <-r.notices:
+		return n
+	case <-time.After(2 * time.Second):
+		t.Fatal("nothing was said about the delete")
+		return event.Notice{}
+	}
 }

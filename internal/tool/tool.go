@@ -1,6 +1,6 @@
 // Package tool is the closed set of things a model may call. A tool
 // lowers to one shell command, so the sandbox stays the only executor
-// of them; an MCP tool has none and internal/mcp answers it instead.
+// of them. An MCP tool has none, and internal/mcp answers it instead.
 package tool
 
 // Tool is a typed front end onto a shell command. Pure: no tool runs
@@ -21,7 +21,7 @@ type Spec struct {
 	// Mutability floors the risk chain without a model call. Empty
 	// means unknown, which is bash and only bash.
 	Mutability string
-	// Renders is how the output should be rendered, empty leaves it to the judge and the heuristics
+	// Renders says how to read the output. Empty leaves it to the judge.
 	Renders string
 	// Executor names what runs this call, empty being a shell command.
 	Executor string
@@ -41,7 +41,7 @@ type Param struct {
 // Args are one call's arguments, already validated against the Spec.
 type Args map[string]any
 
-// String reads a validated string param; "" when absent and optional.
+// String reads a validated string param, or "" when absent.
 func (a Args) String(name string) string {
 	s, _ := a[name].(string)
 	return s

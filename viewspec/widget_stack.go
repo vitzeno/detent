@@ -6,8 +6,7 @@ import (
 )
 
 // stack draws one line of proportional segments, for composition
-// rather than comparison. The legend is not decoration: a band of
-// colour with nothing naming the bands says nothing at all.
+// rather than comparison, and a legend naming them.
 type stackWidget struct{}
 
 var (
@@ -65,6 +64,18 @@ func (stackWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return append(lines, band.String(), strings.TrimRight(legend.String(), " ")), nil
 }
 
+func (stackWidget) Describe() Description {
+	return Description{
+		What: "one band split into proportional segments with a legend, for what a whole is made of",
+		Needs: []Slot{
+			{Name: "label", What: "names each segment"},
+			{Name: "value", What: "how much of the whole it is"},
+		},
+		NotFor:   "comparing rows against each other, which is bar",
+		Examples: []string{"disk used by directory", "lines by language", "time by phase"},
+	}
+}
+
 // shareWidth splits total width by each row's share, then hands the
 // rounding remainder to the largest so the band always fills exactly.
 func shareWidth(rows []Row, field string, total float64, width int) []int {
@@ -81,16 +92,4 @@ func shareWidth(rows []Row, field string, total float64, width int) []int {
 		out[biggest] += width - used
 	}
 	return out
-}
-
-func (stackWidget) Describe() Description {
-	return Description{
-		What: "one band split into proportional segments with a legend, for what a whole is made of",
-		Needs: []Slot{
-			{Name: "label", What: "names each segment"},
-			{Name: "value", What: "how much of the whole it is"},
-		},
-		NotFor:   "comparing rows against each other, which is bar",
-		Examples: []string{"disk used by directory", "lines by language", "time by phase"},
-	}
 }

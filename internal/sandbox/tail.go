@@ -11,9 +11,8 @@ import (
 
 const tailPollInterval = 20 * time.Millisecond
 
-// tailFile feeds path's growing contents to capture.ScanCapped until
-// done closes and the file is drained; if path never appears, it
-// gives up silently, leaving that stream empty in the Result.
+// tailFile feeds path's growing contents to capture.ScanCapped until done
+// closes and the file is drained. A file that never appears reads as empty.
 func tailFile(path string, isStderr bool, buf *bytes.Buffer, limit int, events chan<- capture.StreamEvent, done <-chan struct{}) {
 	f, err := openWithRetry(path, done)
 	if err != nil {

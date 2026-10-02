@@ -16,14 +16,12 @@ type slashCmd struct {
 	Name string
 	Desc string
 	run  func(m Model, input string) (tea.Model, tea.Cmd)
-	// answers is set when the command's outcome comes back over the
-	// bus, so nothing here should pre-empt it.
+	// answers is set when the outcome comes back over the bus.
 	answers bool
 }
 
 // slashCommands is a function, not a var: /help draws the registry and
-// the registry contains /help, which as a package-level variable is an
-// initialisation cycle.
+// the registry contains /help, which would be an initialisation cycle.
 func slashCommands() []slashCmd {
 	return []slashCmd{
 		{Name: "/quit", Desc: "quit detent", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
@@ -58,12 +56,34 @@ func slashCommands() []slashCmd {
 	}
 }
 
+// runSlash dispatches input to the command its first word names.
+func (m Model) runSlash(input string) (tea.Model, tea.Cmd) {
+	c, ok := lookupSlash(input)
+	if !ok {
+		m.noteErr("unknown command " + input + " (try /help)")
+		return m, nil
+	}
+	next, cmd := c.run(m, input)
+	// Nothing is claimed for a command that has not finished: one that
+	// opened a question, or one whose reply comes over the bus.
+	if nm, isModel := next.(Model); isModel && nm.notice.text == "" && nm.mode == modeInput && !c.answers {
+		nm.noteOK(c.Name)
+		return nm, cmd
+	}
+	return next, cmd
+}
+
+func (m Model) acceptSlash() (tea.Model, tea.Cmd) {
+	m.prompt.Accept()
+	return m, nil
+}
+
 // maxSlashRows caps how many entries the dropdown shows at once. Past
 // it the list scrolls rather than growing into the history pane.
 const maxSlashRows = 6
 
 // matchSlash returns registry entries with the given input as a
-// prefix. Input must start with "/"; anything else matches nothing.
+// prefix. Input must start with "/", or nothing matches.
 func matchSlash(input string) []slashCmd {
 	if !strings.HasPrefix(input, "/") {
 		return nil
@@ -98,9 +118,8 @@ func lookupSlash(input string) (slashCmd, bool) {
 	return slashCmd{}, false
 }
 
-// slashWindow is the visible slice, derived from the cursor rather
-// than stored beside it. The cursor rides the bottom edge once the
-// list has scrolled.
+// slashWindow is the visible slice, derived from the cursor rather than
+// stored. The cursor rides the bottom edge once the list has scrolled.
 func slashWindow(n, cursor int) (start, end int) {
 	if n <= maxSlashRows {
 		return 0, n
@@ -109,9 +128,8 @@ func slashWindow(n, cursor int) (start, end int) {
 	return start, start + maxSlashRows
 }
 
-// slashDropdown renders the visible slice of the match list, with a
-// count of what's scrolled out of view so a hidden entry can't be
-// mistaken for one that doesn't exist.
+// slashDropdown renders the visible slice of the match list, counting
+// what is scrolled out of view so a hidden entry is not taken for absent.
 func slashDropdown(cmds []slashCmd, cursor int) string {
 	start, end := slashWindow(len(cmds), cursor)
 	var b strings.Builder
@@ -120,9 +138,7 @@ func slashDropdown(cmds []slashCmd, cursor int) string {
 		if start+i == cursor {
 			mark, style = "▸ ", styleRowCursor
 		}
-		// Pad the plain name before styling: padding an already
-		// ANSI-wrapped string counts the escape bytes toward the
-		// width and silently drops the padding.
+		// Pad before styling, or the escape bytes count toward the width.
 		label := style.Render(fmt.Sprintf("%-10s", c.Name))
 		fmt.Fprintf(&b, "  %s%s %s\n", style.Render(mark), label, styleMuted.Render(c.Desc))
 	}
@@ -146,25 +162,4 @@ func slashMoreLine(n, start, end int) string {
 		return ""
 	}
 	return "    " + styleFaint.Render(strings.Join(parts, " · "))
-}
-
-func (m Model) runSlash(input string) (tea.Model, tea.Cmd) {
-	c, ok := lookupSlash(input)
-	if !ok {
-		m.noteErr("unknown command " + input + " (try /help)")
-		return m, nil
-	}
-	next, cmd := c.run(m, input)
-	// Nothing is claimed for a command that has not finished: one that
-	// opened a question, or one whose reply comes over the bus.
-	if nm, isModel := next.(Model); isModel && nm.notice.text == "" && nm.mode == modeInput && !c.answers {
-		nm.noteOK(c.Name)
-		return nm, cmd
-	}
-	return next, cmd
-}
-
-func (m Model) acceptSlash() (tea.Model, tea.Cmd) {
-	m.prompt.Accept()
-	return m, nil
 }

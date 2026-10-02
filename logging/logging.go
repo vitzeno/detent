@@ -1,9 +1,6 @@
-// Package logging writes one JSONL stream per session and names the
-// vocabulary it is written in. One stream, not one file per
-// component: the thing anyone investigates is a step, and a step
-// crosses several components.
-//
-// Standard library only, so ui may import it.
+// Package logging writes one JSONL stream per session, not a file per
+// component, since a step crosses several. Standard library only, so
+// ui may import it.
 package logging
 
 import (
@@ -14,9 +11,8 @@ import (
 	"strings"
 )
 
-// Setup opens this session's log and makes it the default logger.
-// A path it cannot open is reported but not fatal: it discards
-// instead, since no session is worth failing over its log.
+// Setup opens this session's log as the default logger. A path it cannot
+// open is reported, not fatal: it discards instead.
 func Setup(session string, opts ...Option) (func() error, error) {
 	var o settings
 	for _, apply := range opts {

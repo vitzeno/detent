@@ -4,7 +4,7 @@
 //	DETENT_STRESS=1 go test ./internal/store/stress/ -run TestGenerate -v
 //
 // Skipped otherwise. DETENT_STRESS_TURNS, _NAME, _SEED and _DB override
-// the defaults; the same seed writes the same session.
+// the defaults, and the same seed writes the same session.
 package stress_test
 
 import (

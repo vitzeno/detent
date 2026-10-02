@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The phase gate: a bad call must come back as something the model can
+// A bad call must come back as something the model can
 // read and correct, never a Go error that ends the Turn.
 func TestPrepare_BadCallsExplainThemselves(t *testing.T) {
 	r := Standard()
@@ -107,16 +107,6 @@ func TestPrepare_QuotesHostilePaths(t *testing.T) {
 	}
 }
 
-func countUnescapedQuotes(s string) int {
-	n := 0
-	for _, r := range s {
-		if r == '\'' {
-			n++
-		}
-	}
-	return n
-}
-
 // Registering a tool is meant to be the whole job, so the schema the
 // model sees has to come from the same Spec validation reads.
 func TestSchemas_MatchTheSpecs(t *testing.T) {
@@ -140,10 +130,8 @@ func TestSchemas_MatchTheSpecs(t *testing.T) {
 		assert.Len(t, props, len(tl.Describe().Params))
 		assert.Equal(t, false, params["additionalProperties"])
 
-		// Strict mode requires every property in required, so an
-		// optional parameter is nullable rather than left out. An
-		// endpoint rejects the whole request otherwise, which is how
-		// this was found: by running it, not by asserting on it.
+		// Strict mode requires every property in required, or an endpoint
+		// rejects the request, so an optional parameter is nullable instead.
 		assert.Len(t, params["required"], len(tl.Describe().Params))
 		for _, p := range tl.Describe().Params {
 			got, ok := props[p.Name].(map[string]any)
@@ -182,4 +170,14 @@ func TestRegistry_UnregisterRemovesFromWhatTheModelSees(t *testing.T) {
 	assert.False(t, ok)
 	assert.Len(t, r.Names(), before-1)
 	assert.NotContains(t, r.Names(), "bash")
+}
+
+func countUnescapedQuotes(s string) int {
+	n := 0
+	for _, r := range s {
+		if r == '\'' {
+			n++
+		}
+	}
+	return n
 }

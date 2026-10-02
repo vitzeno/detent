@@ -16,9 +16,8 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// A type with a Kind method but no codec encodes fine and comes back
-// as an error, so the gap only shows on replay. Read the source for
-// the real list rather than keeping one by hand.
+// A type with a Kind method but no codec fails only on replay, so read the
+// source for the real list rather than keeping one by hand.
 func TestCodecs_CoverEveryEventType(t *testing.T) {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, ".", nil, 0)
@@ -52,10 +51,6 @@ func TestCodecs_CoverEveryEventType(t *testing.T) {
 			"%s has a Kind method but no codec, so it would not survive a replay", name)
 	}
 	assert.Len(t, codecs, len(declared), "a codec is registered for a type that no longer exists")
-}
-
-func typeName(e Event) string {
-	return strings.TrimPrefix(fmt.Sprintf("%T", e), "event.")
 }
 
 // Every field has to survive the trip, because a store writes the
@@ -164,4 +159,8 @@ func TestSubject_ReadsTurnAndCall(t *testing.T) {
 	gotTurn, gotCall = Subject(Notice{Text: "about nothing"})
 	assert.Equal(t, uuid.Nil, gotTurn)
 	assert.Equal(t, uuid.Nil, gotCall)
+}
+
+func typeName(e Event) string {
+	return strings.TrimPrefix(fmt.Sprintf("%T", e), "event.")
 }

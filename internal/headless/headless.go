@@ -14,7 +14,7 @@ import (
 )
 
 // Run submits prompt, prints what happens, and returns when the Turn
-// ends. approve decides the dangerous calls; nil reads stdin.
+// ends. approve decides the dangerous calls, and nil reads stdin.
 func Run(ctx context.Context, bus *event.Bus, prompt string, approve Approver) event.EndReason {
 	if approve == nil {
 		approve = Ask(os.Stdin, os.Stdout)

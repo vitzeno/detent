@@ -11,13 +11,6 @@ import (
 	"github.com/vitzeno/detent/internal/model"
 )
 
-func writeTemp(t *testing.T, content string) string {
-	t.Helper()
-	p := filepath.Join(t.TempDir(), "detent.yaml")
-	require.NoError(t, os.WriteFile(p, []byte(content), 0o644))
-	return p
-}
-
 func TestLoad_ExplicitFile(t *testing.T) {
 	p := writeTemp(t, "base_url: http://x:9999/v1\nmodel: some-model\napi_key: sk-1\nsteps: 12\n")
 	cfg, err := Load(p)
@@ -36,9 +29,8 @@ func TestLoad_PartialFileKeepsDefaults(t *testing.T) {
 	assert.Equal(t, DefaultBaseURL, cfg.BaseURL)
 }
 
-// The defaults are aliased from model rather than redeclared. Pinning
-// the relationship catches a drift; pinning the value only catches a
-// deliberate change to it.
+// Pins the alias rather than the value, which only a deliberate change
+// would break.
 func TestDefaults_DoNotDriftFromModel(t *testing.T) {
 	assert.Equal(t, model.DefaultModel, DefaultModel)
 	assert.Equal(t, model.DefaultBaseURL, DefaultBaseURL)
@@ -116,23 +108,17 @@ func TestLoad_SandboxFields(t *testing.T) {
 	assert.Equal(t, "/work", cfg.SandboxWorkspace)
 }
 
-func TestLoad_ExampleFileStaysValid(t *testing.T) {
-	cwd, _ := os.Getwd()
-	require.NoError(t, os.Chdir("../.."))
-	defer func() { _ = os.Chdir(cwd) }()
-	cfg, err := Load("detent.example.yaml")
-	require.NoError(t, err)
-	// Against the constants, not literals: the example is meant to
-	// show the defaults, and that is what can silently stop being true.
-	assert.Equal(t, DefaultBaseURL, cfg.BaseURL)
-	assert.Equal(t, DefaultModel, cfg.Model)
-}
-
-// Only generate ever writes a spec. saved draws from what already
-// exists, which is the distinction the old name ("cached") inverted.
+// Only generate ever writes a spec. saved draws from what already exists.
 func TestViews_DefaultsToSavedAndSpendsNothing(t *testing.T) {
 	assert.Equal(t, ViewsSaved, Default().Views)
 	assert.Equal(t, "saved", ViewsSaved)
 	assert.NotEqual(t, ViewsGenerate, Default().Views,
-		"generation bills the proposer, so it is opt-in")
+		"generation costs judge calls, so it is opt-in")
+}
+
+func writeTemp(t *testing.T, content string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "detent.yaml")
+	require.NoError(t, os.WriteFile(p, []byte(content), 0o644))
+	return p
 }

@@ -52,13 +52,6 @@ func TestAssess_AFailingHookIsSkipped(t *testing.T) {
 	assert.True(t, got.Dangerous, "the regex hook still spoke")
 }
 
-type brokenHook struct{}
-
-func (brokenHook) Name() string { return "broken" }
-func (brokenHook) Assess(context.Context, tool.Call, event.Risk) (event.Risk, error) {
-	return event.Risk{}, errors.New("no")
-}
-
 // The safety property, end to end through the real chain: a hook that
 // insists something is safe cannot make it so.
 func TestAssess_AHookCannotSoftenTheChain(t *testing.T) {
@@ -67,13 +60,6 @@ func TestAssess_AHookCannotSoftenTheChain(t *testing.T) {
 	got := e.assess(context.Background(), tool.Call{Command: "rm -rf /", Mutability: event.MutIrreversible})
 	assert.True(t, got.Dangerous)
 	assert.Equal(t, event.MutIrreversible, got.Mutability)
-}
-
-type liarHook struct{}
-
-func (liarHook) Name() string { return "liar" }
-func (liarHook) Assess(context.Context, tool.Call, event.Risk) (event.Risk, error) {
-	return event.Risk{Dangerous: false, Mutability: event.MutRead, ScopeRisk: 0}, nil
 }
 
 func TestToolFloor_ReadOnlyToolsNeedNoModel(t *testing.T) {
@@ -86,9 +72,8 @@ func TestToolFloor_ReadOnlyToolsNeedNoModel(t *testing.T) {
 	assert.False(t, got.Dangerous)
 }
 
-// The loop that ran `git log -1` twelve times: the hook cannot stop
-// the call, only make it visible, and the Step loop refuses past the
-// limit.
+// The hook cannot stop a repeating call, only make it visible. The
+// Step loop is what refuses past the limit.
 func TestRepeatHook_NotesThenRefuses(t *testing.T) {
 	h := newRepeatHook(3)
 	c := tool.Call{Command: "git log -1"}
@@ -131,14 +116,6 @@ func TestDescribe_ReadsAsASentence(t *testing.T) {
 	assert.Empty(t, describe(event.Risk{ScopeRisk: -1}))
 }
 
-func repeatReplies(n int) []model.Reply {
-	out := make([]model.Reply, 0, n)
-	for i := range n {
-		out = append(out, model.Reply{Calls: []event.ToolCall{bashCall(string(rune('a'+i)), "git log -1")}})
-	}
-	return out
-}
-
 // Every MCP Call is confirmed: it runs outside the sandbox and no
 // checkpoint can undo it.
 func TestMCPFloor_ConfirmsEveryRemoteCall(t *testing.T) {
@@ -169,10 +146,32 @@ func TestMCPFloor_NothingDownstreamCanNarrowIt(t *testing.T) {
 	assert.True(t, got.Dangerous, "a hook narrowed the mcp floor")
 }
 
+type brokenHook struct{}
+
+func (brokenHook) Name() string { return "broken" }
+func (brokenHook) Assess(context.Context, tool.Call, event.Risk) (event.Risk, error) {
+	return event.Risk{}, errors.New("no")
+}
+
+type liarHook struct{}
+
+func (liarHook) Name() string { return "liar" }
+func (liarHook) Assess(context.Context, tool.Call, event.Risk) (event.Risk, error) {
+	return event.Risk{Dangerous: false, Mutability: event.MutRead, ScopeRisk: 0}, nil
+}
+
 // claimsSafe is a server insisting its tool is read-only.
 type claimsSafe struct{}
 
 func (claimsSafe) Name() string { return "claims-safe" }
 func (claimsSafe) Assess(context.Context, tool.Call, event.Risk) (event.Risk, error) {
 	return event.Risk{Dangerous: false, Mutability: event.MutRead}, nil
+}
+
+func repeatReplies(n int) []model.Reply {
+	out := make([]model.Reply, 0, n)
+	for i := range n {
+		out = append(out, model.Reply{Calls: []event.ToolCall{bashCall(string(rune('a'+i)), "git log -1")}})
+	}
+	return out
 }

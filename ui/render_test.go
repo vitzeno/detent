@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"regexp"
 	"strings"
 	"testing"
@@ -11,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/google/uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,37 +19,8 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-
-func stripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
-
-// sized builds a Model at a real terminal size with its panes laid
-// out, so a render test measures what a human would see.
-func sized(t *testing.T, w, h int, evs ...event.Event) Model {
-	t.Helper()
-	m := New(context.Background(), event.New(), SessionInfo{})
-	m.layout.width, m.layout.height = w, h
-	for _, e := range evs {
-		m.apply(e)
-	}
-	m.sizeViewport()
-	return m
-}
-
-func oneTurn(prompt, command, out string) (uuid.UUID, []event.Event) {
-	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	return turn, []event.Event{
-		event.TurnStarted{Turn: turn, N: 1, Prompt: prompt},
-		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": command}},
-		event.CallStarted{Call: call, Runner: "host"},
-		event.CallEnded{Call: call, Result: event.Result{Stdout: out}},
-		event.TurnEnded{Turn: turn, Reason: event.EndDone},
-	}
-}
-
-// Nothing a block draws may run past the pane. The island truncates
-// whatever overflows, so an overlong row loses its tail silently, and
-// the rail gutter takes two columns every budget has to allow for.
+// Nothing a block draws may run past the pane, or the island silently
+// cuts its tail. The rail gutter takes two columns of every budget.
 func TestHistory_RowsFitThePane(t *testing.T) {
 	for _, width := range []int{120, 100, 80, 70} {
 		_, evs := oneTurn("find the very large files somewhere under this project directory",
@@ -65,9 +36,8 @@ func TestHistory_RowsFitThePane(t *testing.T) {
 	}
 }
 
-// A multi-line command drew its tail outside the pane, over whatever
-// was beside it. Seen with a python heredoc, which write_file now
-// produces on every save.
+// A multi-line command, such as the heredoc write_file produces, must
+// not draw its tail outside the pane.
 func TestHistory_MultiLineCommandStaysInsideThePane(t *testing.T) {
 	const heredoc = "cat > 'x.py' <<'DETENT_EOF'\nimport re\np = 'ui/apply.go'\nDETENT_EOF"
 	_, evs := oneTurn("rewrite the flow\nacross two lines", heredoc, "ok\n")
@@ -107,7 +77,7 @@ func TestProse_IsItsOwnSelectableRow(t *testing.T) {
 // The rail spans every row of its block and carries the outcome, so
 // grouping and result both read from anywhere inside it.
 func TestHistory_RailSpansTheBlockAndCarriesOutcome(t *testing.T) {
-	done, doneEvs := oneTurn("clean up", "ls", "ok\n")
+	_, doneEvs := oneTurn("clean up", "ls", "ok\n")
 	aborted := uuid.Must(uuid.NewV7())
 	m := sized(t, 120, 40, append(doneEvs,
 		event.TurnStarted{Turn: aborted, N: 2, Prompt: "second"},
@@ -128,12 +98,10 @@ func TestHistory_RailSpansTheBlockAndCarriesOutcome(t *testing.T) {
 
 	assert.Equal(t, styleSafe.Render("┃"), m.railStyle(m.blocks[0]).Render("┃"), "a finished request rails green")
 	assert.Equal(t, styleCaution.Render("┃"), m.railStyle(m.blocks[1]).Render("┃"), "an aborted one rails amber")
-	_ = done
 }
 
 // The whole screen must render at any size without panicking or
-// spilling. 80 columns is the floor: the session bar has never fitted
-// narrower than that, and this does not claim otherwise.
+// spilling. 80 columns is the floor the session bar fits.
 func TestView_RendersAtEverySize(t *testing.T) {
 	for _, size := range [][2]int{{120, 40}, {80, 24}, {200, 60}} {
 		_, evs := oneTurn("go", "ls -la", "a\nb\nc\n")
@@ -294,14 +262,6 @@ func TestNavUp_PinsTheOffsetOnLeavingFollow(t *testing.T) {
 	assert.Equal(t, len(all)-20, got.nav.histOffset)
 }
 
-// uncached drops every block cache, for comparing warm against cold.
-func (m Model) uncached() Model {
-	for _, b := range m.blocks {
-		b.cache = nil
-	}
-	return m
-}
-
 // The one thing a cache can do wrong: after every mutation the UI
 // supports, the cached drawing must equal a cold one.
 func TestBlockCache_NeverGoesStale(t *testing.T) {
@@ -374,17 +334,6 @@ func TestBlockCache_IsActuallyHit(t *testing.T) {
 	assert.LessOrEqual(t, redrawn, 2, "a cursor move redrew %d blocks, not the two it touches", redrawn)
 }
 
-// markedLine is which rendered line carries the cursor mark, or -1.
-func markedLine(m Model) int {
-	lines, _ := m.historyAll()
-	for i, l := range lines {
-		if strings.Contains(stripANSI(l), "▸") {
-			return i
-		}
-	}
-	return -1
-}
-
 // Equivalence cannot see a cursor that never renders, since a cold
 // draw gets it equally wrong. So assert the mark itself.
 func TestHistory_CursorMarkFollowsTheCursor(t *testing.T) {
@@ -420,13 +369,6 @@ func TestBlockCache_TheSpinnerStillTurns(t *testing.T) {
 	after, _ := m.historyAll()
 
 	assert.NotEqual(t, before, after, "the cache pinned the spinner to one frame")
-}
-
-// coldDetail recomputes the pane, for comparing against the skip.
-func (m Model) coldDetail() string {
-	m.detail = detailKey{}
-	m.refreshViewport()
-	return m.viewContent
 }
 
 // The pane must never show content the current state would not
@@ -654,7 +596,7 @@ func TestSessionBar_LeavesCountsToTheStatusPage(t *testing.T) {
 }
 
 // A share answers "how close am I", the raw pair answers "how much
-// room is left". The page has space for both; the bar does not.
+// room is left". The page has space for both, the bar does not.
 func TestStatusPage_ShowsContextBothWays(t *testing.T) {
 	m := feed(t, event.SessionStarted{Model: "m", ContextTokens: 24_000})
 	m.apply(event.StepEnded{Usage: event.Usage{PromptTokens: 16_800}})
@@ -675,9 +617,8 @@ func TestStatusPage_ContextSaysWhenThereIsNothingToShow(t *testing.T) {
 	assert.Contains(t, unmeasured.contextDetail(), "24.0k", "the budget is still worth saying")
 }
 
-// The bar sheds rather than wraps, and the indices it sheds by move
-// whenever a segment is added or removed. Brand, run mode and judge
-// are what a human checks, so they are what survives.
+// The bar sheds rather than wraps, by indices that move whenever a
+// segment does. Brand, run mode and judge are what survives.
 func TestSessionBar_ShedsTheGaugeBeforeWhatMatters(t *testing.T) {
 	m := feed(t, event.SessionStarted{Model: "a-long-model-name-here", Judge: "jev-1", ContextTokens: 24_000})
 	m.apply(event.StepEnded{Usage: event.Usage{PromptTokens: 16_800}})
@@ -757,32 +698,7 @@ func TestMCPPage_EscapeCloses(t *testing.T) {
 	assert.Equal(t, panelNone, closed.(Model).panel.open)
 }
 
-// undoTurn is a request holding both kinds of Call.
-func undoTurn(t *testing.T) Model {
-	t.Helper()
-	turn := uuid.Must(uuid.NewV7())
-	m := feed(t, event.SessionStarted{Model: "m"},
-		event.TurnStarted{Turn: turn, N: 1, Prompt: "do several things"})
-	for _, c := range []struct {
-		tool, exec string
-		args       map[string]any
-	}{
-		{"bash", "", map[string]any{"command": "go test ./..."}},
-		{"github__create_issue", "github", map[string]any{"repo": "detent"}},
-		{"write_file", "", map[string]any{"path": "notes.md"}},
-	} {
-		call := uuid.Must(uuid.NewV7())
-		m.apply(event.CallProposed{Call: call, Tool: c.tool, Args: c.args, Executor: c.exec})
-		m.apply(event.CallEnded{Call: call, Result: event.Result{Stdout: "ok"}})
-	}
-	m.apply(event.CheckpointTaken{Turn: turn})
-	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
-	m.layout.width, m.layout.height = 150, 45
-	m.sizeViewport()
-	return m
-}
-
-// A checkpoint restores a container; it cannot un-file an issue, and
+// A checkpoint restores a container but cannot un-file an issue, and
 // doing less than a human expects is the worst thing here.
 func TestUndoPage_NamesWhatItCannotReverse(t *testing.T) {
 	next, _ := undoTurn(t).runUndo("/undo 1")
@@ -814,28 +730,6 @@ func TestUndoPage_SaysNothingWhenEverythingReverses(t *testing.T) {
 	page := stripANSI(strings.Join(shown.undoLines(), "\n"))
 	assert.NotContains(t, page, "cannot be undone")
 	assert.Contains(t, page, "1 call(s) will be undone")
-}
-
-// The count has to be of what actually goes back, or the page is
-// wrong in the one number a human reads.
-func TestUndoPage_CountsOnlyWhatGoesBack(t *testing.T) {
-	next, _ := undoTurn(t).runUndo("/undo 1")
-	got := next.(Model)
-	page := stripANSI(strings.Join(got.undoLines(), "\n"))
-	assert.NotContains(t, page, "3 call(s) will be undone")
-}
-
-// sessionsListed puts two sessions in view, one of them the running one.
-func sessionsListed(t *testing.T) (Model, uuid.UUID) {
-	mine, other := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	m := feed(t, event.SessionStarted{Session: mine, Model: "m"},
-		event.SessionsListed{Sessions: []event.SessionSummary{
-			{ID: mine, Name: "current", Started: time.Now(), Model: "m", Events: 12},
-			{ID: other, Name: "the sandbox bug", Started: time.Now(), Model: "m", Events: 871},
-		}})
-	m.layout.width, m.layout.height = 150, 45
-	m.sizeViewport()
-	return m, other
 }
 
 // Nothing brings a deleted session back, so the page names what goes
@@ -955,6 +849,98 @@ func TestBoundView_SkipsAViewThatHidesMostOfTheOutput(t *testing.T) {
 	assert.False(t, b.Hides())
 	assert.Equal(t, "built-in", r.viewSource)
 	assert.Contains(t, strings.Join(drawPlain(t, b), "\n"), "mouse-scroll")
+}
+
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
+
+// sized builds a Model at a real terminal size with its panes laid
+// out, so a render test measures what a human would see.
+func sized(t *testing.T, w, h int, evs ...event.Event) Model {
+	t.Helper()
+	m := New(context.Background(), event.New(), SessionInfo{})
+	m.layout.width, m.layout.height = w, h
+	for _, e := range evs {
+		m.apply(e)
+	}
+	m.sizeViewport()
+	return m
+}
+
+func oneTurn(prompt, command, out string) (uuid.UUID, []event.Event) {
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	return turn, []event.Event{
+		event.TurnStarted{Turn: turn, N: 1, Prompt: prompt},
+		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": command}},
+		event.CallStarted{Call: call, Runner: "host"},
+		event.CallEnded{Call: call, Result: event.Result{Stdout: out}},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone},
+	}
+}
+
+// uncached drops every block cache, for comparing warm against cold.
+func (m Model) uncached() Model {
+	for _, b := range m.blocks {
+		b.cache = nil
+	}
+	return m
+}
+
+// markedLine is which rendered line carries the cursor mark, or -1.
+func markedLine(m Model) int {
+	lines, _ := m.historyAll()
+	for i, l := range lines {
+		if strings.Contains(stripANSI(l), "▸") {
+			return i
+		}
+	}
+	return -1
+}
+
+// coldDetail recomputes the pane, for comparing against the skip.
+func (m Model) coldDetail() string {
+	m.detail = detailKey{}
+	m.refreshViewport()
+	return m.viewContent
+}
+
+// undoTurn is a request holding both kinds of Call.
+func undoTurn(t *testing.T) Model {
+	t.Helper()
+	turn := uuid.Must(uuid.NewV7())
+	m := feed(t, event.SessionStarted{Model: "m"},
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "do several things"})
+	for _, c := range []struct {
+		tool, exec string
+		args       map[string]any
+	}{
+		{"bash", "", map[string]any{"command": "go test ./..."}},
+		{"github__create_issue", "github", map[string]any{"repo": "detent"}},
+		{"write_file", "", map[string]any{"path": "notes.md"}},
+	} {
+		call := uuid.Must(uuid.NewV7())
+		m.apply(event.CallProposed{Call: call, Tool: c.tool, Args: c.args, Executor: c.exec})
+		m.apply(event.CallEnded{Call: call, Result: event.Result{Stdout: "ok"}})
+	}
+	m.apply(event.CheckpointTaken{Turn: turn})
+	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	m.layout.width, m.layout.height = 150, 45
+	m.sizeViewport()
+	return m
+}
+
+// sessionsListed puts two sessions in view, one of them the running one.
+func sessionsListed(t *testing.T) (Model, uuid.UUID) {
+	mine, other := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	m := feed(t, event.SessionStarted{Session: mine, Model: "m"},
+		event.SessionsListed{Sessions: []event.SessionSummary{
+			{ID: mine, Name: "current", Started: time.Now(), Model: "m", Events: 12},
+			{ID: other, Name: "the sandbox bug", Started: time.Now(), Model: "m", Events: 871},
+		}})
+	m.layout.width, m.layout.height = 150, 45
+	m.sizeViewport()
+	return m, other
 }
 
 func drawPlain(t *testing.T, b *viewspec.Bound) []string {

@@ -11,9 +11,8 @@ import (
 	"github.com/vitzeno/detent/ui/theme"
 )
 
-// View returns the screen plus the terminal state that goes with it.
-// Under v2 altscreen, background and keyboard enhancements are
-// properties of what we render, not program options set at startup.
+// View returns the screen plus the terminal state that goes with it:
+// altscreen, background and keyboard enhancements are part of the view.
 func (m Model) View() tea.View {
 	v := tea.NewView(m.baseView())
 	v.AltScreen = true
@@ -84,7 +83,7 @@ func (m Model) histWindow() []string {
 // on. Pure, so sizeViewport can call it before anything is committed.
 func (m Model) historyWindow() (window []string, offset int) {
 	// Only the tail is on screen, so only the tail is drawn. Offset is
-	// -1 because no total was counted; navUp pins one before it matters.
+	// -1 because no total was counted, and navUp pins one before it matters.
 	if m.nav.follow {
 		lines := m.historyTail(m.nav.histHeight)
 		if len(lines) > m.nav.histHeight {
@@ -108,9 +107,8 @@ func (m Model) historyWindow() (window []string, offset int) {
 	return lines[start:min(start+m.nav.histHeight, len(lines))], start
 }
 
-// historyAll is every line and the cursor's. Assembling it walks every
-// block, and Update wants it for every message once the pane is
-// scrolled away from the end, so the whole of it is cached too.
+// historyAll is every line and the cursor's, cached whole since Update
+// wants it for every message once the pane has scrolled off the end.
 func (m Model) historyAll() (lines []string, cursorLine int) {
 	key := histKey{
 		rev: m.histRev, width: m.blockWidth(),

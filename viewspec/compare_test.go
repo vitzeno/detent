@@ -10,13 +10,6 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-const blameOut = `Unit Start Took
-network 0 2
-sshd 4 2
-`
-
-func firstFill(line string) int { return strings.IndexRune(line, '█') }
-
 func TestGantt_PlacesEachBarWhereItStarted(t *testing.T) {
 	got := draw(t, viewspec.Spec{Parse: colsParse(), Blocks: []viewspec.Block{
 		{Kind: "gantt", Columns: cols("unit", "start", "took")}}}, blameOut, 40)
@@ -112,14 +105,6 @@ same 100 100
 		"up and down are painted alike")
 }
 
-func drawPainted(t *testing.T, spec viewspec.Spec, output string, width int) []string {
-	t.Helper()
-	r, err := bind(t, spec, output).Draw(viewspec.Frame{
-		Width: width, Paint: rolePainter{viewspec.Plain()}})
-	require.NoError(t, err)
-	return r.Lines
-}
-
 func TestPanel_FramesOnePaneAndWillNotNest(t *testing.T) {
 	spec := viewspec.Spec{Parse: colsParse(), Blocks: []viewspec.Block{
 		{Kind: viewspec.PanelKind, Title: "units", Panes: []viewspec.Pane{
@@ -158,4 +143,19 @@ func TestPanel_FramesOnePaneAndWillNotNest(t *testing.T) {
 			assert.Error(t, err)
 		})
 	}
+}
+
+const blameOut = `Unit Start Took
+network 0 2
+sshd 4 2
+`
+
+func firstFill(line string) int { return strings.IndexRune(line, '█') }
+
+func drawPainted(t *testing.T, spec viewspec.Spec, output string, width int) []string {
+	t.Helper()
+	r, err := bind(t, spec, output).Draw(viewspec.Frame{
+		Width: width, Paint: rolePainter{viewspec.Plain()}})
+	require.NoError(t, err)
+	return r.Lines
 }

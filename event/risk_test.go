@@ -83,8 +83,7 @@ func TestRisk_WidenIsOrderIndependent(t *testing.T) {
 	assert.Equal(t, fwd.FromJudge, rev.FromJudge)
 }
 
-// Parallelism is the one thing mutability still decides, now that
-// checkpointing is per Turn.
+// Parallelism is the one thing mutability still decides.
 func TestRisk_OnlyReadOnlyRunsAlongsideSiblings(t *testing.T) {
 	assert.True(t, Risk{Mutability: MutRead}.ReadOnly())
 	for _, m := range []string{"", MutWorkspace, MutSystem, MutIrreversible} {

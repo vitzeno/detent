@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// Option configures an Engine at New.
 type Option func(*Engine)
 
 // WithMaxSteps caps Steps per Turn. Soft: the bound asks rather than stops.
@@ -35,6 +36,7 @@ func WithParallelCalls(n int) Option {
 	}
 }
 
+// WithContextTokens sets the transcript budget, in tokens.
 func WithContextTokens(n int) Option {
 	return func(e *Engine) {
 		if n > 0 {
@@ -43,6 +45,7 @@ func WithContextTokens(n int) Option {
 	}
 }
 
+// WithSummarizer condenses the Steps compaction drops.
 func WithSummarizer(s Summarizer) Option { return func(e *Engine) { e.summarizer = s } }
 
 // WithJudge adds the classifier as the last hook in the chain, after
@@ -82,6 +85,7 @@ func WithDescription(model, judge string, network, recorded bool) Option {
 	}
 }
 
+// WithSessionID sets the session id, as a resume does.
 func WithSessionID(id uuid.UUID) Option {
 	return func(e *Engine) {
 		if id != uuid.Nil {

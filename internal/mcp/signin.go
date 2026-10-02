@@ -18,13 +18,13 @@ import (
 )
 
 // signInMax is a backstop for a human who walked away, not a deadline
-// on signing in; esc stops a Call waiting on one sooner.
+// on signing in. esc stops a Call waiting on one sooner.
 const signInMax = 10 * time.Minute
 
 var errSignInExpired = errors.New("the sign-in link expired")
 
 // SignIns is every sign-in waiting on a human. It publishes the link
-// and waits for the browser to come back; it never opens one unasked.
+// and waits for the browser to come back. It never opens one unasked.
 type SignIns struct {
 	bus    *event.Bus
 	in     *Invokers

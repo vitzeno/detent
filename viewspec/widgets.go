@@ -1,9 +1,7 @@
 package viewspec
 
-// Standard returns a registry holding the built-in vocabulary. Each
-// call returns a fresh copy, so one caller's registrations cannot leak
-// into another's. Every widget lives in its own widget_*.go file; this
-// table is the index.
+// Standard returns a fresh copy of the built-in vocabulary, so one
+// caller's registrations cannot leak into another's.
 func Standard() *Registry { return standard.clone() }
 
 var standard = func() *Registry {

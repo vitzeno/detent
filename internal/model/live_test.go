@@ -2,7 +2,6 @@ package model
 
 import (
 	"context"
-	"github.com/vitzeno/detent/event"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,13 +10,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/event"
 )
 
-// The go/no-go for the rewrite. Every other test here proves detent
-// speaks the protocol; this one proves the endpoint does, which is the
-// single external unknown in the plan.
-//
-// Reads .detent.yaml, so it uses whatever the harness itself would:
+// Proves the endpoint does tool calling, using .detent.yaml like the harness:
 //
 //	DETENT_LIVE=1 go test ./internal/model/ -run TestLive -v
 func TestLive_ToolCallsRoundTrip(t *testing.T) {
@@ -63,29 +60,19 @@ func TestLive_ToolCallsRoundTrip(t *testing.T) {
 	assert.NotEmpty(t, call.ID, "an id is what the answer pairs to")
 	assert.Empty(t, call.Err, "arguments did not parse: %s", call.Err)
 
-	// 2. Does it accept the answer back? This is the half the old
-	// adapter avoided by sending tool results as role "user".
+	// 2. Does it accept a role "tool" answer back?
 	second, used2, err := c.Complete(ctx, []event.Message{
 		{Role: event.RoleUser, Content: "List what is in the current directory. Use the tool."},
 		{Role: event.RoleAssistant, Content: first.Text, Calls: first.Calls},
 		event.Answer(call, "go.mod\ngo.sum\nREADME.md"),
 	}, tools)
-	require.NoError(t, err, "the endpoint rejected a tool result; see the compatibility note in AGENT_PLAN.md")
+	require.NoError(t, err, "the endpoint rejected a tool result")
 	t.Logf("step 2: %d calls, %d tokens, %v, finish=%q", len(second.Calls), used2.Tokens(), used2.Latency, second.Stop)
 	assert.NotEmpty(t, second.Text+joinNames(second.Calls), "the endpoint answered with nothing at all")
 }
 
-func joinNames(calls []event.ToolCall) string {
-	var s string
-	for _, c := range calls {
-		s += c.Name
-	}
-	return s
-}
-
-// liveConfig reads the few keys this test needs out of .detent.yaml.
-// A real parser would mean importing internal/config, which phase 4
-// rewrites; the env var still wins, for pointing at something else.
+// liveConfig reads the few keys this test needs out of .detent.yaml,
+// with DETENT_* env vars winning, without importing internal/config.
 func liveConfig(t *testing.T) map[string]string {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -119,4 +106,12 @@ func liveConfig(t *testing.T) map[string]string {
 		}
 	}
 	return out
+}
+
+func joinNames(calls []event.ToolCall) string {
+	var s string
+	for _, c := range calls {
+		s += c.Name
+	}
+	return s
 }

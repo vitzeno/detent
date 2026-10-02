@@ -14,10 +14,8 @@ import (
 
 const examplePath = "../../detent.example.yaml"
 
-// The example file spells every key out so an editor reads it as YAML
-// rather than as one long comment. That only helps if the keys are
-// real: yaml.v3 drops an unknown one without a word, so a typo there
-// is a setting that silently never applies.
+// yaml.v3 drops an unknown key silently, so a typo in the example is a
+// setting that never applies.
 func TestExample_NamesEveryKeyAndNoOthers(t *testing.T) {
 	raw, err := os.ReadFile(examplePath)
 	require.NoError(t, err)
@@ -41,9 +39,8 @@ func TestExample_NamesEveryKeyAndNoOthers(t *testing.T) {
 	}
 }
 
-// It also claims copying it as-is changes nothing, which is only true
-// while every key it sets is either a built-in default or a zero the
-// layering skips.
+// Copying the example as-is must change nothing: every key it sets is a
+// built-in default or a zero the layering skips.
 func TestExample_CopiedWholesaleChangesNothing(t *testing.T) {
 	raw, err := os.ReadFile(examplePath)
 	require.NoError(t, err)

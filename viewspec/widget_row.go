@@ -6,9 +6,8 @@ import (
 	"strings"
 )
 
-// rowWidget lays its panes side by side. It implements Container
-// rather than Widget's Draw, because the blocks inside it have to be
-// resolved against the registry and a Widget never sees one.
+// rowWidget lays its panes side by side. It is a Container because its
+// blocks must be resolved against the registry, which a Widget never sees.
 type rowWidget struct{}
 
 var (
@@ -56,6 +55,16 @@ func (rowWidget) Arrange(cols [][]string, widths []int, _ Block, f Frame) ([]str
 	return lines, make([]int, len(cols))
 }
 
+func (rowWidget) Describe() Description {
+	return Description{
+		What: "lays its panes side by side, for putting a summary next to the thing it summarises",
+		// No Slots: this needs panes, which hold blocks,
+		// so nothing can compose one from field choices alone.
+		NotFor:   "blocks that simply follow one another, which stack without a row",
+		Examples: []string{"a meter beside the table it counts", "a chart beside its legend"},
+	}
+}
+
 // paneWidths shares the row across its panes by weight, with a floor
 // so a pane never vanishes, and one space of gutter between them.
 func paneWidths(panes []Pane, total int) []int {
@@ -82,14 +91,4 @@ func paneWidths(panes []Pane, total int) []int {
 		}
 	}
 	return out
-}
-
-func (rowWidget) Describe() Description {
-	return Description{
-		What: "lays its panes side by side, for putting a summary next to the thing it summarises",
-		// No Slots: this needs panes, which hold blocks,
-		// so nothing can compose one from field choices alone.
-		NotFor:   "blocks that simply follow one another, which stack without a row",
-		Examples: []string{"a meter beside the table it counts", "a chart beside its legend"},
-	}
 }

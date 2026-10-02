@@ -15,17 +15,15 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// Config is one server to launch, as the config file describes it.
+// Config is one server, launched or reached, as the config file describes it.
 type Config struct {
 	Command string            `json:"command"`
 	Args    []string          `json:"args"`
 	Env     map[string]string `json:"env"`
-	// URL reaches a server rather than launching one. Set this or
-	// Command, never both.
+	// URL reaches a server rather than launching one: this or Command, never both.
 	URL     string            `json:"url"`
 	Headers map[string]string `json:"headers"`
-	// Type names a remote transport. Absent means stdio, which is the
-	// convention every other client follows.
+	// Type names a remote transport. Absent means stdio, as in every other client.
 	Type string `json:"type"`
 	// Disabled keeps a server configured but unconnected.
 	Disabled bool `json:"disabled"`
@@ -33,31 +31,6 @@ type Config struct {
 	OAuth *OAuth `json:"oauth"`
 	// Auth is another client's field, read for what it can give OAuth.
 	Auth foreignAuth `json:"auth"`
-}
-
-// transport is how this server is reached, and says so when the
-// config describes no server at all or two of them. oauth signs in.
-func (c Config) transport(oauth auth.OAuthHandler) (sdk.Transport, error) {
-	switch {
-	case c.Command != "" && c.URL != "":
-		return nil, errors.New("set command or url, not both")
-
-	case c.URL != "":
-		// Absent type means stdio everywhere else, so a url without
-		// one is a remote server that forgot to say which kind.
-		switch c.Type {
-		case "", "http", "streamable-http":
-			return HTTP{URL: c.URL, Headers: c.Headers, Auth: oauth}.Transport(), nil
-		}
-		return nil, fmt.Errorf("transport %q is not supported; use http", c.Type)
-
-	case c.Command != "":
-		if c.Type != "" && c.Type != "stdio" {
-			return nil, fmt.Errorf("type %q takes a url, not a command", c.Type)
-		}
-		return Stdio{Command: c.Command, Args: c.Args, Env: environ(c.Env)}.Transport(), nil
-	}
-	return nil, errors.New("no command or url configured")
 }
 
 // ConnectOption adds to how ConnectAll dials.
@@ -85,9 +58,8 @@ func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers m
 	}
 	in.seed(seeded)
 
-	// Registered as each settles, not after all: a server waiting ten
-	// minutes for a sign-in must not keep every other's tools away.
-	// One lock, so a listing drawn from a report cannot go backwards.
+	// Registered as each settles, so a sign-in waiting on a human holds up no other
+	// server. One lock, so a listing drawn from a report cannot go backwards.
 	var reporting sync.Mutex
 	failed := make([]error, len(names))
 	var wg sync.WaitGroup
@@ -125,21 +97,6 @@ func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers m
 	return errs
 }
 
-// summarise is what /mcp shows of a server once dialling it settled.
-func summarise(st event.ServerSummary, c Config, got result) event.ServerSummary {
-	st.Connected, st.Tools = got.err == nil, len(got.tools)
-	if got.err != nil {
-		st.Err = got.err.Error()
-	}
-	if got.oauth {
-		st.Auth = event.AuthSignedOut
-		if got.err == nil {
-			st.Auth = event.AuthSignedIn
-		}
-	}
-	return st
-}
-
 // Redialer dials one server again after forgetting its token, so an
 // AuthorizeServer always ends in a fresh sign-in, never a silent reuse.
 func Redialer(ctx context.Context, reg *tool.Registry, in *Invokers, servers map[string]Config,
@@ -175,6 +132,46 @@ func Redialer(ctx context.Context, reg *tool.Registry, in *Invokers, servers map
 		signins.publish(event.ServersListed{Servers: in.Status()})
 		return got.err
 	}
+}
+
+// transport is how this server is reached, and says so when the
+// config describes no server at all or two of them. oauth signs in.
+func (c Config) transport(oauth auth.OAuthHandler) (sdk.Transport, error) {
+	switch {
+	case c.Command != "" && c.URL != "":
+		return nil, errors.New("set command or url, not both")
+
+	case c.URL != "":
+		// Absent type means stdio everywhere else, so a url without
+		// one is a remote server that forgot to say which kind.
+		switch c.Type {
+		case "", "http", "streamable-http":
+			return HTTP{URL: c.URL, Headers: c.Headers, Auth: oauth}.Transport(), nil
+		}
+		return nil, fmt.Errorf("transport %q is not supported; use http", c.Type)
+
+	case c.Command != "":
+		if c.Type != "" && c.Type != "stdio" {
+			return nil, fmt.Errorf("type %q takes a url, not a command", c.Type)
+		}
+		return Stdio{Command: c.Command, Args: c.Args, Env: environ(c.Env)}.Transport(), nil
+	}
+	return nil, errors.New("no command or url configured")
+}
+
+// summarise is what /mcp shows of a server once dialling it settled.
+func summarise(st event.ServerSummary, c Config, got result) event.ServerSummary {
+	st.Connected, st.Tools = got.err == nil, len(got.tools)
+	if got.err != nil {
+		st.Err = got.err.Error()
+	}
+	if got.oauth {
+		st.Auth = event.AuthSignedOut
+		if got.err == nil {
+			st.Auth = event.AuthSignedIn
+		}
+	}
+	return st
 }
 
 // result is one server's answer.

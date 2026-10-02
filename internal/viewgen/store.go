@@ -9,10 +9,18 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// Store keeps composed specs on disk, one JSON file per key. Files
-// rather than a database on purpose: a spec you can read and fix by
-// hand is the payoff for caching one at all, and /view edit opens it.
+// Store keeps composed specs on disk, one JSON file per key. Files on
+// purpose: a spec you can read and fix by hand is the payoff for caching.
 type Store struct{ Dir string }
+
+// DefaultDir is where specs live when config says nothing.
+func DefaultDir() string {
+	dir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, ".local", "state", "detent", "views")
+}
 
 // Load returns the saved spec for key. A missing or unreadable file
 // is a miss, never an error: the worst case is composing it again.
@@ -62,14 +70,5 @@ func (s *Store) Save(key string, spec *viewspec.Spec) error {
 
 // Path is where key's spec lives, so a caller can open it in an editor.
 func (s *Store) Path(key string) string { return s.path(key) }
-
-// DefaultDir is where specs live when config says nothing.
-func DefaultDir() string {
-	dir, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(dir, ".local", "state", "detent", "views")
-}
 
 func (s *Store) path(key string) string { return filepath.Join(s.Dir, key+".json") }

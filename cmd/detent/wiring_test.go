@@ -17,34 +17,8 @@ import (
 	"github.com/vitzeno/detent/ui"
 )
 
-// The one seam no package can test alone: ui publishes intents and
-// the engine answers with facts, over the bus main.go wires. Both
-// sides are unit tested; this proves they are plugged together.
-
-type stubModel struct{ replies []model.Reply }
-
-func (s *stubModel) Complete(context.Context, []event.Message, []map[string]any) (model.Reply, event.Usage, error) {
-	if len(s.replies) == 0 {
-		return model.Reply{Text: "done", Stop: "stop"}, event.Usage{}, nil
-	}
-	r := s.replies[0]
-	s.replies = s.replies[1:]
-	return r, event.Usage{PromptTokens: 1}, nil
-}
-
-type stubRunner struct{}
-
-func (stubRunner) Run(_ context.Context, cmd string, lines chan<- capture.StreamEvent) (capture.Result, error) {
-	if lines != nil {
-		close(lines)
-	}
-	return capture.Result{Stdout: "ran " + cmd + "\n"}, nil
-}
-
-type stubSelector struct{}
-
-func (stubSelector) Select(event.Risk) (engine.Runner, string) { return stubRunner{}, "host" }
-
+// The one seam no package can test alone: ui publishes intents and the
+// engine answers with facts over the bus main.go wires.
 func TestWiring_TypingReachesTheEngineAndComesBack(t *testing.T) {
 	bus := event.New()
 	eng := engine.New(bus, &stubModel{replies: []model.Reply{{
@@ -113,3 +87,27 @@ func pump(t *testing.T, m ui.Model, first tea.Cmd, until func(ui.Model) bool) ui
 	}
 	return m
 }
+
+type stubModel struct{ replies []model.Reply }
+
+func (s *stubModel) Complete(context.Context, []event.Message, []map[string]any) (model.Reply, event.Usage, error) {
+	if len(s.replies) == 0 {
+		return model.Reply{Text: "done", Stop: "stop"}, event.Usage{}, nil
+	}
+	r := s.replies[0]
+	s.replies = s.replies[1:]
+	return r, event.Usage{PromptTokens: 1}, nil
+}
+
+type stubRunner struct{}
+
+func (stubRunner) Run(_ context.Context, cmd string, lines chan<- capture.StreamEvent) (capture.Result, error) {
+	if lines != nil {
+		close(lines)
+	}
+	return capture.Result{Stdout: "ran " + cmd + "\n"}, nil
+}
+
+type stubSelector struct{}
+
+func (stubSelector) Select(event.Risk) (engine.Runner, string) { return stubRunner{}, "host" }

@@ -14,30 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeServer builds testdata/fakeserver once. Built rather than
-// skipped, so CI exercises the transport every server arrives on.
-var fakeServer = sync.OnceValues(func() (string, error) {
-	bin := filepath.Join(buildDir, "fakeserver")
-	out, err := exec.Command("go", "build", "-o", bin, "./testdata/fakeserver").CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("building testdata/fakeserver: %v\n%s", err, out)
-	}
-	return bin, nil
-})
-
-var buildDir string
-
-func stdioServer(t *testing.T, env ...string) *Server {
-	t.Helper()
-	bin, err := fakeServer()
-	require.NoError(t, err)
-
-	s, err := Connect(context.Background(), "subproc", Stdio{Command: bin, Env: env}.Transport())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = s.Close() })
-	return s
-}
-
 // The in-memory tests launch nothing. This one uses real pipes.
 func TestStdio_TalksToARealSubprocess(t *testing.T) {
 	ctx := context.Background()
@@ -71,6 +47,37 @@ func TestStdio_CloseEndsTheProcess(t *testing.T) {
 		5*time.Second, 100*time.Millisecond, "the server outlived its session")
 }
 
+// A command that is not there must not panic or hang.
+func TestStdio_AMissingCommandIsAnError(t *testing.T) {
+	_, err := Connect(context.Background(), "nope",
+		Stdio{Command: "/nonexistent/detent-mcp-server"}.Transport())
+	assert.Error(t, err)
+}
+
+func stdioServer(t *testing.T, env ...string) *Server {
+	t.Helper()
+	bin, err := fakeServer()
+	require.NoError(t, err)
+
+	s, err := Connect(context.Background(), "subproc", Stdio{Command: bin, Env: env}.Transport())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+// fakeServer builds testdata/fakeserver once. Built rather than
+// skipped, so CI exercises the transport every server arrives on.
+var fakeServer = sync.OnceValues(func() (string, error) {
+	bin := filepath.Join(buildDir, "fakeserver")
+	out, err := exec.Command("go", "build", "-o", bin, "./testdata/fakeserver").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("building testdata/fakeserver: %v\n%s", err, out)
+	}
+	return bin, nil
+})
+
+var buildDir string
+
 // running counts live processes started from bin.
 func running(t *testing.T, bin string) int {
 	t.Helper()
@@ -79,11 +86,4 @@ func running(t *testing.T, bin string) int {
 		return 0 // pgrep exits non-zero when nothing matches
 	}
 	return len(strings.Fields(string(out)))
-}
-
-// A command that is not there must not panic or hang.
-func TestStdio_AMissingCommandIsAnError(t *testing.T) {
-	_, err := Connect(context.Background(), "nope",
-		Stdio{Command: "/nonexistent/detent-mcp-server"}.Transport())
-	assert.Error(t, err)
 }

@@ -11,13 +11,6 @@ import (
 	"golang.org/x/oauth2"
 )
 
-func saved() *Saved {
-	return &Saved{ClientID: "c1", AuthURL: "https://as/authorize", TokenURL: "https://as/token",
-		Scopes: []string{"read"},
-		Token: &oauth2.Token{AccessToken: "a", RefreshToken: "r", TokenType: "Bearer",
-			Expiry: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}}
-}
-
 func TestTokens_RoundTrip(t *testing.T) {
 	tokens := Tokens{Dir: filepath.Join(t.TempDir(), "mcp")}
 	got, err := tokens.Load("notion")
@@ -75,4 +68,11 @@ func TestTokensDir_IsBesideTheEventStore(t *testing.T) {
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(home, ".local", "state", "detent", "mcp"), TokensDir())
+}
+
+func saved() *Saved {
+	return &Saved{ClientID: "c1", AuthURL: "https://as/authorize", TokenURL: "https://as/token",
+		Scopes: []string{"read"},
+		Token: &oauth2.Token{AccessToken: "a", RefreshToken: "r", TokenType: "Bearer",
+			Expiry: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}}
 }

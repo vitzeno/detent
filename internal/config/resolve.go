@@ -6,12 +6,8 @@ import (
 	"strconv"
 )
 
-// Resolve layers sources low to high: built-ins, file, environment,
-// flags. Each layer only overwrites fields it actually sets.
-//
-// steps is separate: 0 is a real value for Config.Steps (explicitly
-// unbounded), so flags.Steps can't tell "not passed" from "-steps 0".
-// steps uses -1 for that instead.
+// Resolve layers built-ins, file, environment, then flags, each setting
+// only the fields it has. steps is -1 when not passed, so -steps 0 applies.
 func Resolve(file, flags Config, steps int) Config {
 	out := Default()
 	out.apply(file)
@@ -34,9 +30,8 @@ func (c *Config) apply(o Config) {
 	if o.APIKey != "" {
 		c.APIKey = o.APIKey
 	}
-	// len, not nil: an empty map is a layer setting nothing, the same
-	// as every zero value here, and the example config spells the key
-	// out as {} so an editor reads the file as YAML.
+	// len, not nil: an empty map sets nothing, and the example config
+	// spells headers out as {}.
 	if len(o.Headers) > 0 {
 		c.Headers = o.Headers
 	}
@@ -93,14 +88,11 @@ func (c *Config) apply(o Config) {
 	}
 }
 
-// Known limitation: a config file with `risk_threshold: 0` is
-// indistinguishable from one that omits the key, and falls through to
-// agent's RiskThresholdDefault. Steps dodges this only because its own
-// default (unbounded) already is 0. Giving RiskThreshold a flag would
-// need the same -1 sentinel treatment as steps above.
+// A risk_threshold of 0 cannot be told from an omitted key. A flag for
+// it would need the -1 sentinel steps uses.
 
-// envInt reads a numeric variable, treating unset and unparseable
-// alike as "this layer sets nothing" — apply skips 0.
+// envInt reads a numeric variable. Unset and unparseable both give 0,
+// which apply skips.
 func envInt(key string) int {
 	n, err := strconv.Atoi(os.Getenv(key))
 	if err != nil {
@@ -109,8 +101,8 @@ func envInt(key string) int {
 	return n
 }
 
-// envConfig reads the environment as one layer. Key aliases fall back in
-// order; the first set variable wins.
+// envConfig reads the environment as one layer. For aliased keys the
+// first set variable wins.
 func envConfig() Config {
 	return Config{
 		BaseURL: os.Getenv("DETENT_BASE_URL"),

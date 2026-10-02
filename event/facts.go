@@ -8,10 +8,10 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// What the engine publishes, past tense. ApprovalAsked is the one
-// question among them, correlated by Call.
+// What happened, past tense. ApprovalAsked is the one question among
+// them, correlated by Call.
 
-// SessionStarted is published once; welcome, status and the log all
+// SessionStarted is published once. Welcome, status and the log all
 // read it, so it is the one description of a run.
 type SessionStarted struct {
 	fact
@@ -49,6 +49,7 @@ func (SessionResumed) Kind() Kind { return SessionResumedKind }
 
 // A Turn is one prompt and everything the agent did about it.
 
+// TurnStarted opens a Turn.
 type TurnStarted struct {
 	fact
 	Turn   uuid.UUID
@@ -62,12 +63,13 @@ func (TurnStarted) Kind() Kind { return TurnStartedKind }
 type CheckpointTaken struct {
 	fact
 	Turn     uuid.UUID
-	Snapshot string // container; "" when unsandboxed
+	Snapshot string // container, "" when unsandboxed
 	Tree     string // the human's own working directory
 }
 
 func (CheckpointTaken) Kind() Kind { return CheckpointTakenKind }
 
+// TurnEnded closes a Turn, however it stopped.
 type TurnEnded struct {
 	fact
 	Turn    uuid.UUID
@@ -99,6 +101,7 @@ type BoundReached struct {
 
 func (BoundReached) Kind() Kind { return BoundReachedKind }
 
+// RolledBack says a Turn's checkpoint was restored.
 type RolledBack struct {
 	fact
 	Turn        uuid.UUID
@@ -109,6 +112,7 @@ func (RolledBack) Kind() Kind { return RolledBackKind }
 
 // A Step is one model round trip, and the transcript's atom.
 
+// StepStarted opens a Step.
 type StepStarted struct {
 	fact
 	Turn, Step uuid.UUID
@@ -117,11 +121,12 @@ type StepStarted struct {
 
 func (StepStarted) Kind() Kind { return StepStartedKind }
 
+// StepEnded closes a Step with what it cost.
 type StepEnded struct {
 	fact
 	Turn, Step uuid.UUID
 	Usage      Usage
-	Calls      int // how many the model asked for; 0 means it stopped
+	Calls      int // how many the model asked for, 0 when it stopped
 }
 
 func (StepEnded) Kind() Kind { return StepEndedKind }
@@ -158,25 +163,27 @@ func (Compacted) Kind() Kind { return CompactedKind }
 
 // A Call is one tool invocation.
 
+// CallProposed is a Call the model asked for, before anything assesses it.
 type CallProposed struct {
 	fact
 	Call, Step uuid.UUID
 	Tool       string
 	Args       map[string]any
 	Rationale  string
-	// Renders is how the tool says its output should be read
-	// It is a fact so it beats a judged guess
+	// Renders is how the tool says its output should be read, which beats
+	// a judged guess.
 	Renders string
 	// Executor is empty for a shell command, and otherwise names what
 	// runs it. Nothing a checkpoint can undo.
 	Executor string
 }
 
-// RendersMarkdown says a tool's output is a md document
-const RendersMarkdown = "markdown"
-
 func (CallProposed) Kind() Kind { return CallProposedKind }
 
+// RendersMarkdown says a tool's output is a markdown document.
+const RendersMarkdown = "markdown"
+
+// CallAssessed is the hook chain's verdict on a Call.
 type CallAssessed struct {
 	fact
 	Call uuid.UUID
@@ -197,6 +204,7 @@ type ApprovalAsked struct {
 
 func (ApprovalAsked) Kind() Kind { return ApprovalAskedKind }
 
+// CallStarted says a Call began running.
 type CallStarted struct {
 	fact
 	Call   uuid.UUID
@@ -217,6 +225,7 @@ type OutputChunk struct {
 func (OutputChunk) Kind() Kind  { return OutputChunkKind }
 func (OutputChunk) Lossy() bool { return true }
 
+// CallEnded is a Call's whole result.
 type CallEnded struct {
 	fact
 	Call   uuid.UUID
@@ -263,6 +272,7 @@ func (ViewReady) Kind() Kind { return ViewReadyKind }
 // A Shell is one command the human ran themselves. Not a Call: the
 // model never asked for it, so nothing assesses or approves it.
 
+// ShellStarted says a Shell began running.
 type ShellStarted struct {
 	fact
 	Shell   uuid.UUID
@@ -272,6 +282,7 @@ type ShellStarted struct {
 
 func (ShellStarted) Kind() Kind { return ShellStartedKind }
 
+// ShellEnded is a Shell's whole result.
 type ShellEnded struct {
 	fact
 	Shell  uuid.UUID
@@ -287,6 +298,19 @@ type SessionsListed struct {
 	Sessions []SessionSummary
 }
 
+func (SessionsListed) Kind() Kind { return SessionsListedKind }
+
+// SessionSummary is one resumable session, as a listing shows it.
+// Started is UTC, since a time crossing the wire keeps only its instant.
+type SessionSummary struct {
+	ID uuid.UUID
+	// Name is what a human called it, "" until they do.
+	Name    string
+	Started time.Time
+	Model   string
+	Events  int
+}
+
 // ServersListed answers ListServers, failures included: a missing
 // server is the thing a human needs told.
 type ServersListed struct {
@@ -295,6 +319,30 @@ type ServersListed struct {
 }
 
 func (ServersListed) Kind() Kind { return ServersListedKind }
+
+// ServerSummary is one MCP server as configured, connected or not.
+type ServerSummary struct {
+	Name    string
+	Command string
+	// Connected tells a server still being dialled from one that
+	// answered and offers nothing, which look alike from Tools alone.
+	Connected bool
+	// Tools is how many it offered, once connected.
+	Tools int
+	// Err is why it is not connected, "" when it is.
+	Err string
+	// Disabled is a server left in the config but switched off.
+	Disabled bool
+	// Auth is "" for a server with no auth, else one of the Auth values.
+	Auth string
+}
+
+// Auth is where a server's sign-in stands, for one that has auth.
+const (
+	AuthSignedIn  = "signed in"
+	AuthWaiting   = "waiting"
+	AuthSignedOut = "signed out"
+)
 
 // AuthorizationWaiting says a server wants a human to sign in, at URL.
 // Until is when the wait gives up. The URL holds no secret.
@@ -324,44 +372,6 @@ type AuthorizationFailed struct {
 }
 
 func (AuthorizationFailed) Kind() Kind { return AuthorizationFailedKind }
-
-// Auth is where a server's sign-in stands, for one that has auth.
-const (
-	AuthSignedIn  = "signed in"
-	AuthWaiting   = "waiting"
-	AuthSignedOut = "signed out"
-)
-
-// ServerSummary is one MCP server as configured, connected or not.
-type ServerSummary struct {
-	Name    string
-	Command string
-	// Connected tells a server still being dialled from one that
-	// answered and offers nothing, which look alike from Tools alone.
-	Connected bool
-	// Tools is how many it offered, once connected.
-	Tools int
-	// Err is why it is not connected, "" when it is.
-	Err string
-	// Disabled is a server left in the config but switched off.
-	Disabled bool
-	// Auth is "" for a server with no auth, else one of the Auth values.
-	Auth string
-}
-
-func (SessionsListed) Kind() Kind { return SessionsListedKind }
-
-// SessionSummary is one resumable session, as a listing shows it.
-// Started is UTC: a time crossing the wire keeps its instant and not
-// its zone.
-type SessionSummary struct {
-	ID uuid.UUID
-	// Name is what a human called it, "" until they do.
-	Name    string
-	Started time.Time
-	Model   string
-	Events  int
-}
 
 // Notice is anything to say that is not about one Call.
 type Notice struct {

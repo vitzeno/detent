@@ -6,17 +6,15 @@ import (
 	"github.com/vitzeno/detent/ui/layout"
 )
 
-// How the three zones divide the window. Every size the view renders
-// at comes from here, so the panes tile the terminal exactly and the
-// session bar can never be pushed off the top.
+// How the three zones divide the window. Every size comes from here, so
+// the panes tile the terminal and the session bar stays on top.
 
-// sizeViewport refits every pane to the window and to what the panes
-// currently hold, then re-renders the output. Update calls it once per
-// message, so no handler has to remember to.
+// sizeViewport refits every pane to the window and what it holds, then
+// re-renders the output. Update calls it once per message.
 func (m *Model) sizeViewport() {
 	m.prompt.Resize(m.layout.width)
-	// Bottom zone height is measured, not guessed — content varies with
-	// rationale and danger flags, and the input grows with what's typed.
+	// Measured, not guessed: a question varies with its rationale, and the
+	// input grows with what is typed.
 	bottom := m.prompt.Rows() + 2
 	switch m.mode {
 	case modeConfirm:
@@ -37,7 +35,7 @@ func (m *Model) sizeViewport() {
 	m.refreshViewport()
 }
 
-var bodyWeights = []int{3, 2} // [output, history]; output gets the larger share
+var bodyWeights = []int{3, 2} // output, history
 
 const (
 	// minPaneWidth is the outer-width floor below which a pane stops

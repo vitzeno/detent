@@ -3,8 +3,9 @@ package model
 import (
 	"context"
 	"fmt"
-	"github.com/vitzeno/detent/event"
 	"strings"
+
+	"github.com/vitzeno/detent/event"
 )
 
 // MaxSummaryBytes caps what a summary costs. One that grew unbounded

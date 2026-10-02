@@ -2,17 +2,17 @@ package model
 
 import (
 	"context"
-	"github.com/vitzeno/detent/event"
-	"github.com/vitzeno/detent/internal/humanshell"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/humanshell"
 )
 
 // A Step on the wire: one assistant message carrying tool_calls, then
-// one tool message per id. Endpoints reject either half alone, so this
-// is the shape the whole rewrite depends on.
+// one tool message per id. Endpoints reject either half alone.
 func TestEncode_AStepIsAnAssistantPlusItsAnswers(t *testing.T) {
 	call := event.ToolCall{ID: "c1", Name: "read_file", Args: map[string]any{"path": "a.go"}}
 	step := []event.Message{
@@ -35,8 +35,7 @@ func TestEncode_AStepIsAnAssistantPlusItsAnswers(t *testing.T) {
 	fn := calls[0].(map[string]any)
 	assert.Equal(t, "c1", fn["id"])
 	assert.Equal(t, "function", fn["type"])
-	// Arguments is a JSON string, not an object. Every endpoint agrees
-	// on this and none accepts the object.
+	// Arguments is a JSON string, not an object.
 	assert.Equal(t, `{"path":"a.go"}`, fn["function"].(map[string]any)["arguments"])
 
 	answer := msgs[3].(map[string]any)
@@ -45,9 +44,8 @@ func TestEncode_AStepIsAnAssistantPlusItsAnswers(t *testing.T) {
 	assert.Equal(t, "package main", answer["content"])
 }
 
-// Only a tool message carries tool_call_id, and only an assistant
-// message carries tool_calls. A stray field on the wrong role is how
-// an endpoint starts rejecting the whole transcript.
+// Only a tool message carries tool_call_id, and only an assistant one
+// tool_calls. A stray field makes endpoints reject the whole transcript.
 func TestEncode_FieldsStayOnTheirOwnRole(t *testing.T) {
 	c, got := serve(t, `{"choices":[{"message":{"content":"ok"}}]}`)
 	_, _, err := c.Complete(context.Background(), []event.Message{
@@ -79,21 +77,19 @@ func TestComplete_SendsToolsAndTheSystemPrompt(t *testing.T) {
 	assert.Contains(t, text, "linux/arm64", "the prompt must describe where commands run")
 	assert.Contains(t, text, "/workspace")
 	assert.Contains(t, text, "container")
-	assert.Contains(t, text, "undo the whole request", "Undoable is per Turn now")
+	assert.Contains(t, text, "undo the whole request", "Undoable is per Turn")
 }
 
-// The prompt promises the model a shape, and another package emits
-// it. Asserted against that package's own constant, because prose
-// drifting from the thing it describes fails silently.
+// The prompt promises a shape another package emits, so it is checked
+// against that package's constant: prose drifting from it fails silently.
 func TestSystemPrompt_NamesTheMarkerHumanshellActuallyWrites(t *testing.T) {
 	assert.Contains(t, systemPrompt(LocalEnvironment()), humanshell.Marker)
 	assert.Contains(t, systemPrompt(LocalEnvironment()), "read it rather than running it again",
 		"and says what to do with it, which is the point of naming it")
 }
 
-// Point 4 tells the model its earlier steps are still on disk, which
-// a resume makes false. The exception has to name the marker the note
-// actually opens with.
+// Point 4 says earlier steps are still on disk, which a resume makes
+// false, so its exception must name the marker the note opens with.
 func TestSystemPrompt_NamesTheResumeMarker(t *testing.T) {
 	got := systemPrompt(LocalEnvironment())
 	assert.Contains(t, got, ResumeMarker)

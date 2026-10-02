@@ -6,8 +6,7 @@ import (
 )
 
 // boxplot summarises each group's spread on one line: the box is the
-// middle half, the whiskers the rest, the bright cell the median. A
-// column of numbers hides the outlier a box shows at once.
+// middle half, the whiskers the rest, the bright cell the median.
 type boxplotWidget struct{}
 
 var (
@@ -64,9 +63,20 @@ func (boxplotWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return lines, nil
 }
 
-// quantile reads q through an already sorted slice, interpolating
-// between neighbours. Taking the nearest index instead lands q3 on the
-// maximum for a group of four, and the box swallows its own whisker.
+func (boxplotWidget) Describe() Description {
+	return Description{
+		What: "each group's spread on one line: whiskers to the extremes, a box over the middle half, a bright median",
+		Needs: []Slot{
+			{Name: "group", What: "the group each row belongs to"},
+			{Name: "value", What: "the number to spread"},
+		},
+		NotFor:   "one number per row, which is bar",
+		Examples: []string{"latency per endpoint", "test time per package", "file size per directory"},
+	}
+}
+
+// quantile reads q through an already sorted slice, interpolating so a
+// small group's box does not swallow its own whisker.
 func quantile(sorted []float64, q float64) float64 {
 	pos := q * float64(len(sorted)-1)
 	i := int(pos)
@@ -79,17 +89,5 @@ func quantile(sorted []float64, q float64) float64 {
 func fill(dst []rune, from, to int, r rune) {
 	for i := max(from, 0); i <= min(to, len(dst)-1); i++ {
 		dst[i] = r
-	}
-}
-
-func (boxplotWidget) Describe() Description {
-	return Description{
-		What: "each group's spread on one line: whiskers to the extremes, a box over the middle half, a bright median",
-		Needs: []Slot{
-			{Name: "group", What: "the group each row belongs to"},
-			{Name: "value", What: "the number to spread"},
-		},
-		NotFor:   "one number per row, which is bar",
-		Examples: []string{"latency per endpoint", "test time per package", "file size per directory"},
 	}
 }

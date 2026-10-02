@@ -56,17 +56,7 @@ func (r *Registry) Prepare(name string, args map[string]any) (Call, error) {
 		Args: clean, Executor: spec.Executor}, nil
 }
 
-// Call is one validated, lowered invocation.
-type Call struct {
-	Tool       string
-	Command    string
-	Mutability string
-	Args       Args
-	// Executor is empty for a shell command, and otherwise names what
-	// runs it instead.
-	Executor string
-}
-
+// Register adds a tool, replacing any of the same name.
 func (r *Registry) Register(t Tool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -93,6 +83,7 @@ func (r *Registry) Unregister(names ...string) {
 	}
 }
 
+// Lookup finds a tool by name.
 func (r *Registry) Lookup(name string) (Tool, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -129,10 +120,19 @@ func (r *Registry) Schemas() []map[string]any {
 	return out
 }
 
-// schema renders a Spec as JSON Schema. Under strict mode every
-// property must appear in required, so an optional parameter is
-// nullable rather than omitted; validate already reads an explicit
-// null as absent.
+// Call is one validated, lowered invocation.
+type Call struct {
+	Tool       string
+	Command    string
+	Mutability string
+	Args       Args
+	// Executor is empty for a shell command, and otherwise names what
+	// runs it instead.
+	Executor string
+}
+
+// schema renders a Spec as JSON Schema. Strict mode wants every property
+// in required, so an optional one is nullable, which validate reads as absent.
 func schema(s Spec) map[string]any {
 	if s.Raw != nil {
 		return s.Raw

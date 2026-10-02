@@ -17,11 +17,6 @@ import (
 
 const signInURL = "https://mcp.notion.com/authorize?response_type=code&client_id=c1&state=s&code_challenge=x"
 
-func waitingFor(server string) event.AuthorizationWaiting {
-	return event.AuthorizationWaiting{Server: server, URL: signInURL,
-		Until: time.Date(2026, 10, 1, 14, 32, 0, 0, time.Local)}
-}
-
 // The link appears without a key pressed: the cursor follows onto the
 // new row, and the output pane draws whatever row the cursor is on.
 func TestSignIn_TheLinkIsInTheOutputPaneAtOnce(t *testing.T) {
@@ -42,7 +37,7 @@ func TestSignIn_TheLinkIsInTheOutputPaneAtOnce(t *testing.T) {
 	assert.Contains(t, m.notice.text, "the link is in the output pane")
 }
 
-// Every pane line is cut to its width; the link must survive the cut
+// Every pane line is cut to its width, and the link must survive the cut
 // whole, or what is clicked is half a URL.
 func TestSignIn_TheLinkSurvivesThePaneCuttingItsLine(t *testing.T) {
 	lines := signInPageLines(&signInState{server: "notion", url: signInURL}, 40)
@@ -70,22 +65,6 @@ func TestSignIn_ALinkFromAnEarlierRunIsStale(t *testing.T) {
 	require.NotNil(t, r)
 	assert.Equal(t, stageStale, r.signin.stage)
 	assert.NotContains(t, strings.Join(signInPageLines(r.signin, 80), "\n"), "Sign in to notion")
-}
-
-func intent(t *testing.T, k *keyed, kind event.Kind) event.Event {
-	t.Helper()
-	deadline := time.After(time.Second)
-	for {
-		select {
-		case rec := <-k.seen:
-			if rec.Event.Kind() == kind {
-				return rec.Event
-			}
-		case <-deadline:
-			t.Fatalf("no %s was published", kind)
-			return nil
-		}
-	}
 }
 
 func TestSignIn_KeysOpenCopyAndRetry(t *testing.T) {
@@ -139,8 +118,7 @@ func TestSignIn_TheRowKeepsItsWordsWhenStyled(t *testing.T) {
 	assert.Contains(t, row, "notion · sign in · waiting until 14:32")
 }
 
-// Signed in, the row's keys must not ask again: that forgets the token,
-// and pressing enter on a fresh sign-in made every launch ask anew.
+// Signed in, the row's keys must not ask again: that forgets the token.
 func TestSignIn_KeysOnASignedInRowKeepTheToken(t *testing.T) {
 	k := newKeyed(t)
 	k.m.apply(waitingFor("notion"))
@@ -154,5 +132,26 @@ func TestSignIn_KeysOnASignedInRowKeepTheToken(t *testing.T) {
 	case rec := <-k.seen:
 		t.Fatalf("a signed-in row published %s", rec.Event.Kind())
 	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func waitingFor(server string) event.AuthorizationWaiting {
+	return event.AuthorizationWaiting{Server: server, URL: signInURL,
+		Until: time.Date(2026, 10, 1, 14, 32, 0, 0, time.Local)}
+}
+
+func intent(t *testing.T, k *keyed, kind event.Kind) event.Event {
+	t.Helper()
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case rec := <-k.seen:
+			if rec.Event.Kind() == kind {
+				return rec.Event
+			}
+		case <-deadline:
+			t.Fatalf("no %s was published", kind)
+			return nil
+		}
 	}
 }

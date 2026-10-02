@@ -3,11 +3,11 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/vitzeno/detent/event"
 )
 
-// The chat-completions shapes. Where the rewrite stops working around
-// tool roles and starts depending on them.
+// The chat-completions wire shapes.
 
 type wireRequest struct {
 	Model       string           `json:"model"`
@@ -29,8 +29,7 @@ type wireToolCall struct {
 	Type     string `json:"type"`
 	Function struct {
 		Name string `json:"name"`
-		// Arguments is a JSON string, not an object. Endpoints differ
-		// on much; none differ on this.
+		// Arguments is a JSON string, not an object, on every endpoint.
 		Arguments string `json:"arguments"`
 	} `json:"function"`
 }

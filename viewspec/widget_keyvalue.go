@@ -49,6 +49,8 @@ func (keyvalueWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return lines, nil
 }
 
+func (keyvalueWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }
+
 func (keyvalueWidget) Describe() Description {
 	return Description{
 		What: "label and value per row, aligned on the label",
@@ -60,5 +62,3 @@ func (keyvalueWidget) Describe() Description {
 		Examples: []string{"env", "git config -l", "one object's fields"},
 	}
 }
-
-func (keyvalueWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }

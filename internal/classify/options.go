@@ -5,18 +5,7 @@ import "net/http"
 // Option overrides a NewJevJudge default.
 type Option func(*JevJudge)
 
-func WithModel(model string) Option {
-	return func(j *JevJudge) { j.Model = model }
-}
-
-func WithEndpoint(endpoint string) Option {
-	return func(j *JevJudge) { j.Endpoint = endpoint }
-}
-
-func WithHTTPClient(client *http.Client) Option {
-	return func(j *JevJudge) { j.HTTPClient = client }
-}
-
+// NewJevJudge returns a judge on DefaultModel and the public endpoint.
 func NewJevJudge(apiKey string, opts ...Option) *JevJudge {
 	j := &JevJudge{
 		Model:  DefaultModel,
@@ -26,4 +15,19 @@ func NewJevJudge(apiKey string, opts ...Option) *JevJudge {
 		opt(j)
 	}
 	return j
+}
+
+// WithModel pins a model id other than DefaultModel.
+func WithModel(model string) Option {
+	return func(j *JevJudge) { j.Model = model }
+}
+
+// WithEndpoint points the judge somewhere other than the public API.
+func WithEndpoint(endpoint string) Option {
+	return func(j *JevJudge) { j.Endpoint = endpoint }
+}
+
+// WithHTTPClient replaces the default client and its 60s timeout.
+func WithHTTPClient(client *http.Client) Option {
+	return func(j *JevJudge) { j.HTTPClient = client }
 }

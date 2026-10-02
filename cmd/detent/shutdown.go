@@ -29,9 +29,8 @@ const (
 	containerGrace = 15 * time.Second
 )
 
-// shutdown closes what a session opened. Its fields are filled in as
-// run() opens each thing, so an early return closes what was reached
-// and nothing it never got to.
+// shutdown closes what a session opened. run() fills its fields as it
+// opens each thing, so an early return closes only what was reached.
 type shutdown struct {
 	session uuid.UUID
 	// shell stops the human's own command. Not in unwatch: that list
@@ -39,12 +38,12 @@ type shutdown struct {
 	shell  func()
 	stop   context.CancelFunc
 	engine <-chan struct{}
-	// grace bounds the wait on engine; zero means engineGrace.
+	// grace bounds the wait on engine, zero meaning engineGrace.
 	grace   time.Duration
 	bus     *event.Bus
 	unwatch []func()
 	events  *store.Store
-	// connect is the background dial, waited for before servers close
+	// connect is the background dial, waited for before servers close.
 	connect   <-chan struct{}
 	servers   *mcppkg.Invokers
 	container *sandbox.Container
@@ -131,12 +130,11 @@ func (s shutdown) report(w io.Writer, errs []error) {
 		fmt.Fprintln(w, "detent: session was not recorded, so there is nothing to resume")
 		return
 	}
-	fmt.Fprintf(w, "detent: session saved — detent -resume %s\n", s.session)
+	fmt.Fprintf(w, "detent: session saved, resume with: detent -resume %s\n", s.session)
 }
 
-// bounded puts a deadline on a close that has none. Invokers.Close
-// walks its servers serially and the SDK allows each ten seconds to
-// die, so three sulking servers would hold the terminal for thirty.
+// bounded puts a deadline on a close that has none. Invokers.Close is
+// serial and the SDK gives each server ten seconds to die.
 func bounded(d time.Duration, what string, fn func() error) error {
 	done := make(chan error, 1)
 	go func() { done <- fn() }()

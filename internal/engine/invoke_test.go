@@ -14,55 +14,6 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// fakeInvoker answers a Call the way a connected server would.
-type fakeInvoker struct {
-	mu    sync.Mutex
-	saw   []tool.Call
-	out   capture.Result
-	panic bool
-}
-
-func (f *fakeInvoker) Invoke(_ context.Context, c tool.Call) capture.Result {
-	f.mu.Lock()
-	f.saw = append(f.saw, c)
-	f.mu.Unlock()
-	if f.panic {
-		panic("invoker exploded")
-	}
-	return f.out
-}
-
-func (f *fakeInvoker) calls() []tool.Call {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]tool.Call(nil), f.saw...)
-}
-
-// remoteTool is one an Invoker answers, not a Runner.
-type remoteTool struct{ name string }
-
-func (r remoteTool) Name() string { return r.name }
-func (r remoteTool) Describe() tool.Spec {
-	return tool.Spec{Description: "a remote thing", Executor: "srv",
-		Raw: map[string]any{"type": "object"}}
-}
-func (r remoteTool) Lower(a tool.Args) (string, error) { return event.Command(r.name, a), nil }
-
-func remoteRig(t *testing.T, in Invoker, replies []model.Reply, opts ...Option) *rig {
-	t.Helper()
-	reg := tool.Standard()
-	reg.Register(remoteTool{name: "srv__do"})
-	if in != nil {
-		opts = append(opts, WithInvoker(in))
-	}
-	return rigWithTools(t, event.New(), &fakeModel{replies: replies},
-		&fakeRunner{out: "shell ran\n"}, reg, opts...)
-}
-
-func remoteCall(id string) event.ToolCall {
-	return event.ToolCall{ID: id, Name: "srv__do", Args: map[string]any{"x": "1"}}
-}
-
 // A Call with an executor goes to the Invoker, and the Runner never
 // sees it: there is no command for a shell to run.
 func TestExecute_ARemoteCallGoesToTheInvoker(t *testing.T) {
@@ -125,16 +76,6 @@ func TestExecute_APanickingInvokerIsAFailedCall(t *testing.T) {
 	assert.Contains(t, r.eng.Transcript()[2].Content, "panicked")
 }
 
-// approve answers the confirm the mcp floor forces. No assessor can
-// do this instead: Widen never narrows, which is the whole point.
-func (r *rig) approve(t *testing.T) {
-	t.Helper()
-	go func() {
-		asked := r.await(event.ApprovalAskedKind).(event.ApprovalAsked)
-		r.bus.Publish(event.ResolveApproval{Call: asked.Call, Approved: true})
-	}()
-}
-
 // The gate itself: an MCP Call waits for a human, and one nobody
 // answers never runs. This is why the tests above have to approve.
 func TestExecute_ARemoteCallWaitsForAHuman(t *testing.T) {
@@ -170,4 +111,63 @@ func TestExecute_DecliningARemoteCallLeavesItsSiblings(t *testing.T) {
 	assert.Equal(t, event.EndDone, end.Reason)
 	assert.Empty(t, in.calls())
 	assert.Equal(t, []string{"echo still here"}, r.runner.commands())
+}
+
+// fakeInvoker answers a Call the way a connected server would.
+type fakeInvoker struct {
+	mu    sync.Mutex
+	saw   []tool.Call
+	out   capture.Result
+	panic bool
+}
+
+func (f *fakeInvoker) Invoke(_ context.Context, c tool.Call) capture.Result {
+	f.mu.Lock()
+	f.saw = append(f.saw, c)
+	f.mu.Unlock()
+	if f.panic {
+		panic("invoker exploded")
+	}
+	return f.out
+}
+
+func (f *fakeInvoker) calls() []tool.Call {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]tool.Call(nil), f.saw...)
+}
+
+// remoteTool is one an Invoker answers, not a Runner.
+type remoteTool struct{ name string }
+
+func (r remoteTool) Name() string { return r.name }
+func (r remoteTool) Describe() tool.Spec {
+	return tool.Spec{Description: "a remote thing", Executor: "srv",
+		Raw: map[string]any{"type": "object"}}
+}
+func (r remoteTool) Lower(a tool.Args) (string, error) { return event.Command(r.name, a), nil }
+
+func remoteRig(t *testing.T, in Invoker, replies []model.Reply, opts ...Option) *rig {
+	t.Helper()
+	reg := tool.Standard()
+	reg.Register(remoteTool{name: "srv__do"})
+	if in != nil {
+		opts = append(opts, WithInvoker(in))
+	}
+	return rigWithTools(t, event.New(), &fakeModel{replies: replies},
+		&fakeRunner{out: "shell ran\n"}, reg, opts...)
+}
+
+func remoteCall(id string) event.ToolCall {
+	return event.ToolCall{ID: id, Name: "srv__do", Args: map[string]any{"x": "1"}}
+}
+
+// approve answers the confirm the mcp floor forces. No assessor can
+// do this instead: Widen never narrows, which is the whole point.
+func (r *rig) approve(t *testing.T) {
+	t.Helper()
+	go func() {
+		asked := r.await(event.ApprovalAskedKind).(event.ApprovalAsked)
+		r.bus.Publish(event.ResolveApproval{Call: asked.Call, Approved: true})
+	}()
 }

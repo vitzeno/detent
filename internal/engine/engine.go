@@ -28,8 +28,8 @@ const (
 // was running to publish its last facts before giving up on them.
 const DefaultStopGrace = 5 * time.Second
 
-// Engine is one session. Run it once, in its own goroutine; everything
-// else reaches it through the bus.
+// Engine is one session. Run it once, in its own goroutine, and
+// everything else reaches it through the bus.
 type Engine struct {
 	bus     *event.Bus
 	model   Completer
@@ -60,9 +60,8 @@ type Engine struct {
 	recorded  bool
 	resumed   int
 
-	// intents is subscribed in New, not Run: a caller that publishes
-	// the moment New returns must not lose it to a goroutine that has
-	// not started yet.
+	// intents is subscribed in New, not Run, so a caller publishing the
+	// moment New returns cannot lose it.
 	intents <-chan event.Record
 	unsub   func()
 
@@ -71,10 +70,73 @@ type Engine struct {
 	trMu sync.Mutex
 
 	mu sync.Mutex
-	// cur is the Turn in flight; past is what can still be undone.
+	// cur is the Turn in flight, past is what can still be undone.
 	cur  *turnState
 	past map[uuid.UUID]*turnState
 }
+
+// New builds an Engine and subscribes it to intents. Run starts it.
+func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelector, opts ...Option) *Engine {
+	e := &Engine{
+		bus: bus, model: m, tools: tools, runners: runners,
+		session:       uuid.Must(uuid.NewV7()),
+		maxSteps:      DefaultMaxSteps,
+		maxCalls:      DefaultCallsPerStep,
+		parallel:      DefaultParallelCalls,
+		contextTokens: DefaultContextTokens,
+		stopGrace:     DefaultStopGrace,
+		repeat:        newRepeatHook(DefaultRepeatLimit),
+		past:          map[uuid.UUID]*turnState{},
+	}
+	for _, o := range opts {
+		o(e)
+	}
+	// Cheapest first, the network hook last.
+	e.assessors = append([]Assessor{toolFloor{}, mcpFloor{}, regexHook{}, e.repeat}, e.assessors...)
+	e.intents, e.unsub = bus.Subscribe(event.Intents())
+	return e
+}
+
+// Run is the actor loop. It reads intents and nothing else, and every
+// fact it produces goes out on the bus.
+func (e *Engine) Run(ctx context.Context) {
+	defer e.unsub()
+	_, mode := e.runners.Select(event.UnknownRisk())
+	e.bus.Publish(event.SessionStarted{
+		Session: e.session, Model: e.modelName, Judge: e.judgeName,
+		Sandbox: mode == "sandbox",
+		Network: e.network, MaxSteps: e.maxSteps,
+		Recorded: e.recorded, Resumed: e.resumed,
+		ContextTokens: e.budget(),
+	})
+	done := make(chan struct{}, 1)
+
+	for {
+		select {
+		case <-ctx.Done():
+			e.stopCurrent(done)
+			return
+		case <-done:
+			e.finishTurn()
+		case rec, ok := <-e.intents:
+			if !ok {
+				return
+			}
+			e.dispatch(ctx, rec.Event, done)
+		}
+	}
+}
+
+// Transcript copies the message log, since the Turn goroutine owns the
+// original while one is running.
+func (e *Engine) Transcript() []event.Message {
+	e.trMu.Lock()
+	defer e.trMu.Unlock()
+	return append([]event.Message(nil), e.tr.messages()...)
+}
+
+// Session is this engine's id.
+func (e *Engine) Session() uuid.UUID { return e.session }
 
 // Completer is one model round trip: a Step.
 type Completer interface {
@@ -112,57 +174,6 @@ type Worktreer interface {
 	Restore(ctx context.Context, id string) error
 }
 
-func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelector, opts ...Option) *Engine {
-	e := &Engine{
-		bus: bus, model: m, tools: tools, runners: runners,
-		session:       uuid.Must(uuid.NewV7()),
-		maxSteps:      DefaultMaxSteps,
-		maxCalls:      DefaultCallsPerStep,
-		parallel:      DefaultParallelCalls,
-		contextTokens: DefaultContextTokens,
-		stopGrace:     DefaultStopGrace,
-		repeat:        newRepeatHook(DefaultRepeatLimit),
-		past:          map[uuid.UUID]*turnState{},
-	}
-	for _, o := range opts {
-		o(e)
-	}
-	// Cheapest first, the network hook last.
-	e.assessors = append([]Assessor{toolFloor{}, mcpFloor{}, regexHook{}, e.repeat}, e.assessors...)
-	e.intents, e.unsub = bus.Subscribe(event.Intents())
-	return e
-}
-
-// Run is the actor loop. It reads intents and nothing else; every fact
-// it produces goes out on the bus.
-func (e *Engine) Run(ctx context.Context) {
-	defer e.unsub()
-	_, mode := e.runners.Select(event.UnknownRisk())
-	e.bus.Publish(event.SessionStarted{
-		Session: e.session, Model: e.modelName, Judge: e.judgeName,
-		Sandbox: mode == "sandbox",
-		Network: e.network, MaxSteps: e.maxSteps,
-		Recorded: e.recorded, Resumed: e.resumed,
-		ContextTokens: e.budget(),
-	})
-	done := make(chan struct{}, 1)
-
-	for {
-		select {
-		case <-ctx.Done():
-			e.stopCurrent(done)
-			return
-		case <-done:
-			e.finishTurn()
-		case rec, ok := <-e.intents:
-			if !ok {
-				return
-			}
-			e.dispatch(ctx, rec.Event, done)
-		}
-	}
-}
-
 // dispatch routes one intent. A running Turn owns the transcript, so
 // only an idle engine touches it here.
 func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{}) {
@@ -176,8 +187,7 @@ func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{
 		}
 		e.startTurn(ctx, v.Text, done)
 	case event.NoteContext:
-		// Idle, this used to reach the default branch and be dropped,
-		// so a note between Turns never got to the one it was for.
+		// Idle, the note goes in now so the next Turn sees it.
 		if t != nil {
 			t.post(v)
 			return
@@ -245,14 +255,3 @@ func (e *Engine) abortCurrent() {
 func (e *Engine) notice(level, text string) {
 	e.bus.Publish(event.Notice{Level: level, Text: text})
 }
-
-// Transcript copies the message log; the Turn goroutine owns the
-// original while one is running.
-func (e *Engine) Transcript() []event.Message {
-	e.trMu.Lock()
-	defer e.trMu.Unlock()
-	return append([]event.Message(nil), e.tr.messages()...)
-}
-
-// Session is this engine's id.
-func (e *Engine) Session() uuid.UUID { return e.session }

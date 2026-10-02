@@ -9,13 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func version(t *testing.T, db *sql.DB) int {
-	t.Helper()
-	var v int
-	require.NoError(t, db.QueryRow(`PRAGMA user_version`).Scan(&v))
-	return v
-}
-
 func TestMigrate_BringsAFreshDatabaseUpToDate(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
@@ -73,4 +66,11 @@ func TestMigrate_DoesNotRecordAFailedMigration(t *testing.T) {
 	assert.Zero(t, version(t, db), "the version bump rolled back with it")
 	_, err = db.Exec(`SELECT 1 FROM fine LIMIT 1`)
 	assert.Error(t, err, "and so did the half that worked")
+}
+
+func version(t *testing.T, db *sql.DB) int {
+	t.Helper()
+	var v int
+	require.NoError(t, db.QueryRow(`PRAGMA user_version`).Scan(&v))
+	return v
 }

@@ -86,28 +86,27 @@ func run() error {
 	}
 	resolved := config.Resolve(fileCfg, flagCfg, *steps)
 
-	// Validated even for -goal, so a typo fails fast either way.
+	// Validated even for -prompt, so a typo fails fast either way.
 	th, ok := theme.Themes[resolved.Theme]
 	if !ok {
-		return fmt.Errorf("unknown theme %q — choose one of: %s", resolved.Theme, strings.Join(theme.Names(), ", "))
+		return fmt.Errorf("unknown theme %q, choose one of: %s", resolved.Theme, strings.Join(theme.Names(), ", "))
 	}
 	theme.Apply(th)
 	ui.RefreshStyles()
 
 	if resolved.Views == config.ViewsGenerate && resolved.JevAPIKey == "" {
-		return fmt.Errorf("views: generate composes a view by asking the judge, so it needs jev_api_key (or TYPESAFE_API_KEY) — set one, or use views: saved")
+		return fmt.Errorf("views: generate composes a view by asking the judge, so it needs jev_api_key (or TYPESAFE_API_KEY). Set one, or use views: saved")
 	}
 	if resolved.SandboxMode != "auto" && resolved.SandboxMode != "host" {
-		return fmt.Errorf("unknown -sandbox %q — choose one of: auto, host", resolved.SandboxMode)
+		return fmt.Errorf("unknown -sandbox %q, choose one of: auto, host", resolved.SandboxMode)
 	}
 	if resolved.SandboxNetwork != sandbox.NetworkHost && resolved.SandboxNetwork != sandbox.NetworkNone {
-		return fmt.Errorf("unknown sandbox_network %q — choose one of: %s, %s",
+		return fmt.Errorf("unknown sandbox_network %q, choose one of: %s, %s",
 			resolved.SandboxNetwork, sandbox.NetworkHost, sandbox.NetworkNone)
 	}
 
-	// Waited for below, so it still fails fast with a clear message.
-	// Everything between here and the wait needs no endpoint, and this
-	// was ~270ms of the time before anything drew.
+	// Waited for below, so startup still fails fast. Nothing before the
+	// wait needs the endpoint, so the ping overlaps it.
 	pinged := make(chan error, 1)
 	go func() {
 		pinged <- model.Ping(context.Background(), resolved.BaseURL, resolved.APIKey)
@@ -154,7 +153,7 @@ func run() error {
 			socket = defaultSandboxSocket()
 		}
 		if socket == "" {
-			return fmt.Errorf("no default containerd socket for this OS — set -sandbox-socket (or sandbox_socket in config), or run with -sandbox host")
+			return fmt.Errorf("no default containerd socket for this OS: set -sandbox-socket (or sandbox_socket in config), or run with -sandbox host")
 		}
 
 		pctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -177,9 +176,8 @@ func run() error {
 		sd.container = container
 		runners.Sandbox = container
 
-		// The container is Linux whatever this machine is, starts in
-		// the mount point rather than here, and the whole request is
-		// checkpointed together.
+		// The container is Linux whatever this machine is, starts in the
+		// mount point, and checkpoints the whole request together.
 		env = model.Environment{
 			OS: "linux", Arch: runtime.GOARCH, Dir: resolved.SandboxWorkspace,
 			Sandboxed: true,
@@ -189,7 +187,7 @@ func run() error {
 	}
 
 	if err := <-pinged; err != nil {
-		return fmt.Errorf("%v\n\nis the model endpoint up? Wanted %s with model %s — check the key, or point -url/-model (or a config file) somewhere else. For a local LM Studio, load the model and Start Server",
+		return fmt.Errorf("%v\n\nis the model endpoint up? Wanted %s with model %s. Check the key, or point -url/-model (or a config file) somewhere else. For a local LM Studio, load the model and Start Server",
 			err, resolved.BaseURL, resolved.Model)
 	}
 
@@ -266,8 +264,8 @@ func run() error {
 	announceResume(bus, sessionID, restore, env)
 
 	if *prompt != "" {
-		// Bubble Tea catches these for the TUI; with no TUI, nothing
-		// does so a killed -prompt leaves its container behind.
+		// Bubble Tea traps these for the TUI. Without it, a killed
+		// -prompt would leave its container behind.
 		ctx, untrap := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 		defer untrap()
 
@@ -301,22 +299,21 @@ func run() error {
 	sd.connect = connectServers(ctx, bus, tools, servers, configured, signins)
 	sd.engine = runEngine(ctx, eng)
 
-	// Altscreen is declared by ui.Model.View, not set here — under
-	// Bubble Tea v2 terminal state is a property of what's rendered.
+	// Altscreen is declared by ui.Model.View: under Bubble Tea v2,
+	// terminal state is a property of what is rendered.
 	p := tea.NewProgram(model)
 	_, err = p.Run()
 	return err
 }
 
-// defaultSandboxSocket returns the OS-conventional containerd socket
-// path, or "" when there's no safe default (Windows, or an
-// unrecognized OS), in which case run() requires an explicit override.
+// defaultSandboxSocket returns the OS-conventional containerd socket,
+// or "" when there is no safe default and run() needs an override.
 func defaultSandboxSocket() string {
 	switch runtime.GOOS {
 	case "linux":
 		return "/run/containerd/containerd.sock"
 	case "darwin":
-		// colima --runtime containerd, default profile name.
+		// colima's default profile, whichever runtime it was started with.
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return ""
@@ -327,7 +324,7 @@ func defaultSandboxSocket() string {
 	}
 }
 
-// loadDotenv fills gaps from .env; real environment variables always win.
+// loadDotenv fills gaps from .env. Real environment variables always win.
 func loadDotenv(path string) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -353,9 +350,8 @@ func loadDotenv(path string) {
 	}
 }
 
-// views wires the composer. The judge is what writes a spec, so
-// views: generate without a jev key has nothing to compose with and
-// run() rejects that rather than quietly drawing from saved only.
+// views wires the composer. Only views: generate hands it the judge,
+// and run() refuses that mode without a jev key.
 func views(mode string, judge *classify.JevJudge) *viewgen.Generator {
 	g := &viewgen.Generator{
 		Registry: ui.Registry(),
@@ -367,9 +363,8 @@ func views(mode string, judge *classify.JevJudge) *viewgen.Generator {
 	return g
 }
 
-// openSession picks the session to run: a stored one to continue, or
-// a new one. The records come back for the engine and the UI to
-// rebuild themselves from.
+// openSession picks a stored session to continue, or a new one, and
+// returns the records the engine and UI rebuild themselves from.
 func openSession(resume string) (uuid.UUID, []event.Record, error) {
 	if resume == "" {
 		return uuid.Must(uuid.NewV7()), nil, nil
@@ -394,9 +389,8 @@ func openSession(resume string) (uuid.UUID, []event.Record, error) {
 	return id, records, nil
 }
 
-// resolveSession reads an id, then "last", then a name, because
-// nobody remembers a uuid. That order is why store.Rename refuses a
-// name shaped like either of the first two: it would never be read.
+// resolveSession reads an id, then "last", then a name. store.Rename
+// refuses a name shaped like the first two, since it would never be read.
 func resolveSession(events *store.Store, want string) (uuid.UUID, error) {
 	if id, err := uuid.Parse(want); err == nil {
 		return id, nil
@@ -416,7 +410,7 @@ func resolveSession(events *store.Store, want string) (uuid.UUID, error) {
 			return s.ID, nil
 		}
 	}
-	return uuid.Nil, fmt.Errorf("no session named %q — try -sessions, or -resume %s", want, store.ReservedName)
+	return uuid.Nil, fmt.Errorf("no session named %q, try -sessions or -resume %s", want, store.ReservedName)
 }
 
 // judgeName is what the session says classified it, empty when no key
@@ -469,9 +463,8 @@ func loadMCPConfig(enabled bool, files []string) (map[string]mcppkg.Config, erro
 	return mcppkg.Load(files...)
 }
 
-// connectServers wires MCP without holding up the first frame, and
-// publishes each server as it settles so an open /mcp fills in. The
-// channel closes when it is done, which is what shutdown waits on.
+// connectServers dials MCP without holding up the first frame, publishing
+// each server as it settles. The channel closes when done, for shutdown.
 func connectServers(ctx context.Context, bus *event.Bus, tools *tool.Registry,
 	servers *mcppkg.Invokers, configured map[string]mcppkg.Config, signins *mcppkg.SignIns) <-chan struct{} {
 	done := make(chan struct{})

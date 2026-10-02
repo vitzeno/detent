@@ -14,12 +14,7 @@ import (
 )
 
 // Compose builds a spec by asking the judge closed questions and
-// assembling the answers, rather than asking a model to write one.
-//
-// It replaced generation on two counts. Generation ran 31s median
-// against 300ms here, and a generated spec could name a widget, a role
-// or a field that did not exist, which all happened. Neither is
-// possible from a list the program built.
+// assembling the answers, so it cannot name anything that does not exist.
 func (g *Generator) Compose(ctx context.Context, req Request) (Result, error) {
 	log := logging.For(logging.Viewgen)
 	key := Key(req.Command, req.Kind)
@@ -79,9 +74,8 @@ type composer struct {
 	used  event.Usage
 }
 
-// run is the pipeline, and the order is the point. The header decides
-// how the parse reads, the parse decides which fields exist, and only
-// then is there anything to choose a widget for.
+// run is the pipeline, in order: the header decides how the parse reads,
+// the parse decides which fields exist, and only then are widgets chosen.
 func (c *composer) run(ctx context.Context) (*viewspec.Spec, error) {
 	parse, err := c.parse(ctx)
 	if err != nil {
@@ -109,9 +103,8 @@ func (c *composer) run(ctx context.Context) (*viewspec.Spec, error) {
 	return spec, nil
 }
 
-// parse settles where the header is, then which kind reads it. That
-// order, because columns and fixed differ only in whether the header's
-// own names contain spaces.
+// parse settles where the header is, then which kind reads it, since
+// columns and fixed differ only in whether header names contain spaces.
 func (c *composer) parse(ctx context.Context) (viewspec.Parse, error) {
 	skip := c.header(ctx)
 	kind, err := c.parseKind(ctx, headerLine(c.req.Output, skip))
@@ -127,10 +120,8 @@ func (c *composer) parse(ctx context.Context) (viewspec.Parse, error) {
 	case "pairs":
 		p.Sep = sepOf(c.req.Output, pairSeps)
 	case "lines":
-		// The one pattern composition writes, and it is fixed: one
-		// field holding the whole line. A pattern naming three parts
-		// is the one thing a choice cannot express, so output needing
-		// that draws plainly rather than wrongly.
+		// The one fixed pattern: a choice cannot express one naming three
+		// parts, so such output draws plainly rather than wrongly.
 		p.Pattern = wholeLine
 	}
 	if !p.Header {
@@ -139,9 +130,8 @@ func (c *composer) parse(ctx context.Context) (viewspec.Parse, error) {
 	return honour(p, skip, c.req.Output), nil
 }
 
-// header asks which line names the columns. A count is arithmetic; the
-// lines themselves are a choice. -1 means there is no header at all,
-// which is ls -la and every other bare listing.
+// header asks which line names the columns, offering the lines rather
+// than a count. -1 means no header at all, as in ls -la.
 func (c *composer) header(ctx context.Context) int {
 	lines := strings.Split(strings.TrimRight(c.req.Output, "\n"), "\n")
 	if len(lines) < 2 {
@@ -176,9 +166,8 @@ func (c *composer) header(ctx context.Context) int {
 	return n
 }
 
-// parseKind chooses how to read the bytes. header is what the previous
-// question found, so the choice is made looking at the real header
-// rather than at whatever happens to be on the first line.
+// parseKind chooses how to read the bytes, looking at the header the
+// previous question found rather than at the first line.
 func (c *composer) parseKind(ctx context.Context, header string) (string, error) {
 	state := c.state()
 	if header != "" {
@@ -199,9 +188,8 @@ func (c *composer) parseKind(ctx context.Context, header string) (string, error)
 	return answers["parse_kind"].Choice, nil
 }
 
-// blocks chooses what draws the rows and what field each one reads.
-// The widgets are whatever the render kind allows and the fields are
-// what the parse produced, so neither can name something absent.
+// blocks chooses what draws the rows and what field each one reads, from
+// lists the kind and the parse built, so neither can name anything absent.
 func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 	fields []string, rows []viewspec.Row) ([]viewspec.Block, error) {
 	guide := describe(c.g.registry())
@@ -271,8 +259,8 @@ func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 	return append(out, body), nil
 }
 
-// asItCame chooses how to draw output with nothing to extract. Declining
-// instead, markdown was never composed and a README drew as code.
+// asItCame chooses how to draw output with nothing to extract, so a
+// README can draw as markdown rather than code.
 func (c *composer) asItCame(ctx context.Context) (*viewspec.Spec, error) {
 	guide := describe(c.g.registry())
 	var raw []string
@@ -326,24 +314,6 @@ func (c *composer) distinctSlots(ctx context.Context, state map[string]any,
 	return nil
 }
 
-// repeats reports whether field's values recur enough to count: a
-// badge per distinct value of a field unique on every row is the rows.
-func repeats(p viewspec.Parse, output, field string) bool {
-	b, err := bindWith(p, output)
-	if err != nil {
-		return false
-	}
-	rows := b.Sample(b.Rows())
-	seen := map[string]bool{}
-	for _, r := range rows {
-		seen[r[field]] = true
-	}
-	return len(seen) <= maxBadges && len(seen)*2 <= len(rows)
-}
-
-// maxBadges is the most distinct values a count summary is drawn for.
-const maxBadges = 12
-
 // ask and askState put one batch of questions and record the cost.
 func (c *composer) ask(ctx context.Context, qs classify.Questions) (classify.Answers, bool) {
 	return c.askState(ctx, c.state(), qs)
@@ -371,3 +341,21 @@ func (c *composer) state() map[string]any {
 		"output":  head(c.req.Output, MaxJudgeBytes),
 	}
 }
+
+// repeats reports whether field's values recur enough to count: a
+// badge per distinct value of a field unique on every row is the rows.
+func repeats(p viewspec.Parse, output, field string) bool {
+	b, err := bindWith(p, output)
+	if err != nil {
+		return false
+	}
+	rows := b.Sample(b.Rows())
+	seen := map[string]bool{}
+	for _, r := range rows {
+		seen[r[field]] = true
+	}
+	return len(seen) <= maxBadges && len(seen)*2 <= len(rows)
+}
+
+// maxBadges is the most distinct values a count summary is drawn for.
+const maxBadges = 12

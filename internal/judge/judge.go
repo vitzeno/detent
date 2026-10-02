@@ -5,8 +5,9 @@ package judge
 
 import (
 	"context"
-	"github.com/google/uuid"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/classify"
@@ -28,53 +29,12 @@ const GoalMet = 0.9
 // ResultJudge judges one finished Call.
 type ResultJudge struct {
 	Asker classify.Asker
-	// Prompt is the request being worked, which goal_achieved needs.
-	// Kept per Turn by Watch.
+	// Prompt is the request goal_achieved is judged against, kept per Turn by Watch.
 	Prompt string
 }
 
-// Watch judges every finished Call and publishes what it decided. A
-// high goal-achieved becomes a RequestStop, honoured at the next Step
-// boundary — acting on a verdict without intercepting.
-func Watch(bus *event.Bus, asker classify.Asker) func() {
-	facts, stop := bus.Subscribe(event.Only(
-		event.TurnStartedKind, event.CallProposedKind, event.CallEndedKind))
-	go func() {
-		var prompt string
-		var turn uuid.UUID
-		cmds := map[uuid.UUID]string{}
-		for rec := range facts {
-			switch v := rec.Event.(type) {
-			case event.TurnStarted:
-				prompt, turn = v.Prompt, v.Turn
-				clear(cmds)
-			case event.CallProposed:
-				cmds[v.Call] = event.Command(v.Tool, v.Args)
-			case event.CallEnded:
-				j := ResultJudge{Asker: asker, Prompt: prompt}
-				go j.publish(bus, turn, v, cmds[v.Call])
-			}
-		}
-	}()
-	return stop
-}
-
-// publish judges one Call. Each runs on its own goroutine: several
-// Calls finish together, and one slow judgement must not hold up the
-// others or the events behind them.
-func (j ResultJudge) publish(bus *event.Bus, turn uuid.UUID, done event.CallEnded, command string) {
-	got := j.Judge(context.Background(), command, done.Result)
-	got.Call = done.Call
-	bus.Publish(got)
-	if got.FromJudge && got.GoalAchieved >= GoalMet {
-		bus.Publish(event.RequestStop{Turn: turn,
-			Reason: "the judge reads the request as answered"})
-	}
-}
-
-// Judge asks, and falls back to a heuristic when nothing answers. The
-// fallback is why FromJudge exists: the UI must never present a guess
-// as a verdict.
+// Judge asks, and falls back to a heuristic when nothing answers. FromJudge
+// tells the two apart, so the UI never presents a guess as a verdict.
 func (j ResultJudge) Judge(ctx context.Context, command string, res event.Result) event.CallJudged {
 	out := heuristic(res)
 	answers, _, ok := classify.AskOrFallback(ctx, j.Asker,
@@ -100,9 +60,45 @@ func (j ResultJudge) Judge(ctx context.Context, command string, res event.Result
 	return out
 }
 
-// heuristic is what a row reads as with no judge wired. Deliberately
-// dull: it never claims a shape, only that something failed or was
-// silent.
+// Watch judges every finished Call and publishes what it decided. A high
+// goal-achieved becomes a RequestStop, honoured at the next Step boundary.
+func Watch(bus *event.Bus, asker classify.Asker) func() {
+	facts, stop := bus.Subscribe(event.Only(
+		event.TurnStartedKind, event.CallProposedKind, event.CallEndedKind))
+	go func() {
+		var prompt string
+		var turn uuid.UUID
+		cmds := map[uuid.UUID]string{}
+		for rec := range facts {
+			switch v := rec.Event.(type) {
+			case event.TurnStarted:
+				prompt, turn = v.Prompt, v.Turn
+				clear(cmds)
+			case event.CallProposed:
+				cmds[v.Call] = event.Command(v.Tool, v.Args)
+			case event.CallEnded:
+				j := ResultJudge{Asker: asker, Prompt: prompt}
+				go j.publish(bus, turn, v, cmds[v.Call])
+			}
+		}
+	}()
+	return stop
+}
+
+// publish judges one Call on its own goroutine, so one slow judgement
+// cannot hold up the others or the events behind them.
+func (j ResultJudge) publish(bus *event.Bus, turn uuid.UUID, done event.CallEnded, command string) {
+	got := j.Judge(context.Background(), command, done.Result)
+	got.Call = done.Call
+	bus.Publish(got)
+	if got.FromJudge && got.GoalAchieved >= GoalMet {
+		bus.Publish(event.RequestStop{Turn: turn,
+			Reason: "the judge reads the request as answered"})
+	}
+}
+
+// heuristic is what a row reads as with no judge wired. It never claims
+// a shape, only that something failed or was silent.
 func heuristic(res event.Result) event.CallJudged {
 	out := event.CallJudged{RenderKind: viewgen.KindText, GoalAchieved: -1}
 	switch {

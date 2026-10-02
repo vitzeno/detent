@@ -2,42 +2,15 @@ package engine
 
 import (
 	"context"
-	"github.com/vitzeno/detent/event"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/model"
 )
-
-// wellFormed is the invariant the whole rewrite rests on: every
-// tool_call id has exactly one answer, and no tool message answers a
-// call that was never made.
-func wellFormed(t *testing.T, msgs []event.Message) {
-	t.Helper()
-	for i := 0; i < len(msgs); i++ {
-		m := msgs[i]
-		if m.Role == event.RoleTool {
-			t.Fatalf("message %d is a tool result with no assistant before it", i)
-		}
-		if m.Role != event.RoleAssistant || len(m.Calls) == 0 {
-			continue
-		}
-		want := event.CallIDs(m.Calls)
-		var got []string
-		for j := i + 1; j < len(msgs) && msgs[j].Role == event.RoleTool; j++ {
-			got = append(got, msgs[j].CallID)
-			i = j
-		}
-		assert.Equal(t, want, got, "step at %d: every call needs one answer, in order", i)
-	}
-}
-
-func call(id, name string) event.ToolCall {
-	return event.ToolCall{ID: id, Name: name, Args: map[string]any{}}
-}
 
 // The gate: whatever goes wrong in a Step, the transcript that comes
 // out must still be one the next Step can be built on.
@@ -150,12 +123,6 @@ func TestCompact_NeverDropsTheOpenTurn(t *testing.T) {
 	wellFormed(t, tr.messages()[1:])
 }
 
-type stubSummarizer struct{ out string }
-
-func (s stubSummarizer) Summarize(context.Context, []event.Message) (string, error) {
-	return s.out, nil
-}
-
 func TestCompact_UsesASummarizerWhenWired(t *testing.T) {
 	var tr transcript
 	big := strings.Repeat("x", 3000)
@@ -210,7 +177,7 @@ func TestUnitEnd_GroupsAnAssistantWithItsAnswers(t *testing.T) {
 }
 
 // A mark names a Turn a human may still undo, and compaction rewrites
-// the front underneath it. Slice positions moved; appends do not.
+// the front underneath it. Slice positions move, appends do not.
 func TestMark_SurvivesCompaction(t *testing.T) {
 	var tr transcript
 	big := strings.Repeat("x", 3000)
@@ -262,8 +229,7 @@ func TestTruncate_IgnoresAMarkCompactionAteAsWellAsOneTooLarge(t *testing.T) {
 }
 
 // A mark is only valid against the compaction it was taken under, so a
-// rebuild that never compacts is the one that resolves old marks.
-// Persistence depends on this.
+// rebuild that never compacts is what resolves old marks on resume.
 func TestReplay_UncompactedRebuildResolvesOldMarks(t *testing.T) {
 	big := strings.Repeat("x", 2000)
 
@@ -295,27 +261,10 @@ func TestReplay_UncompactedRebuildResolvesOldMarks(t *testing.T) {
 
 	assert.Equal(t, lastAppend(orig), lastAppend(replayed),
 		"an uncompacted rebuild must end at the same append")
-	t.Logf("orig: dropped=%d len=%d | replayed: dropped=%d len=%d",
-		orig.dropped, len(orig.messages()), replayed.dropped, len(replayed.messages()))
 }
 
-func lastAppend(tr *transcript) string {
-	m := tr.messages()
-	if len(m) == 0 {
-		return ""
-	}
-	return string(m[len(m)-1].Role) + ":" + m[len(m)-1].CallID
-}
-
-type countingSummarizer struct{ calls int }
-
-func (c *countingSummarizer) Summarize(context.Context, []event.Message) (string, error) {
-	c.calls++
-	return "summary", nil
-}
-
-// The thrash a real session showed: an open Turn over budget leaves a
-// sliver droppable, so every Step re-summarised the last note.
+// An open Turn over budget leaves only a sliver droppable, which must
+// not cost a summariser round trip every Step.
 func TestCompact_WillNotPayASummarizerForASliver(t *testing.T) {
 	const budgetTokens = 1000
 	budget := budgetTokens * BytesPerToken
@@ -353,9 +302,8 @@ func TestCompact_StillCutsWhenTheCutReachesBudget(t *testing.T) {
 	assert.LessOrEqual(t, tr.bytes(), budget)
 }
 
-// Compaction is a model round trip that stalls the Turn for seconds.
-// Saying so before it starts is the difference between a wait and a
-// hang.
+// Compaction stalls the Turn for seconds. Saying so first is the
+// difference between a wait and a hang.
 func TestCompact_SaysSoBeforeItStalls(t *testing.T) {
 	big := strings.Repeat("x", 4000)
 	replies := []model.Reply{
@@ -389,4 +337,51 @@ func TestCompact_SaysNothingWhenItDoesNotRun(t *testing.T) {
 		assert.NotContains(t, e.(event.Notice).Text, "compact",
 			"announced a compaction that never ran")
 	}
+}
+
+// wellFormed checks the invariant the transcript rests on: every
+// tool_call id has one answer, and no tool message answers nothing.
+func wellFormed(t *testing.T, msgs []event.Message) {
+	t.Helper()
+	for i := 0; i < len(msgs); i++ {
+		m := msgs[i]
+		if m.Role == event.RoleTool {
+			t.Fatalf("message %d is a tool result with no assistant before it", i)
+		}
+		if m.Role != event.RoleAssistant || len(m.Calls) == 0 {
+			continue
+		}
+		want := event.CallIDs(m.Calls)
+		var got []string
+		for j := i + 1; j < len(msgs) && msgs[j].Role == event.RoleTool; j++ {
+			got = append(got, msgs[j].CallID)
+			i = j
+		}
+		assert.Equal(t, want, got, "step at %d: every call needs one answer, in order", i)
+	}
+}
+
+func call(id, name string) event.ToolCall {
+	return event.ToolCall{ID: id, Name: name, Args: map[string]any{}}
+}
+
+type stubSummarizer struct{ out string }
+
+func (s stubSummarizer) Summarize(context.Context, []event.Message) (string, error) {
+	return s.out, nil
+}
+
+func lastAppend(tr *transcript) string {
+	m := tr.messages()
+	if len(m) == 0 {
+		return ""
+	}
+	return string(m[len(m)-1].Role) + ":" + m[len(m)-1].CallID
+}
+
+type countingSummarizer struct{ calls int }
+
+func (c *countingSummarizer) Summarize(context.Context, []event.Message) (string, error) {
+	c.calls++
+	return "summary", nil
 }

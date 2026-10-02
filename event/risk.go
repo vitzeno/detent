@@ -6,7 +6,7 @@ type Risk struct {
 	Dangerous bool
 	// Mutability is one of the Mut* ladder below.
 	Mutability string
-	// ScopeRisk is blast radius, 0 to 1; -1 when nothing answered.
+	// ScopeRisk is blast radius, 0 to 1, or -1 when nothing answered.
 	ScopeRisk float64
 	Note      string
 	// FromJudge is false when only the cheap hooks spoke.
@@ -54,7 +54,7 @@ func rank(m string) int {
 	case MutIrreversible:
 		return 4
 	}
-	return 0 // unknown; anything real outranks it
+	return 0 // unknown, so anything real outranks it
 }
 
 func joinNote(a, b string) string {

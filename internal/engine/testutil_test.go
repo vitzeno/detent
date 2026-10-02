@@ -249,7 +249,7 @@ func readCall(id, path string) event.ToolCall {
 	return event.ToolCall{ID: id, Name: "read_file", Args: map[string]any{"path": path}}
 }
 
-// answered checks the phase gate on a finished engine.
+// answered checks every Call of a finished engine was answered.
 func answered(t *testing.T, e *Engine) {
 	t.Helper()
 	wellFormed(t, e.Transcript())

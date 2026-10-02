@@ -12,10 +12,10 @@ import (
 
 const jevEndpoint = "https://api.typesafe.ai/v1/systemone"
 
-// DefaultModel is the pinned model id; never use an alias.
+// DefaultModel is the pinned model id, never an alias.
 const DefaultModel = "jev-1.13.0"
 
-// JevJudge is the Judge implementation over HTTP.
+// JevJudge asks TypeSafe's Jev over HTTP.
 type JevJudge struct {
 	Model      string
 	APIKey     string
@@ -23,52 +23,7 @@ type JevJudge struct {
 	HTTPClient *http.Client
 }
 
-func (j *JevJudge) endpoint() string {
-	if j.Endpoint != "" {
-		return j.Endpoint
-	}
-	return jevEndpoint
-}
-
-func (j *JevJudge) httpClient() *http.Client {
-	if j.HTTPClient != nil {
-		return j.HTTPClient
-	}
-	return &http.Client{Timeout: 60 * time.Second}
-}
-
-type wireRequest struct {
-	Model     string                  `json:"model"`
-	State     any                     `json:"state"`
-	Questions map[string]wireQuestion `json:"questions"`
-}
-
-type wireQuestion struct {
-	Type         string `json:"type"`
-	Instructions string `json:"instructions"`
-	Criteria     any    `json:"criteria,omitempty"`
-}
-
-type wireResponse struct {
-	Model   string                `json:"model"`
-	Answers map[string]wireAnswer `json:"answers"`
-	Usage   struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
-	} `json:"usage"`
-}
-
-type wireAnswer struct {
-	Type          string             `json:"type"`
-	Choice        string             `json:"choice"`
-	Noul          *float64           `json:"noul"`
-	Score         *float64           `json:"score"`
-	Confidence    *float64           `json:"confidence"`
-	Probabilities map[string]float64 `json:"probabilities"`
-	Legend        map[string]string  `json:"legend"`
-}
-
-// Ask implements Judge.
+// Ask sends every question in one request.
 func (j *JevJudge) Ask(ctx context.Context, state State, qs Questions) (Answers, Usage, error) {
 	if j.Model == "" {
 		return nil, Usage{}, fmt.Errorf("classify: JevJudge.Model is empty")
@@ -128,6 +83,51 @@ func (j *JevJudge) Ask(ctx context.Context, state State, qs Questions) (Answers,
 		Model:        wireResp.Model,
 	}
 	return answers, usage, nil
+}
+
+func (j *JevJudge) endpoint() string {
+	if j.Endpoint != "" {
+		return j.Endpoint
+	}
+	return jevEndpoint
+}
+
+func (j *JevJudge) httpClient() *http.Client {
+	if j.HTTPClient != nil {
+		return j.HTTPClient
+	}
+	return &http.Client{Timeout: 60 * time.Second}
+}
+
+type wireRequest struct {
+	Model     string                  `json:"model"`
+	State     any                     `json:"state"`
+	Questions map[string]wireQuestion `json:"questions"`
+}
+
+type wireQuestion struct {
+	Type         string `json:"type"`
+	Instructions string `json:"instructions"`
+	Criteria     any    `json:"criteria,omitempty"`
+}
+
+type wireResponse struct {
+	Model   string                `json:"model"`
+	Answers map[string]wireAnswer `json:"answers"`
+	Usage   struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	} `json:"usage"`
+}
+
+type wireAnswer struct {
+	Type          string             `json:"type"`
+	Choice        string             `json:"choice"`
+	Noul          *float64           `json:"noul"`
+	Score         *float64           `json:"score"`
+	Confidence    *float64           `json:"confidence"`
+	Probabilities map[string]float64 `json:"probabilities"`
+	Legend        map[string]string  `json:"legend"`
 }
 
 func toWireQuestion(q Question) (wireQuestion, error) {

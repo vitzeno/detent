@@ -4,10 +4,10 @@
 //
 // # What lives where
 //
-// A prefix groups files that share a role; a plain noun names a file
+// A prefix groups files that share a role. A plain noun names a file
 // that is the only one doing its job.
 //
-//	model.go        Model, New, Update — the loop everything hangs off
+//	model.go        Model, New, Update: the loop everything hangs off
 //	model_state.go  the small values Model is composed of
 //	model_turn.go   turnBlock and callRow, what history is a list of
 //
@@ -20,6 +20,7 @@
 //	slash.go        the slash registry
 //	panel.go        the /usage, /status and /help pages
 //	undo.go         the undo question
+//	forget.go       the /delete question
 //	signin.go       a server asking to be signed in to
 //
 //	spec.go         viewspec wiring: registry, binding, fallbacks
@@ -43,7 +44,7 @@
 //
 // Rendering could go the same way, but only after Model's state is
 // passed to it as values. Worth doing if a second front-end ever
-// wants the same drawing; not worth it for one.
+// wants the same drawing, not for one.
 //
 // # Naming
 //

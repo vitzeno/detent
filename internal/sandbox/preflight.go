@@ -7,9 +7,8 @@ import (
 	containerd "github.com/containerd/containerd"
 )
 
-// Preflight checks that a containerd daemon is reachable at socket,
-// without creating anything. Meant to run once at startup, so a bad
-// socket fails loud immediately rather than on the first command.
+// Preflight checks that a containerd daemon answers at socket, so a bad
+// socket fails at startup rather than on the first command.
 func Preflight(ctx context.Context, socket string) error {
 	client, err := containerd.New(socket)
 	if err != nil {

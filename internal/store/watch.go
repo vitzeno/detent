@@ -7,9 +7,8 @@ import (
 	"github.com/vitzeno/detent/logging"
 )
 
-// Watch records every fact and answers what ui cannot ask directly.
-// One subscription, not two: the bus delivers in order, so a rename
-// cannot overtake the header it updates.
+// Watch records every fact and answers what ui cannot ask directly. One
+// subscription, so a rename cannot overtake the header it updates.
 func Watch(bus *event.Bus, s *Store, session uuid.UUID) func() {
 	records, unsub := bus.Subscribe(wanted)
 	done := make(chan struct{})
@@ -63,9 +62,8 @@ func (s *Store) serve(bus *event.Bus, e event.Event) bool {
 	return true
 }
 
-// wanted is every fact bar live output, plus the questions this
-// package answers. A replayed Call has already finished, so its
-// chunks have nothing to redraw and CallEnded carries the output.
+// wanted is every fact bar live output, which CallEnded carries whole,
+// plus the questions this package answers.
 func wanted(e event.Event) bool {
 	switch e.Kind() {
 	case event.OutputChunkKind:

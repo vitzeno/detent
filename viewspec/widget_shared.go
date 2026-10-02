@@ -31,6 +31,20 @@ func checkShared(b Block, fields []string) error {
 	return nil
 }
 
+// checkColumns is the validation every multi-column chart shares: rows
+// exist, each named column was parsed, and the shared keys resolve.
+func checkColumns(b Block, fields []string) error {
+	if len(fields) == 0 {
+		return ErrNoRows
+	}
+	for _, c := range b.Columns {
+		if err := needField(c.Field, fields); err != nil {
+			return err
+		}
+	}
+	return checkShared(b, fields)
+}
+
 func needField(name string, fields []string) error {
 	if name == "" {
 		return &BindError{Err: fmt.Errorf("needs a field")}
@@ -52,8 +66,34 @@ func accentRole(b Block, r Row) Role {
 	return RoleDefault
 }
 
+// accentOr is accentRole with a fallback for widgets whose resting
+// colour is not RoleDefault.
+func accentOr(b Block, r Row, fallback Role) Role {
+	if b.Accent == nil {
+		return fallback
+	}
+	return accentRole(b, r)
+}
+
+func rowCursor(d Data, f Frame) int {
+	if f.Cursor < 0 || f.Cursor >= len(d.Rows) {
+		return -1
+	}
+	return f.Cursor
+}
+
+// chartCursor is rowCursor shifted past the title, since every chart
+// here draws one when the block names it.
+func chartCursor(b Block, d Data, f Frame) int {
+	at := rowCursor(d, f)
+	if at < 0 || b.Title == "" {
+		return at
+	}
+	return at + 1
+}
+
 // fitColumns gives each column its widest cell, and when they do not
-// fit, cuts only the widest. Cells truncate; the pane never scrolls sideways.
+// fit, cuts only the widest. Cells truncate, never scrolling sideways.
 func fitColumns(cols []Column, rows []Row, total int, p Painter) []int {
 	const floor = 4
 	n := len(cols)
@@ -77,7 +117,7 @@ func fitColumns(cols []Column, rows []Row, total int, p Painter) []int {
 	if sum <= avail || sum == 0 {
 		return widest
 	}
-	// Shared in proportion instead, one long command squeezed PID to "776…".
+	// Not shared in proportion, so one long column cannot squeeze a short one.
 	limit := fairLimit(widest, avail)
 	out := make([]int, n)
 	rest := avail
@@ -123,25 +163,6 @@ func pad(s string, w int, p Painter) string {
 		return s + strings.Repeat(" ", w-n)
 	}
 	return s
-}
-
-// accentOr is accentRole with a fallback for widgets whose resting
-// colour is not RoleDefault.
-func accentOr(b Block, r Row, fallback Role) Role {
-	if b.Accent == nil {
-		return fallback
-	}
-	return accentRole(b, r)
-}
-
-// What each widget is for, and the one it is most likely confused
-// with. These reach the model through Registry.Schema.
-
-func rowCursor(d Data, f Frame) int {
-	if f.Cursor < 0 || f.Cursor >= len(d.Rows) {
-		return -1
-	}
-	return f.Cursor
 }
 
 // barLayout is the label, bar and value columns every row-per-bar
@@ -196,35 +217,8 @@ func fraction(v, lo, hi float64) float64 {
 	return (v - lo) / (hi - lo)
 }
 
-// chartCursor is rowCursor shifted past the title, since every chart
-// here draws one when the block names it.
-func chartCursor(b Block, d Data, f Frame) int {
-	at := rowCursor(d, f)
-	if at < 0 || b.Title == "" {
-		return at
-	}
-	return at + 1
-}
-
-// What each chart is for, and the one it is most likely confused with.
-
-// checkColumns is the validation every multi-column chart shares: rows
-// exist, each named column was parsed, and the shared keys resolve.
-func checkColumns(b Block, fields []string) error {
-	if len(fields) == 0 {
-		return ErrNoRows
-	}
-	for _, c := range b.Columns {
-		if err := needField(c.Field, fields); err != nil {
-			return err
-		}
-	}
-	return checkShared(b, fields)
-}
-
 // groupValues buckets the rows by the first column, keeping the order
-// each group was first seen in. Sorting them would throw away whatever
-// order the command chose to print, which is usually the useful one.
+// each group was first seen in, which is the order the command chose.
 func groupValues(b Block, d Data) (map[string][]float64, []string) {
 	key, value := b.Columns[0].Field, b.Columns[1].Field
 	groups := map[string][]float64{}

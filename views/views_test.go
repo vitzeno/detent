@@ -10,9 +10,8 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// Every shipped spec has to compile against the standard vocabulary.
-// A spec naming a widget nobody registered is drawable by nothing, and
-// the only thing that notices is the pane going blank.
+// Every shipped spec compiles against the standard vocabulary, or the
+// only thing that notices is the pane going blank.
 func TestShipped_EverySpecCompiles(t *testing.T) {
 	for _, kind := range views.Kinds() {
 		spec, ok := views.ForKind(kind)
@@ -29,8 +28,7 @@ func TestShipped_EverySpecCompiles(t *testing.T) {
 }
 
 // A command spec is filed under its own match, so a saved copy round
-// trips to the same key. The ps seed drifted from this once and drew
-// nothing for ps aux.
+// trips to the same key.
 func TestShipped_CommandSpecsAreFiledUnderTheirMatch(t *testing.T) {
 	for _, command := range views.Commands() {
 		spec, _ := views.ForCommand(command)

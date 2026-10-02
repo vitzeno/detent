@@ -1,3 +1,4 @@
+// Package routing picks the Runner that executes a Call.
 package routing
 
 import (
@@ -14,6 +15,7 @@ type Selector struct {
 	HostOnly bool
 }
 
+// Select returns the sandbox unless HostOnly is set or there is none.
 func (s Selector) Select(event.Risk) (engine.Runner, string) {
 	if s.HostOnly || s.Sandbox == nil {
 		return s.Host, "host"
@@ -21,7 +23,6 @@ func (s Selector) Select(event.Risk) (engine.Runner, string) {
 	return s.Sandbox, "sandbox"
 }
 
-// No adapter needed: sandbox already speaks plain-string checkpoints.
 // Asserted because the engine finds Snapshotter by type assertion, so
 // a rename would silently remove rollback rather than fail the build.
 var (

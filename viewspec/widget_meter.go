@@ -5,9 +5,8 @@ import (
 	"strings"
 )
 
-// meter draws a proportion counted from rows. The numbers come from
-// here, never from the spec. A Title containing a number cannot
-// change what the bar says.
+// meter draws a proportion counted from rows, so a Title containing a
+// number cannot change what the bar says.
 type meterWidget struct{}
 
 var (

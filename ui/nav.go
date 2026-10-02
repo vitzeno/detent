@@ -4,9 +4,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// Where a keystroke moves things: the history cursor, the output
-// pane's own scroll, and which zone has focus. keys.go decides what a
-// key means; this decides what it does.
+// Where a keystroke moves things: the history cursor, the output pane's
+// scroll and focus. keys.go decides what a key means, this what it does.
 
 // outputNav moves inside the detail component: the view's own
 // selection when it draws one, viewport lines otherwise.

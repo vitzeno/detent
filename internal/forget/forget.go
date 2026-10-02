@@ -1,5 +1,5 @@
 // Package forget removes what a deleted session left: its events, and
-// the container nothing will ever resume. The log stays
+// the container nothing will ever resume. The log stays.
 package forget
 
 import (

@@ -8,8 +8,7 @@ import (
 )
 
 // The transcript's vocabulary. Here rather than in the model client
-// for the reason Usage is: a fact carries it, and this package may
-// import neither side.
+// because a fact carries it, and this package may import neither side.
 
 // Message is one transcript entry. An assistant message with Calls and
 // the tool messages answering it are one Step, and indivisible.
@@ -18,7 +17,7 @@ type Message struct {
 	Content string
 	// Calls belong to an assistant message.
 	Calls []ToolCall
-	// CallID answers one call; set on RoleTool alone.
+	// CallID answers one call, and is set on RoleTool alone.
 	CallID string
 }
 
@@ -33,6 +32,7 @@ type ToolCall struct {
 	Err string
 }
 
+// Role is who wrote a Message.
 type Role string
 
 const (

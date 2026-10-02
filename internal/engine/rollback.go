@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+
 	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"

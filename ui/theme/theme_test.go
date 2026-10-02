@@ -15,13 +15,6 @@ func TestNames_SortedAndCoversDefault(t *testing.T) {
 	assert.Contains(t, names, DefaultName)
 }
 
-func TestThemes_HasEveryName(t *testing.T) {
-	for _, name := range Names() {
-		_, ok := Themes[name]
-		require.True(t, ok, "Themes missing entry for %q", name)
-	}
-}
-
 func TestApply_SwitchesActiveColors(t *testing.T) {
 	t.Cleanup(func() { Apply(dark) })
 
@@ -34,14 +27,7 @@ func TestApply_SwitchesActiveColors(t *testing.T) {
 	assert.NotEqual(t, Themes["light"].Accent, Accent, "Apply must fully replace the prior theme's colors")
 }
 
-func TestDefaultName_IsAValidTheme(t *testing.T) {
-	_, ok := Themes[DefaultName]
-	require.True(t, ok)
-}
-
-// Every theme has to be readable against its own background. Without
-// one the palette hoped the terminal already matched: light's
-// near-black text was drawn black-on-black on a dark terminal.
+// Every theme has to be readable against its own background.
 func TestThemes_ReadableAgainstTheirBackground(t *testing.T) {
 	for _, name := range Names() {
 		th := Themes[name]

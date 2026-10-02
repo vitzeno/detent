@@ -14,13 +14,10 @@ type Theme struct {
 	Safe, Caution, Danger                     color.Color
 	TextPrimary, TextMuted, TextFaint, Border color.Color
 
-	// Background is painted before anything else, so the palette does
-	// not have to hope the terminal already matches.
+	// Background is painted first, so the palette need not match the terminal.
 	Background color.Color
 
-	// Markdown names the glamour style the prose pane renders with.
-	// glamour ships its own palettes and can't be handed ours, so the
-	// closest one is named here rather than guessed from the terminal.
+	// Markdown names the closest glamour style, since glamour cannot take ours.
 	Markdown string
 }
 
@@ -121,7 +118,7 @@ func init() {
 }
 
 // Apply makes t the active theme. Callers must also refresh any style
-// already baked from the old colors — see ui.RefreshStyles.
+// already baked from the old colors, as ui.RefreshStyles does.
 func Apply(t Theme) {
 	Accent = t.Accent
 	Safe, Caution, Danger = t.Safe, t.Caution, t.Danger

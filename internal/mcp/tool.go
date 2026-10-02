@@ -10,6 +10,14 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
+// Tool is one MCP tool, wearing the registry's interface. It lowers to
+// a description rather than a command: nothing about it runs in a shell.
+type Tool struct {
+	name, remote string
+	server       *Server
+	spec         tool.Spec
+}
+
 // Register adds a server's tools and returns them. A taken name is
 // renamed, never replaced: nothing may shadow bash.
 func Register(reg *tool.Registry, s *Server, tools []*sdk.Tool) []Tool {
@@ -25,15 +33,8 @@ func Register(reg *tool.Registry, s *Server, tools []*sdk.Tool) []Tool {
 	return added
 }
 
-// Tool is one MCP tool, wearing the registry's interface. It lowers to
-// a description rather than a command: nothing about it runs in a shell.
-type Tool struct {
-	name, remote string
-	server       *Server
-	spec         tool.Spec
-}
+func (t Tool) Name() string { return t.name }
 
-func (t Tool) Name() string        { return t.name }
 func (t Tool) Describe() tool.Spec { return t.spec }
 
 // Lower renders the call for a human to read before approving it.
@@ -76,8 +77,8 @@ func rawSchema(in any) map[string]any {
 	return map[string]any{"type": "object", "additionalProperties": false}
 }
 
-// maxToolName is what the endpoints accept. MCP allows 128 and a dot;
-// neither survives a chat-completions request.
+// maxToolName is what the endpoints accept. MCP allows 128 and a dot,
+// and neither survives a chat-completions request.
 const maxToolName = 64
 
 // toolName namespaces a server's tool, because two servers offering

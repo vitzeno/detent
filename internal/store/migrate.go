@@ -10,9 +10,8 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-// migrate applies what a database has not seen. SQLite counts that
-// itself in user_version, so there is no table of ours and no library
-// for one table's worth of DDL.
+// migrate applies what a database has not seen, counted by SQLite's own
+// user_version rather than a table or a library.
 func migrate(db *sql.DB) error {
 	files, err := fs.Glob(migrations, "migrations/*.sql")
 	if err != nil {
@@ -24,7 +23,7 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("store: read schema version: %w", err)
 	}
 	if at > len(files) {
-		return fmt.Errorf("store: database is at schema %d, this build only knows %d — it was written by a newer detent", at, len(files))
+		return fmt.Errorf("store: database is at schema %d, this build only knows %d, so it was written by a newer detent", at, len(files))
 	}
 
 	for i := at; i < len(files); i++ {

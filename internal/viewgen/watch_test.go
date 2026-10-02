@@ -13,8 +13,8 @@ import (
 	"github.com/vitzeno/detent/ui"
 )
 
-// A view is keyed by what bash ran, not by bash: keyed on the tool,
-// no shipped spec could ever match and every command shared one.
+// A view is keyed by what bash ran, not by bash, or no shipped spec
+// could ever match and every command would share one.
 func TestWatch_KeysOnTheCommandNotTheTool(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
@@ -42,8 +42,8 @@ func TestWatch_KeysOnTheCommandNotTheTool(t *testing.T) {
 	}
 }
 
-// A command the human ran was never judged, so nothing drew it: not
-// even go test, which detent ships a view for.
+// A command the human ran is never judged, and still gets the view
+// detent ships for it.
 func TestWatch_AShellGetsTheShippedViewWithoutAJudge(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()

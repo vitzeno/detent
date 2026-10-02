@@ -9,9 +9,8 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// The one thing here that cannot be changed later without
-// invalidating every stored session, so it is pinned exactly rather
-// than by substring.
+// Stored sessions hold this text, so it is pinned exactly rather than
+// by substring.
 func TestTranscribe_ReadsAsATerminalDoes(t *testing.T) {
 	cases := []struct {
 		name  string

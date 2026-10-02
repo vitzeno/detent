@@ -12,8 +12,7 @@ import (
 )
 
 // Prune removes what abandoned sessions left in containerd. Anything
-// without a running task goes: starting a session clears its own
-// leftovers, so an idle container can never be adopted.
+// without a running task goes, since starting a session never adopts one.
 func Prune(ctx context.Context, socket, namespace string) (Pruned, error) {
 	client, err := containerd.New(socket, containerd.WithDefaultNamespace(namespace))
 	if err != nil {
@@ -51,7 +50,19 @@ type Pruned struct {
 	Kept       []string
 }
 
+// Empty reports whether nothing was removed.
 func (p Pruned) Empty() bool { return len(p.Containers) == 0 && len(p.Leases) == 0 }
+
+// Forget removes one session's container, snapshot and lease.
+// Refuses one whose task is still running.
+func Forget(ctx context.Context, socket, namespace, sessionID string) error {
+	client, err := containerd.New(socket, containerd.WithDefaultNamespace(namespace))
+	if err != nil {
+		return fmt.Errorf("sandbox: connect %s: %w", socket, err)
+	}
+	defer client.Close()
+	return clearStale(ctx, client, sessionID)
+}
 
 // pruneLeases drops a checkpoint lease whose container is gone. The
 // snapshots it rooted went with that container, so it roots nothing.
@@ -77,15 +88,4 @@ func pruneLeases(ctx context.Context, client *containerd.Client, out *Pruned) er
 		out.Leases = append(out.Leases, id)
 	}
 	return nil
-}
-
-// Forget removes one session's container, snapshot and lease.
-// Refuses one whose task is still running.
-func Forget(ctx context.Context, socket, namespace, sessionID string) error {
-	client, err := containerd.New(socket, containerd.WithDefaultNamespace(namespace))
-	if err != nil {
-		return fmt.Errorf("sandbox: connect %s: %w", socket, err)
-	}
-	defer client.Close()
-	return clearStale(ctx, client, sessionID)
 }

@@ -10,23 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// runCollect runs command and drains events on a separate goroutine, so
-// a full channel never blocks the scanners mid-command.
-func runCollect(ctx context.Context, command string) (Result, error, []StreamEvent) {
-	ch := make(chan StreamEvent, 64)
-	var events []StreamEvent
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for e := range ch {
-			events = append(events, e)
-		}
-	}()
-	res, err := NewShell().Run(ctx, command, ch)
-	<-done
-	return res, err, events
-}
-
 func TestShell_DeliversLinesAndResult(t *testing.T) {
 	res, err, events := runCollect(context.Background(), "echo out; echo err >&2; echo two")
 	require.NoError(t, err)
@@ -80,11 +63,28 @@ func TestShell_EmptyCommandRejected(t *testing.T) {
 func TestShell_ContextTimeoutWins(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
-	// tail blocks everywhere; sleep is a no-op shim in some sandboxes.
+	// tail blocks everywhere, while sleep is a no-op shim in some sandboxes.
 	_, err := NewShell().Run(ctx, "tail -f /dev/null", nil)
 	require.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "killed") ||
 		strings.Contains(err.Error(), "signal") ||
 		strings.Contains(err.Error(), "deadline") ||
 		strings.Contains(err.Error(), "canceled"))
+}
+
+// runCollect runs command and drains events on a separate goroutine, so
+// a full channel never blocks the scanners mid-command.
+func runCollect(ctx context.Context, command string) (Result, error, []StreamEvent) {
+	ch := make(chan StreamEvent, 64)
+	var events []StreamEvent
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for e := range ch {
+			events = append(events, e)
+		}
+	}()
+	res, err := NewShell().Run(ctx, command, ch)
+	<-done
+	return res, err, events
 }

@@ -2,34 +2,16 @@ package ui
 
 import (
 	"context"
-	"github.com/google/uuid"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/event"
 )
-
-// The whole point of the reducer: a test drives the UI with a
-// sequence of events and no harness at all. No fake driver, no
-// goroutines, no channels.
-func feed(t *testing.T, evs ...event.Event) Model {
-	t.Helper()
-	m := New(context.Background(), event.New(), SessionInfo{})
-	m.layout.width, m.layout.height = 120, 40
-	for _, e := range evs {
-		m.apply(e)
-	}
-	return m
-}
-
-func aTurn(prompt string) (uuid.UUID, []event.Event) {
-	turn := uuid.Must(uuid.NewV7())
-	return turn, []event.Event{event.TurnStarted{Turn: turn, N: 1, Prompt: prompt}}
-}
 
 func TestApply_BuildsABlockPerRequest(t *testing.T) {
 	turn, evs := aTurn("count the go files")
@@ -226,18 +208,7 @@ func TestRestore_RebuildsHistoryFromTheStream(t *testing.T) {
 	assert.Equal(t, 1, m.calls)
 	assert.Equal(t, 25, m.tokens)
 	assert.True(t, m.Idle(), "a restored session is not mid-request")
-
-	// The checkpoint died with the container, so this Turn is not
-	// offered for undo.
 	assert.False(t, b.undoable, "a resumed Turn has no checkpoint to restore")
-}
-
-func asRecords(facts []event.Event) []event.Record {
-	out := make([]event.Record, len(facts))
-	for i, e := range facts {
-		out[i] = event.Record{Ordinal: uint64(i + 1), Event: e}
-	}
-	return out
 }
 
 // /sessions asks over the bus rather than reaching into a store, so
@@ -275,8 +246,7 @@ func TestSessions_AreAskedForAndFolded(t *testing.T) {
 	assert.Contains(t, lines, "-resume", "and says how to use one")
 }
 
-// The session id is the one thing you need to resume this run later,
-// and there was no way to see it from inside the TUI.
+// The session id is the one thing you need to resume this run later.
 func TestStatus_ShowsTheSessionID(t *testing.T) {
 	m := New(context.Background(), event.New(), SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
@@ -413,4 +383,29 @@ func TestRestore_DoesNotFlashHistoryAsNews(t *testing.T) {
 	// And a live fact after the replay still flashes.
 	m.apply(event.Notice{Level: "info", Text: "this one is now"})
 	assert.Equal(t, "this one is now", m.notice.text)
+}
+
+// feed drives the UI with events alone: no harness, no goroutines, no
+// channels, which is the whole point of the reducer.
+func feed(t *testing.T, evs ...event.Event) Model {
+	t.Helper()
+	m := New(context.Background(), event.New(), SessionInfo{})
+	m.layout.width, m.layout.height = 120, 40
+	for _, e := range evs {
+		m.apply(e)
+	}
+	return m
+}
+
+func aTurn(prompt string) (uuid.UUID, []event.Event) {
+	turn := uuid.Must(uuid.NewV7())
+	return turn, []event.Event{event.TurnStarted{Turn: turn, N: 1, Prompt: prompt}}
+}
+
+func asRecords(facts []event.Event) []event.Record {
+	out := make([]event.Record, len(facts))
+	for i, e := range facts {
+		out[i] = event.Record{Ordinal: uint64(i + 1), Event: e}
+	}
+	return out
 }

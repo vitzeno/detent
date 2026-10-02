@@ -3,7 +3,6 @@ package model
 import (
 	"context"
 	"encoding/json"
-	"github.com/vitzeno/detent/event"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,24 +10,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/event"
 )
 
-// serve replies with body and captures the request that asked for it.
-func serve(t *testing.T, body string) (*Client, *map[string]any) {
-	t.Helper()
-	got := map[string]any{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		require.NoError(t, json.Unmarshal(raw, &got))
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, body)
-	}))
-	t.Cleanup(srv.Close)
-	return &Client{BaseURL: srv.URL, Model: "m"}, &got
-}
-
-// The phase gate: two calls in one response are two Calls, and prose
-// alone is a stop.
+// Two calls in one response are two Calls, with the prose beside them kept.
 func TestComplete_DecodesAStep(t *testing.T) {
 	const two = `{"choices":[{"message":{"content":"looking","tool_calls":[
 		{"id":"c1","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"a.go\"}"}},
@@ -57,8 +43,7 @@ func TestComplete_TextOnlyIsAStop(t *testing.T) {
 }
 
 // A malformed call must survive decoding. Dropping it leaves the
-// assistant message naming an id nothing answers, and the next Step
-// fails somewhere unrelated.
+// assistant message naming an id nothing answers.
 func TestComplete_KeepsCallsItCannotParse(t *testing.T) {
 	c, _ := serve(t, `{"choices":[{"message":{"tool_calls":[
 		{"id":"c1","type":"function","function":{"name":"bash","arguments":"{not json"}}
@@ -134,4 +119,18 @@ func TestComplete_SurfacesFailures(t *testing.T) {
 		_, _, err := c.Complete(context.Background(), nil, nil)
 		assert.ErrorContains(t, err, "empty transcript")
 	})
+}
+
+// serve replies with body and captures the request that asked for it.
+func serve(t *testing.T, body string) (*Client, *map[string]any) {
+	t.Helper()
+	got := map[string]any{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		require.NoError(t, json.Unmarshal(raw, &got))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return &Client{BaseURL: srv.URL, Model: "m"}, &got
 }

@@ -7,7 +7,7 @@ import (
 )
 
 // Role is display intent, not colour. A consumer maps roles onto its
-// own theme; this package never names a colour.
+// own theme.
 type Role int
 
 const (
@@ -73,17 +73,16 @@ func (r *Role) UnmarshalJSON(b []byte) error {
 	return fmt.Errorf("viewspec: unknown role %q", name)
 }
 
-// Painter turns intent into display text. Width and Truncate belong
-// here because only the implementation knows whether its own output
-// carries escapes, and len on painted text mismeasures every cell.
+// Painter turns intent into display text. Width and Truncate live here
+// because only the implementation knows whether its output carries escapes.
 type Painter interface {
 	Paint(r Role, s string) string
 	Width(s string) int
 	Truncate(s string, n int) string
 }
 
-// Plain paints nothing and measures in runes. It exists so Draw can be
-// golden-file tested with no escape sequences in the fixtures.
+// Plain paints nothing and measures in runes, so Draw tests need no
+// escape sequences in their fixtures.
 func Plain() Painter { return plain{} }
 
 type plain struct{}

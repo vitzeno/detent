@@ -6,8 +6,8 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// ListDir lists a directory. Replaces the /tree browser, which read
-// the host's filesystem even when the agent worked in a container.
+// ListDir lists a directory. It lowers to a command so a sandboxed
+// session sees the container's filesystem, not the host's.
 type ListDir struct{}
 
 func (ListDir) Name() string { return "list_dir" }

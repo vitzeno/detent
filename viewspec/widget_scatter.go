@@ -5,9 +5,8 @@ import (
 	"strings"
 )
 
-// scatter plots two numeric fields against each other. Braille packs
-// two by four dots per cell, so a pane sixty wide carries a hundred
-// and twenty plot columns and reads as a curve, not a row of bars.
+// scatter plots two numeric fields against each other in braille, two
+// by four dots per cell, so it reads as a curve rather than bars.
 type scatterWidget struct{}
 
 var (
@@ -28,15 +27,6 @@ func (scatterWidget) Validate(b Block, fields []string) error {
 		}
 	}
 	return checkShared(b, fields)
-}
-
-// scatterRows is how tall the plot draws. Height is resolution here:
-// every line is four more dot rows, so a tall pane is a finer curve.
-func scatterRows(f Frame) int {
-	if f.Height <= 0 {
-		return 8
-	}
-	return min(max(f.Height-2, 4), 24)
 }
 
 // brailleBits maps a dot's row and column inside a cell onto its bit.
@@ -95,4 +85,13 @@ func (scatterWidget) Describe() Description {
 		NotFor:   "one series read in order, which is sparkline",
 		Examples: []string{"size against modified time", "latency against request count"},
 	}
+}
+
+// scatterRows is how tall the plot draws. Height is resolution here:
+// every line is four more dot rows, so a tall pane is a finer curve.
+func scatterRows(f Frame) int {
+	if f.Height <= 0 {
+		return 8
+	}
+	return min(max(f.Height-2, 4), 24)
 }

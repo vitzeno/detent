@@ -28,7 +28,7 @@ const (
 )
 
 // Watch runs what RunCommand carries and stops it on CancelCommand.
-// A subscriber like any other; where is "host" or "sandbox".
+// where is "host" or "sandbox".
 func Watch(bus *event.Bus, runner Runner, where string) func() {
 	s := &shell{bus: bus, runner: runner, where: where}
 	intents, unsub := bus.Subscribe(event.Only(event.RunCommandKind, event.CancelCommandKind))

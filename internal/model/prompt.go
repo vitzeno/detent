@@ -7,9 +7,8 @@ import (
 	"strings"
 )
 
-// Environment is where the tools actually run. The harness fills it
-// in; describing this process instead is how BSD flags end up in a
-// Linux container.
+// Environment is where the tools actually run, filled in by the harness.
+// Describing this process instead puts BSD flags in a Linux container.
 type Environment struct {
 	OS   string
 	Arch string

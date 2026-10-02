@@ -16,9 +16,8 @@ type prompt struct {
 	matches []slashCmd
 	cursor  int
 
-	// richKeys is true once the terminal has agreed to the Kitty
-	// keyboard protocol, which is what makes shift+enter arrive as
-	// something other than a plain enter.
+	// richKeys is true once the terminal agreed to the Kitty keyboard
+	// protocol, without which shift+enter arrives as a plain enter.
 	richKeys bool
 	// shell switches the box to commands, which closes the dropdown:
 	// /usr/bin has to be typable.
@@ -30,7 +29,7 @@ func newPrompt() prompt {
 	ta.CharLimit = 4000
 	ta.ShowLineNumbers = false
 	// Enter submits, so a newline moves off it. shift+enter needs the
-	// Kitty protocol; the other two work everywhere.
+	// Kitty protocol, the other two work everywhere.
 	ta.KeyMap.InsertNewline = key.NewBinding(
 		key.WithKeys("shift+enter", "alt+enter", "ctrl+j"),
 		key.WithHelp("shift+enter", "newline"),
@@ -60,7 +59,7 @@ func (p *prompt) SetShell(on bool) {
 		st.Focused.Prompt = styleCaution
 	}
 	p.input.SetStyles(st)
-	// Prompt on the first row only; wrapped rows align under it.
+	// Prompt on the first row only, wrapped rows align under it.
 	p.input.SetPromptFunc(inputPromptW, func(i textarea.PromptInfo) string {
 		if i.LineNumber == 0 {
 			return glyph
@@ -68,22 +67,6 @@ func (p *prompt) SetShell(on bool) {
 		return "  "
 	})
 	p.rematch()
-}
-
-// applyInputTheme keeps the input in the app's palette and strips
-// the document chrome that suits an editor but not a prompt.
-func applyInputTheme(ta *textarea.Model) {
-	plain := lipgloss.NewStyle()
-	s := ta.Styles()
-	for _, st := range []*textarea.StyleState{&s.Focused, &s.Blurred} {
-		st.CursorLine = plain
-		st.EndOfBuffer = plain
-		st.Placeholder = styleFaint
-	}
-	s.Focused.Prompt = styleRowCursor
-	s.Blurred.Prompt = styleFaint
-	s.Cursor.Color = accent
-	ta.SetStyles(s)
 }
 
 func (p prompt) Value() string      { return p.input.Value() }
@@ -112,17 +95,6 @@ func (p *prompt) Paste(s string) {
 func (p *prompt) Clear() {
 	p.input.SetValue("")
 	p.Close()
-}
-
-func (p *prompt) rematch() {
-	if p.shell {
-		p.Close()
-		return
-	}
-	p.matches = matchSlash(p.input.Value())
-	if p.cursor >= len(p.matches) {
-		p.cursor = 0
-	}
 }
 
 // Open reports whether the dropdown has anything to show.
@@ -157,9 +129,8 @@ func (p prompt) IsExactCommand() bool { return exactSlash(p.input.Value()) }
 // name a key that actually works there.
 func (p *prompt) SetRichKeys(ok bool) { p.richKeys = ok }
 
-// NewlineKey is which binding to advertise. All three stay bound;
-// without the Kitty protocol shift+enter is indistinguishable from
-// enter, so printing it would be a lie.
+// NewlineKey is which binding to advertise. All three stay bound, but
+// without the Kitty protocol shift+enter is just enter.
 func (p prompt) NewlineKey() string {
 	if p.richKeys {
 		return "shift+enter"
@@ -188,23 +159,8 @@ func (p *prompt) Resize(width int) {
 	p.input.SetHeight(inputRows(p.input.Value(), outer-inputPromptW))
 }
 
-// inputRows is how many display rows value needs once soft-wrapped at
-// width, clamped to maxInputRows. A line that exactly fills the width
-// costs an extra row, since that's where the cursor sits.
-func inputRows(value string, width int) int {
-	if width < 1 {
-		width = 1
-	}
-	rows := 0
-	for _, line := range strings.Split(value, "\n") {
-		rows += lipgloss.Width(line)/width + 1
-	}
-	return min(max(rows, 1), maxInputRows)
-}
-
-// View stacks the dropdown above the box. Both are multi-line, so the
-// pane mark takes its own gutter beside every input row instead of
-// being prefixed onto the block, which would indent only the first.
+// View stacks the dropdown above the box. The pane mark gets a gutter
+// beside every input row, since prefixing it would indent only the first.
 func (p prompt) View(mark string) string {
 	var b strings.Builder
 	b.WriteString(slashDropdown(p.matches, p.cursor))
@@ -220,7 +176,7 @@ func (p prompt) View(mark string) string {
 }
 
 const (
-	// maxInputRows caps how far the input box grows; past it the
+	// maxInputRows caps how far the input box grows. Past it the
 	// textarea scrolls its own content instead.
 	maxInputRows = 10
 	// inputPromptW is the width SetPromptFunc reserves for "❯ ".
@@ -231,3 +187,43 @@ const (
 	// box, which every row has to clear, not just the first.
 	inputMarkW = 2
 )
+
+func (p *prompt) rematch() {
+	if p.shell {
+		p.Close()
+		return
+	}
+	p.matches = matchSlash(p.input.Value())
+	if p.cursor >= len(p.matches) {
+		p.cursor = 0
+	}
+}
+
+// applyInputTheme keeps the input in the app's palette and strips
+// the document chrome that suits an editor but not a prompt.
+func applyInputTheme(ta *textarea.Model) {
+	plain := lipgloss.NewStyle()
+	s := ta.Styles()
+	for _, st := range []*textarea.StyleState{&s.Focused, &s.Blurred} {
+		st.CursorLine = plain
+		st.EndOfBuffer = plain
+		st.Placeholder = styleFaint
+	}
+	s.Focused.Prompt = styleRowCursor
+	s.Blurred.Prompt = styleFaint
+	s.Cursor.Color = accent
+	ta.SetStyles(s)
+}
+
+// inputRows is the display rows value needs soft-wrapped at width, up to
+// maxInputRows. A line that fills the width costs a row for the cursor.
+func inputRows(value string, width int) int {
+	if width < 1 {
+		width = 1
+	}
+	rows := 0
+	for _, line := range strings.Split(value, "\n") {
+		rows += lipgloss.Width(line)/width + 1
+	}
+	return min(max(rows, 1), maxInputRows)
+}

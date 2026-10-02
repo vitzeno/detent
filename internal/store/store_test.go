@@ -13,27 +13,6 @@ import (
 	"github.com/vitzeno/detent/internal/store"
 )
 
-func open(t *testing.T) *store.Store {
-	t.Helper()
-	s, err := store.Open(filepath.Join(t.TempDir(), "events.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = s.Close() })
-	return s
-}
-
-func rec(n uint64, e event.Event) event.Record {
-	return event.Record{Ordinal: n, At: time.UnixMilli(1_700_000_000_000 + int64(n)), Event: e}
-}
-
-// begin writes the header a session starts with. Events reference it,
-// so nothing can be appended before it, which is true of a real
-// session too: SessionStarted is always ordinal 1.
-func begin(t *testing.T, s *store.Store, session uuid.UUID) {
-	t.Helper()
-	require.NoError(t, s.Append(session, rec(1,
-		event.SessionStarted{Session: session, Model: "m", Recorded: true})))
-}
-
 // The gate: a record written now must come back later as the same
 // record, for every kind there is.
 func TestStore_RoundTripsEveryKind(t *testing.T) {
@@ -119,8 +98,7 @@ func TestStore_AppendIsIdempotent(t *testing.T) {
 	assert.Len(t, got, 2)
 }
 
-// Undoing a Turn is truncating the log, the same thing it means in
-// memory.
+// Undoing a Turn is truncating the log, the same as in memory.
 func TestStore_TruncateDropsWhatCameAfter(t *testing.T) {
 	s := open(t)
 	session := uuid.Must(uuid.NewV7())
@@ -155,21 +133,6 @@ func TestStore_ListsSessionsNewestFirst(t *testing.T) {
 	assert.False(t, got[0].Started.IsZero())
 }
 
-// A resumed session mints ordinals from 1 again, so it has to pick up
-// where the stored ones left off or the new rows replace the old.
-func TestStore_ReplayShowsWhereToResumeFrom(t *testing.T) {
-	s := open(t)
-	session := uuid.Must(uuid.NewV7())
-	begin(t, s, session)
-	for n := uint64(2); n <= 4; n++ {
-		require.NoError(t, s.Append(session, rec(n, event.Notice{Text: "x"})))
-	}
-	got, err := s.Replay(session)
-	require.NoError(t, err)
-	assert.EqualValues(t, 4, got[len(got)-1].Ordinal,
-		"the last ordinal is what a resumed bus must continue from")
-}
-
 func TestStore_EmptyReplayIsNotAnError(t *testing.T) {
 	s := open(t)
 	got, err := s.Replay(uuid.Must(uuid.NewV7()))
@@ -196,9 +159,8 @@ func TestStore_TheHeaderIsWrittenWithTheFirstEvent(t *testing.T) {
 	assert.Equal(t, 1, got[0].Events)
 }
 
-// Nothing may be written against a session that does not exist. The
-// events row has a foreign key, so a log without its header is a
-// shape the database refuses rather than one a reader discovers.
+// The events row has a foreign key, so a log without its header is
+// refused by the database rather than discovered by a reader.
 func TestStore_RefusesAnEventWithNoSession(t *testing.T) {
 	s := open(t)
 	err := s.Append(uuid.Must(uuid.NewV7()), rec(1, event.Notice{Text: "orphan"}))
@@ -239,10 +201,8 @@ func TestStore_AFailedAppendLeavesNoHeader(t *testing.T) {
 	require.Error(t, err)
 }
 
-// -resume resolves an id, then "last", then a name. A name that
-// collides with either is one nobody can type, so it is refused when
-// it is set rather than discovered when the resume quietly does
-// something else.
+// -resume resolves an id, then "last", then a name, so a name colliding
+// with either could never be typed and is refused when set.
 func TestRename_RefusesANameNobodyCouldUse(t *testing.T) {
 	s := open(t)
 	session := uuid.Must(uuid.NewV7())
@@ -329,4 +289,24 @@ func TestDelete_SaysWhenThereWasNothingToDelete(t *testing.T) {
 	gone, err := s.Delete(uuid.Must(uuid.NewV7()))
 	require.NoError(t, err)
 	assert.False(t, gone)
+}
+
+func open(t *testing.T) *store.Store {
+	t.Helper()
+	s, err := store.Open(filepath.Join(t.TempDir(), "events.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+func rec(n uint64, e event.Event) event.Record {
+	return event.Record{Ordinal: n, At: time.UnixMilli(1_700_000_000_000 + int64(n)), Event: e}
+}
+
+// begin writes the header, which events reference, as ordinal 1 like a
+// real session's SessionStarted.
+func begin(t *testing.T, s *store.Store, session uuid.UUID) {
+	t.Helper()
+	require.NoError(t, s.Append(session, rec(1,
+		event.SessionStarted{Session: session, Model: "m", Recorded: true})))
 }

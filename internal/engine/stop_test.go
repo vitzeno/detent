@@ -14,9 +14,8 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// A cancelled Run must not return until the Turn it was running has
-// published what it owes, because the caller closes the bus next and
-// a Step whose Call results were never recorded cannot be resumed.
+// A cancelled Run must not return before its Turn publishes what it
+// owes: the caller closes the bus next, and an unrecorded Step cannot resume.
 func TestRun_PublishesTheAbandonedTurnBeforeItReturns(t *testing.T) {
 	const marker = "run returned"
 
@@ -112,8 +111,7 @@ func (l *kindLog) collect(facts <-chan event.Record, marker string) {
 }
 
 // index is where each kind first appeared, and where the marker did.
-// A kind never seen is absent rather than zero, which a caller has to
-// check: zero would read as "arrived first" and pass.
+// A kind never seen is absent, not zero, which would read as "first".
 func (l *kindLog) index() (map[event.Kind]int, int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

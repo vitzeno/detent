@@ -7,9 +7,8 @@ import (
 	"strings"
 )
 
-// heatmap shades a grid of two fields crossed against each other:
-// commits by weekday and hour, errors by host and service. A third
-// column is the value; without one it counts the rows in each cell.
+// heatmap shades a grid of two fields crossed against each other. A
+// third column is the value, and without one it counts rows per cell.
 type heatmapWidget struct{}
 
 var (
@@ -84,6 +83,18 @@ func (heatmapWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return lines, nil
 }
 
+func (heatmapWidget) Describe() Description {
+	return Description{
+		What: "a shaded grid of two fields crossed against each other, darker where there is more",
+		Needs: []Slot{
+			{Name: "row", What: "the value naming each row of the grid"},
+			{Name: "column", What: "the value naming each column"},
+		},
+		NotFor:   "one field summarised on its own, which is histogram",
+		Examples: []string{"commits by weekday and hour", "errors by host and service"},
+	}
+}
+
 // spread pads each rune of a header out to the cell width, so the
 // axis keeps sitting over the column it names.
 func spread(s string, cw int) string {
@@ -126,16 +137,4 @@ func runeAt(s string, i int) rune {
 		return r[i]
 	}
 	return ' '
-}
-
-func (heatmapWidget) Describe() Description {
-	return Description{
-		What: "a shaded grid of two fields crossed against each other, darker where there is more",
-		Needs: []Slot{
-			{Name: "row", What: "the value naming each row of the grid"},
-			{Name: "column", What: "the value naming each column"},
-		},
-		NotFor:   "one field summarised on its own, which is histogram",
-		Examples: []string{"commits by weekday and hour", "errors by host and service"},
-	}
 }

@@ -6,8 +6,7 @@ import (
 )
 
 // gauge draws a percentage against a fixed 0 to 100, coloured by how
-// full it is. bar scales to the largest value in its column, which is
-// the wrong picture for a disk at 90% beside one at 95%.
+// full it is, where bar would scale to the largest value.
 type gaugeWidget struct{}
 
 var (
@@ -62,17 +61,6 @@ func (gaugeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return lines, nil
 }
 
-// gaugeRole is the thresholds a filling disk is usually read against.
-func gaugeRole(pct float64) Role {
-	switch {
-	case pct >= 90:
-		return RoleDanger
-	case pct >= 70:
-		return RoleCaution
-	}
-	return RoleSafe
-}
-
 func (gaugeWidget) CursorLine(b Block, d Data, f Frame) int { return chartCursor(b, d, f) }
 
 func (gaugeWidget) Describe() Description {
@@ -85,4 +73,15 @@ func (gaugeWidget) Describe() Description {
 		NotFor:   "a number that is not a percentage, where bar's relative scale is the readable one",
 		Examples: []string{"df -h use%", "battery or memory percentages"},
 	}
+}
+
+// gaugeRole is the thresholds a filling disk is usually read against.
+func gaugeRole(pct float64) Role {
+	switch {
+	case pct >= 90:
+		return RoleDanger
+	case pct >= 70:
+		return RoleCaution
+	}
+	return RoleSafe
 }

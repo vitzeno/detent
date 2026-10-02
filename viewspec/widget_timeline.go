@@ -8,8 +8,7 @@ import (
 )
 
 // timeline places each row at the moment it happened on one shared
-// axis. gantt is for the things that lasted; this is for the ones that
-// only have a when.
+// axis, for events with no length.
 type timelineWidget struct{}
 
 var (
@@ -73,9 +72,20 @@ func (timelineWidget) CursorLine(b Block, d Data, f Frame) int {
 	return at + 1
 }
 
-// timeLayouts are the shapes a shell prints a moment in, tried in
-// order. Anything a layout cannot read falls through to a duration and
-// then to a plain number, so an axis works on epochs too.
+func (timelineWidget) Describe() Description {
+	return Description{
+		What: "one marker per row on a shared axis, for events that have a moment but no length",
+		Needs: []Slot{
+			{Name: "label", What: "names each event"},
+			{Name: "time", What: "when it happened"},
+		},
+		NotFor:   "events that lasted, which is gantt",
+		Examples: []string{"git log dates", "docker events", "journalctl timestamps"},
+	}
+}
+
+// timeLayouts are the shapes a shell prints a moment in, tried in order
+// before a duration and then a plain number.
 var timeLayouts = []string{
 	time.RFC3339Nano,
 	"2006-01-02 15:04:05",
@@ -88,9 +98,8 @@ var timeLayouts = []string{
 	"15:04",
 }
 
-// instant reads a field as a point on an axis, in seconds. It reports
-// false rather than 0 for something it cannot read, since 0 is a real
-// position and "unknown" is not.
+// instant reads a field as a point on an axis, in seconds. Unreadable
+// is false rather than 0, since 0 is a real position.
 func instant(s string) (float64, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -108,16 +117,4 @@ func instant(s string) (float64, bool) {
 		return number(s), true
 	}
 	return 0, false
-}
-
-func (timelineWidget) Describe() Description {
-	return Description{
-		What: "one marker per row on a shared axis, for events that have a moment but no length",
-		Needs: []Slot{
-			{Name: "label", What: "names each event"},
-			{Name: "time", What: "when it happened"},
-		},
-		NotFor:   "events that lasted, which is gantt",
-		Examples: []string{"git log dates", "docker events", "journalctl timestamps"},
-	}
 }

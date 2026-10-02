@@ -5,9 +5,8 @@ import (
 	"strings"
 )
 
-// treeWidget draws a hierarchy. Depth names the field holding each
-// row's level; without one, Field is read as a path and the levels
-// come from its slashes.
+// treeWidget draws a hierarchy. Depth names each row's level field,
+// and without one Field is read as a path split on slashes.
 type treeWidget struct{}
 
 var (
@@ -31,8 +30,6 @@ func (treeWidget) Validate(b Block, fields []string) error {
 	return checkShared(b, fields)
 }
 
-func (treeWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }
-
 func (treeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	depths := treeDepths(b, d.Rows)
 	lines := make([]string, 0, len(d.Rows))
@@ -52,6 +49,19 @@ func (treeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return lines, nil
 }
 
+func (treeWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }
+
+func (treeWidget) Describe() Description {
+	return Description{
+		What: "a hierarchy, from a depth field or from a path's slashes",
+		Needs: []Slot{
+			{Name: "field", What: "the path or name at each node"},
+		},
+		NotFor:   "a flat set of names with no nesting, which is a list",
+		Examples: []string{"tree", "find . -name '*.go'", "an indented outline"},
+	}
+}
+
 func treeDepths(b Block, rows []Row) []int {
 	out := make([]int, len(rows))
 	for i, r := range rows {
@@ -67,7 +77,6 @@ func treeDepths(b Block, rows []Row) []int {
 
 // treeStem is row i's connector: a branch for its own level, and for
 // each ancestor a bar only where that ancestor still has rows to come.
-// Without that check a closed branch keeps trailing a line down the page.
 func treeStem(depths []int, i int) string {
 	d := depths[i]
 	if d == 0 {
@@ -107,15 +116,4 @@ func leaf(path string) string {
 		return trimmed[i+1:]
 	}
 	return trimmed
-}
-
-func (treeWidget) Describe() Description {
-	return Description{
-		What: "a hierarchy, from a depth field or from a path's slashes",
-		Needs: []Slot{
-			{Name: "field", What: "the path or name at each node"},
-		},
-		NotFor:   "a flat set of names with no nesting, which is a list",
-		Examples: []string{"tree", "find . -name '*.go'", "an indented outline"},
-	}
 }

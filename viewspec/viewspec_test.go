@@ -13,35 +13,6 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-const goTest = `ok  	github.com/x/a	0.412s
-FAIL	github.com/x/b	1.203s
-ok  	github.com/x/c	9.500s
-ok  	github.com/x/d	10.200s
-`
-
-func linesParse() viewspec.Parse {
-	return viewspec.Parse{Kind: "lines",
-		Pattern: `^(?P<status>ok|FAIL)\s+(?P<pkg>\S+)\s+(?P<secs>[\d.]+)s`}
-}
-
-// bind is the whole data half in one call, and it needs no Painter at
-// all. That is the reason Painter lives on Frame.
-func bind(t *testing.T, spec viewspec.Spec, output string) *viewspec.Bound {
-	t.Helper()
-	c, err := viewspec.Compile(spec)
-	require.NoError(t, err)
-	b, err := c.Bind(output)
-	require.NoError(t, err)
-	return b
-}
-
-func draw(t *testing.T, spec viewspec.Spec, output string, width int) []string {
-	t.Helper()
-	r, err := bind(t, spec, output).Draw(viewspec.Frame{Width: width, Paint: viewspec.Plain()})
-	require.NoError(t, err)
-	return r.Lines
-}
-
 func TestExtract_Kinds(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -100,33 +71,6 @@ func TestExtract_Kinds(t *testing.T) {
 			}
 		})
 	}
-}
-
-// rowsOf reaches the parsed rows through the only surface that exposes
-// them, so the test checks what a widget would actually receive.
-func rowsOf(spec viewspec.Spec, output string) ([]viewspec.Row, error) {
-	var got []viewspec.Row
-	reg := viewspec.Standard()
-	err := reg.Widget("log", viewspec.WidgetFunc(
-		func(_ viewspec.Block, d viewspec.Data, _ viewspec.Frame) ([]string, error) {
-			got = d.Rows
-			return nil, nil
-		}))
-	if err != nil {
-		return nil, err
-	}
-	c, err := viewspec.Compile(spec, viewspec.WithRegistry(reg))
-	if err != nil {
-		return nil, err
-	}
-	b, err := c.Bind(output)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := b.Draw(viewspec.Frame{Width: 40, Paint: viewspec.Plain()}); err != nil {
-		return nil, err
-	}
-	return got, nil
 }
 
 func TestDraw_Widgets(t *testing.T) {
@@ -358,9 +302,8 @@ func TestRegistry_IsTheExtensionPoint(t *testing.T) {
 	assert.Error(t, err, "the standard registry is unaffected by another's registrations")
 }
 
-// Register a widget and the schema handed to a model includes it,
-// which is the only thing stopping the generator drifting from the
-// interpreter.
+// Register a widget and the schema handed to a model includes it, so the
+// generator cannot drift from the interpreter.
 func TestSchema_DescribesTheRegisteredVocabulary(t *testing.T) {
 	reg := viewspec.Standard()
 	require.NoError(t, reg.Widget("hologram", viewspec.WidgetFunc(
@@ -379,14 +322,6 @@ func TestSchema_DescribesTheRegisteredVocabulary(t *testing.T) {
 	parse := s["properties"].(map[string]any)["parse"].(map[string]any)
 	assert.ElementsMatch(t, toStrings(reg.ParseKinds()),
 		parse["properties"].(map[string]any)["kind"].(map[string]any)["enum"])
-}
-
-func toStrings(in []string) []any {
-	out := make([]any, len(in))
-	for i, s := range in {
-		out[i] = s
-	}
-	return out
 }
 
 func TestRole_IsNamedOnTheWire(t *testing.T) {
@@ -464,12 +399,6 @@ func TestDraw_AlwaysDrawsWholeSoTheCallerCanWindow(t *testing.T) {
 	assert.Len(t, r.Lines, 50, "a height never bounds it")
 }
 
-// rolePainter makes roles visible to assertions. Plain paints nothing,
-// on purpose, so golden files stay readable.
-type rolePainter struct{ viewspec.Painter }
-
-func (p rolePainter) Paint(r viewspec.Role, s string) string { return r.String() + ":" + s }
-
 func TestErrors_ColoursWholeLinesBySeverity(t *testing.T) {
 	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "none"},
 		Blocks: []viewspec.Block{{Kind: "errors"}}}
@@ -480,7 +409,7 @@ func TestErrors_ColoursWholeLinesBySeverity(t *testing.T) {
 		"default:starting up",
 		"caution:WARNING: deprecated flag",
 		"danger:panic: nil map",
-	}, r.Lines, "whole lines, not matches — a traceback reads as a unit")
+	}, r.Lines, "whole lines, not matches: a traceback reads as a unit")
 }
 
 func TestJSON_IndentsWhatItCanAndPassesTheRestThrough(t *testing.T) {
@@ -520,23 +449,8 @@ func TestLinesParse_OrdersFieldsByCapture(t *testing.T) {
 		"left to right through the pattern")
 }
 
-// Navigable and actionable are different: the cursor moves through any
-// row widget, but enter only resolves where on_enter says what to run.
-func TestAction_NeedsOnEnterEvenWhenNavigable(t *testing.T) {
-	spec := viewspec.Spec{Parse: linesParse(),
-		Blocks: []viewspec.Block{{Kind: "list", Field: "pkg"}}}
-	b := bind(t, spec, goTest)
-
-	n, ok := b.SelectableRows()
-	require.True(t, ok)
-	assert.Equal(t, 4, n)
-
-	_, ok = b.Action(viewspec.Frame{Cursor: 0})
-	assert.False(t, ok, "nothing to activate")
-}
-
-// Row keys are lowercased so a spec can name them predictably; the
-// header a human reads keeps whatever the output called it.
+// Row keys are lowercased so a spec can name them predictably, while the
+// header keeps whatever the output called it.
 func TestColumns_KeysAreLowerAndTitlesAreNot(t *testing.T) {
 	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "columns", Header: true},
 		Blocks: []viewspec.Block{
@@ -569,16 +483,6 @@ func TestColumns_AMisreadHeaderFailsRatherThanKeepingTheRowsItFits(t *testing.T)
 	assert.NoError(t, err)
 }
 
-const dfH = "Filesystem      Size  Used Avail Use% Mounted on\n" +
-	"/dev/disk3s1s1  926G   10G  560G   2% /\n" +
-	"devfs           205K  205K    0B 100% /dev\n" +
-	"/dev/disk3s6    926G  7.0G  560G   2% /System/Volumes/VM\n" +
-	"/dev/disk3s2    926G  7.6G  560G   2% /System/Volumes/Preboot\n" +
-	"/dev/disk3s4    926G  3.1M  560G   1% /System/Volumes/Update\n" +
-	"/dev/disk1s2    500M  6.0M  483M   2% /System/Volumes/xarts\n" +
-	"/dev/disk3s5    926G  345G  560G  39% /System/Volumes/Data\n" +
-	"map auto_home     0B    0B    0B 100% /System/Volumes/Data/home\n"
-
 // Cut at the header's titles, the right-aligned 926Gi under "Size"
 // read as 9 and 26Gi, and single-spaced titles merged into one field.
 func TestFixed_KeepsAValueWiderThanItsTitleWhole(t *testing.T) {
@@ -610,7 +514,7 @@ func TestFixed_KeepsAValueWiderThanItsTitleWhole(t *testing.T) {
 }
 
 // A title word with nothing under it joins its neighbour, before or
-// after; one with no neighbour is a column nothing filled in.
+// after. One with no neighbour is a column nothing filled in.
 func TestFixed_TitleWordsWithNothingUnderThem(t *testing.T) {
 	table := viewspec.Spec{Parse: viewspec.Parse{Kind: "fixed"}, Blocks: []viewspec.Block{{Kind: "table"}}}
 	images := "IMAGE          ID             DISK USAGE   CONTENT SIZE   EXTRA\n" +
@@ -641,7 +545,7 @@ func TestBound_HidesWhenMostLinesReachNoBlock(t *testing.T) {
 	raw := viewspec.Spec{Parse: viewspec.Parse{Kind: "none"}, Blocks: []viewspec.Block{{Kind: "log"}}}
 	assert.False(t, bind(t, raw, failing).Hides())
 
-	// A JSON document spreads a record over lines; counting them means nothing.
+	// A JSON document spreads a record over lines, so counting them means nothing.
 	doc := viewspec.Spec{Parse: viewspec.Parse{Kind: "json"}, Blocks: []viewspec.Block{{Kind: "table"}}}
 	assert.False(t, bind(t, doc, "[\n  {\n    \"id\": 1\n  },\n  {\n    \"id\": 2\n  }\n]\n").Hides())
 }
@@ -691,9 +595,9 @@ func TestExtract_ShapesBeyondWhitespaceColumns(t *testing.T) {
 		{
 			name:   "pairs splits on a separator",
 			parse:  viewspec.Parse{Kind: "pairs", Sep: "="},
-			output: "HOME=/Users/mo\nSHELL=/bin/zsh\n",
+			output: "HOME=/home/ada\nSHELL=/bin/zsh\n",
 			want: []viewspec.Row{
-				{"key": "HOME", "value": "/Users/mo"},
+				{"key": "HOME", "value": "/home/ada"},
 				{"key": "SHELL", "value": "/bin/zsh"},
 			},
 		},
@@ -828,8 +732,7 @@ func TestBar_ScalesToTheLargestValue(t *testing.T) {
 		"bar length tracks the value")
 }
 
-// Every built-in says what it is for and what it is not, because a
-// fourteen-way choice on flat one-liners loses a model's calibration.
+// Every built-in says what it is for and what it is not.
 func TestSchema_EveryBuiltinDescribesItself(t *testing.T) {
 	reg := viewspec.Standard()
 	guide := reg.Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)
@@ -848,21 +751,6 @@ func TestSchema_EveryBuiltinDescribesItself(t *testing.T) {
 		func(viewspec.Block, viewspec.Data, viewspec.Frame) ([]string, error) { return nil, nil })))
 	guide = reg.Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)
 	assert.NotContains(t, guide["const"].(map[string]viewspec.Description), "hologram")
-}
-
-func rowSpec() viewspec.Spec {
-	return viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{{
-		Kind: viewspec.RowKind,
-		Panes: []viewspec.Pane{
-			{Weight: 1, Blocks: []viewspec.Block{
-				{Kind: "badges", Field: "status"},
-				{Kind: "meter", Title: "ok", CountWhere: "status=ok", Of: "*"},
-			}},
-			{Weight: 2, Blocks: []viewspec.Block{
-				{Kind: "list", Field: "pkg", OnEnter: "go test -v {pkg}"},
-			}},
-		},
-	}}}
 }
 
 func TestRow_LaysPanesSideBySide(t *testing.T) {
@@ -1014,9 +902,8 @@ func TestCursor_EveryRowWidgetReportsIt(t *testing.T) {
 	}
 }
 
-// A kind that cannot report a cursor cannot act on a row either, and
-// saying so at compile time beats a spec that looks right and does
-// nothing when the human presses enter.
+// A kind that cannot report a cursor cannot act on a row either, so
+// on_enter there fails at compile time.
 func TestOnEnter_RefusedWhereItCouldNotWork(t *testing.T) {
 	for _, block := range []viewspec.Block{
 		{Kind: "histogram", Field: "status", OnEnter: "x {pkg}"},
@@ -1030,14 +917,6 @@ func TestOnEnter_RefusedWhereItCouldNotWork(t *testing.T) {
 		require.Error(t, err, block.Kind)
 		assert.Contains(t, err.Error(), "one row per line", block.Kind)
 	}
-}
-
-func twoCols(a, b string) []viewspec.Column {
-	return []viewspec.Column{{Field: a}, {Field: b}}
-}
-
-func threeCols(a, b, c string) []viewspec.Column {
-	return []viewspec.Column{{Field: a}, {Field: b}, {Field: c}}
 }
 
 func TestSubset_NarrowsWidgetsAndValidatesAgainstTheSame(t *testing.T) {
@@ -1056,13 +935,8 @@ func TestSubset_NarrowsWidgetsAndValidatesAgainstTheSame(t *testing.T) {
 		"and the model is only told about what it may use")
 }
 
-// A kind that cannot be drawn without a field says so, because a
-// model told to fill every key and leave unused ones empty will
-// otherwise empty a required one and the block fails to bind.
-//
-// Slots are also what a caller composes from, so the count decides the
-// shape of the block: one fills Field, more than one fills Columns in
-// order. A kind needing something that is not a field declares none.
+// A kind that cannot be drawn without a field says so, and the slot count
+// decides the block's shape: one fills Field, more fill Columns.
 func TestSchema_KindsStateWhatTheyCannotBeDrawnWithout(t *testing.T) {
 	reg := viewspec.Standard()
 	for kind, want := range map[string][]string{
@@ -1099,43 +973,6 @@ func TestSchema_KindsStateWhatTheyCannotBeDrawnWithout(t *testing.T) {
 	}
 }
 
-// stacked is a layout the package has never heard of, registered from
-// outside it. It exists to prove the interpreter asks the widget what
-// it is rather than knowing "row" and "panel" by name.
-type stacked struct{}
-
-func (stacked) Draw(viewspec.Block, viewspec.Data, viewspec.Frame) ([]string, error) {
-	return nil, errors.New("arranged, not drawn")
-}
-
-func (stacked) Accept(panes []viewspec.Pane) error {
-	if len(panes) < 2 {
-		return errors.New("stacked needs two panes")
-	}
-	return nil
-}
-
-func (stacked) Widths(panes []viewspec.Pane, total int) ([]int, error) {
-	out := make([]int, len(panes))
-	for i := range out {
-		out[i] = total
-	}
-	return out, nil
-}
-
-func (stacked) Arrange(cols [][]string, _ []int, _ viewspec.Block, _ viewspec.Frame) ([]string, []int) {
-	lines := []string{"== top =="}
-	at := make([]int, len(cols))
-	for i, col := range cols {
-		if i > 0 {
-			lines = append(lines, "--")
-		}
-		at[i] = len(lines)
-		lines = append(lines, col...)
-	}
-	return lines, at
-}
-
 func TestContainer_IsAnExtensionPoint(t *testing.T) {
 	reg := viewspec.Standard()
 	require.NoError(t, reg.Widget("stacked", stacked{}))
@@ -1167,20 +1004,7 @@ func TestContainer_IsAnExtensionPoint(t *testing.T) {
 	assert.ErrorContains(t, err, "stacked needs two panes", "its own Accept decides the shape")
 }
 
-// nestedKinds is what a pane may hold, per the schema.
-func nestedKinds(t *testing.T, reg *viewspec.Registry) []string {
-	t.Helper()
-	blocks := reg.Schema()["properties"].(map[string]any)["blocks"].(map[string]any)
-	panes := blocks["items"].(map[string]any)["properties"].(map[string]any)["panes"].(map[string]any)
-	inner := panes["items"].(map[string]any)["properties"].(map[string]any)["blocks"].(map[string]any)
-	kinds := inner["items"].(map[string]any)["properties"].(map[string]any)["kind"].(map[string]any)
-	return kinds["enum"].([]string)
-}
-
-// One object per line is what jq -c, docker inspect and most
-// structured logs print. Whole-document parsing rejects it, and the
-// parse-kind spike found that out by choosing json correctly for
-// output our own extractor then refused.
+// One object per line is what jq -c and most structured logs print.
 func TestJSON_ReadsOneObjectPerLine(t *testing.T) {
 	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "json"},
 		Blocks: []viewspec.Block{{Kind: "table"}}}
@@ -1219,10 +1043,8 @@ func TestSample_ShowsWhatAFieldHolds(t *testing.T) {
 	assert.Empty(t, none.Sample(3))
 }
 
-// prefix exists because the composition spike found nine of fifteen
-// real commands had no header and no separator, only a leading token
-// and a remainder. Their alternative was a generated regexp, which is
-// the slow, error-prone half of the pipeline.
+// prefix reads the common headerless shape: a leading token and a
+// remainder, with no generated regexp needed.
 func TestPrefix_TakesTheFirstTokenAndTheRest(t *testing.T) {
 	tests := []struct {
 		name, output string
@@ -1269,16 +1091,6 @@ func TestPrefix_TakesTheFirstTokenAndTheRest(t *testing.T) {
 	}
 }
 
-// fieldOrder is the order a table would draw, which is the extractor's
-// own rather than alphabetical.
-func fieldOrder(b *viewspec.Bound) []string {
-	r, err := b.Draw(viewspec.Frame{Width: 60, Paint: viewspec.Plain()})
-	if err != nil {
-		return nil
-	}
-	return strings.Fields(r.Lines[0])
-}
-
 // Split on whitespace, every border in a drawn table was a column of
 // its own and every rule a row.
 func TestBox_ReadsTablesDrawnWithBorders(t *testing.T) {
@@ -1312,4 +1124,162 @@ func TestDelimited_KeepsAQuotedSeparatorInItsCell(t *testing.T) {
 		Blocks: []viewspec.Block{{Kind: "table"}}}
 	b := bind(t, spec, "name,company,city\n\"Smith, John\",\"Acme, Inc.\",London\nAda,Initech,York\n")
 	assert.Equal(t, viewspec.Row{"name": "Smith, John", "company": "Acme, Inc.", "city": "London"}, b.Sample(1)[0])
+}
+
+const goTest = `ok  	github.com/x/a	0.412s
+FAIL	github.com/x/b	1.203s
+ok  	github.com/x/c	9.500s
+ok  	github.com/x/d	10.200s
+`
+
+func linesParse() viewspec.Parse {
+	return viewspec.Parse{Kind: "lines",
+		Pattern: `^(?P<status>ok|FAIL)\s+(?P<pkg>\S+)\s+(?P<secs>[\d.]+)s`}
+}
+
+// bind is the whole data half in one call, and needs no Painter.
+func bind(t *testing.T, spec viewspec.Spec, output string) *viewspec.Bound {
+	t.Helper()
+	c, err := viewspec.Compile(spec)
+	require.NoError(t, err)
+	b, err := c.Bind(output)
+	require.NoError(t, err)
+	return b
+}
+
+func draw(t *testing.T, spec viewspec.Spec, output string, width int) []string {
+	t.Helper()
+	r, err := bind(t, spec, output).Draw(viewspec.Frame{Width: width, Paint: viewspec.Plain()})
+	require.NoError(t, err)
+	return r.Lines
+}
+
+// rowsOf reaches the parsed rows through the only surface that exposes
+// them, so the test checks what a widget would actually receive.
+func rowsOf(spec viewspec.Spec, output string) ([]viewspec.Row, error) {
+	var got []viewspec.Row
+	reg := viewspec.Standard()
+	err := reg.Widget("log", viewspec.WidgetFunc(
+		func(_ viewspec.Block, d viewspec.Data, _ viewspec.Frame) ([]string, error) {
+			got = d.Rows
+			return nil, nil
+		}))
+	if err != nil {
+		return nil, err
+	}
+	c, err := viewspec.Compile(spec, viewspec.WithRegistry(reg))
+	if err != nil {
+		return nil, err
+	}
+	b, err := c.Bind(output)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := b.Draw(viewspec.Frame{Width: 40, Paint: viewspec.Plain()}); err != nil {
+		return nil, err
+	}
+	return got, nil
+}
+
+func toStrings(in []string) []any {
+	out := make([]any, len(in))
+	for i, s := range in {
+		out[i] = s
+	}
+	return out
+}
+
+// rolePainter makes roles visible to assertions. Plain paints nothing,
+// on purpose, so golden files stay readable.
+type rolePainter struct{ viewspec.Painter }
+
+func (p rolePainter) Paint(r viewspec.Role, s string) string { return r.String() + ":" + s }
+
+const dfH = "Filesystem      Size  Used Avail Use% Mounted on\n" +
+	"/dev/disk3s1s1  926G   10G  560G   2% /\n" +
+	"devfs           205K  205K    0B 100% /dev\n" +
+	"/dev/disk3s6    926G  7.0G  560G   2% /System/Volumes/VM\n" +
+	"/dev/disk3s2    926G  7.6G  560G   2% /System/Volumes/Preboot\n" +
+	"/dev/disk3s4    926G  3.1M  560G   1% /System/Volumes/Update\n" +
+	"/dev/disk1s2    500M  6.0M  483M   2% /System/Volumes/xarts\n" +
+	"/dev/disk3s5    926G  345G  560G  39% /System/Volumes/Data\n" +
+	"map auto_home     0B    0B    0B 100% /System/Volumes/Data/home\n"
+
+func rowSpec() viewspec.Spec {
+	return viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{{
+		Kind: viewspec.RowKind,
+		Panes: []viewspec.Pane{
+			{Weight: 1, Blocks: []viewspec.Block{
+				{Kind: "badges", Field: "status"},
+				{Kind: "meter", Title: "ok", CountWhere: "status=ok", Of: "*"},
+			}},
+			{Weight: 2, Blocks: []viewspec.Block{
+				{Kind: "list", Field: "pkg", OnEnter: "go test -v {pkg}"},
+			}},
+		},
+	}}}
+}
+
+func twoCols(a, b string) []viewspec.Column {
+	return []viewspec.Column{{Field: a}, {Field: b}}
+}
+
+func threeCols(a, b, c string) []viewspec.Column {
+	return []viewspec.Column{{Field: a}, {Field: b}, {Field: c}}
+}
+
+// stacked is a layout registered from outside, proving the interpreter
+// asks the widget what it is rather than knowing "row" and "panel" by name.
+type stacked struct{}
+
+func (stacked) Draw(viewspec.Block, viewspec.Data, viewspec.Frame) ([]string, error) {
+	return nil, errors.New("arranged, not drawn")
+}
+
+func (stacked) Accept(panes []viewspec.Pane) error {
+	if len(panes) < 2 {
+		return errors.New("stacked needs two panes")
+	}
+	return nil
+}
+
+func (stacked) Widths(panes []viewspec.Pane, total int) ([]int, error) {
+	out := make([]int, len(panes))
+	for i := range out {
+		out[i] = total
+	}
+	return out, nil
+}
+
+func (stacked) Arrange(cols [][]string, _ []int, _ viewspec.Block, _ viewspec.Frame) ([]string, []int) {
+	lines := []string{"== top =="}
+	at := make([]int, len(cols))
+	for i, col := range cols {
+		if i > 0 {
+			lines = append(lines, "--")
+		}
+		at[i] = len(lines)
+		lines = append(lines, col...)
+	}
+	return lines, at
+}
+
+// nestedKinds is what a pane may hold, per the schema.
+func nestedKinds(t *testing.T, reg *viewspec.Registry) []string {
+	t.Helper()
+	blocks := reg.Schema()["properties"].(map[string]any)["blocks"].(map[string]any)
+	panes := blocks["items"].(map[string]any)["properties"].(map[string]any)["panes"].(map[string]any)
+	inner := panes["items"].(map[string]any)["properties"].(map[string]any)["blocks"].(map[string]any)
+	kinds := inner["items"].(map[string]any)["properties"].(map[string]any)["kind"].(map[string]any)
+	return kinds["enum"].([]string)
+}
+
+// fieldOrder is the order a table would draw, which is the extractor's
+// own rather than alphabetical.
+func fieldOrder(b *viewspec.Bound) []string {
+	r, err := b.Draw(viewspec.Frame{Width: 60, Paint: viewspec.Plain()})
+	if err != nil {
+		return nil
+	}
+	return strings.Fields(r.Lines[0])
 }

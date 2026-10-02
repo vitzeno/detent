@@ -6,8 +6,7 @@ import (
 )
 
 // barWidget charts one row per bar: Columns[0] labels, Columns[1] is
-// the number. Bars scale to the largest value and to the frame, so the
-// comparison survives a narrow pane.
+// the number. Bars scale to the largest value and to the frame.
 type barWidget struct{}
 
 var (
@@ -66,6 +65,8 @@ func (barWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return lines, nil
 }
 
+func (barWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }
+
 func (barWidget) Describe() Description {
 	return Description{
 		What: "one bar per row, scaled to the largest, for comparing a number across rows",
@@ -77,7 +78,3 @@ func (barWidget) Describe() Description {
 		Examples: []string{"time per package", "size per directory"},
 	}
 }
-
-// Every widget drawing one row per record reports its cursor, so a
-// caller can scroll to a selection and enter can act on it.
-func (barWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }

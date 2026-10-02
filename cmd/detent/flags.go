@@ -51,7 +51,7 @@ func listServers() error {
 		return err
 	}
 	if len(cfg) == 0 {
-		fmt.Printf("no mcp servers configured — looked in %s\n", strings.Join(mcppkg.Files(), " and "))
+		fmt.Printf("no mcp servers configured, looked in %s\n", strings.Join(mcppkg.Files(), " and "))
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -85,7 +85,7 @@ func pruneSandbox(socket string) error {
 		socket = defaultSandboxSocket()
 	}
 	if socket == "" {
-		return fmt.Errorf("no default containerd socket for this OS — set -sandbox-socket (or sandbox_socket in config)")
+		return fmt.Errorf("no default containerd socket for this OS: set -sandbox-socket (or sandbox_socket in config)")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

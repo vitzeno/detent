@@ -7,9 +7,8 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// painter maps viewspec's display intents onto the active theme. It
-// reads the package style vars at call time, so a theme change follows
-// without rebinding anything.
+// painter maps viewspec's display intents onto the active theme, read
+// at call time so a theme change needs no rebinding.
 type painter struct{}
 
 var _ viewspec.Painter = painter{}
@@ -18,9 +17,8 @@ func (painter) Paint(r viewspec.Role, s string) string {
 	return roleStyle(r).Render(s)
 }
 
-// Width and Truncate are ANSI-aware because Paint emits escapes.
-// Measuring painted text with len is how a table looks aligned in
-// tests and ragged in a terminal.
+// Width and Truncate are ANSI-aware because Paint emits escapes, and
+// measuring painted text with len leaves a table ragged in a terminal.
 func (painter) Width(s string) int { return lipgloss.Width(s) }
 
 func (painter) Truncate(s string, n int) string {
@@ -30,9 +28,8 @@ func (painter) Truncate(s string, n int) string {
 	return ansi.Truncate(s, n, "…")
 }
 
-// RoleHeading and RoleAccent render alike under every shipped theme.
-// They stay separate intents: a header is not a selection, and a theme
-// is free to tell them apart.
+// roleStyle maps a role to its style. RoleHeading and RoleAccent render
+// alike today but stay separate, so a theme is free to tell them apart.
 func roleStyle(r viewspec.Role) lipgloss.Style {
 	switch r {
 	case viewspec.RoleMuted:

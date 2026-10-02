@@ -34,8 +34,8 @@ type Client struct {
 	Env Environment
 }
 
-// Complete is one Step. tools is the registry's schemas; nil asks for
-// prose alone.
+// Complete is one Step. tools is the registry's schemas, and nil asks
+// for prose alone.
 func (c *Client) Complete(ctx context.Context, msgs []event.Message, tools []map[string]any) (Reply, event.Usage, error) {
 	if len(msgs) == 0 {
 		return Reply{}, event.Usage{}, fmt.Errorf("model: empty transcript")

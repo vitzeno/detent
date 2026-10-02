@@ -1,7 +1,6 @@
-// Package capture holds the bounded-output-capture primitives shared
-// by every command backend (internal/host's exec.Cmd pipes,
-// internal/sandbox's file-tailed container output): a capped Result,
-// a StreamEvent for live output, and the scanner that produces both.
+// Package capture holds the bounded-output primitives every command
+// backend shares: a capped Result, a StreamEvent for live output, and
+// the scanner that produces both.
 package capture
 
 import (

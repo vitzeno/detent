@@ -11,10 +11,17 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// Registry is the vocabulary detent draws with: viewspec's own plus
-// what only this process can provide. cmd/detent hands it to the
-// composer, so the judge is offered exactly what will draw.
+// Registry is the vocabulary detent draws with. cmd/detent hands it to
+// the composer, so the judge is offered exactly what will draw.
 func Registry() *viewspec.Registry { return viewRegistry }
+
+// viewRegistry is Standard plus what only detent can provide. A widget
+// registered here reaches the model's schema too.
+var viewRegistry = func() *viewspec.Registry {
+	r := viewspec.Standard()
+	must(r.Widget("markdown", &markdownWidget{}))
+	return r
+}()
 
 // seedFromView puts a row's on_enter command in the prompt as
 // editable text. It does not run: from there it is an ordinary prompt.
@@ -33,7 +40,7 @@ func (m Model) seedFromView(r *callRow) (Model, bool) {
 }
 
 // boundView resolves a row's view, binding once and caching on the
-// row. Draw runs per frame; Bind must not.
+// row. Draw runs per frame, Bind must not.
 func boundView(r *callRow) (*viewspec.Bound, bool) {
 	if !r.drawable() {
 		return nil, false
@@ -49,12 +56,11 @@ func boundView(r *callRow) (*viewspec.Bound, bool) {
 			err = errHides
 		}
 		if err != nil {
-			// The chain ends at raw bytes, so this is recoverable.
-			// It is still the only trace that a kind's own rendering
-			// was dropped, which used to leave no trace at all.
+			// The chain ends at raw bytes, so this is recoverable, but it
+			// is the only trace that a kind's own rendering was dropped.
 			logging.For(logging.UI).Debug("a built-in view could not draw this output",
 				logging.KeyEvent, logging.ViewInvalid, "kind", string(r.kind()),
-				"source", string("built-in"), logging.KeyReason, err.Error())
+				"source", "built-in", logging.KeyReason, err.Error())
 			continue
 		}
 		r.view, r.viewSource = b, "built-in"
@@ -63,9 +69,8 @@ func boundView(r *callRow) (*viewspec.Bound, bool) {
 	return nil, false
 }
 
-// bindSpec binds a spec the engine sent. It binds again rather than
-// trusting: ui accepts data it does not control, and a spec arriving
-// broken must leave the fallback exactly as it was.
+// bindSpec binds a spec the engine sent, and binds again rather than
+// trusting it: a broken spec must leave the fallback exactly as it was.
 func bindSpec(spec viewspec.Spec, output string) (*viewspec.Bound, bool) {
 	c, err := viewspec.Compile(spec, viewspec.WithRegistry(viewRegistry))
 	if err == nil {
@@ -82,13 +87,10 @@ func bindSpec(spec viewspec.Spec, output string) (*viewspec.Bound, bool) {
 	return nil, false
 }
 
-// fallbackChain is what a row draws with no judge involved: the spec
-// for its judged shape, then raw bytes. A composed spec replaces it
-// when one arrives. markdown.Wants is the one heuristic, and it runs
-// only before anything has been judged.
+// fallbackChain is what a row draws with no judge involved: the spec for
+// its judged shape, then raw bytes. A composed spec replaces it later.
 func fallbackChain(r *callRow, output string) []*viewspec.Compiled {
-	// The model's own words are a document, not bytes a command
-	// printed: they wrap and scroll rather than losing their tail.
+	// The model's own words are a document, not bytes a command printed.
 	if r.prose != "" {
 		return []*viewspec.Compiled{compiledMarkdown, compiledPlain}
 	}
@@ -110,23 +112,15 @@ func fallbackChain(r *callRow, output string) []*viewspec.Compiled {
 // errHides is a view that would leave most of the output undrawn.
 var errHides = errors.New("the view hides most of the output")
 
-// viewRegistry is Standard plus what only detent can provide. A widget
-// registered here reaches the model's schema too, since generation
-// asks the registry rather than a hand-written list.
-var viewRegistry = func() *viewspec.Registry {
-	r := viewspec.Standard()
-	must(r.Widget("markdown", &markdownWidget{}))
-	return r
-}()
-
 // markdownWidget renders prose through glamour, which viewspec cannot
-// cannot: it imports only the standard library. Caches its last render
-// because Draw runs per frame; one entry, one goroutine, no lock.
+// import. It caches its last render because Draw runs per frame.
 type markdownWidget struct {
 	raw   string
 	width int
 	out   []string
 }
+
+var _ viewspec.Described = (*markdownWidget)(nil)
 
 func (w *markdownWidget) Draw(_ viewspec.Block, d viewspec.Data, f viewspec.Frame) ([]string, error) {
 	if w.out != nil && w.raw == d.Raw && w.width == f.Width {
@@ -134,8 +128,7 @@ func (w *markdownWidget) Draw(_ viewspec.Block, d viewspec.Data, f viewspec.Fram
 	}
 	rendered, err := markdown.Render(d.Raw, f.Width)
 	if err != nil {
-		// Wrapped, not raw: falling back must not reintroduce the
-		// overflow this widget is here to avoid.
+		// Wrapped, not raw, so falling back does not overflow the pane.
 		rendered = strings.Join(wrapPlain(d.Raw, f.Width), "\n")
 	}
 	w.raw, w.width = d.Raw, f.Width
@@ -143,9 +136,8 @@ func (w *markdownWidget) Draw(_ viewspec.Block, d viewspec.Data, f viewspec.Fram
 	return w.out, nil
 }
 
-// Describe puts markdown in the guide the judge chooses from. Without
-// it the widget is registered, drawable, and silently absent from
-// every criteria list, since criteria are built from Described alone.
+// Describe puts markdown in the guide the judge chooses from. Without it
+// the widget draws but is absent from every criteria list.
 func (*markdownWidget) Describe() viewspec.Description {
 	return viewspec.Description{
 		Raw:      true,
@@ -161,14 +153,12 @@ func must(err error) {
 	}
 }
 
-// The specs themselves live in views, which viewgen reads too. These
-// are them compiled once against this registry, since Compile is per
-// spec and Bind is per output.
+// The specs from views, compiled once against this registry, since
+// Compile is per spec and Bind is per output.
 var (
 	compiledFallback = compileAll(byKind())
 	compiledMarkdown = compileAll(map[string]viewspec.Spec{"m": views.Raw("markdown")})["m"]
-	// compiledPlain is the floor: raw bytes, no interpretation. Used
-	// before anything is judged, and when a fitted spec doesn't fit.
+	// compiledPlain is the floor: raw bytes, no interpretation.
 	compiledPlain = compileAll(map[string]viewspec.Spec{"p": views.Raw("log")})["p"]
 )
 
@@ -183,8 +173,8 @@ func byKind() map[string]viewspec.Spec {
 	return out
 }
 
-// compileAll drops what doesn't compile. A bad spec here is a
-// programming error, but one must not take the whole map with it.
+// compileAll drops what doesn't compile, so one bad spec cannot take
+// the whole map with it.
 func compileAll[K comparable](in map[K]viewspec.Spec) map[K]*viewspec.Compiled {
 	out := make(map[K]*viewspec.Compiled, len(in))
 	for key, spec := range in {

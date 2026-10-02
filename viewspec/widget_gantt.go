@@ -6,8 +6,7 @@ import (
 )
 
 // gantt lays each row on a shared axis from where it starts to how
-// long it ran, which is the shape of anything timed: a boot, a build,
-// a test run. bar would draw the lengths and lose when they happened.
+// long it ran: a boot, a build, a test run.
 type ganttWidget struct{}
 
 var (

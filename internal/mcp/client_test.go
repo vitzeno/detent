@@ -14,56 +14,6 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// serve wires a real server to a real client over an in-memory pair,
-// so these exercise the protocol rather than a fake of it.
-func serve(t *testing.T, tools ...fake) *Server {
-	return serveAs(t, "fake", 0, tools...)
-}
-
-// servePaged takes the page size: the SDK's default is 1000, and a
-// test that never crosses a boundary proves nothing about the cursor.
-func servePaged(t *testing.T, pageSize int, tools ...fake) *Server {
-	return serveAs(t, "fake", pageSize, tools...)
-}
-
-// serveAs names the server, since detent keys servers by name and two
-// sharing one is a case the config cannot produce.
-func serveAs(t *testing.T, name string, pageSize int, tools ...fake) *Server {
-	t.Helper()
-	srv := sdk.NewServer(&sdk.Implementation{Name: name, Version: "1"},
-		&sdk.ServerOptions{PageSize: pageSize})
-	for _, tl := range tools {
-		srv.AddTool(&sdk.Tool{
-			Name:        tl.name,
-			Description: tl.desc,
-			InputSchema: map[string]any{"type": "object"},
-		}, tl.handle)
-	}
-
-	client, server := sdk.NewInMemoryTransports()
-	ctx := context.Background()
-	ss, err := srv.Connect(ctx, server, nil)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = ss.Close() })
-
-	s, err := Connect(ctx, name, client)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = s.Close() })
-	return s
-}
-
-// fake is one tool the in-memory server offers.
-type fake struct {
-	name, desc string
-	handle     sdk.ToolHandler
-}
-
-func text(name string, out ...sdk.Content) fake {
-	return fake{name: name, desc: name + " does something", handle: func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
-		return &sdk.CallToolResult{Content: out}, nil
-	}}
-}
-
 func TestServer_ListsWhatItOffers(t *testing.T) {
 	s := serve(t, text("alpha"), text("beta"))
 
@@ -201,4 +151,54 @@ func TestToResult_SaysWhenItTruncated(t *testing.T) {
 	}})
 	assert.Len(t, res.Stdout, capture.MaxOutputBytes)
 	assert.True(t, res.Truncated, "the tail went without saying so")
+}
+
+// serve wires a real server to a real client over an in-memory pair,
+// so these exercise the protocol rather than a fake of it.
+func serve(t *testing.T, tools ...fake) *Server {
+	return serveAs(t, "fake", 0, tools...)
+}
+
+// servePaged takes the page size: the SDK's default is 1000, and a
+// test that never crosses a boundary proves nothing about the cursor.
+func servePaged(t *testing.T, pageSize int, tools ...fake) *Server {
+	return serveAs(t, "fake", pageSize, tools...)
+}
+
+// serveAs names the server, since detent keys servers by name and two
+// sharing one is a case the config cannot produce.
+func serveAs(t *testing.T, name string, pageSize int, tools ...fake) *Server {
+	t.Helper()
+	srv := sdk.NewServer(&sdk.Implementation{Name: name, Version: "1"},
+		&sdk.ServerOptions{PageSize: pageSize})
+	for _, tl := range tools {
+		srv.AddTool(&sdk.Tool{
+			Name:        tl.name,
+			Description: tl.desc,
+			InputSchema: map[string]any{"type": "object"},
+		}, tl.handle)
+	}
+
+	client, server := sdk.NewInMemoryTransports()
+	ctx := context.Background()
+	ss, err := srv.Connect(ctx, server, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ss.Close() })
+
+	s, err := Connect(ctx, name, client)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+// fake is one tool the in-memory server offers.
+type fake struct {
+	name, desc string
+	handle     sdk.ToolHandler
+}
+
+func text(name string, out ...sdk.Content) fake {
+	return fake{name: name, desc: name + " does something", handle: func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+		return &sdk.CallToolResult{Content: out}, nil
+	}}
 }

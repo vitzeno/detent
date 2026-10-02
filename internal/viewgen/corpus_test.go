@@ -14,6 +14,34 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
+func TestCorpus_ReadsWhatTheOutputHolds(t *testing.T) {
+	for _, c := range corpus {
+		t.Run(c.file+"/"+c.say["parse_kind"], func(t *testing.T) {
+			raw, err := os.ReadFile(filepath.Join("testdata", "corpus", c.file+".txt"))
+			require.NoError(t, err)
+			output := string(raw)
+			say := maps.Clone(c.say)
+			say["body"], say["summary"] = "table", "none"
+			g, _ := composer(t, say)
+			got, err := g.Compose(context.Background(), viewgen.Request{Command: c.file, Output: output, Kind: c.kind})
+			require.NoError(t, err)
+
+			compiled, err := viewspec.Compile(*got.Spec)
+			require.NoError(t, err)
+			b, err := compiled.Bind(output)
+			require.NoError(t, err)
+			assert.Equal(t, c.rows, b.Rows(), "rows")
+			assert.Len(t, b.Fields(), c.fields, "fields %v", b.Fields())
+			assert.False(t, b.Hides())
+			for field, pattern := range c.each {
+				for _, r := range b.Sample(b.Rows()) {
+					assert.Regexp(t, pattern, r[field], "%s in %v", field, r)
+				}
+			}
+		})
+	}
+}
+
 // corpus is real output with the answers Jev gave, wrong ones included.
 // Each case says what must be read, never which parse reads it.
 var corpus = []struct {
@@ -53,32 +81,4 @@ var corpus = []struct {
 
 func header(line, parse string) map[string]string {
 	return map[string]string{"header_line": line, "parse_kind": parse}
-}
-
-func TestCorpus_ReadsWhatTheOutputHolds(t *testing.T) {
-	for _, c := range corpus {
-		t.Run(c.file+"/"+c.say["parse_kind"], func(t *testing.T) {
-			raw, err := os.ReadFile(filepath.Join("testdata", "corpus", c.file+".txt"))
-			require.NoError(t, err)
-			output := string(raw)
-			say := maps.Clone(c.say)
-			say["body"], say["summary"] = "table", "none"
-			g, _ := composer(t, say)
-			got, err := g.Compose(context.Background(), viewgen.Request{Command: c.file, Output: output, Kind: c.kind})
-			require.NoError(t, err)
-
-			compiled, err := viewspec.Compile(*got.Spec)
-			require.NoError(t, err)
-			b, err := compiled.Bind(output)
-			require.NoError(t, err)
-			assert.Equal(t, c.rows, b.Rows(), "rows")
-			assert.Len(t, b.Fields(), c.fields, "fields %v", b.Fields())
-			assert.False(t, b.Hides())
-			for field, pattern := range c.each {
-				for _, r := range b.Sample(b.Rows()) {
-					assert.Regexp(t, pattern, r[field], "%s in %v", field, r)
-				}
-			}
-		})
-	}
 }

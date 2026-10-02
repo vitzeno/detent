@@ -1,8 +1,6 @@
-// Package config loads every knob from a YAML file: the proposer
-// (any OpenAI-compatible endpoint: LM Studio, OpenRouter, OpenAI),
-// the Jev judge, and loop behavior. Precedence is flags, then
-// environment, then file, then built-in defaults. A missing file is
-// not an error; an explicit -config path that can't be read is.
+// Package config loads the proposer, Jev judge and loop settings from a
+// YAML file, under flags and environment and over built-in defaults. A
+// missing file is not an error, but an unreadable -config path is.
 package config
 
 import (
@@ -18,22 +16,6 @@ import (
 	"github.com/vitzeno/detent/internal/sandbox"
 )
 
-// Defaults: OpenRouter and a large-window model, pinned Jev. Aliased
-// from model rather than redeclared, so the two can't silently drift.
-const (
-	DefaultBaseURL = model.DefaultBaseURL
-	DefaultModel   = model.DefaultModel
-)
-
-// DefaultContextTokens is aliased for the same reason. Unlike Steps, 0
-// is not a meaningful value here — an unbounded transcript is the bug
-// compaction exists to fix — so a plain default is enough.
-const DefaultContextTokens = engine.DefaultContextTokens
-
-// DefaultSandboxWorkspace is the in-container mount point, not the
-// host source (always os.Getwd(); see sandbox.Container).
-const DefaultSandboxWorkspace = "/workspace"
-
 // Config selects what the proposer and judge talk to, plus loop behavior.
 type Config struct {
 	BaseURL string            `yaml:"base_url"`
@@ -41,8 +23,7 @@ type Config struct {
 	APIKey  string            `yaml:"api_key"`
 	Headers map[string]string `yaml:"headers"`
 	Steps   int               `yaml:"steps"`
-	// ContextTokens is how much of the model's window the transcript
-	// may fill before older turns are summarised away.
+	// ContextTokens is how much of the window the transcript may fill before compaction.
 	ContextTokens int `yaml:"context_tokens"`
 
 	JevAPIKey     string  `yaml:"jev_api_key"`
@@ -50,27 +31,23 @@ type Config struct {
 	JevEndpoint   string  `yaml:"jev_endpoint"`
 	RiskThreshold float64 `yaml:"risk_threshold"`
 
-	// Theme is a name from internal/ui/theme.Themes. Unvalidated here —
-	// main.go does the lookup, so config has no dependency on ui.
+	// Theme is a name from ui/theme.Themes, checked by main.go so config need not import ui.
 	Theme string `yaml:"theme"`
 
 	// LogLevel is "debug", "info", "warn" or "error".
 	LogLevel string `yaml:"log_level"`
-	// LogBodies allows prompts, model replies and command output into
-	// the log. Off by default: they carry secrets and bulk, and the
-	// shape of a reply answers most questions.
+	// LogBodies lets prompts, replies and command output into the log.
+	// Off by default: they carry secrets and bulk.
 	LogBodies bool `yaml:"log_bodies"`
-	// LogDir holds one JSONL file per session; empty means the default
-	// under ~/.local/state/detent/logs.
+	// LogDir holds one JSONL file per session, empty for logging.DefaultDir.
 	LogDir string `yaml:"log_dir"`
 
-	// Views is "saved" or "generate". See the constants.
+	// Views is ViewsSaved or ViewsGenerate.
 	Views string `yaml:"views"`
 
-	// SandboxMode is "auto" or "host"; unvalidated here, like Theme.
+	// SandboxMode is "auto" or "host", unvalidated here like Theme.
 	SandboxMode string `yaml:"sandbox_mode"`
-	// SandboxSocket overrides the OS-conventional containerd socket
-	// path; empty lets main.go's defaultSandboxSocket() pick it.
+	// SandboxSocket overrides the OS-conventional containerd socket.
 	SandboxSocket  string `yaml:"sandbox_socket"`
 	SandboxImage   string `yaml:"sandbox_image"`
 	SandboxRuntime string `yaml:"sandbox_runtime"`
@@ -79,32 +56,6 @@ type Config struct {
 	SandboxNetwork   string `yaml:"sandbox_network"`
 	SandboxWorkspace string `yaml:"sandbox_workspace"`
 }
-
-// DefaultTheme mirrors theme.DefaultName, duplicated to avoid the same
-// dependency.
-const DefaultTheme = "dark"
-
-// How far the output pane may go to draw a command's result. There is
-// no "off": the pane draws from a spec either way, and the built-in
-// rendering for a judged kind is one. The only question worth a
-// setting is whether a model may write a new spec.
-const (
-	// ViewsSaved draws only from specs that already exist: the
-	// built-in rendering for the judged kind, the ones detent ships
-	// for known commands, and any saved on disk. Never calls a model.
-	ViewsSaved = "saved"
-	// ViewsGenerate does what ViewsSaved does first, and when nothing
-	// covers an output, asks a model for a spec and saves it. The next
-	// run of that command shape is served from disk for nothing.
-	ViewsGenerate = "generate"
-)
-
-// DefaultViews draws from what already exists but spends no tokens.
-// Generation is opt-in because it bills the proposer.
-const DefaultViews = ViewsSaved
-
-// DefaultLogLevel records what happened without recording everything.
-const DefaultLogLevel = "info"
 
 // Default returns the built-in configuration.
 func Default() Config {
@@ -125,9 +76,8 @@ func Default() Config {
 	}
 }
 
-// Load reads path, or searches the standard locations when path is
-// empty: ./.detent.yaml (or .yml), then ~/.config/detent/config.yaml
-// (or .yml). No file anywhere returns Default with no error.
+// Load reads path, or else the first of ./.detent.y(a)ml and
+// ~/.config/detent/config.y(a)ml, or else returns Default.
 func Load(path string) (Config, error) {
 	if path != "" {
 		return read(path)
@@ -145,6 +95,42 @@ func Load(path string) (Config, error) {
 	}
 	return Default(), nil
 }
+
+// Defaults: OpenRouter and a large-window model, pinned Jev. Aliased
+// from model rather than redeclared, so the two can't silently drift.
+const (
+	DefaultBaseURL = model.DefaultBaseURL
+	DefaultModel   = model.DefaultModel
+)
+
+// DefaultContextTokens is aliased for the same reason. 0 means nothing
+// here, since an unbounded transcript is what compaction prevents.
+const DefaultContextTokens = engine.DefaultContextTokens
+
+// DefaultSandboxWorkspace is the in-container mount point. The host
+// source is always the working directory (see sandbox.Container).
+const DefaultSandboxWorkspace = "/workspace"
+
+// DefaultTheme mirrors theme.DefaultName, duplicated to avoid the same
+// dependency.
+const DefaultTheme = "dark"
+
+// The Views modes. There is no "off": the pane draws from a spec either
+// way, and the only question is whether a new one may be written.
+const (
+	// ViewsSaved draws only from specs that exist (built in, shipped
+	// for known commands, or saved on disk) and never calls a model.
+	ViewsSaved = "saved"
+	// ViewsGenerate also asks the judge to compose a spec when nothing
+	// covers an output, and saves it so the next run is free.
+	ViewsGenerate = "generate"
+)
+
+// DefaultViews spends nothing. Generation is opt-in because it costs judge calls.
+const DefaultViews = ViewsSaved
+
+// DefaultLogLevel records what happened without recording everything.
+const DefaultLogLevel = "info"
 
 func read(path string) (Config, error) {
 	raw, err := os.ReadFile(path)

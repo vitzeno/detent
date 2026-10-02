@@ -49,9 +49,8 @@ type blockCache struct {
 	cursorAt int
 }
 
-// histKey is everything the assembled history depends on. Moving the
-// window changes only which slice of it is on screen, so a scroll is
-// a hit.
+// histKey is everything the assembled history depends on. A scroll
+// only moves the window over it, so it is a hit.
 type histKey struct {
 	rev, width, cursor int
 	spinner            string // only while a block is still live
@@ -64,7 +63,7 @@ type histCache struct {
 }
 
 // callRow is one tool call, or the model's own words. Exactly one of
-// tool and prose is set.
+// command and prose is set.
 type callRow struct {
 	id uuid.UUID
 	// command is what the human reads: the tool's arguments, rendered.
@@ -132,6 +131,11 @@ func (r *callRow) kind() string {
 	return r.post.renderKind
 }
 
+// ok reports whether the call succeeded, for the row's status glyph.
+func (r *callRow) ok() bool {
+	return r.result != nil && r.result.Err == "" && r.result.ExitCode == 0
+}
+
 func outputOf(r *event.Result) string {
 	switch {
 	case r.Err != "":
@@ -142,9 +146,4 @@ func outputOf(r *event.Result) string {
 		return r.Stderr
 	}
 	return r.Stdout
-}
-
-// ok reports whether the call succeeded, for the row's status glyph.
-func (r *callRow) ok() bool {
-	return r.result != nil && r.result.Err == "" && r.result.ExitCode == 0
 }

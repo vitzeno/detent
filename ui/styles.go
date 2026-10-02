@@ -58,13 +58,6 @@ func RefreshStyles() {
 
 	styleRowCursor = lipgloss.NewStyle().Foreground(accent).Bold(true)
 
-	// Allocated once: diff/error styling runs per output line.
-
-	// Islands: one rounded border per zone, accent when focused.
-
-	// The confirm modal is always focused while visible, so its resting
-	// border is accent — danger overrides it, never the reverse.
-
 	status.RefreshStyles()
 	welcome.RefreshStyles()
 }

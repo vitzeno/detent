@@ -2,12 +2,11 @@ package host
 
 import "github.com/vitzeno/detent/internal/capture"
 
-// Result, StreamEvent, and MaxOutputBytes are aliases onto
-// internal/capture, which internal/sandbox also builds on. This
-// package stays the single re-export point so every existing
-// host.Result/host.StreamEvent reference elsewhere is unaffected.
+// Result is capture.Result, re-exported so callers need not import capture.
 type Result = capture.Result
 
+// StreamEvent is capture.StreamEvent.
 type StreamEvent = capture.StreamEvent
 
+// MaxOutputBytes is capture.MaxOutputBytes.
 const MaxOutputBytes = capture.MaxOutputBytes

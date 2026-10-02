@@ -6,10 +6,8 @@ import (
 	"strings"
 )
 
-// number reads a quantity the way a shell prints one: a bare number, a
-// percentage, a separated count, or a size carrying a unit. ParseFloat
-// alone read none of df's columns, drawing an empty bar rather than an
-// error anyone could see. Unreadable is 0, never a failed view.
+// number reads a quantity the way a shell prints one: 45%, 1,024 or
+// 1.2G. Unreadable is 0, never a failed view.
 func number(s string) float64 {
 	digits, unit := splitNumber(strings.TrimSpace(s))
 	if digits == "" {
@@ -23,7 +21,7 @@ func number(s string) float64 {
 }
 
 // splitNumber cuts s into its leading numeric prefix and whatever
-// followed. Separators stay in; ParseFloat never sees them.
+// followed. Separators stay in, and number strips them.
 func splitNumber(s string) (digits, unit string) {
 	i := 0
 	if i < len(s) && (s[i] == '-' || s[i] == '+') {
@@ -41,9 +39,8 @@ func splitNumber(s string) (digits, unit string) {
 // commands that print them.
 const multipliers = "KMGTPE"
 
-// scale reads a unit suffix, counting only a single uppercase
-// multiplier. "12ms" is 12 rather than 12 mega: a lowercase m is milli
-// as often as not, and a wrong scale draws a plausible wrong chart.
+// scale reads a unit suffix, counting only a single uppercase multiplier:
+// "12ms" is 12, since a lowercase m is milli as often as not.
 func scale(unit string) float64 {
 	unit = strings.TrimSuffix(strings.TrimSuffix(unit, "b"), "B")
 	unit = strings.TrimSuffix(unit, "i")

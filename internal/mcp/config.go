@@ -45,12 +45,10 @@ func Load(paths ...string) (map[string]Config, error) {
 // OAuth is Claude Code's "oauth" object, for a sign-in discovery cannot
 // settle alone. A remote server signs in on a 401 whether or not it is set.
 type OAuth struct {
-	// ClientID and ClientSecret are a client registered by hand, for a
-	// provider that offers no registration of its own.
+	// A client registered by hand, for a provider with no registration of its own.
 	ClientID     string `json:"clientId"`
 	ClientSecret string `json:"clientSecret"`
-	// CallbackPort fixes the redirect's port, for a provider that only
-	// accepts the redirect it whitelisted. 0 picks a free one.
+	// CallbackPort fixes the redirect's port for a provider that whitelists it. 0 is any.
 	CallbackPort int    `json:"callbackPort"`
 	Scopes       Scopes `json:"scopes"`
 }
@@ -59,6 +57,7 @@ type OAuth struct {
 // Gemini CLI does.
 type Scopes []string
 
+// UnmarshalJSON accepts either form.
 func (s *Scopes) UnmarshalJSON(b []byte) error {
 	var spaced string
 	if json.Unmarshal(b, &spaced) == nil {

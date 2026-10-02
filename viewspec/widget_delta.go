@@ -2,10 +2,8 @@ package viewspec
 
 import "fmt"
 
-// delta shows what a number moved to and how far, because two columns
-// of digits make the reader do the subtraction. Direction is drawn but
-// never judged: smaller is better for a build, worse for coverage, and
-// only the spec's accent knows which this is.
+// delta shows what a number moved to and how far. Direction is drawn
+// but never judged, since only the spec's accent knows which way is better.
 type deltaWidget struct{}
 
 var (

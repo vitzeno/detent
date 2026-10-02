@@ -21,54 +21,6 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// containerd.New prepends "unix://" itself; the address it takes is a
-// bare path, not a URI. Colima's default profile always exposes it
-// under the current user's home directory.
-var testSocket = func() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".colima", "default", "containerd.sock")
-}()
-
-// daemonAvailable is cached so every test pays the connection cost once.
-var daemonAvailable = sync.OnceValue(func() bool {
-	if testSocket == "" {
-		return false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return Preflight(ctx, testSocket) == nil
-})
-
-// testContainerID is unique per run. Naming a container after its
-// test alone lets a second run inherit the first's filesystem:
-// containerd reclaims a dropped snapshot asynchronously, so the old
-// name can still resolve. Only a test asserting on absolute state
-// notices, which is why routing's rollback cover found it first.
-func testContainerID(t *testing.T) string {
-	t.Helper()
-	var b [6]byte
-	_, err := rand.Read(b[:])
-	require.NoError(t, err)
-	return strings.ReplaceAll(strings.ToLower(t.Name()), "/", "-") + "-" + hex.EncodeToString(b[:])
-}
-
-func newTestContainer(t *testing.T) *Container {
-	t.Helper()
-	if !daemonAvailable() {
-		t.Skip("containerd not reachable at", testSocket)
-	}
-	c := NewContainer(WithSocket(testSocket), WithNamespace("detent-test"))
-	id := testContainerID(t)
-	require.NoError(t, c.Start(context.Background(), id))
-	t.Cleanup(func() {
-		_ = c.Close(context.Background())
-	})
-	return c
-}
-
 func TestContainer_RunCapturesOutputAndExitCode(t *testing.T) {
 	c := newTestContainer(t)
 
@@ -155,10 +107,8 @@ func TestContainer_SnapshotAndRollback(t *testing.T) {
 	require.NoError(t, err, "the container must still be usable for new commands after rollback")
 }
 
-// TestContainer_RollbackLeavesTheWorkspaceAlone pins a real limit of
-// snapshot-based rollback: the workspace is a bind mount to the host,
-// not part of the snapshot, so edits to the user's own files survive
-// a rollback. Everything outside the mount is restored.
+// TestContainer_RollbackLeavesTheWorkspaceAlone pins a real limit: the
+// workspace is a bind mount, not snapshotted, so a rollback keeps its edits.
 func TestContainer_RollbackLeavesTheWorkspaceAlone(t *testing.T) {
 	c := newTestContainer(t)
 	ctx := context.Background()
@@ -183,10 +133,8 @@ func TestContainer_RollbackLeavesTheWorkspaceAlone(t *testing.T) {
 	assert.Equal(t, "after\n", res.Stdout, "bind-mounted workspace is not snapshotted, so it is not restored")
 }
 
-// TestContainer_RollbackTargetsTheRightCheckpoint mirrors the real
-// loop: snapshot after every step, then roll back to an earlier one.
-// Each checkpoint must hold exactly the state as of its own step, so
-// an off-by-one in either direction fails here.
+// TestContainer_RollbackTargetsTheRightCheckpoint snapshots after every
+// step, so an off-by-one in either direction fails here.
 func TestContainer_RollbackTargetsTheRightCheckpoint(t *testing.T) {
 	c := newTestContainer(t)
 	ctx := context.Background()
@@ -210,8 +158,7 @@ func TestContainer_RollbackTargetsTheRightCheckpoint(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "one\n", res.Stdout, "rolling back to checkpoint 1 keeps step one and drops two and three")
 
-	// Checkpoint 2 holds steps one and two, and is still reachable
-	// after having rolled back past it.
+	// Checkpoint 2 is still reachable after rolling back past it.
 	require.NoError(t, c.Rollback(ctx, checkpoints[1]))
 	res, err = c.Run(ctx, "cat /steps.txt", nil)
 	require.NoError(t, err)
@@ -252,20 +199,8 @@ func TestContainer_CheckpointsSurviveGarbageCollection(t *testing.T) {
 	assert.Equal(t, "one\ntwo\n", res.Stdout)
 }
 
-// forceGC runs a containerd garbage collection pass: deleting a lease
-// synchronously sweeps everything left unreferenced.
-func forceGC(t *testing.T, c *Container) {
-	t.Helper()
-	ctx := context.Background()
-	l, err := c.client.LeasesService().Create(ctx, leases.WithRandomID())
-	require.NoError(t, err)
-	require.NoError(t, c.client.LeasesService().Delete(ctx, l, leases.SynchronousDelete))
-}
-
-// TestContainer_NetworkPosture: NetworkNone is a namespace with only
-// loopback in it — no DNS, nothing fetchable. NetworkHost drops that
-// namespace so the container inherits the containerd daemon's own,
-// which is what makes a goal able to clone or install anything.
+// TestContainer_NetworkPosture: NetworkNone has only loopback and no DNS,
+// NetworkHost inherits the daemon's own network namespace.
 func TestContainer_NetworkPosture(t *testing.T) {
 	for _, tc := range []struct {
 		mode      string
@@ -299,11 +234,8 @@ func TestContainer_NetworkPosture(t *testing.T) {
 	}
 }
 
-// A heredoc is how a model writes a file, and its terminator has to be
-// alone on its line. Wrapping the command as "( cmd ) >out 2>err"
-// appended that tail to the terminator's line, so the shell read to
-// end-of-input looking for one it would never find: exit 2, before
-// running anything. Every multi-line command broke the same way.
+// A heredoc's terminator must stay alone on its line, so the output
+// redirection must not be appended to the command.
 func TestContainer_RunHandlesMultilineCommands(t *testing.T) {
 	c := newTestContainer(t)
 	ctx := context.Background()
@@ -328,8 +260,7 @@ func TestContainer_RunHandlesMultilineCommands(t *testing.T) {
 		})
 	}
 
-	// A plain multi-line script, and the exit code still belongs to the
-	// command rather than the wrapper.
+	// The exit code belongs to the command, not the wrapper.
 	res, err := c.Run(ctx, "x=1\ny=2\necho $((x + y))", nil)
 	require.NoError(t, err)
 	require.Equal(t, 0, res.ExitCode, "stderr was %q", res.Stderr)
@@ -342,9 +273,7 @@ func TestContainer_RunHandlesMultilineCommands(t *testing.T) {
 	assert.Equal(t, "err\n", res.Stderr)
 }
 
-// The engine runs read-only Calls together. Unserialised, they
-// overwrote each other's spec and returned exit 0 with no output,
-// which the model read as a command that printed nothing.
+// The engine runs read-only Calls together, and each must get its own output.
 func TestContainer_ConcurrentRunsDoNotCrossContaminate(t *testing.T) {
 	c := newTestContainer(t)
 
@@ -375,9 +304,8 @@ func TestContainer_ConcurrentRunsDoNotCrossContaminate(t *testing.T) {
 	}
 }
 
-// A killed process never runs Close, so its container, snapshot and
-// lease are still there under the same per-session ids. Resuming that
-// session used to fail on its own leftovers.
+// A killed process never runs Close, so resuming its session must start
+// over the container, snapshot and lease it left.
 func TestContainer_StartsOverWhatAKilledProcessLeftBehind(t *testing.T) {
 	if !daemonAvailable() {
 		t.Skip("containerd not reachable at", testSocket)
@@ -419,8 +347,7 @@ func TestContainer_RefusesASessionThatIsStillRunning(t *testing.T) {
 	}()
 	t.Cleanup(func() { <-done })
 
-	// Waited for, not polled with Start: a Start that wins the race
-	// clears the very container this is trying to protect.
+	// Waited for, not polled with Start, which would clear it if it won the race.
 	require.Eventually(t, func() bool { return taskRunning(t, id) },
 		5*time.Second, 100*time.Millisecond, "the live task never started")
 
@@ -428,32 +355,6 @@ func TestContainer_RefusesASessionThatIsStillRunning(t *testing.T) {
 	err := other.Start(ctx, id)
 	require.ErrorContains(t, err, "already running",
 		"a live session was cleared out from under another process")
-}
-
-// taskRunning reports whether the session's container has a running
-// task, read-only, so waiting for one cannot disturb it.
-func taskRunning(t *testing.T, sessionID string) bool {
-	return taskRunningIn(t, "detent-test", sessionID)
-}
-
-func taskRunningIn(t *testing.T, namespace, sessionID string) bool {
-	t.Helper()
-	client, err := containerd.New(testSocket, containerd.WithDefaultNamespace(namespace))
-	if err != nil {
-		return false
-	}
-	defer client.Close()
-	ctx := context.Background()
-	cont, err := client.LoadContainer(ctx, containerID(sessionID))
-	if err != nil {
-		return false
-	}
-	task, err := cont.Task(ctx, nil)
-	if err != nil {
-		return false
-	}
-	st, err := task.Status(ctx)
-	return err == nil && st.Status == containerd.Running
 }
 
 // A session nobody resumes leaks its container forever, since only
@@ -542,4 +443,84 @@ func TestForget_AbsentIsNotAnError(t *testing.T) {
 		t.Skip("containerd not reachable at", testSocket)
 	}
 	assert.NoError(t, Forget(context.Background(), testSocket, "detent-test-forget", testContainerID(t)))
+}
+
+// testSocket is colima's default profile. containerd.New takes a bare
+// path, not a unix:// URI.
+var testSocket = func() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".colima", "default", "containerd.sock")
+}()
+
+// daemonAvailable is cached so every test pays the connection cost once.
+var daemonAvailable = sync.OnceValue(func() bool {
+	if testSocket == "" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return Preflight(ctx, testSocket) == nil
+})
+
+// testContainerID is unique per run: containerd reclaims a dropped
+// snapshot asynchronously, so a reused name can inherit the last run's files.
+func testContainerID(t *testing.T) string {
+	t.Helper()
+	var b [6]byte
+	_, err := rand.Read(b[:])
+	require.NoError(t, err)
+	return strings.ReplaceAll(strings.ToLower(t.Name()), "/", "-") + "-" + hex.EncodeToString(b[:])
+}
+
+func newTestContainer(t *testing.T) *Container {
+	t.Helper()
+	if !daemonAvailable() {
+		t.Skip("containerd not reachable at", testSocket)
+	}
+	c := NewContainer(WithSocket(testSocket), WithNamespace("detent-test"))
+	id := testContainerID(t)
+	require.NoError(t, c.Start(context.Background(), id))
+	t.Cleanup(func() {
+		_ = c.Close(context.Background())
+	})
+	return c
+}
+
+// forceGC runs a containerd garbage collection pass: deleting a lease
+// synchronously sweeps everything left unreferenced.
+func forceGC(t *testing.T, c *Container) {
+	t.Helper()
+	ctx := context.Background()
+	l, err := c.client.LeasesService().Create(ctx, leases.WithRandomID())
+	require.NoError(t, err)
+	require.NoError(t, c.client.LeasesService().Delete(ctx, l, leases.SynchronousDelete))
+}
+
+// taskRunning reports whether the session's container has a running
+// task, read-only, so waiting for one cannot disturb it.
+func taskRunning(t *testing.T, sessionID string) bool {
+	return taskRunningIn(t, "detent-test", sessionID)
+}
+
+func taskRunningIn(t *testing.T, namespace, sessionID string) bool {
+	t.Helper()
+	client, err := containerd.New(testSocket, containerd.WithDefaultNamespace(namespace))
+	if err != nil {
+		return false
+	}
+	defer client.Close()
+	ctx := context.Background()
+	cont, err := client.LoadContainer(ctx, containerID(sessionID))
+	if err != nil {
+		return false
+	}
+	task, err := cont.Task(ctx, nil)
+	if err != nil {
+		return false
+	}
+	st, err := task.Status(ctx)
+	return err == nil && st.Status == containerd.Running
 }

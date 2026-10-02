@@ -11,10 +11,8 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// A server asking to be signed in to. Not a Call and not a Shell: it
-// ran nothing, so it has no badge, no output and no Turn of its own.
-
 // signInState is one sign-in a server asked for, and how far it got.
+// It ran nothing, so it has no badge, no output and no Turn of its own.
 type signInState struct {
 	server string
 	url    string
@@ -89,8 +87,7 @@ func (m Model) signInRowLines(mark string, s *signInState) []string {
 	case stageStale:
 		glyph, text = styleFaint.Render("⚿"), styleFaint.Render("sign-in link from an earlier run")
 	}
-	// Cut by what shows, not by bytes: layout.Truncate counted the colour
-	// codes as width and cut this line to nothing.
+	// Cut by what shows: the line is already styled.
 	line := mark + glyph + " " + styleGoal.Render(s.server) + " · " + text
 	return []string{ansi.Truncate(line, m.blockWidth(), "…")}
 }
@@ -115,7 +112,7 @@ func signInPageLines(s *signInState, width int) []string {
 		styleMuted.Render("  enter or o  open it in your browser"),
 		styleMuted.Render("  c           copy the link"), "",
 		styleMuted.Render("  waiting until " + s.until.Format("15:04")), ""}
-	// Whole, for a terminal that draws no hyperlink; c copies it cleanly.
+	// Whole, for a terminal that draws no hyperlink. c copies it cleanly.
 	for _, chunk := range chunks(s.url, max(width, 20)) {
 		out = append(out, styleFaint.Render(chunk))
 	}
@@ -131,8 +128,7 @@ func (m Model) signInKey(s *signInState, key string) (tea.Model, tea.Cmd, bool) 
 		case stageWaiting:
 			return m, m.send(event.OpenAuthorization{Server: s.server}), true
 		case stageSignedIn:
-			// Asking again forgets the token: pressed on a fresh sign-in,
-			// that threw a working one away and every launch asked anew.
+			// Asking again would throw a working token away.
 			m.noteOK(s.server + " is already signed in · /mcp auth " + s.server + " signs in again")
 			return m, nil, true
 		}

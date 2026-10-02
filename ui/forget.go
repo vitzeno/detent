@@ -9,7 +9,7 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Deleting a stored session. What goes is in the pane; the question
+// Deleting a stored session. What goes is in the pane, the question
 // below it defaults to cancel.
 
 // runForget handles /delete <id or name>. The argument is required:
@@ -34,7 +34,7 @@ func (m Model) runForget(input string) (tea.Model, tea.Cmd) {
 // forgetTarget resolves an id or a name against what was listed.
 func (m Model) forgetTarget(arg string) (*event.SessionSummary, string) {
 	if len(m.sessions) == 0 {
-		return nil, "no sessions listed yet — try /sessions first"
+		return nil, "no sessions listed yet, try /sessions first"
 	}
 	for i, s := range m.sessions {
 		if s.ID.String() == arg || (s.Name != "" && s.Name == arg) {
@@ -47,7 +47,7 @@ func (m Model) forgetTarget(arg string) (*event.SessionSummary, string) {
 	return nil, fmt.Sprintf("no session %q", arg)
 }
 
-// confirmForget publishes the intent; the store reports the outcome.
+// confirmForget publishes the intent. The store reports the outcome.
 func (m Model) confirmForget() (tea.Model, tea.Cmd) {
 	s := m.forget.target
 	m.forget.target = nil

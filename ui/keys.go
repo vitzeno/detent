@@ -6,9 +6,8 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Keystroke routing. handleKey computes exactly one owner for each
-// key and hands it over; the owner's handler is the only thing that
-// interprets it, so no two panes can claim the same key.
+// Keystroke routing. handleKey hands each key to exactly one owner,
+// so no two panes can claim the same key.
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
@@ -46,9 +45,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// handlePaste routes pasted text to whoever owns text entry, and
-// nowhere otherwise: a paste into history or the output pane has no
-// meaning, so it is dropped rather than going somewhere surprising.
+// handlePaste routes pasted text to whoever owns text entry. A paste
+// anywhere else has no meaning, so it is dropped.
 func (m Model) handlePaste(text string) (tea.Model, tea.Cmd) {
 	if text == "" {
 		return m, nil
@@ -64,9 +62,8 @@ func (m Model) handlePaste(text string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// keyOwner names who owns a keystroke; handleKey computes exactly
-// one. The undo and bound questions are not owners: both take every
-// key and short-circuit before owner() runs.
+// keyOwner names who owns a keystroke. The undo, delete and bound
+// questions are not owners: they take every key before owner() runs.
 type keyOwner int
 
 const (
@@ -189,8 +186,8 @@ func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// slashKey drives the open dropdown (arrows/enter/esc); tab is handled
-// in onTab. Reports handled=false when no dropdown is open.
+// slashKey drives the open dropdown's arrows and enter. Reports
+// handled=false when no dropdown is open.
 func (m Model) slashKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	if !m.prompt.Open() {
 		return m, nil, false
@@ -203,9 +200,7 @@ func (m Model) slashKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		m.prompt.Move(1)
 		return m, nil, true
 	case "enter":
-		// Enter runs the highlighted entry; tab is what completes
-		// without running. Completing on enter meant every command
-		// took two presses, which is not how the dropdown reads.
+		// Enter runs the highlighted entry, tab completes without running.
 		m.prompt.Accept()
 		next, cmd := m.submit()
 		return next, cmd, true
@@ -276,9 +271,8 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// onEscape backs out of the innermost thing first: dropdown, then a
-// running request, then the output pane. Intercepted before owner(),
-// so anything wanting esc is handled here.
+// onEscape backs out of the innermost thing first: question, dropdown,
+// panel, output pane, then a running command or request.
 func (m Model) onEscape() (tea.Model, tea.Cmd) {
 	if m.mode == modeConfirm {
 		return m.decline()
@@ -290,7 +284,7 @@ func (m Model) onEscape() (tea.Model, tea.Cmd) {
 	if m.closePanel() {
 		return m, nil
 	}
-	// Idle esc in the output pane steps back to history; a running
+	// Idle esc in the output pane steps back to history. A running
 	// request still aborts.
 	if m.nav.focus == focusOutput && m.cur == nil {
 		m.nav.focus = focusHistory

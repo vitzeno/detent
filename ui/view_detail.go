@@ -9,14 +9,14 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// The output pane: what the focused row's component renders into
-// it, and the viewport refresh that keeps it in step.
+// The output pane: what the focused row renders into it, and the
+// viewport refresh that keeps it in step.
 
 // detailLines renders the focused row: a pending question first,
 // else the scrolling viewport.
 func (m Model) detailLines() []string {
-	// The undo list is what is being reviewed and can run to hundreds
-	// of paths; the box below stays small and asks.
+	// The undo list can run to hundreds of paths, so it gets the pane
+	// and the box below stays small and asks.
 	if m.mode == modeUndo || m.mode == modeForget {
 		return strings.Split(m.output.View(), "\n")
 	}
@@ -29,57 +29,6 @@ func (m Model) detailLines() []string {
 		return m.welcomePane()
 	}
 	return strings.Split(m.output.View(), "\n")
-}
-
-// viewBody draws the row's view whole. Height says how tall the pane
-// is so a plot can grow into it; nothing clips to it, so the viewport
-// still windows the result and a view scrolls like any other output.
-func (m Model) viewBody(r *callRow) (viewspec.Render, bool) {
-	b, ok := boundView(r)
-	if !ok {
-		return viewspec.Render{}, false
-	}
-	out, err := b.Draw(viewspec.Frame{
-		Width:   paneInner(m.layout.outputColW),
-		Height:  m.output.Height(),
-		Focused: m.nav.focus == focusOutput,
-		Cursor:  r.tableCursor,
-		Paint:   painter{},
-	})
-	if err != nil {
-		return viewspec.Render{}, false
-	}
-	return out, true
-}
-
-// scrollMargin is how many lines of context the selection keeps. Two,
-// so reaching a table's first row brings its header back rather than
-// resting exactly on the top edge with the header just above it.
-const scrollMargin = 2
-
-// scrollToLine brings line into view without recentring: a selection
-// already on screen must not make the pane jump under the cursor.
-func (m *Model) scrollToLine(line int) {
-	top, h := m.output.YOffset(), m.output.Height()
-	if h <= 0 {
-		return
-	}
-	switch {
-	case line-scrollMargin < top:
-		m.output.SetYOffset(max(0, line-scrollMargin))
-	case line+scrollMargin >= top+h:
-		m.output.SetYOffset(line + scrollMargin - h + 1)
-	}
-}
-
-// helpLines lists every slash command via Match("/") (empty suffix
-// matches all), so there's no separate list to keep in sync.
-func helpLines() []string {
-	var lines []string
-	for _, c := range matchSlash("/") {
-		lines = append(lines, fmt.Sprintf("  %-10s %s", c.Name, c.Desc))
-	}
-	return lines
 }
 
 // detailKey is everything the output pane's content depends on. set is
@@ -108,6 +57,7 @@ func (m Model) detailKey() detailKey {
 	return k
 }
 
+// refreshViewport redraws the output pane when its detailKey changed.
 func (m *Model) refreshViewport() {
 	window, offset := m.historyWindow()
 	m.nav.histWindow = window
@@ -115,8 +65,7 @@ func (m *Model) refreshViewport() {
 	if offset >= 0 {
 		m.nav.histOffset = offset
 	}
-	// Scrolling moves the viewport, not the content. Without this the
-	// pane redraws all of it on every keystroke.
+	// Scrolling moves the viewport, not the content, so it must not redraw.
 	if key := m.detailKey(); key == m.detail {
 		return
 	} else {
@@ -166,6 +115,55 @@ func (m *Model) refreshViewport() {
 	if cursor >= 0 {
 		m.scrollToLine(cursor)
 	}
+}
+
+// viewBody draws the row's view whole. Height lets a plot grow into the
+// pane but clips nothing, so a view scrolls like any other output.
+func (m Model) viewBody(r *callRow) (viewspec.Render, bool) {
+	b, ok := boundView(r)
+	if !ok {
+		return viewspec.Render{}, false
+	}
+	out, err := b.Draw(viewspec.Frame{
+		Width:   paneInner(m.layout.outputColW),
+		Height:  m.output.Height(),
+		Focused: m.nav.focus == focusOutput,
+		Cursor:  r.tableCursor,
+		Paint:   painter{},
+	})
+	if err != nil {
+		return viewspec.Render{}, false
+	}
+	return out, true
+}
+
+// scrollMargin is how many lines of context the selection keeps. Two,
+// so reaching a table's first row brings its header back into view.
+const scrollMargin = 2
+
+// scrollToLine brings line into view without recentring: a selection
+// already on screen must not make the pane jump under the cursor.
+func (m *Model) scrollToLine(line int) {
+	top, h := m.output.YOffset(), m.output.Height()
+	if h <= 0 {
+		return
+	}
+	switch {
+	case line-scrollMargin < top:
+		m.output.SetYOffset(max(0, line-scrollMargin))
+	case line+scrollMargin >= top+h:
+		m.output.SetYOffset(line + scrollMargin - h + 1)
+	}
+}
+
+// helpLines lists every slash command via matchSlash("/"), so there is
+// no separate list to keep in sync.
+func helpLines() []string {
+	var lines []string
+	for _, c := range matchSlash("/") {
+		lines = append(lines, fmt.Sprintf("  %-10s %s", c.Name, c.Desc))
+	}
+	return lines
 }
 
 // welcomePane hands the boot pane the facts it reports, so nothing in

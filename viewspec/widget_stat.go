@@ -2,9 +2,8 @@ package viewspec
 
 import "fmt"
 
-// stat is one number drawn large, for a pane's worth of summary. Three
-// rows of box glyphs rather than a bigger font: a terminal has exactly
-// one cell size, so size has to come out of the glyphs themselves.
+// stat is one number drawn large in three rows of box glyphs, since a
+// terminal has one cell size and size has to come from the glyphs.
 type statWidget struct{}
 
 var (
@@ -60,8 +59,19 @@ func (statWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return append(out, label), nil
 }
 
-// bigDigits is a three-row box-drawing face. Only the glyphs a counted
-// number can contain, since nothing else reaches it.
+func (statWidget) Describe() Description {
+	return Description{
+		Summarises: true,
+		What:       "one counted number drawn large with a label, for the headline figure of a pane",
+		// No Slots: this needs a title, which is prose,
+		// so nothing can compose one from field choices alone.
+		NotFor:   "a proportion you want drawn as a bar, which is meter",
+		Examples: []string{"how many containers are running", "how many files changed"},
+	}
+}
+
+// bigDigits is a three-row box-drawing face for the glyphs a counted
+// number can contain.
 var bigDigits = map[rune][3]string{
 	'0': {"┌─┐", "│ │", "└─┘"},
 	'1': {" ┐ ", " │ ", " ╵ "},
@@ -96,17 +106,4 @@ func bigNumber(s string) ([3]string, bool) {
 		}
 	}
 	return out, true
-}
-
-// What each panel is for, and the one it is most likely confused with.
-
-func (statWidget) Describe() Description {
-	return Description{
-		Summarises: true,
-		What:       "one counted number drawn large with a label, for the headline figure of a pane",
-		// No Slots: this needs a title, which is prose,
-		// so nothing can compose one from field choices alone.
-		NotFor:   "a proportion you want drawn as a bar, which is meter",
-		Examples: []string{"how many containers are running", "how many files changed"},
-	}
 }

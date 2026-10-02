@@ -12,8 +12,8 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// The phase gate, part one: a Step asking for several Calls runs them
-// all and ends when the model stops asking.
+// A Step asking for several Calls runs them all, and the Turn ends when
+// the model stops asking.
 func TestTurn_MultiCallStep(t *testing.T) {
 	r := newRig(t, []model.Reply{{
 		Text:  "reading three things",
@@ -28,8 +28,8 @@ func TestTurn_MultiCallStep(t *testing.T) {
 	answered(t, r.eng)
 }
 
-// Part two: whatever goes wrong, every tool_call id is answered. This
-// is the invariant the next Step is built on.
+// Whatever goes wrong, every tool_call id is answered. This is the
+// invariant the next Step is built on.
 func TestTurn_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -81,7 +81,7 @@ func TestTurn_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
 	}
 }
 
-// Part three: declining stops a Call, not a Turn. Its siblings still
+// Declining stops a Call, not a Turn. Its siblings still
 // run and the model gets to react.
 func TestTurn_DeclineStopsOneCallOnly(t *testing.T) {
 	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
@@ -102,7 +102,7 @@ func TestTurn_DeclineStopsOneCallOnly(t *testing.T) {
 	assert.Contains(t, r.eng.Transcript()[2].Content, "declined")
 }
 
-// Part four: abort cancels in flight and still completes the Step.
+// Abort cancels in flight and still completes the Step.
 func TestTurn_AbortStillAnswersEveryCall(t *testing.T) {
 	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
 		bashCall("c1", "sleep 1"), bashCall("c2", "sleep 2"), bashCall("c3", "sleep 3"),
@@ -123,7 +123,7 @@ func TestTurn_AbortStillAnswersEveryCall(t *testing.T) {
 	answered(t, r.eng)
 }
 
-// Part five: the bound asks rather than stopping.
+// The bound asks rather than stopping.
 func TestTurn_BoundAsksAndCanBeContinued(t *testing.T) {
 	var replies []model.Reply
 	for i := range 6 {
@@ -165,9 +165,8 @@ func TestTurn_RequestStopEndsAtTheNextBoundary(t *testing.T) {
 		{Calls: []event.ToolCall{bashCall("b", "second")}},
 	}
 	r := newRig(t, replies)
-	// Hold the first Call so the stop lands while the engine is inside
-	// a Step. Without the hold the fake model finishes the whole Turn
-	// before anything can be published at it.
+	// Hold the first Call so the stop lands inside a Step, or the fake
+	// model finishes the whole Turn before anything is published at it.
 	r.runner.mu.Lock()
 	r.runner.hold = make(chan struct{})
 	r.runner.mu.Unlock()
@@ -334,16 +333,6 @@ func TestCallProposed_LeavesRendersEmptyWhenTheToolHasNoOpinion(t *testing.T) {
 	assert.Empty(t, proposed[0].(event.CallProposed).Renders)
 }
 
-// markdownTool stands in for one that knows its output is a document,
-// since none of the shipped tools claims a shape today.
-type markdownTool struct{}
-
-func (markdownTool) Name() string { return "declares_markdown" }
-func (markdownTool) Describe() tool.Spec {
-	return tool.Spec{Description: "x", Mutability: event.MutRead, Renders: event.RendersMarkdown}
-}
-func (markdownTool) Lower(tool.Args) (string, error) { return "true", nil }
-
 // A front-end measures a Step's prompt tokens against the budget, so
 // the budget has to be on the fact that describes the run.
 func TestSessionStarted_CarriesTheContextBudget(t *testing.T) {
@@ -359,3 +348,13 @@ func TestSessionStarted_ReportsTheDefaultBudgetWhenUnset(t *testing.T) {
 	started := r.await(event.SessionStartedKind).(event.SessionStarted)
 	assert.Equal(t, DefaultContextTokens, started.ContextTokens)
 }
+
+// markdownTool stands in for one that knows its output is a document,
+// since none of the shipped tools claims a shape today.
+type markdownTool struct{}
+
+func (markdownTool) Name() string { return "declares_markdown" }
+func (markdownTool) Describe() tool.Spec {
+	return tool.Spec{Description: "x", Mutability: event.MutRead, Renders: event.RendersMarkdown}
+}
+func (markdownTool) Lower(tool.Args) (string, error) { return "true", nil }

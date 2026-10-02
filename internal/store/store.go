@@ -44,11 +44,11 @@ func Open(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// Close closes the database.
 func (s *Store) Close() error { return s.db.Close() }
 
-// Append writes one record, keyed on the bus's ordinal, so writing it
-// twice is the same row. A SessionStarted writes the header in the
-// same transaction, since the events row has a foreign key to it.
+// Append writes one record keyed on the bus's ordinal, so writing it twice
+// is the same row. A SessionStarted writes the header in the same transaction.
 func (s *Store) Append(session uuid.UUID, r event.Record) error {
 	payload, err := event.Encode(r.Event)
 	if err != nil {
@@ -135,9 +135,8 @@ func (s *Store) Sessions() ([]event.SessionSummary, error) {
 	return out, rows.Err()
 }
 
-// Rename names a session. Not derived from the log, so it is the
-// header's own. A name -resume would read as an id or as "last" is
-// refused here rather than found not to work later.
+// Rename names a session. A name -resume would read as an id or as
+// "last" is refused here rather than found not to work later.
 func (s *Store) Rename(session uuid.UUID, name string) error {
 	if err := usableName(name); err != nil {
 		return err
@@ -153,19 +152,6 @@ func (s *Store) Rename(session uuid.UUID, name string) error {
 
 // ReservedName is the one word -resume reads as an instruction.
 const ReservedName = "last"
-
-func usableName(name string) error {
-	switch {
-	case strings.TrimSpace(name) == "":
-		return fmt.Errorf("a name cannot be blank")
-	case strings.EqualFold(name, ReservedName):
-		return fmt.Errorf("%q is what -resume calls the newest session, so a name would never be read", ReservedName)
-	}
-	if _, err := uuid.Parse(name); err == nil {
-		return fmt.Errorf("%q reads as a session id, so a name would never be read", name)
-	}
-	return nil
-}
 
 // Delete forgets a session and its events, reporting whether there
 // was anything to forget.
@@ -190,15 +176,6 @@ func (s *Store) Truncate(session uuid.UUID, after uint64) error {
 	return nil
 }
 
-// nullable keeps a zero uuid out of the column, so a turn query
-// cannot match a record belonging to none.
-func nullable(id uuid.UUID) any {
-	if id == uuid.Nil {
-		return nil
-	}
-	return id.String()
-}
-
 // DefaultPath is where a session's events go, beside the logs.
 func DefaultPath() string {
 	home, err := os.UserHomeDir()
@@ -206,4 +183,26 @@ func DefaultPath() string {
 		return ""
 	}
 	return filepath.Join(home, ".local", "state", "detent", "events.db")
+}
+
+func usableName(name string) error {
+	switch {
+	case strings.TrimSpace(name) == "":
+		return fmt.Errorf("a name cannot be blank")
+	case strings.EqualFold(name, ReservedName):
+		return fmt.Errorf("%q is what -resume calls the newest session, so a name would never be read", ReservedName)
+	}
+	if _, err := uuid.Parse(name); err == nil {
+		return fmt.Errorf("%q reads as a session id, so a name would never be read", name)
+	}
+	return nil
+}
+
+// nullable keeps a zero uuid out of the column, so a turn query
+// cannot match a record belonging to none.
+func nullable(id uuid.UUID) any {
+	if id == uuid.Nil {
+		return nil
+	}
+	return id.String()
 }

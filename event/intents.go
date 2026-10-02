@@ -2,8 +2,8 @@ package event
 
 import "github.com/google/uuid"
 
-// What anyone publishes, imperative. The engine subscribes to these
-// and nothing else.
+// What anyone publishes, imperative. Each kind has exactly one owner
+// subscribed to it.
 
 // SubmitPrompt opens a Turn. Typed mid-Turn it becomes a NoteContext.
 type SubmitPrompt struct {
@@ -69,7 +69,7 @@ type RequestStop struct {
 
 func (RequestStop) Kind() Kind { return RequestStopKind }
 
-// Continue answers BoundReached; false ends the Turn.
+// Continue answers BoundReached. False ends the Turn.
 type Continue struct {
 	fact
 	Turn     uuid.UUID
@@ -113,7 +113,7 @@ type AuthorizeServer struct {
 func (AuthorizeServer) Kind() Kind { return AuthorizeServerKind }
 
 // OpenAuthorization asks for a waiting sign-in's link to be opened in
-// a browser. Whatever holds the link opens it; ui runs no processes.
+// a browser. Whatever holds the link opens it, since ui runs no processes.
 type OpenAuthorization struct {
 	fact
 	Server string
@@ -127,9 +127,8 @@ type ListSessions struct{ fact }
 
 func (ListSessions) Kind() Kind { return ListSessionsKind }
 
-// RenameSession gives a session a name a human will recognise. Not a
-// fact about what happened, so it is not in the log: the name is the
-// header's own, and whatever holds it answers with a fresh listing.
+// RenameSession gives a session a name a human will recognise. Not in the
+// log: the name is the header's own, and its holder answers with a listing.
 type RenameSession struct {
 	fact
 	Session uuid.UUID

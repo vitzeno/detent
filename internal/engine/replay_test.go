@@ -12,20 +12,6 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// rebuild is what a resume does: replay the appends in order and do
-// not compact. Compacted is skipped on purpose, because a rebuild
-// with no cut point is what makes old marks resolve.
-func rebuild(t *testing.T, facts []event.Event) *transcript {
-	t.Helper()
-	tr := &transcript{}
-	for _, f := range facts {
-		if a, ok := f.(event.Appended); ok {
-			tr.msgs = append(tr.msgs, a.Messages...)
-		}
-	}
-	return tr
-}
-
 // The gate on persistence: everything the transcript holds must be
 // reconstructable from the facts, with no formatting reproduced.
 func TestAppended_RebuildsTheTranscriptExactly(t *testing.T) {
@@ -77,15 +63,6 @@ func TestAppended_RebuildResolvesAMarkTakenAfterCompaction(t *testing.T) {
 	assert.NotEmpty(t, last.Role, "and the mark landed on a real message")
 }
 
-func firstPrompt(tr *transcript) string {
-	for _, m := range tr.messages() {
-		if m.Role == event.RoleUser {
-			return m.Content
-		}
-	}
-	return ""
-}
-
 // Restore is what a resume does to the engine: the transcript comes
 // back and the next Turn carries on numbering.
 func TestRestore_RebuildsTheTranscriptAndTheTurnCount(t *testing.T) {
@@ -117,4 +94,26 @@ func asRecords(groups ...[]event.Event) []event.Record {
 		}
 	}
 	return out
+}
+
+// rebuild is what a resume does: replay the appends in order, skipping
+// Compacted, since a rebuild with no cut point is what resolves old marks.
+func rebuild(t *testing.T, facts []event.Event) *transcript {
+	t.Helper()
+	tr := &transcript{}
+	for _, f := range facts {
+		if a, ok := f.(event.Appended); ok {
+			tr.msgs = append(tr.msgs, a.Messages...)
+		}
+	}
+	return tr
+}
+
+func firstPrompt(tr *transcript) string {
+	for _, m := range tr.messages() {
+		if m.Role == event.RoleUser {
+			return m.Content
+		}
+	}
+	return ""
 }

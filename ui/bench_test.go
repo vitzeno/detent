@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
+
 	"github.com/vitzeno/detent/event"
 )
 
@@ -22,28 +23,6 @@ var stressSizes = []struct {
 	{"20x_420turns", 420, 4},
 	{"50x_1050turns", 1050, 4},
 	{"100x_2100turns", 2100, 4},
-}
-
-func session(turns, callsPerTurn, outLines int) Model {
-	m := New(context.Background(), event.New(), SessionInfo{})
-	m.layout.width, m.layout.height = 150, 45
-	m.nav.histHeight, m.nav.follow = 30, true
-	for i := range turns {
-		turn := uuid.Must(uuid.NewV7())
-		m.apply(event.TurnStarted{Turn: turn, N: i + 1, Prompt: fmt.Sprintf("request %d about the codebase", i)})
-		for range callsPerTurn {
-			call, step := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-			m.apply(event.CallProposed{Call: call, Step: step, Tool: "bash",
-				Args: map[string]any{"command": "go test ./... -run TestSomething -v"}})
-			m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
-			for l := range outLines {
-				m.apply(event.OutputChunk{Call: call, Line: fmt.Sprintf("  ok   detent/internal/pkg%d  0.42s", l)})
-			}
-			m.apply(event.CallEnded{Call: call, Result: event.Result{Stdout: "ok\n"}})
-		}
-		m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
-	}
-	return m
 }
 
 // BenchmarkStressPerEvent is one output line: an Update and its View.
@@ -81,28 +60,6 @@ func BenchmarkStressBurst(b *testing.B) {
 			}
 		})
 	}
-}
-
-func oneChunk(call uuid.UUID) factMsg {
-	return factMsg{[]event.Event{chunk(call)}}
-}
-
-// burst feeds lines the way the pump does, coalesced into batches.
-func burst(m Model, call uuid.UUID, n int) Model {
-	for i := 0; i < n; i += maxFactBatch {
-		batch := make([]event.Event, 0, maxFactBatch)
-		for j := i; j < min(i+maxFactBatch, n); j++ {
-			batch = append(batch, chunk(call))
-		}
-		next, _ := m.Update(factMsg{batch})
-		m = next.(Model)
-		_ = m.View()
-	}
-	return m
-}
-
-func chunk(call uuid.UUID) event.Event {
-	return event.OutputChunk{Call: call, Line: "ok   detent/ui   0.42s"}
 }
 
 func BenchmarkView(b *testing.B) {
@@ -211,23 +168,6 @@ func BenchmarkScrollFollowing(b *testing.B) {
 	}
 }
 
-// withBigOutput gives the newest row a result worth scrolling.
-func withBigOutput(m Model, lines int) Model {
-	rows := m.rows()
-	r := rows[len(rows)-1]
-	var b strings.Builder
-	for i := range lines {
-		fmt.Fprintf(&b, "%-6d detent/internal/pkg%-3d  ok  0.42s  %d allocs\n", i, i%40, i*7)
-	}
-	r.result = &event.Result{Stdout: b.String()}
-	r.running, r.viewTried, r.view = false, false, nil
-	m.nav.cursor = len(rows) - 1
-	m.nav.focus = focusOutput
-	m.histRev++
-	m.sizeViewport()
-	return m
-}
-
 // BenchmarkScrollOutputPane is scrolling the detail pane.
 func BenchmarkScrollOutputPane(b *testing.B) {
 	down := tea.KeyPressMsg{Code: tea.KeyDown}
@@ -263,4 +203,66 @@ func BenchmarkScrollUsagePanel(b *testing.B) {
 			}
 		})
 	}
+}
+
+// session builds a finished history of turns, each with its calls run.
+func session(turns, callsPerTurn, outLines int) Model {
+	m := New(context.Background(), event.New(), SessionInfo{})
+	m.layout.width, m.layout.height = 150, 45
+	m.nav.histHeight, m.nav.follow = 30, true
+	for i := range turns {
+		turn := uuid.Must(uuid.NewV7())
+		m.apply(event.TurnStarted{Turn: turn, N: i + 1, Prompt: fmt.Sprintf("request %d about the codebase", i)})
+		for range callsPerTurn {
+			call, step := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+			m.apply(event.CallProposed{Call: call, Step: step, Tool: "bash",
+				Args: map[string]any{"command": "go test ./... -run TestSomething -v"}})
+			m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
+			for l := range outLines {
+				m.apply(event.OutputChunk{Call: call, Line: fmt.Sprintf("  ok   detent/internal/pkg%d  0.42s", l)})
+			}
+			m.apply(event.CallEnded{Call: call, Result: event.Result{Stdout: "ok\n"}})
+		}
+		m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	}
+	return m
+}
+
+func oneChunk(call uuid.UUID) factMsg {
+	return factMsg{[]event.Event{chunk(call)}}
+}
+
+// burst feeds lines the way the pump does, coalesced into batches.
+func burst(m Model, call uuid.UUID, n int) Model {
+	for i := 0; i < n; i += maxFactBatch {
+		batch := make([]event.Event, 0, maxFactBatch)
+		for j := i; j < min(i+maxFactBatch, n); j++ {
+			batch = append(batch, chunk(call))
+		}
+		next, _ := m.Update(factMsg{batch})
+		m = next.(Model)
+		_ = m.View()
+	}
+	return m
+}
+
+func chunk(call uuid.UUID) event.Event {
+	return event.OutputChunk{Call: call, Line: "ok   detent/ui   0.42s"}
+}
+
+// withBigOutput gives the newest row a result worth scrolling.
+func withBigOutput(m Model, lines int) Model {
+	rows := m.rows()
+	r := rows[len(rows)-1]
+	var b strings.Builder
+	for i := range lines {
+		fmt.Fprintf(&b, "%-6d detent/internal/pkg%-3d  ok  0.42s  %d allocs\n", i, i%40, i*7)
+	}
+	r.result = &event.Result{Stdout: b.String()}
+	r.running, r.viewTried, r.view = false, false, nil
+	m.nav.cursor = len(rows) - 1
+	m.nav.focus = focusOutput
+	m.histRev++
+	m.sizeViewport()
+	return m
 }

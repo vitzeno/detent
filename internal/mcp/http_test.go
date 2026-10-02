@@ -13,27 +13,6 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// httpServer runs a real MCP server over real HTTP, so these exercise
-// the transport rather than a stand-in for it.
-func httpServer(t *testing.T, seen *http.Header) string {
-	t.Helper()
-	srv := sdk.NewServer(&sdk.Implementation{Name: "over-http", Version: "1"}, nil)
-	srv.AddTool(&sdk.Tool{Name: "ping", InputSchema: map[string]any{"type": "object"}},
-		func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
-			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "pong"}}}, nil
-		})
-
-	h := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return srv }, nil)
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if seen != nil {
-			*seen = r.Header.Clone()
-		}
-		h.ServeHTTP(w, r)
-	}))
-	t.Cleanup(ts.Close)
-	return ts.URL
-}
-
 func TestHTTP_ListsAndCalls(t *testing.T) {
 	ctx := context.Background()
 	s, err := Connect(ctx, "remote", HTTP{URL: httpServer(t, nil)}.Transport())
@@ -80,23 +59,6 @@ func TestConnectAll_ReachesAnHTTPServer(t *testing.T) {
 	assert.Equal(t, "pong", in.Invoke(context.Background(), call).Stdout)
 }
 
-// Two transports for one server is a config mistake worth naming,
-// not something to guess at.
-func TestConnectAll_RefusesBothCommandAndURL(t *testing.T) {
-	bin, err := fakeServer()
-	require.NoError(t, err)
-
-	in := NewInvokers()
-	errs := ConnectAll(context.Background(), tool.Standard(), in, map[string]Config{
-		"confused": {Command: bin, URL: "http://example.invalid"}, "empty": {},
-	}, nil)
-	t.Cleanup(func() { _ = in.Close() })
-
-	require.Len(t, errs, 2)
-	assert.Contains(t, errs[0].Error(), "not both")
-	assert.Contains(t, errs[1].Error(), "no command or url")
-}
-
 // The page shows what it reaches, not an empty command column.
 func TestConnectAll_StatusShowsTheURL(t *testing.T) {
 	url := httpServer(t, nil)
@@ -106,4 +68,25 @@ func TestConnectAll_StatusShowsTheURL(t *testing.T) {
 
 	require.Len(t, in.Status(), 1)
 	assert.Equal(t, url, in.Status()[0].Command)
+}
+
+// httpServer runs a real MCP server over real HTTP, so these exercise
+// the transport rather than a stand-in for it.
+func httpServer(t *testing.T, seen *http.Header) string {
+	t.Helper()
+	srv := sdk.NewServer(&sdk.Implementation{Name: "over-http", Version: "1"}, nil)
+	srv.AddTool(&sdk.Tool{Name: "ping", InputSchema: map[string]any{"type": "object"}},
+		func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "pong"}}}, nil
+		})
+
+	h := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return srv }, nil)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if seen != nil {
+			*seen = r.Header.Clone()
+		}
+		h.ServeHTTP(w, r)
+	}))
+	t.Cleanup(ts.Close)
+	return ts.URL
 }

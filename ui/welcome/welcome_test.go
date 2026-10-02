@@ -47,10 +47,8 @@ func TestWelcome_DetentAnimationSteps(t *testing.T) {
 	}
 }
 
-// TestWelcome_FitsAndCentresAtEverySize: the island cuts whatever
-// overflows, so the welcome pane drops whole sections itself rather
-// than losing a row mid-sentence. Where commands run outranks the
-// niceties, and what's left sits in the middle of the pane.
+// The pane drops whole sections rather than letting the island cut a
+// row, and where commands run outranks the niceties.
 func TestWelcome_FitsAndCentresAtEverySize(t *testing.T) {
 	for _, size := range [][2]int{{120, 40}, {110, 30}, {100, 24}, {90, 20}, {80, 16}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
@@ -89,9 +87,7 @@ func TestWelcome_CentresVertically(t *testing.T) {
 	assert.InDelta(t, lead, trail, 2, "roughly as much space above as below")
 }
 
-// The welcome pane is where a human learns which build they are
-// running, so the version sits under the name rather than only in the
-// status bar, which truncates first when the window is narrow.
+// The welcome pane is where a human learns which build is running.
 func TestLines_ShowsTheVersion(t *testing.T) {
 	got := Lines(Facts{
 		Version: "9.9.9", Proposer: "m", RunMode: "host",

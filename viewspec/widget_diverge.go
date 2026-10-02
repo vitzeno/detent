@@ -5,9 +5,8 @@ import (
 	"strings"
 )
 
-// diverge charts two numbers per row either side of a centre line,
-// which is the shape a diffstat already has: forty added against three
-// removed, read in one glance rather than two columns.
+// diverge charts two numbers per row either side of a centre line, the
+// shape a diffstat already has.
 type divergeWidget struct{}
 
 var (

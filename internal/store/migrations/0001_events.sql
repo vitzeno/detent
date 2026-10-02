@@ -1,6 +1,5 @@
--- A session header and its log. The header is written once from the
--- SessionStarted fact and never updated, so it cannot drift from the
--- log the way a rolling projection would.
+-- A session header and its log. The header comes from SessionStarted and
+-- only its resumed count and name ever change, so it cannot drift.
 CREATE TABLE sessions (
   id      TEXT    PRIMARY KEY,
   started INTEGER NOT NULL,
@@ -13,13 +12,8 @@ CREATE TABLE sessions (
   name    TEXT    NOT NULL DEFAULT ''
 );
 
--- The log. State is what replaying it gives you, so there is no
--- second shape to keep in step with the structs.
---
--- (session, ordinal) is the natural key: an ordinal only means
--- anything within its session. turn and call are lifted out of the
--- payload because "everything about this request" is the query
--- anyone runs, and it should not need a payload scan.
+-- The log. State is what replaying it gives, so there is no second shape.
+-- turn and call are lifted out of the payload so a query needs no scan.
 CREATE TABLE events (
   session TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   ordinal INTEGER NOT NULL,

@@ -1,5 +1,5 @@
-// Package version is what detent calls itself. It imports nothing, so
-// anything may ask.
+// Package version is what detent calls itself. It imports only the
+// standard library, so anything may ask.
 package version
 
 import "runtime/debug"
@@ -9,9 +9,8 @@ import "runtime/debug"
 //	go build -ldflags "-X github.com/vitzeno/detent/version.Number=1.2.0"
 var Number = "0.2.0"
 
-// String is the number with the build it came from, where the build
-// says anything: a binary built from a dirty tree is a different thing
-// from a tagged release and should not claim to be one.
+// String is the number plus the build's revision when known, marked
+// dirty so a modified tree never claims to be a release.
 func String() string {
 	rev, dirty := build()
 	switch {

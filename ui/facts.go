@@ -10,6 +10,23 @@ import (
 	"github.com/vitzeno/detent/ui/status"
 )
 
+// Restore rebuilds history from a stored session by looping over apply.
+// CheckpointTaken is skipped: its snapshot died with the container.
+func (m Model) Restore(records []event.Record) Model {
+	m.replaying = true
+	for _, r := range records {
+		if r.Event.Kind() == event.CheckpointTakenKind {
+			continue
+		}
+		m.apply(r.Event)
+	}
+	m.replaying = false
+	m.staleSignIns()
+	m.trackNewest()
+	m.backToInput()
+	return m
+}
+
 // apply folds one fact into the Model, and is the whole of how the UI
 // learns anything. A test drives it with events and no harness.
 func (m *Model) apply(ev event.Event) {
@@ -123,7 +140,7 @@ func (m *Model) apply(ev event.Event) {
 		}
 
 	case event.Compacted:
-		// The next Step measures the new size; until then the old
+		// The next Step measures the new size. Until then the old
 		// reading is stale and would overstate the budget.
 		m.context = 0
 		m.noteOK(fmt.Sprintf("compacted, %d messages summarised", v.Dropped))
@@ -193,6 +210,10 @@ func (m *Model) shellBlock() *turnBlock {
 	return b
 }
 
+// maxLiveLines bounds what one running call keeps on screen. The rest
+// is counted away and the full output arrives with CallEnded.
+const maxLiveLines = 200
+
 func (m *Model) addLine(v event.OutputChunk) {
 	r := m.row(v.Call)
 	if r == nil {
@@ -259,26 +280,4 @@ func (m *Model) row(id uuid.UUID) *callRow {
 		}
 	}
 	return nil
-}
-
-// maxLiveLines bounds what one running call keeps on screen; the rest
-// is counted away and the full output arrives with CallEnded.
-const maxLiveLines = 200
-
-// Restore rebuilds history from a stored session: a loop over apply
-// and nothing else. CheckpointTaken is skipped because its snapshot
-// died with the container, and undoable is set from that fact alone.
-func (m Model) Restore(records []event.Record) Model {
-	m.replaying = true
-	for _, r := range records {
-		if r.Event.Kind() == event.CheckpointTakenKind {
-			continue
-		}
-		m.apply(r.Event)
-	}
-	m.replaying = false
-	m.staleSignIns()
-	m.trackNewest()
-	m.backToInput()
-	return m
 }

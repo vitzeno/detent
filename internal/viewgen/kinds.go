@@ -5,16 +5,11 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// Kind* name the shapes a command's output can take. One table below
-// defines all three things a kind is for, so they cannot drift:
-// the criteria Jev classifies by, the widgets a composed view may
-// draw from, and whether a view is worth asking about at all.
+// Kind* name the shapes a command's output can take. One table defines
+// each one's criteria, widgets and worth, so the three cannot drift.
 const (
-	// KindText is any unstructured text read top to bottom. It covers
-	// what used to be three kinds split by length: the viewport scrolls
-	// whatever it is given, so how long the output runs never decided
-	// how to draw it, and asking Jev to tell three of those apart cost
-	// calibration on the distinctions that matter.
+	// KindText is any unstructured text read top to bottom, whatever its
+	// length: the viewport scrolls, so length never decides how to draw it.
 	KindText    = "plain_text"
 	KindTable   = "table"
 	KindFiles   = "file_listing"
@@ -24,30 +19,49 @@ const (
 	KindJSON    = "structured_json"
 )
 
-// meter, stat, text and dots are deliberately in no list here. Each
-// needs something a field choice cannot supply: a count_where filter,
-// a title, an accent map. They stay drawable, so a saved or shipped
-// spec may use one; nothing composes them.
-// TestCompose_EveryOfferedWidgetCanBeComposed is what holds that line.
+// meter, stat, text and dots are in no list: each needs a filter, a
+// title or an accent map that a field choice cannot supply.
 
 // Kind describes one output shape.
 type Kind struct {
 	Name string
-	// What, NotFor and Examples are Jev's criteria. Structured rather
-	// than flat strings because a nine-way choice loses its
-	// calibration without a stated counter-case.
+	// What, NotFor and Examples are Jev's criteria. A many-way choice
+	// loses its calibration without a stated counter-case.
 	What     string
 	NotFor   string
 	Examples []string
-	// Widgets is what a composed view for this shape may use.
-	// Offering a model four kinds instead of fifteen is the single
-	// biggest thing that makes a small one reliable.
+	// Widgets is what a composed view for this shape may use. A short
+	// list is what makes a small judge reliable.
 	Widgets []string
 	// Generate is false where there is nothing to gain: a diff and a
 	// stack trace already draw themselves.
 	Generate bool
 	// Records marks a shape made of rows, worth a view from a few of them.
 	Records bool
+}
+
+// Kinds lists every output shape, in the order they are described.
+func Kinds() []Kind { return kinds }
+
+// RenderKindCriteria is what Jev classifies output against, built from the
+// table that prunes the vocabulary, so every judged kind can be drawn.
+func RenderKindCriteria() map[string]any {
+	out := make(map[string]any, len(kinds))
+	for _, k := range kinds {
+		out[k.Name] = map[string]any{
+			"what": k.What, "not_for": k.NotFor, "examples": k.Examples,
+		}
+	}
+	return out
+}
+
+// RenderKindQuestion asks which shape an output has. The judge asks it
+// of a Call and viewgen of a Shell, so the wording lives in one place.
+func RenderKindQuestion() classify.Question {
+	return classify.Question{
+		Instructions: "What shape is this output? Pick how a human should read it.",
+		Choice:       &classify.ChoiceQuestion{Criteria: RenderKindCriteria()},
+	}
 }
 
 var kinds = []Kind{
@@ -127,44 +141,15 @@ var byName = func() map[string]Kind {
 	return out
 }()
 
-// Kinds lists every output shape, in the order they are described.
-func Kinds() []Kind { return kinds }
-
-// RenderKindCriteria is what Jev classifies output against. Built from
-// the same table that prunes the vocabulary, so a kind cannot be
-// judged into existence and then have nothing able to draw it.
-func RenderKindCriteria() map[string]any {
-	out := make(map[string]any, len(kinds))
-	for _, k := range kinds {
-		out[k.Name] = map[string]any{
-			"what": k.What, "not_for": k.NotFor, "examples": k.Examples,
-		}
-	}
-	return out
-}
-
-// RenderKindQuestion asks which shape an output has. The judge asks it
-// of a Call and viewgen of a Shell, so the wording lives in one place.
-func RenderKindQuestion() classify.Question {
-	return classify.Question{
-		Instructions: "What shape is this output? Pick how a human should read it.",
-		Choice:       &classify.ChoiceQuestion{Criteria: RenderKindCriteria()},
-	}
-}
-
-// worthGenerating reports whether this shape earns asking. A kind
-// nobody recognises is worth asking about: reading the zero Kind's
-// false as "skip" turned an unrecognised answer into "this shape draws
-// itself", which is a sentence about a kind we have never seen.
+// worthGenerating reports whether this shape earns asking. A kind nobody
+// recognises is worth asking about, since the zero Kind's false means nothing.
 func worthGenerating(kind string) bool {
 	k, ok := byName[kind]
 	return !ok || k.Generate
 }
 
-// prune returns the registry a view for this shape may be built from.
-// An unknown kind gets the whole vocabulary rather than none, for the
-// same reason: the zero Kind has no widgets, and subsetting on none
-// offers nothing to choose between.
+// prune returns the registry a view for this shape may be built from. An
+// unknown kind gets the whole vocabulary, since the zero Kind has no widgets.
 func prune(reg *viewspec.Registry, kind string) *viewspec.Registry {
 	k, ok := byName[kind]
 	if !ok || len(k.Widgets) == 0 {

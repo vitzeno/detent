@@ -2,20 +2,20 @@ package engine
 
 import (
 	"context"
-	"github.com/google/uuid"
 	"sync"
+
+	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 )
 
 // turnState is one Turn in flight. The Turn goroutine owns the
-// transcript while this exists; the dispatcher only forwards to it.
+// transcript while this exists, and the dispatcher only forwards to it.
 type turnState struct {
 	id     uuid.UUID
 	n      int
 	prompt string
-	// mark and snap are what a rollback restores: transcript position
-	// and container checkpoint, both taken before anything ran.
+	// What a rollback restores, all taken before anything ran.
 	mark int
 	snap string
 	tree string
@@ -119,9 +119,8 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 	}
 }
 
-// endTurn flushes anything still queued before closing. A correction
-// typed as the last Step finished has nowhere else to go, and losing
-// it means the next Turn never hears it.
+// endTurn flushes queued notes before closing, or a correction typed
+// as the last Step finished never reaches the next Turn.
 func (e *Engine) endTurn(t *turnState, why event.EndReason, summary string, used event.Usage) {
 	t.drain()
 	for _, n := range t.takeNotes() {
@@ -177,7 +176,7 @@ func (t *turnState) drain() {
 	}
 }
 
-// absorb records an intent. Abort cancels immediately; the rest wait
+// absorb records an intent. Abort cancels immediately, the rest wait
 // for a boundary.
 func (t *turnState) absorb(ev event.Event) {
 	switch v := ev.(type) {
@@ -220,8 +219,7 @@ func (e *Engine) snapshotter() (Snapshotter, bool) {
 }
 
 // appended mutates the transcript and publishes what went in, so a
-// replay can put the same thing back rather than reproduce the
-// formatting that produced it.
+// replay puts the same messages back rather than reformatting them.
 func (e *Engine) appended(turn, step uuid.UUID, fn func() []event.Message) {
 	var added []event.Message
 	e.trLock(func() { added = fn() })
@@ -230,9 +228,8 @@ func (e *Engine) appended(turn, step uuid.UUID, fn func() []event.Message) {
 	}
 }
 
-// compact announces before it starts, since summarising is a model
-// round trip that stalls the Turn, and publishes what it replaced so
-// a replay rebuilds the same transcript rather than a different one.
+// compact announces itself first, since summarising stalls the Turn,
+// and publishes what it replaced so a replay rebuilds the same one.
 func (e *Engine) compact(ctx context.Context, t *turnState) {
 	if !e.wouldCompact() {
 		return

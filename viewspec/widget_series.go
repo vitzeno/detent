@@ -6,8 +6,7 @@ import (
 )
 
 // series draws one sparkline per group against one shared scale, so
-// the strips can be compared with each other rather than each read on
-// its own the way a single sparkline is.
+// the strips can be compared with each other.
 type seriesWidget struct{}
 
 var (

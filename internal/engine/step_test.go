@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -11,9 +12,8 @@ import (
 	"github.com/vitzeno/detent/internal/model"
 )
 
-// Read-only Calls run together; anything else runs alone and in the
-// order the model asked. Mutability decides parallelism and, now that
-// checkpointing is per Turn, nothing else.
+// Read-only Calls run together, anything else runs alone and in the
+// order the model asked.
 func TestStep_ReadOnlyCallsRunTogether(t *testing.T) {
 	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
 		readCall("c1", "a.go"), readCall("c2", "b.go"), readCall("c3", "c.go"),
@@ -53,7 +53,7 @@ func TestStep_CapsHowManyCallsOneStepMayAskFor(t *testing.T) {
 
 	var refused int
 	for _, m := range r.eng.Transcript() {
-		if m.Role == event.RoleTool && contains(m.Content, "at most 3 calls") {
+		if m.Role == event.RoleTool && strings.Contains(m.Content, "at most 3 calls") {
 			refused++
 		}
 	}
@@ -123,17 +123,4 @@ func TestFormatResult_SaysWhatHappened(t *testing.T) {
 			}
 		})
 	}
-}
-
-func contains(s, sub string) bool {
-	return len(sub) == 0 || (len(s) >= len(sub) && indexOf(s, sub) >= 0)
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
 }

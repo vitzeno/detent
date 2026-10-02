@@ -23,6 +23,6 @@ const (
 
 	deleteAfter = `DELETE FROM events WHERE session = ? AND ordinal > ?`
 
-	// The events go with it: the foreign key cascades
+	// The events go with it, since the foreign key cascades.
 	deleteSession = `DELETE FROM sessions WHERE id = ?`
 )

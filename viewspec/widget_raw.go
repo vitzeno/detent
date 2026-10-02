@@ -43,58 +43,6 @@ func (w rawWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	return out, nil
 }
 
-// diffRole classifies one unified-diff line. Classification only;
-// which colour a role becomes is the consumer's business.
-func diffRole(l string) Role {
-	switch {
-	case strings.HasPrefix(l, "+++") || strings.HasPrefix(l, "---"):
-		return RoleMuted
-	case strings.HasPrefix(l, "+"):
-		return RoleSafe
-	case strings.HasPrefix(l, "-"):
-		return RoleDanger
-	case strings.HasPrefix(l, "@@"):
-		return RoleFaint
-	case strings.HasPrefix(l, "diff ") || strings.HasPrefix(l, "index "):
-		return RoleMuted
-	}
-	return RoleDefault
-}
-
-var (
-	errorLine   = regexp.MustCompile(`(?i)\b(error|fail|panic|traceback|exception)\b`)
-	warningLine = regexp.MustCompile(`(?i)\b(warn(ing)?|deprecat|retry)\b`)
-)
-
-// severityRole colours whole lines, not matches: a traceback reads as
-// a unit, and half-painted lines read as noise.
-func severityRole(l string) Role {
-	switch {
-	case errorLine.MatchString(l):
-		return RoleDanger
-	case warningLine.MatchString(l):
-		return RoleCaution
-	}
-	return RoleDefault
-}
-
-// indentJSON pretty-prints valid JSON; anything else passes through.
-func indentJSON(s string) (string, bool) {
-	trimmed := strings.TrimSpace(s)
-	if trimmed == "" {
-		return "", false
-	}
-	var v any
-	if err := json.Unmarshal([]byte(trimmed), &v); err != nil {
-		return "", false
-	}
-	out, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return "", false
-	}
-	return string(out), true
-}
-
 func (w rawWidget) Describe() Description {
 	d := w.describe()
 	d.Raw = true
@@ -133,4 +81,56 @@ func (w rawWidget) describe() Description {
 		NotFor:   "output with a shape worth drawing; reach for this when nothing else fits",
 		Examples: []string{"a build log", "tail -n 200 app.log"},
 	}
+}
+
+// diffRole classifies one unified-diff line. Which colour a role
+// becomes is the consumer's business.
+func diffRole(l string) Role {
+	switch {
+	case strings.HasPrefix(l, "+++") || strings.HasPrefix(l, "---"):
+		return RoleMuted
+	case strings.HasPrefix(l, "+"):
+		return RoleSafe
+	case strings.HasPrefix(l, "-"):
+		return RoleDanger
+	case strings.HasPrefix(l, "@@"):
+		return RoleFaint
+	case strings.HasPrefix(l, "diff ") || strings.HasPrefix(l, "index "):
+		return RoleMuted
+	}
+	return RoleDefault
+}
+
+var (
+	errorLine   = regexp.MustCompile(`(?i)\b(error|fail|panic|traceback|exception)\b`)
+	warningLine = regexp.MustCompile(`(?i)\b(warn(ing)?|deprecat|retry)\b`)
+)
+
+// severityRole colours whole lines, not matches: a traceback reads as
+// a unit, and half-painted lines read as noise.
+func severityRole(l string) Role {
+	switch {
+	case errorLine.MatchString(l):
+		return RoleDanger
+	case warningLine.MatchString(l):
+		return RoleCaution
+	}
+	return RoleDefault
+}
+
+// indentJSON pretty-prints valid JSON and reports false for anything else.
+func indentJSON(s string) (string, bool) {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return "", false
+	}
+	var v any
+	if err := json.Unmarshal([]byte(trimmed), &v); err != nil {
+		return "", false
+	}
+	out, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return "", false
+	}
+	return string(out), true
 }
