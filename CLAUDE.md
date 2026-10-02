@@ -271,7 +271,7 @@ adding a fat dependency fails with the transitive import named.
   that publishes the moment it returns cannot lose the intent.
   `Abort` is handled in `dispatch` rather than queued to the Turn: a
   blocked Call never reaches a boundary, and the inbox is only drained
-  at one. Read-only Calls run concurrently, capped. Anything else runs
+  at one. Read-only Calls run concurrently. Anything else runs
   serially in the order asked. A declined Call returns a result saying
   so and its siblings still run: **declining stops a Call, not a
   Turn.** `MaxSteps` defaults to 50 and is soft: hitting it publishes

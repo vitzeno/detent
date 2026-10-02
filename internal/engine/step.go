@@ -110,14 +110,11 @@ func (e *Engine) runParallel(ctx context.Context, plans []*callPlan) {
 	if len(plans) == 0 {
 		return
 	}
-	sem := make(chan struct{}, max(1, e.parallel))
 	var wg sync.WaitGroup
 	for _, p := range plans {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
 			e.execute(ctx, p)
 		}()
 	}

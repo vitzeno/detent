@@ -27,15 +27,6 @@ func WithCallsPerStep(n int) Option {
 	}
 }
 
-// WithParallelCalls caps read-only Calls running together.
-func WithParallelCalls(n int) Option {
-	return func(e *Engine) {
-		if n > 0 {
-			e.parallel = n
-		}
-	}
-}
-
 // WithContextTokens sets the transcript budget, in tokens.
 func WithContextTokens(n int) Option {
 	return func(e *Engine) {

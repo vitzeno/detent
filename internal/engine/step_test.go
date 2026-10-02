@@ -43,7 +43,7 @@ func TestStep_WritesRunOneAtATime(t *testing.T) {
 func TestStep_CapsHowManyCallsOneStepMayAskFor(t *testing.T) {
 	var calls []event.ToolCall
 	for i := range 6 {
-		calls = append(calls, readCall(string(rune('a'+i)), "f.go"))
+		calls = append(calls, readCall(string(rune('a'+i)), string(rune('a'+i))+".go"))
 	}
 	r := newRig(t, []model.Reply{{Calls: calls}}, WithCallsPerStep(3))
 	r.run("read everything")
@@ -60,22 +60,19 @@ func TestStep_CapsHowManyCallsOneStepMayAskFor(t *testing.T) {
 	assert.Equal(t, 3, refused, "the rest are told why, not silently dropped")
 }
 
-func TestStep_ParallelismIsCapped(t *testing.T) {
+func TestStep_ReadOnlyCallsAllRunTogether(t *testing.T) {
 	var calls []event.ToolCall
 	for i := range 8 {
-		calls = append(calls, readCall(string(rune('a'+i)), "f.go"))
+		calls = append(calls, readCall(string(rune('a'+i)), string(rune('a'+i))+".go"))
 	}
-	r := newRig(t, []model.Reply{{Calls: calls}}, WithParallelCalls(2))
+	r := newRig(t, []model.Reply{{Calls: calls}})
 	r.runner.mu.Lock()
 	r.runner.hold = make(chan struct{})
 	r.runner.mu.Unlock()
 
 	r.bus.Publish(event.SubmitPrompt{Text: "read them"})
-	require.Eventually(t, func() bool { return len(r.of(event.CallStartedKind)) == 2 },
-		2*time.Second, 5*time.Millisecond)
-
-	time.Sleep(50 * time.Millisecond)
-	assert.Len(t, r.of(event.CallStartedKind), 2, "no more than the cap may be in flight")
+	require.Eventually(t, func() bool { return len(r.of(event.CallStartedKind)) == 8 },
+		2*time.Second, 5*time.Millisecond, "all eight are in flight before any finishes")
 	close(r.runner.hold)
 	r.await(event.TurnEndedKind)
 }

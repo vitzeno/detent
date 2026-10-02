@@ -18,10 +18,10 @@ import (
 // Defaults. MaxSteps is generous and soft: hitting it asks rather than
 // stops, because a human is watching.
 const (
-	DefaultMaxSteps      = 50
-	DefaultCallsPerStep  = 10
-	DefaultParallelCalls = 4
-	DefaultRepeatLimit   = 3
+	DefaultMaxSteps = 50
+	// A Step is never split by compaction, so its results must fit the budget whole.
+	DefaultCallsPerStep = 10
+	DefaultRepeatLimit  = 3
 )
 
 // DefaultStopGrace is how long a cancelled Run waits for the Turn it
@@ -46,7 +46,6 @@ type Engine struct {
 
 	maxSteps      int
 	maxCalls      int
-	parallel      int
 	contextTokens int
 	summarizer    Summarizer
 	stopGrace     time.Duration
@@ -82,7 +81,6 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 		session:       uuid.Must(uuid.NewV7()),
 		maxSteps:      DefaultMaxSteps,
 		maxCalls:      DefaultCallsPerStep,
-		parallel:      DefaultParallelCalls,
 		contextTokens: DefaultContextTokens,
 		stopGrace:     DefaultStopGrace,
 		repeat:        newRepeatHook(DefaultRepeatLimit),
