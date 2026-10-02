@@ -5,6 +5,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // Environment is where the tools actually run, filled in by the harness.
@@ -19,6 +20,8 @@ type Environment struct {
 	Network   bool
 	// Undoable: the whole Turn is checkpointed and can be rolled back.
 	Undoable bool
+	// Timeout is how long a command may run before it is stopped, 0 when unsaid.
+	Timeout time.Duration
 }
 
 // LocalEnvironment describes this process's own machine: right when
@@ -36,6 +39,18 @@ func LocalEnvironment() Environment {
 // ResumeMarker opens the note a resumed session leaves in the
 // transcript, and point 4 names it. Exported so both can be asserted.
 const ResumeMarker = "[session resumed]"
+
+// Brief is a duration as a person writes it: 10m, 90s, 1h30m.
+func Brief(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = s[:len(s)-2]
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = s[:len(s)-2]
+	}
+	return s
+}
 
 func systemPrompt(env Environment) string { return env.preamble() + agentPrompt }
 
@@ -64,7 +79,11 @@ func (e Environment) preamble() string {
 	}
 
 	b.WriteString("Each command runs through a fresh `sh -c` starting in that directory. " +
-		"A bare `cd` does not carry to the next command, but files you create or change do, and so does anything you install.\n\n")
+		"A bare `cd` does not carry to the next command, but files you create or change do, and so does anything you install.\n")
+	if e.Timeout > 0 {
+		fmt.Fprintf(&b, "A command still running after %s is stopped. Run anything longer in the background and check on it.\n", Brief(e.Timeout))
+	}
+	b.WriteString("\n")
 	return b.String()
 }
 

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -166,7 +167,9 @@ func (e *Engine) execute(ctx context.Context, p *callPlan) {
 	}()
 
 	start := time.Now()
-	res, err := runSafely(ctx, runner, p.cmd, lines)
+	cctx, cancel := context.WithTimeout(ctx, e.commandTimeout)
+	defer cancel()
+	res, err := runSafely(cctx, runner, p.cmd, lines)
 	took := time.Since(start)
 	// A Runner closes the channel when output ends. One that forgets
 	// would wedge the Turn, which is worse than a leaked goroutine.
@@ -179,7 +182,7 @@ func (e *Engine) execute(ctx context.Context, p *callPlan) {
 		ExitCode: res.ExitCode, Stdout: res.Stdout, Stderr: res.Stderr, Truncated: res.Truncated,
 	}
 	if err != nil {
-		out.Err = err.Error()
+		out.Err = e.why(ctx, cctx, err)
 	}
 	e.bus.Publish(event.CallEnded{Call: p.id, Result: out, Took: took})
 	p.finish(formatResult(p.cmd, out))
@@ -195,12 +198,14 @@ func (e *Engine) invoke(ctx context.Context, p *callPlan) {
 	e.bus.Publish(event.CallStarted{Call: p.id, Runner: p.prepared.Executor})
 
 	start := time.Now()
-	res, err := invokeSafely(ctx, e.invoker, p.prepared)
+	cctx, cancel := context.WithTimeout(ctx, e.commandTimeout)
+	defer cancel()
+	res, err := invokeSafely(cctx, e.invoker, p.prepared)
 	out := event.Result{
 		ExitCode: res.ExitCode, Stdout: res.Stdout, Stderr: res.Stderr, Truncated: res.Truncated,
 	}
 	if err != nil {
-		out.Err = err.Error()
+		out.Err = e.why(ctx, cctx, err)
 	}
 	e.bus.Publish(event.CallEnded{Call: p.id, Result: out, Took: time.Since(start)})
 	p.finish(formatResult(p.cmd, out))
@@ -233,26 +238,45 @@ func invokeSafely(ctx context.Context, in Invoker, c tool.Call) (res capture.Res
 	return in.Invoke(ctx, c), nil
 }
 
+// why says what stopped a Call. The time limit is named with its length,
+// so the model can tell a slow command from a broken one.
+func (e *Engine) why(ctx, cctx context.Context, err error) string {
+	if errors.Is(cctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+		return "stopped after " + model.Brief(e.commandTimeout) + ", still running"
+	}
+	return err.Error()
+}
+
 // formatResult is what the model reads back.
 func formatResult(cmd string, r event.Result) string {
-	if r.Err != "" {
-		return fmt.Sprintf("Could not run `%s`: %s", cmd, r.Err)
-	}
 	var b strings.Builder
+	if r.Err != "" {
+		// What it printed before it was stopped is often why.
+		fmt.Fprintf(&b, "Could not run `%s`: %s", cmd, r.Err)
+		if r.Stdout != "" || r.Stderr != "" {
+			b.WriteString(". Output so far:")
+			writeOutput(&b, r)
+		}
+		return b.String()
+	}
 	fmt.Fprintf(&b, "Exit code %d.", r.ExitCode)
-	if r.Stdout != "" {
-		fmt.Fprintf(&b, "\nstdout:\n%s", r.Stdout)
-	}
-	if r.Stderr != "" {
-		fmt.Fprintf(&b, "\nstderr:\n%s", r.Stderr)
-	}
 	if r.Stdout == "" && r.Stderr == "" {
 		b.WriteString(" No output.")
+	}
+	writeOutput(&b, r)
+	return b.String()
+}
+
+func writeOutput(b *strings.Builder, r event.Result) {
+	if r.Stdout != "" {
+		fmt.Fprintf(b, "\nstdout:\n%s", r.Stdout)
+	}
+	if r.Stderr != "" {
+		fmt.Fprintf(b, "\nstderr:\n%s", r.Stderr)
 	}
 	if r.Truncated {
 		b.WriteString("\n[output truncated at capture]")
 	}
-	return b.String()
 }
 
 // renders asks the tool how its output should be read. Advisory: a

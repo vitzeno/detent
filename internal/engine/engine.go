@@ -22,6 +22,8 @@ const (
 	// A Step is never split by compaction, so its results must fit the budget whole.
 	DefaultCallsPerStep = 10
 	DefaultRepeatLimit  = 3
+	// A human can stop a command sooner. This bounds the one nobody watches.
+	DefaultCommandTimeout = 10 * time.Minute
 )
 
 // DefaultStopGrace is how long a cancelled Run waits for the Turn it
@@ -44,11 +46,13 @@ type Engine struct {
 	tr      transcript
 	turns   int
 
-	maxSteps      int
-	maxCalls      int
-	contextTokens int
-	summarizer    Summarizer
-	stopGrace     time.Duration
+	maxSteps int
+	maxCalls int
+	// commandTimeout bounds every Call, host or sandbox alike.
+	commandTimeout time.Duration
+	contextTokens  int
+	summarizer     Summarizer
+	stopGrace      time.Duration
 
 	worktreer Worktreer
 
@@ -84,13 +88,14 @@ type Engine struct {
 func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelector, opts ...Option) *Engine {
 	e := &Engine{
 		bus: bus, model: m, tools: tools, runners: runners,
-		session:       uuid.Must(uuid.NewV7()),
-		maxSteps:      DefaultMaxSteps,
-		maxCalls:      DefaultCallsPerStep,
-		contextTokens: DefaultContextTokens,
-		stopGrace:     DefaultStopGrace,
-		repeat:        newRepeatHook(DefaultRepeatLimit),
-		past:          map[uuid.UUID]*turnState{},
+		session:        uuid.Must(uuid.NewV7()),
+		maxSteps:       DefaultMaxSteps,
+		maxCalls:       DefaultCallsPerStep,
+		commandTimeout: DefaultCommandTimeout,
+		contextTokens:  DefaultContextTokens,
+		stopGrace:      DefaultStopGrace,
+		repeat:         newRepeatHook(DefaultRepeatLimit),
+		past:           map[uuid.UUID]*turnState{},
 	}
 	for _, o := range opts {
 		o(e)

@@ -41,6 +41,9 @@ func (c *Config) apply(o Config) {
 	if o.ContextTokens != 0 {
 		c.ContextTokens = o.ContextTokens
 	}
+	if o.CommandTimeout != "" {
+		c.CommandTimeout = o.CommandTimeout
+	}
 	if o.JevAPIKey != "" {
 		c.JevAPIKey = o.JevAPIKey
 	}
@@ -112,13 +115,14 @@ func envConfig() Config {
 			os.Getenv("OPENROUTER_API_KEY"),
 			os.Getenv("OPENAI_API_KEY"),
 		),
-		ContextTokens: envInt("DETENT_CONTEXT_TOKENS"),
-		JevAPIKey:     os.Getenv("TYPESAFE_API_KEY"),
-		Theme:         os.Getenv("DETENT_THEME"),
-		Views:         os.Getenv("DETENT_VIEWS"),
-		LogLevel:      os.Getenv("DETENT_LOG_LEVEL"),
-		LogDir:        os.Getenv("DETENT_LOG_DIR"),
-		LogBodies:     os.Getenv("DETENT_LOG_BODIES") != "",
+		ContextTokens:  envInt("DETENT_CONTEXT_TOKENS"),
+		CommandTimeout: os.Getenv("DETENT_COMMAND_TIMEOUT"),
+		JevAPIKey:      os.Getenv("TYPESAFE_API_KEY"),
+		Theme:          os.Getenv("DETENT_THEME"),
+		Views:          os.Getenv("DETENT_VIEWS"),
+		LogLevel:       os.Getenv("DETENT_LOG_LEVEL"),
+		LogDir:         os.Getenv("DETENT_LOG_DIR"),
+		LogBodies:      os.Getenv("DETENT_LOG_BODIES") != "",
 
 		SandboxMode:    os.Getenv("DETENT_SANDBOX_MODE"),
 		SandboxSocket:  os.Getenv("DETENT_SANDBOX_SOCKET"),

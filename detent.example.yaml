@@ -17,6 +17,11 @@ headers: {}            # extra request headers
 
 steps: 0               # Steps per request before it asks to continue (50)
 
+# Stop a command still running after this long, e.g. "30m" or "90s" (10m).
+# Host, sandbox and MCP calls alike. The model is told it was stopped and sees
+# what it printed so far. Also DETENT_COMMAND_TIMEOUT.
+command_timeout: ""
+
 # Transcript budget in tokens (200000). Past it, the oldest Turns are
 # summarised. Set it below the window for a small local model.
 context_tokens: 0

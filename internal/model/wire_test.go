@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -105,6 +106,22 @@ func TestPromptParts_AddUpToTheWholePrompt(t *testing.T) {
 		}
 		assert.Equal(t, len(c.systemPrompt()), n, name)
 	}
+}
+
+func TestBrief_WritesADurationAsAPersonWould(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		10 * time.Minute: "10m", 90 * time.Second: "1m30s", time.Hour: "1h",
+		90 * time.Minute: "1h30m", 50 * time.Millisecond: "50ms",
+	} {
+		assert.Equal(t, want, Brief(d))
+	}
+}
+
+func TestSystemPrompt_StatesTheCommandLimit(t *testing.T) {
+	env := LocalEnvironment()
+	assert.NotContains(t, systemPrompt(env), "is stopped")
+	env.Timeout = 10 * time.Minute
+	assert.Contains(t, systemPrompt(env), "A command still running after 10m is stopped.")
 }
 
 // The prompt promises a shape another package emits, so it is checked

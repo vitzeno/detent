@@ -121,3 +121,25 @@ func TestFormatResult_SaysWhatHappened(t *testing.T) {
 		})
 	}
 }
+
+// A command that runs too long is stopped, and the model is told how long
+// it waited and what it printed, so it can tell slow from broken.
+func TestStep_ACommandPastItsLimitIsStoppedAndSaysSo(t *testing.T) {
+	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "make build")}}},
+		WithCommandTimeout(50*time.Millisecond))
+	r.runner.mu.Lock()
+	r.runner.hold, r.runner.partial = make(chan struct{}), "compiling 1 of 40\n"
+	r.runner.mu.Unlock()
+
+	r.run("build it")
+	ended := r.of(event.CallEndedKind)[0].(event.CallEnded)
+	assert.Equal(t, "stopped after 50ms, still running", ended.Result.Err)
+	var answer string
+	for _, m := range r.eng.Transcript() {
+		if m.Role == event.RoleTool {
+			answer = m.Content
+		}
+	}
+	assert.Contains(t, answer, "stopped after 50ms, still running. Output so far:")
+	assert.Contains(t, answer, "compiling 1 of 40")
+}

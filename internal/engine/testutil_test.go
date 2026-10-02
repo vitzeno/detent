@@ -50,12 +50,14 @@ type fakeRunner struct {
 	out  string
 	hold chan struct{} // when set, Run blocks until closed
 	pan  bool
+	// partial is what a held command printed before it was stopped.
+	partial string
 }
 
 func (r *fakeRunner) Run(ctx context.Context, cmd string, lines chan<- capture.StreamEvent) (capture.Result, error) {
 	r.mu.Lock()
 	r.ran = append(r.ran, cmd)
-	hold, out, pan := r.hold, r.out, r.pan
+	hold, out, pan, partial := r.hold, r.out, r.pan, r.partial
 	r.mu.Unlock()
 
 	if pan {
@@ -68,7 +70,7 @@ func (r *fakeRunner) Run(ctx context.Context, cmd string, lines chan<- capture.S
 			if lines != nil {
 				close(lines)
 			}
-			return capture.Result{}, ctx.Err()
+			return capture.Result{Stdout: partial}, ctx.Err()
 		}
 	}
 	if lines != nil {

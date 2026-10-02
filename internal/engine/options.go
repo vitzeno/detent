@@ -83,6 +83,15 @@ func WithInstructions(paths []string) Option {
 	return func(e *Engine) { e.instructions = paths }
 }
 
+// WithCommandTimeout bounds each Call. Zero keeps the default.
+func WithCommandTimeout(d time.Duration) Option {
+	return func(e *Engine) {
+		if d > 0 {
+			e.commandTimeout = d
+		}
+	}
+}
+
 // WithSkills names the skills found at startup, for SessionStarted.
 func WithSkills(s []event.SkillSummary) Option {
 	return func(e *Engine) { e.skills = s }

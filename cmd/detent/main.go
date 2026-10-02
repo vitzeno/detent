@@ -197,6 +197,12 @@ func run() error {
 			err, resolved.BaseURL, resolved.Model)
 	}
 
+	timeout, err := resolved.Timeout()
+	if err != nil {
+		return err
+	}
+	env.Timeout = timeout
+
 	// Read on the host, where the files are, whichever runner the commands use.
 	files, err := instructions.Find(model.LocalEnvironment().Dir, instructions.Global())
 	if err != nil {
@@ -221,6 +227,7 @@ func run() error {
 		engine.WithDescription(resolved.Model, judgeName(resolved),
 			resolved.SandboxNetwork != sandbox.NetworkNone, events != nil),
 		engine.WithContextTokens(resolved.ContextTokens),
+		engine.WithCommandTimeout(timeout),
 		engine.WithInstructions(instructions.Paths(files)),
 		engine.WithSkills(found.summaries),
 		engine.WithMaxSteps(resolved.Steps),

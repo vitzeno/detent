@@ -2,8 +2,12 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/internal/engine"
 )
 
 func TestResolve_Precedence(t *testing.T) {
@@ -104,4 +108,16 @@ func TestResolve_ContextTokensDefaultsWhenUnset(t *testing.T) {
 	// budget, which would mean an unbounded transcript.
 	t.Setenv("DETENT_CONTEXT_TOKENS", "lots")
 	assert.Equal(t, DefaultContextTokens, Resolve(Config{}, Config{}, -1).ContextTokens)
+}
+
+func TestTimeout_ReadsADurationOrTakesTheBuiltIn(t *testing.T) {
+	for in, want := range map[string]time.Duration{"": engine.DefaultCommandTimeout, "30m": 30 * time.Minute, "90s": 90 * time.Second} {
+		got, err := Config{CommandTimeout: in}.Timeout()
+		require.NoError(t, err, in)
+		assert.Equal(t, want, got, in)
+	}
+	for _, bad := range []string{"10", "soon", "-5m", "0s"} {
+		_, err := Config{CommandTimeout: bad}.Timeout()
+		assert.Error(t, err, bad)
+	}
 }

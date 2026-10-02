@@ -74,7 +74,7 @@ func handle(bus *event.Bus, ev event.Event, approve Approver) (event.EndReason, 
 	case event.CallProposed:
 		fmt.Printf("  → %s %s\n", v.Tool, args(v.Args))
 	case event.CallEnded:
-		fmt.Printf("    exit %d%s\n", v.Result.ExitCode, errSuffix(v.Result))
+		fmt.Println("    " + outcome(v.Result))
 	case event.ModelText:
 		fmt.Printf("\n%s\n", v.Text)
 	case event.ApprovalAsked:
@@ -103,9 +103,10 @@ func args(a map[string]any) string {
 	return strings.Join(parts, " ")
 }
 
-func errSuffix(r event.Result) string {
+// outcome is how a Call ended: its exit code, or why it has none.
+func outcome(r event.Result) string {
 	if r.Err != "" {
-		return " (" + r.Err + ")"
+		return r.Err
 	}
-	return ""
+	return fmt.Sprintf("exit %d", r.ExitCode)
 }

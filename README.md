@@ -130,6 +130,8 @@ Together they are capped at 128KB, about 32k tokens, cutting the outermost file 
 
 Each one is a shell command underneath, so it runs in the sandbox like everything else and goes through the same checks. The read-only ones run together
 
+A command still running after 10 minutes is stopped, and the model is told so along with what it printed. `command_timeout` in the config changes it
+
 `web_search` is a curl to DuckDuckGo so there is no API key but it needs the sandbox to have network, which is the default
 
 ## Your own commands

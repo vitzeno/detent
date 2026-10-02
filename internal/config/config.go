@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -25,6 +26,9 @@ type Config struct {
 	Steps   int               `yaml:"steps"`
 	// ContextTokens is how much of the window the transcript may fill before compaction.
 	ContextTokens int `yaml:"context_tokens"`
+	// CommandTimeout stops a command still running after it, such as "30m".
+	// A string because YAML has no duration, and empty takes the built-in.
+	CommandTimeout string `yaml:"command_timeout"`
 
 	JevAPIKey     string  `yaml:"jev_api_key"`
 	JevModel      string  `yaml:"jev_model"`
@@ -55,6 +59,18 @@ type Config struct {
 	// the containerd daemon's host, which on macOS is the colima VM.
 	SandboxNetwork   string `yaml:"sandbox_network"`
 	SandboxWorkspace string `yaml:"sandbox_workspace"`
+}
+
+// Timeout is CommandTimeout as a duration, the built-in when it is empty.
+func (c Config) Timeout() (time.Duration, error) {
+	if c.CommandTimeout == "" {
+		return engine.DefaultCommandTimeout, nil
+	}
+	d, err := time.ParseDuration(c.CommandTimeout)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("command_timeout %q: want a duration such as 30m", c.CommandTimeout)
+	}
+	return d, nil
 }
 
 // Default returns the built-in configuration.
