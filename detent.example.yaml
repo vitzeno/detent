@@ -1,150 +1,57 @@
-# detent example configuration. Copy to .detent.yaml (repo-local) or
-# ~/.config/detent/config.yaml and change what you need.
+# Copy to ./.detent.yaml or ~/.config/detent/config.yaml.
 # Precedence: flags > environment > this file > built-ins.
-#
-# Every key is spelled out rather than commented, so an editor reads
-# the file as YAML. An empty string or a 0 means "use the built-in",
-# so copying this as-is changes nothing: fill in only what you want to
-# override. The alternatives further down stay commented because YAML
-# will not take the same key twice.
+# Empty or 0 means the built-in, so this file as-is changes nothing.
 
 # --- Model: any OpenAI-compatible /chat/completions endpoint ---
 
-# The default: a hosted endpoint with a large window, which needs a
-# key. A local LM Studio works too: http://localhost:1234/v1 with
-# whatever model it has loaded, and no key.
 base_url: https://openrouter.ai/api/v1
 model: openai/gpt-6-luna
-api_key: ""
+api_key: ""            # or DETENT_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY
+headers: {}            # extra request headers
 
-# Extra request headers, for a provider that wants them.
-headers: {}
-
-# OpenRouter instead (needs OPENROUTER_API_KEY env or api_key above):
-#   base_url: https://openrouter.ai/api/v1
-#   model: qwen/qwen3-32b
-#   headers:
-#     HTTP-Referer: https://github.com/your/repo
-#     X-Title: detent
-#
-# Hosted OpenAI instead (needs OPENAI_API_KEY env or api_key above):
+# Local LM Studio, no key:
+#   base_url: http://localhost:1234/v1
+# Hosted OpenAI:
 #   base_url: https://api.openai.com/v1
 #   model: gpt-4o-mini
 
-# Steps per request before it asks whether to continue. 0 takes the
-# built-in 50.
-steps: 0
+steps: 0               # Steps per request before it asks to continue (50)
 
-# How much of the model's context window the transcript may fill.
-# Every Step resends the whole thing, so without a ceiling a long
-# session gets steadily more expensive and eventually overruns the
-# window. Past it, the oldest turns are replaced by a summary the same
-# model writes. What's left is the recent half plus that summary.
-# 0 takes the built-in 200000, which suits a large-window model. Set
-# it lower for a small local one: compaction is what keeps a request
-# inside the window, so a budget above the window never fires and the
-# request fails instead.
+# Transcript budget in tokens (200000). Past it, the oldest Turns are
+# summarised. Set it below the window for a small local model.
 context_tokens: 0
 
-# --- Judge (Jev): classifier for confirm emphasis and row rendering ---
-# Leave jev_api_key empty (and TYPESAFE_API_KEY unset) to run without a
-# judge. Rows stay heuristic and confirms stay neutral.
+# --- Jev judge: leave the key empty to run without one ---
 
-jev_api_key: ""
+jev_api_key: ""        # or TYPESAFE_API_KEY
 jev_model: ""
 jev_endpoint: ""
+risk_threshold: 0      # scope risk that needs your approval (0.5)
 
-# Scope-risk Noul floor for extra confirm emphasis. 0 takes the 0.5
-# built-in.
-risk_threshold: 0
+# --- Look ---
 
-# --- Theme: TUI colour scheme ---
-# dark, light, solarized or dracula. Empty takes dark.
-theme: ""
+theme: ""              # dark, light, solarized, dracula (dark)
 
-# --- Sandbox: per-command host vs. containerd-backed execution ---
+# --- Sandbox ---
 
-# "auto" sandboxes by default, "host" never sandboxes. Empty takes auto.
-sandbox_mode: ""
+sandbox_mode: ""       # auto or host (auto)
+sandbox_socket: ""     # containerd socket, empty guesses per OS
+sandbox_image: ""      # fully qualified ref (Ubuntu with git and curl)
+sandbox_runtime: ""    # OCI runtime, e.g. io.containerd.runsc.v1 (runc)
+sandbox_network: ""    # host or none (host). On macOS host is the colima VM
+sandbox_workspace: ""  # where your directory is mounted (/workspace)
 
-# Containerd socket. Empty picks the OS-conventional path (colima
-# --runtime containerd on macOS, /run/containerd/containerd.sock on
-# Linux). Set it if that guess is wrong, such as a non-default colima
-# profile, or Windows, which has no safe default at all.
-sandbox_socket: ""
+# --- Views ---
 
-# Image sandboxed commands run in. Must be a fully qualified ref:
-# unlike docker and nerdctl, containerd's client does not expand Docker
-# Hub shorthand itself. Empty takes Ubuntu plus git and curl, which is
-# what makes requests work under sandbox_network: none. With no network
-# the container cannot install tooling itself, so pick an image that
-# already carries whatever your requests need.
-sandbox_image: ""
-
-# OCI runtime handle. Empty is containerd's own default, plain runc.
-# "io.containerd.runsc.v1" switches to gVisor once that is installed
-# and registered on the host.
-sandbox_runtime: ""
-
-# What the container can reach. "host" shares the network of whatever
-# machine runs containerd: on macOS that is the colima VM, so your Mac
-# stays behind the VM boundary. On Linux it is this machine, localhost
-# services and LAN included. "none" leaves the container with loopback
-# only, no DNS and nothing fetchable. Empty takes host.
-sandbox_network: ""
-
-# In-container mount point for the harness's working directory. The
-# host side is always the directory detent was started in. Empty takes
-# /workspace.
-sandbox_workspace: ""
-
-# --- Views: whether a view may be written for output nothing covers ---
-#
-# The pane always draws from a spec. The rendering for each judged
-# shape is one, the ones detent ships for known commands are more, and
-# any you have saved under ~/.local/state/detent/views are more again.
-# The header says which of them drew what you are reading.
-#
-#   saved     draw only from specs that already exist. Asks nothing, so
-#             that set never grows.
-#   generate  do that first, and when nothing covers an output, compose
-#             one by asking the judge where the header is, how to read
-#             the bytes, which widget draws them, and which field each
-#             one reads. About 600ms, then saved, so the next run of
-#             that command shape is served from disk for nothing.
-#
-# generate needs jev_api_key: the judge is what writes a spec, so
-# detent refuses the combination at startup rather than quietly
-# behaving as saved.
+# saved: draw only from specs that exist.
+# generate: also compose one with Jev for output nothing covers (~600ms,
+# then saved). Needs jev_api_key.
 views: saved
 
-# --- Logs ---
-#
-# One structured log per session, at
-# ~/.local/state/detent/logs/<session>.jsonl, one JSON record per line.
-#
-# It is a single stream rather than a file per component, because the
-# thing anyone investigates is a step and a step crosses four or five
-# of them. Every record carries session, turn, step, component and
-# event, so filtering is a field match and correlating is too:
-#
-#   jq 'select(.step == 7)'                    everything about step 7
-#   jq 'select(.component == "viewgen")'       one subsystem
-#   jq 'select(.event | startswith("view."))'  one subsystem's events
+# --- Logs: ~/.local/state/detent/logs/<session>.jsonl ---
 
-log_level: info      # debug, info, warn, error
-log_bodies: false    # record prompts, model replies and command output
-log_dir: ""          # empty takes ~/.local/state/detent/logs
+log_level: info        # debug, info, warn, error
+log_bodies: false      # include prompts, replies and command output
+log_dir: ""
 
-# --- MCP servers ---
-#
-# Not here: servers live in .mcp.json, the file every MCP client
-# reads, so one written for another client works as-is. Two are
-# merged, nearest last:
-#
-#   ~/.config/detent/mcp.json    yours, every project
-#   ./.mcp.json                  this project, and wins
-#
-#   ./bin/detent -mcp            connect, list what each offers, exit
-#
-# See mcp.example.json.
+# MCP servers live in .mcp.json, not here. See mcp.example.json.
