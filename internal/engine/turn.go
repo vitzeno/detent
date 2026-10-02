@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -121,6 +122,7 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 			e.appended(t.id, stepID, func() []event.Message { return e.tr.say(reply.Text) })
 			if reply.Unfinished() && nudges < DefaultNudges {
 				nudges++
+				e.notice("info", fmt.Sprintf("the model stopped with no answer and no call (%s), so it was told to carry on", stopReason(reply.Stop)))
 				e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(unfinishedNote) })
 				continue
 			}
@@ -136,6 +138,13 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 // unfinishedNote answers a reply that ended with neither a call nor an answer.
 const unfinishedNote = "[your last reply ended with no answer and no tool call] " +
 	"Carry on with the request: call a tool, or give your final answer."
+
+func stopReason(s string) string {
+	if s == "" {
+		return "no reason given"
+	}
+	return "stop: " + s
+}
 
 // endTurn flushes queued notes before closing, or a correction typed
 // as the last Step finished never reaches the next Turn.

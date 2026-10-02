@@ -243,6 +243,8 @@ func TestTurn_AnUnfinishedReplyIsNudgedOn(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 2, notes)
+	require.Len(t, r.of(event.NoticeKind), 2, "a nudge is visible, not only in the transcript")
+	assert.Contains(t, r.of(event.NoticeKind)[1].(event.Notice).Text, "stop: length")
 	answered(t, r.eng)
 }
 
