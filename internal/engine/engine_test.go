@@ -230,6 +230,7 @@ func TestTurn_AnUnfinishedReplyIsNudgedOn(t *testing.T) {
 		{Text: "I could replace insight with", Thinking: true, Stop: "stop"},
 		{Text: "half an ans", Stop: "length"},
 		{Calls: []event.ToolCall{bashCall("c1", "ls")}},
+		{Text: "setting iterations to 30 and", Stop: "error"},
 	})
 	end := r.run("fix it")
 
@@ -242,9 +243,10 @@ func TestTurn_AnUnfinishedReplyIsNudgedOn(t *testing.T) {
 			notes++
 		}
 	}
-	assert.Equal(t, 2, notes)
-	require.Len(t, r.of(event.NoticeKind), 2, "a nudge is visible, not only in the transcript")
+	assert.Equal(t, 3, notes, "a call in between resets the count")
+	require.Len(t, r.of(event.NoticeKind), 3, "a nudge is visible, not only in the transcript")
 	assert.Contains(t, r.of(event.NoticeKind)[1].(event.Notice).Text, "stop: length")
+	assert.Contains(t, r.of(event.NoticeKind)[2].(event.Notice).Text, "stop: error")
 	answered(t, r.eng)
 }
 
