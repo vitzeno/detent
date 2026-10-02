@@ -35,8 +35,8 @@ func (m *Model) closePanel() bool {
 // scrolling rather than a cap.
 func (m *Model) panelLines() []string {
 	switch m.panel.open {
-	case panelUsage:
-		return m.usageLines()
+	case panelContext:
+		return m.contextLines()
 	case panelStatus:
 		return m.statusLines()
 	case panelHelp:
@@ -70,22 +70,6 @@ func (m *Model) skillLines() []string {
 			"    "+truncCell(s.Description, m.layout.outputColW-6), "")
 	}
 	return out
-}
-
-func (m *Model) usageLines() []string {
-	out := []string{styleGoal.Render("usage"), ""}
-	for _, b := range m.blocks {
-		head := fmt.Sprintf("  %s  %s", styleFaint.Render(fmt.Sprintf("#%d", b.n)),
-			truncCell(b.prompt, m.layout.outputColW-30))
-		out = append(out, head)
-		out = append(out, styleFaint.Render(fmt.Sprintf("      %d call(s) · %s tok · %s",
-			len(b.rows), status.Tokens(b.used.Tokens()), b.end)))
-	}
-	if len(m.blocks) == 0 {
-		out = append(out, styleFaint.Render("  (nothing yet)"))
-	}
-	return append(out, "", styleFaint.Render(fmt.Sprintf("  %d step(s) · %s tok total",
-		m.steps, status.Tokens(m.tokens))))
 }
 
 // sessionLines is what can be resumed. Read-only, because resuming

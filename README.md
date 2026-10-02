@@ -166,7 +166,7 @@ Commands you ran yourself go back with it, if they ran after that snapshot
 
 Your working directory is mounted at `/workspace`, outside the snapshot
 
-## Sandboxing
+## Sandboxing (Experimental)
 
 ```sh
 brew install colima
@@ -220,7 +220,7 @@ before the restart is not offered for undo.
 nothing is, it cannot be resumed, and it is better to know while you
 are working than when you try.
 
-## Output
+## Generative Output (Experimental)
 
 The output pane draws from a view spec: a parse for reading bytes into rows,
 blocks for drawing them

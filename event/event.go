@@ -41,6 +41,7 @@ const (
 	// facts above, so replay needs its own record of it.
 	AppendedKind  Kind = "transcript.appended"
 	CompactedKind Kind = "transcript.compacted"
+	MeasuredKind  Kind = "transcript.measured"
 
 	CallProposedKind  Kind = "call.proposed"
 	CallAssessedKind  Kind = "call.assessed"
@@ -85,6 +86,7 @@ const (
 	CancelCommandKind   Kind = "do.cancel_shell"
 	AuthorizeServerKind Kind = "do.authorize"
 	OpenAuthKind        Kind = "do.open_authorization"
+	MeasureContextKind  Kind = "do.measure_context"
 )
 
 // IsIntent splits what someone wants from what happened. The engine
@@ -97,7 +99,7 @@ var intents = map[Kind]bool{
 	RequestRollbackKind: true, ResetSessionKind: true, ListSessionsKind: true, RenameSessionKind: true,
 	ListServersKind: true, DeleteSessionKind: true,
 	RunCommandKind: true, CancelCommandKind: true,
-	AuthorizeServerKind: true, OpenAuthKind: true,
+	AuthorizeServerKind: true, OpenAuthKind: true, MeasureContextKind: true,
 }
 
 // fact is embedded by everything but OutputChunk.

@@ -87,6 +87,7 @@ func TestRegister_PassesTheSchemaThrough(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, schema, tl.Describe().Raw)
 	assert.Equal(t, "srv", tl.Describe().Executor)
+	assert.Equal(t, "mcp · srv", tl.Describe().Group, "/context gives each server its own row")
 
 	// And it reaches the model, not just the Spec: the two can
 	// differ, and only the second one is what gets sent.

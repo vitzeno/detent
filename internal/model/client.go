@@ -32,8 +32,16 @@ type Client struct {
 	SystemPrompt string
 	// Env is what the prompt says about where commands run.
 	Env Environment
-	// Instructions are the project's own, appended to the built-in prompt.
-	Instructions string
+	// Instructions are the project's own, appended to the built-in prompt,
+	// and InstructionFiles name where they came from.
+	Instructions     string
+	InstructionFiles []string
+}
+
+// PromptPart is one named piece of the system prompt, for /context.
+type PromptPart struct {
+	Name, Detail string
+	Bytes        int
 }
 
 // Complete is one Step. tools is the registry's schemas, and nil asks
@@ -145,18 +153,36 @@ func (c *Client) httpClient() *http.Client {
 	return &http.Client{Timeout: 5 * time.Minute}
 }
 
+// PromptParts names each piece of the system prompt and its size. A new
+// piece belongs here, so /context labels it without being told.
+func (c *Client) PromptParts() []PromptPart {
+	if c.SystemPrompt != "" {
+		return []PromptPart{{Name: "system prompt", Detail: "set by the caller", Bytes: len(c.SystemPrompt)}}
+	}
+	parts := []PromptPart{{Name: "detent", Detail: "environment and rules", Bytes: len(systemPrompt(c.env()))}}
+	if c.Instructions != "" {
+		parts = append(parts, PromptPart{Name: "instructions", Detail: strings.Join(c.InstructionFiles, ", "),
+			Bytes: len(c.Instructions) + 2})
+	}
+	return parts
+}
+
 func (c *Client) systemPrompt() string {
 	if c.SystemPrompt != "" {
 		return c.SystemPrompt
 	}
-	env := c.Env
-	if env.OS == "" {
-		env = LocalEnvironment()
-	}
 	if c.Instructions == "" {
-		return systemPrompt(env)
+		return systemPrompt(c.env())
 	}
-	return systemPrompt(env) + "\n\n" + c.Instructions
+	return systemPrompt(c.env()) + "\n\n" + c.Instructions
+}
+
+// env is where commands run, this machine when the harness said nothing.
+func (c *Client) env() Environment {
+	if c.Env.OS == "" {
+		return LocalEnvironment()
+	}
+	return c.Env
 }
 
 // snippet bounds an error body so a 2MB HTML error page cannot become

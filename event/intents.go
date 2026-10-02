@@ -103,6 +103,12 @@ type ListServers struct{ fact }
 
 func (ListServers) Kind() Kind { return ListServersKind }
 
+// MeasureContext asks the engine for a ContextMeasured now, rather than
+// after the next Step.
+type MeasureContext struct{ fact }
+
+func (MeasureContext) Kind() Kind { return MeasureContextKind }
+
 // AuthorizeServer asks for a fresh sign-in. Human-triggered, always:
 // nothing else may make a server register a client.
 type AuthorizeServer struct {

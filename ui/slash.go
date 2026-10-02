@@ -32,8 +32,10 @@ func slashCommands() []slashCmd {
 		{Name: "/abort", Desc: "stop the running request", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.abortRunning()
 		}},
-		{Name: "/usage", Desc: "show what this session has cost", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
-			return m.openPanel(panelUsage)
+		{Name: "/context", Desc: "show what fills the model's context, and what to trim", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
+			next, cmd := m.openPanel(panelContext)
+			// Measured afresh, since a server may have connected since the last Step.
+			return next, tea.Batch(cmd, m.send(event.MeasureContext{}))
 		}},
 		{Name: "/status", Desc: "show what detent is and what it has done", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
 			return m.openPanel(panelStatus)

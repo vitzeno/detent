@@ -177,7 +177,7 @@ which is a whole number of Steps by construction.
 
 ## Architecture
 
-**Everything is an event.** 28 facts and 16 intents are the entire
+**Everything is an event.** 29 facts and 17 intents are the entire
 interface between components. Facts are past tense, intents are
 imperative, and either may come from anyone: the engine publishes most
 facts, but a subscriber answering a question publishes one too. An extension
@@ -384,6 +384,17 @@ adding a fat dependency fails with the transitive import named.
   mode the endpoint refuses a skill that does not exist. In the sandbox a
   skill outside the working directory is a read-only mount
   (`sandbox.WithReadOnly`).
+
+- **`/context`** is measured by the engine, the only part that sees a
+  whole request. `ContextMeasured` is published after every Step, scaled
+  so its parts add up to the endpoint's real `PromptTokens`, once at
+  startup, and on `MeasureContext`, which `dispatch` answers even
+  mid-Turn since it only reads under the transcript's lock. The
+  transcript marks where each request starts so history is split by
+  request. Nothing is listed by hand: `model.Client.PromptParts` names
+  each piece of the system prompt (a test fails if they stop adding up to
+  it), and each tool's `Spec.Group` names its row, so a new prompt piece
+  or a new kind of tool shows up labelled with no change to `measure`.
 
 - **`internal/forget`**: what a deleted session leaves: its events,
   and the container nothing will resume. The log stays, since a

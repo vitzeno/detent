@@ -15,6 +15,7 @@ func (e *Engine) Restore(records []event.Record) {
 				e.tr.msgs = append(e.tr.msgs, v.Messages...)
 			case event.TurnStarted:
 				e.turns = max(e.turns, v.N)
+				e.tr.begin(v.N, v.Prompt)
 			case event.SessionStarted:
 				e.session = v.Session
 			}

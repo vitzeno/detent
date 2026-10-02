@@ -61,17 +61,19 @@ type Model struct {
 	undo      undoState
 	forget    forgetState
 
-	// Counters for /usage and /status, folded from the stream rather
+	// Counters for /context and /status, folded from the stream rather
 	// than read back from anywhere.
 	calls, steps, errors, views, tokens int
 
-	// run is how this session described itself at startup, and
-	// sessions is what /sessions last heard back.
+	// run is how this session described itself at startup.
 	run event.SessionStarted
 	// skillCmds are /<name> for the skills run names.
 	skillCmds []slashCmd
-	sessions  []event.SessionSummary
-	servers   []event.ServerSummary
+	// measured is the newest breakdown of what the model is sent.
+	measured event.ContextMeasured
+	// sessions is what /sessions last heard back.
+	sessions []event.SessionSummary
+	servers  []event.ServerSummary
 
 	welcomeFrame int
 	viewContent  string

@@ -40,7 +40,9 @@ func (s Skill) Describe() Spec {
 		Params: []Param{
 			{Name: "name", Type: TypeString, Desc: "the skill to load", Required: true, Enum: names},
 		},
-		Mutability: event.MutRead,
+		Mutability:  event.MutRead,
+		Group:       "skills",
+		GroupDetail: fmt.Sprintf("%d skills", len(s.Entries)),
 	}
 }
 

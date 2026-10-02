@@ -185,12 +185,12 @@ func BenchmarkScrollOutputPane(b *testing.B) {
 	}
 }
 
-// BenchmarkScrollUsagePanel is /usage, whose content grows with the session.
-func BenchmarkScrollUsagePanel(b *testing.B) {
+// BenchmarkScrollContextPanel is /context, whose history grows with the session.
+func BenchmarkScrollContextPanel(b *testing.B) {
 	down := tea.KeyPressMsg{Code: tea.KeyDown}
 	for _, s := range stressSizes {
 		m := session(s.turns, s.calls, 20)
-		m.panel.open = panelUsage
+		m.panel.open = panelContext
 		m.nav.focus = focusOutput
 		m.sizeViewport()
 		b.Run(s.name, func(b *testing.B) {

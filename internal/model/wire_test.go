@@ -91,6 +91,22 @@ func TestSystemPrompt_EndsWithTheProjectsInstructions(t *testing.T) {
 		"no instructions adds nothing")
 }
 
+// /context labels the prompt from these parts, so a piece added to the
+// prompt but not listed here would be counted under nothing.
+func TestPromptParts_AddUpToTheWholePrompt(t *testing.T) {
+	for name, c := range map[string]*Client{
+		"bare":              {Env: LocalEnvironment()},
+		"with instructions": {Env: LocalEnvironment(), Instructions: "<instructions>x</instructions>", InstructionFiles: []string{"AGENTS.md"}},
+		"set by the caller": {SystemPrompt: "you are a test"},
+	} {
+		n := 0
+		for _, p := range c.PromptParts() {
+			n += p.Bytes
+		}
+		assert.Equal(t, len(c.systemPrompt()), n, name)
+	}
+}
+
 // The prompt promises a shape another package emits, so it is checked
 // against that package's constant: prose drifting from it fails silently.
 func TestSystemPrompt_NamesTheMarkerHumanshellActuallyWrites(t *testing.T) {

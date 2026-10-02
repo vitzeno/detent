@@ -18,7 +18,8 @@
 //
 //	prompt.go       the input box and its slash dropdown
 //	slash.go        the slash registry
-//	panel.go        the /usage, /status and /help pages
+//	panel.go        the /status, /help, /sessions, /mcp and /skills pages
+//	context.go      the /context page: what fills the model's context
 //	undo.go         the undo question
 //	forget.go       the /delete question
 //	signin.go       a server asking to be signed in to
@@ -62,5 +63,5 @@
 // State structs end in State (navState, undoState). An enum is named
 // for what it enumerates (mode, entry, focusPane, keyOwner) and
 // its constants all carry the type's stem, so modeConfirm, entryShell,
-// ownerBusy and panelUsage each say what they belong to.
+// ownerBusy and panelContext each say what they belong to.
 package ui

@@ -127,7 +127,7 @@ func TestView_WelcomeShowsUntilSomethingHappens(t *testing.T) {
 // Every panel draws, at every size, with and without history.
 func TestPanels_AllDraw(t *testing.T) {
 	_, evs := oneTurn("go", "ls", "x\n")
-	for _, k := range []panelKind{panelUsage, panelStatus, panelHelp} {
+	for _, k := range []panelKind{panelContext, panelStatus, panelHelp} {
 		for _, with := range [][]event.Event{nil, evs} {
 			m := sized(t, 100, 30, with...)
 			m.panel.open = k
@@ -407,7 +407,7 @@ func TestDetailCache_NeverGoesStale(t *testing.T) {
 		{"the focused row changes", func(m *Model) { m.nav.cursor = 2 }},
 		{"and changes back", func(m *Model) { m.nav.cursor = len(m.rows()) - 1 }},
 		{"the shown row expands", func(m *Model) { m.toggleExpand(m.focused()) }},
-		{"usage opens", func(m *Model) { m.panel.open = panelUsage }},
+		{"usage opens", func(m *Model) { m.panel.open = panelContext }},
 		{"help opens", func(m *Model) { m.panel.open = panelHelp }},
 		{"the panel closes", func(m *Model) { m.panel.open = panelNone }},
 		// Via layout.width: sizeViewport derives outputColW from it.
@@ -456,7 +456,7 @@ func TestDetailKey_CoversEverythingThePaneDrawsFrom(t *testing.T) {
 		{"the terminal width", func(m *Model) { m.layout.width = 74; m.sizeViewport() }},
 		{"the terminal height", func(m *Model) { m.layout.height = 20; m.sizeViewport() }},
 		{"the focused row", func(m *Model) { m.nav.cursor = 1 }},
-		{"a panel opens", func(m *Model) { m.panel.open = panelUsage }},
+		{"a panel opens", func(m *Model) { m.panel.open = panelContext }},
 		{"the mode", func(m *Model) { m.mode = modeUndo }},
 		{"which pane has focus", func(m *Model) { m.nav.focus = focusOutput }},
 		{"the table cursor", func(m *Model) { m.focused().tableCursor = 4 }},
@@ -525,7 +525,7 @@ func TestFallbackChain_ADeclaredShapeBeatsAJudgedGuess(t *testing.T) {
 }
 
 // The bar says how full the budget is, since that is what decides
-// when a Turn stalls to compact. Raw totals live in /usage.
+// when a Turn stalls to compact. The breakdown lives in /context.
 func TestSessionBar_ShowsContextAsAPercentageOfBudget(t *testing.T) {
 	m := feed(t, event.SessionStarted{Model: "m", ContextTokens: 24_000})
 	m.apply(event.StepEnded{Usage: event.Usage{PromptTokens: 12_000}})

@@ -53,6 +53,7 @@ func specOf(server string, t *sdk.Tool) tool.Spec {
 		Description: describeTool(t),
 		Executor:    server,
 		Raw:         rawSchema(t.InputSchema),
+		Group:       "mcp · " + server,
 	}
 }
 

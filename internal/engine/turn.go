@@ -63,7 +63,7 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 	t.mark = e.trDo(func() int { return e.tr.mark() })
 	e.bus.Publish(event.TurnStarted{Turn: t.id, N: t.n, Prompt: t.prompt})
 	e.checkpoint(ctx, t)
-	e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.user(t.prompt) })
+	e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.user(t.n, t.prompt) })
 
 	var total event.Usage
 	limit := e.maxSteps
@@ -104,6 +104,7 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 			return
 		}
 		e.bus.Publish(event.StepEnded{Turn: t.id, Step: stepID, Usage: used, Calls: len(reply.Calls)})
+		e.bus.Publish(e.measure(used.PromptTokens))
 		if reply.Text != "" {
 			e.bus.Publish(event.ModelText{Turn: t.id, Step: stepID, Text: reply.Text})
 		}

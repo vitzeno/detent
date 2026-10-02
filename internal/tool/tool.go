@@ -28,6 +28,10 @@ type Spec struct {
 	// Raw is a schema detent did not build, handed to the model as
 	// given. Set when the parameters are not Param's small subset.
 	Raw map[string]any
+	// Group is the row /context counts this tool under, empty for "tools".
+	// GroupDetail, when set, says what the group holds instead of a count.
+	Group       string
+	GroupDetail string
 }
 
 // Param is one argument, in the subset of JSON Schema every endpoint agrees on.

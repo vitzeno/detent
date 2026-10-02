@@ -64,7 +64,7 @@ type panelKind int
 
 const (
 	panelNone panelKind = iota
-	panelUsage
+	panelContext
 	panelStatus
 	panelHelp
 	panelSessions

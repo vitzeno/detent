@@ -52,7 +52,7 @@ func TestStep_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var tr transcript
-			tr.user("do it")
+			tr.user(0, "do it")
 			tr.step(reply, tt.answers)
 
 			wellFormed(t, tr.messages())
@@ -68,7 +68,7 @@ func TestStep_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
 
 func TestStep_BoundsAHugeResult(t *testing.T) {
 	var tr transcript
-	tr.user("go")
+	tr.user(0, "go")
 	tr.step(model.Reply{Calls: []event.ToolCall{call("c1", "bash")}},
 		map[string]string{"c1": strings.Repeat("x", MaxResultBytes*3)})
 
@@ -83,7 +83,7 @@ func TestCompact_MovesWholeStepsOnly(t *testing.T) {
 	var tr transcript
 	big := strings.Repeat("x", 2000)
 	for turn := range 8 {
-		tr.user("request " + string(rune('a'+turn)))
+		tr.user(0, "request "+string(rune('a'+turn)))
 		for step := range 3 {
 			c := call(string(rune('a'+turn))+string(rune('0'+step)), "bash")
 			tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}},
@@ -105,11 +105,11 @@ func TestCompact_NeverDropsTheOpenTurn(t *testing.T) {
 	var tr transcript
 	big := strings.Repeat("x", 5000)
 	for range 5 {
-		tr.user("old request")
+		tr.user(0, "old request")
 		c := call("old", "bash")
 		tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, map[string]string{c.ID: big})
 	}
-	tr.user("THE OPEN REQUEST")
+	tr.user(0, "THE OPEN REQUEST")
 	c := call("live", "bash")
 	tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, map[string]string{c.ID: big})
 
@@ -127,7 +127,7 @@ func TestCompact_UsesASummarizerWhenWired(t *testing.T) {
 	var tr transcript
 	big := strings.Repeat("x", 3000)
 	for range 6 {
-		tr.user("old")
+		tr.user(0, "old")
 		c := call("c", "bash")
 		tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, map[string]string{c.ID: big})
 	}
@@ -137,7 +137,7 @@ func TestCompact_UsesASummarizerWhenWired(t *testing.T) {
 
 func TestCompact_NoOpWhenUnderBudget(t *testing.T) {
 	var tr transcript
-	tr.user("small")
+	tr.user(0, "small")
 	dropped, _ := tr.compact(context.Background(), DefaultContextTokens, nil)
 	assert.Zero(t, dropped)
 	assert.Len(t, tr.messages(), 1)
@@ -147,12 +147,12 @@ func TestCompact_NoOpWhenUnderBudget(t *testing.T) {
 // Steps by construction.
 func TestTruncate_LeavesAWellFormedTranscript(t *testing.T) {
 	var tr transcript
-	tr.user("first")
+	tr.user(0, "first")
 	c1 := call("c1", "bash")
 	tr.step(model.Reply{Calls: []event.ToolCall{c1}}, map[string]string{c1.ID: "ok"})
 
 	at := tr.mark()
-	tr.user("second")
+	tr.user(0, "second")
 	c2 := call("c2", "bash")
 	tr.step(model.Reply{Calls: []event.ToolCall{c2}}, map[string]string{c2.ID: "ok"})
 
@@ -182,13 +182,13 @@ func TestMark_SurvivesCompaction(t *testing.T) {
 	var tr transcript
 	big := strings.Repeat("x", 3000)
 
-	tr.user("first request")
+	tr.user(0, "first request")
 	c1 := call("c1", "bash")
 	tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c1}}, map[string]string{c1.ID: big})
 
 	// The Turn a human would undo.
 	target := tr.mark()
-	tr.user("second request")
+	tr.user(0, "second request")
 	c2 := call("c2", "bash")
 	tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c2}}, map[string]string{c2.ID: big})
 
@@ -213,7 +213,7 @@ func TestTruncate_IgnoresAMarkCompactionAteAsWellAsOneTooLarge(t *testing.T) {
 	var tr transcript
 	big := strings.Repeat("x", 4000)
 	for range 6 {
-		tr.user("old")
+		tr.user(0, "old")
 		c := call("c", "bash")
 		tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, map[string]string{c.ID: big})
 	}
@@ -240,7 +240,7 @@ func TestReplay_UncompactedRebuildResolvesOldMarks(t *testing.T) {
 			if i == 4 {
 				mark = tr.mark()
 			}
-			tr.user("request")
+			tr.user(0, "request")
 			c := call(string(rune('a'+i)), "bash")
 			tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}},
 				map[string]string{c.ID: big})
@@ -270,11 +270,11 @@ func TestCompact_WillNotPayASummarizerForASliver(t *testing.T) {
 	budget := budgetTokens * BytesPerToken
 
 	var tr transcript
-	tr.user(strings.Repeat("o", budget/50)) // the droppable sliver
+	tr.user(0, strings.Repeat("o", budget/50)) // the droppable sliver
 	c := call("old", "bash")
 	tr.step(model.Reply{Calls: []event.ToolCall{c}}, map[string]string{c.ID: "x"})
 
-	tr.user(strings.Repeat("L", 2*budget)) // an open Turn over budget on its own
+	tr.user(0, strings.Repeat("L", 2*budget)) // an open Turn over budget on its own
 
 	s := &countingSummarizer{}
 	for range 5 {
@@ -291,9 +291,9 @@ func TestCompact_StillCutsWhenTheCutReachesBudget(t *testing.T) {
 
 	var tr transcript
 	for range 4 {
-		tr.user(strings.Repeat("o", budget/2))
+		tr.user(0, strings.Repeat("o", budget/2))
 	}
-	tr.user("the open request")
+	tr.user(0, "the open request")
 
 	s := &countingSummarizer{}
 	dropped, _ := tr.compact(context.Background(), budgetTokens, s)

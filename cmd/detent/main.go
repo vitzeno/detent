@@ -204,7 +204,8 @@ func run() error {
 	}
 	client := &model.Client{
 		BaseURL: resolved.BaseURL, Model: resolved.Model, APIKey: resolved.APIKey,
-		Headers: resolved.Headers, Env: env, Instructions: instructions.Prompt(files),
+		Headers: resolved.Headers, Env: env,
+		Instructions: instructions.Prompt(files), InstructionFiles: instructions.Paths(files),
 	}
 
 	// Opened before the engine so it can say whether this session is
@@ -520,3 +521,7 @@ func runEngine(ctx context.Context, eng *engine.Engine) <-chan struct{} {
 	}()
 	return done
 }
+
+// The engine finds PromptSizer by type assertion, so a renamed method
+// would empty the context page's prompt rows rather than fail the build.
+var _ engine.PromptSizer = (*model.Client)(nil)

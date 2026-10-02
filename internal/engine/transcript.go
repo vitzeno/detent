@@ -39,6 +39,20 @@ type transcript struct {
 	// dropped is how far compaction has shifted the front, so a mark
 	// can count appends rather than positions that move under it.
 	dropped int
+	// starts mark where each request began, oldest first.
+	starts []start
+}
+
+// The notes compaction leaves at the front, which measure tells apart from a request.
+const (
+	summaryMarker = "[earlier steps, summarised]"
+	droppedMarker = " were dropped to stay in budget]"
+)
+
+// start is one request's first message, as a mark, with its number and prompt.
+type start struct {
+	at, n  int
+	prompt string
 }
 
 // step appends one Step atomically, filling any missing answer, since
@@ -66,10 +80,16 @@ func (t *transcript) say(text string) []event.Message {
 	return t.add(event.Message{Role: event.RoleAssistant, Content: text})
 }
 
-// user opens a Turn and protects everything from here on.
-func (t *transcript) user(prompt string) []event.Message {
+// user opens request n and protects everything from here on.
+func (t *transcript) user(n int, prompt string) []event.Message {
 	t.protect = len(t.msgs)
+	t.begin(n, prompt)
 	return t.add(event.Message{Role: event.RoleUser, Content: prompt})
+}
+
+// begin marks request n as starting at the next message.
+func (t *transcript) begin(n int, prompt string) {
+	t.starts = append(t.starts, start{at: t.mark(), n: n, prompt: prompt})
 }
 
 // note is a NoteContext: a message with no tool run.
@@ -99,9 +119,15 @@ func (t *transcript) truncate(to int) {
 	}
 	t.msgs = t.msgs[:at]
 	t.protect = min(t.protect, at)
+	for i, s := range t.starts {
+		if s.at >= to {
+			t.starts = t.starts[:i]
+			break
+		}
+	}
 }
 
-func (t *transcript) reset() { t.msgs, t.protect, t.dropped = nil, 0, 0 }
+func (t *transcript) reset() { t.msgs, t.protect, t.dropped, t.starts = nil, 0, 0, nil }
 
 func (t *transcript) bytes() int { return msgBytes(t.msgs) }
 
@@ -137,10 +163,10 @@ func (t *transcript) compact(ctx context.Context, budgetTokens int, s Summarizer
 		return 0, ""
 	}
 	gone := t.msgs[:cut]
-	note = fmt.Sprintf("[%d earlier messages were dropped to stay in budget]", len(gone))
+	note = fmt.Sprintf("[%d earlier messages"+droppedMarker, len(gone))
 	if s != nil {
 		if sum, err := s.Summarize(ctx, gone); err == nil && sum != "" {
-			note = "[earlier steps, summarised]\n" + sum
+			note = summaryMarker + "\n" + sum
 		}
 	}
 	rest := append([]event.Message{{Role: event.RoleUser, Content: note}}, t.msgs[cut:]...)

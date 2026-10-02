@@ -62,6 +62,9 @@ type Engine struct {
 	instructions []string
 	skills       []event.SkillSummary
 
+	// gauge turns bytes into tokens, learning the ratio from each Step.
+	gauge gauge
+
 	// intents is subscribed in New, not Run, so a caller publishing the
 	// moment New returns cannot lose it.
 	intents <-chan event.Record
@@ -110,6 +113,7 @@ func (e *Engine) Run(ctx context.Context) {
 		Recorded: e.recorded, Resumed: e.resumed,
 		ContextTokens: e.budget(), Instructions: e.instructions, Skills: e.skills,
 	})
+	e.bus.Publish(e.measure(0))
 	done := make(chan struct{}, 1)
 
 	for {
@@ -209,6 +213,9 @@ func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{
 			return
 		}
 		e.rollback(ctx, v)
+	case event.MeasureContext:
+		// Answered now, even mid-Turn: it only reads, under the transcript's lock.
+		e.bus.Publish(e.measure(0))
 	case event.Abort:
 		// Not queued: a blocked Call never reaches a boundary, and
 		// the inbox is only drained at one.

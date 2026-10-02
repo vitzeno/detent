@@ -175,6 +175,37 @@ type Compacted struct {
 
 func (Compacted) Kind() Kind { return CompactedKind }
 
+// ContextMeasured is what the model's request is made of: what every Step
+// resends, and the history compaction folds, oldest first.
+type ContextMeasured struct {
+	fact
+	// Budget is where history compacts. Total is the endpoint's own count
+	// when Exact, and otherwise an estimate scaled by the last one.
+	Budget  int
+	Total   int
+	Exact   bool
+	Fixed   []ContextPart
+	History []ContextPart
+	// Growth is how much history an average recent Step added.
+	Growth int
+}
+
+func (ContextMeasured) Kind() Kind { return MeasuredKind }
+
+// ContextPart is one slice of a request, in tokens.
+type ContextPart struct {
+	Name   string
+	Detail string
+	Tokens int
+	// N is the request a history part belongs to, 0 for the summary or notes.
+	N int
+	// Open is the request still running, which compaction will not touch.
+	Open bool
+	// Largest is a history part's biggest message, a command that printed it or a reply.
+	Largest       string
+	LargestTokens int
+}
+
 // A Call is one tool invocation.
 
 // CallProposed is a Call the model asked for, before anything assesses it.

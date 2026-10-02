@@ -156,8 +156,8 @@ func (m Model) shellHint() string {
 // panelName is what the header calls an open page.
 func panelName(k panelKind) string {
 	switch k {
-	case panelUsage:
-		return "usage"
+	case panelContext:
+		return "context"
 	case panelStatus:
 		return "status"
 	case panelHelp:
