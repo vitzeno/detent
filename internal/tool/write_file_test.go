@@ -76,3 +76,27 @@ func TestHeredoc_GrowsTheDelimiterUntilItIsSafe(t *testing.T) {
 	// not force a rename either.
 	assert.Contains(t, heredoc("f", "x DETENT_EOF y\n"), "<<'DETENT_EOF'")
 }
+
+func TestWriteFile_ShowsWhatChanged(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "f.txt")
+	write := func(body string) (string, error) {
+		cmd, err := WriteFile{}.Lower(Args{"path": path, "content": body})
+		require.NoError(t, err)
+		out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
+		return string(out), err
+	}
+
+	out, err := write("one\ntwo\n")
+	require.NoError(t, err, out)
+	assert.Equal(t, "created "+path+", 2 lines\n", out, "a new file is counted, not echoed")
+
+	out, err = write("one\n2\n")
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "-two\n+2\n", "an existing one is a diff")
+
+	cmd, err := WriteFile{}.Lower(Args{"path": filepath.Join(dir, "missing", "f.txt"), "content": "x\n"})
+	require.NoError(t, err)
+	_, err = exec.Command("sh", "-c", cmd).CombinedOutput()
+	assert.Error(t, err, "a write that failed must not exit 0")
+}

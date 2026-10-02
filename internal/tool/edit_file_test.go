@@ -78,3 +78,13 @@ func runEdit(t *testing.T, a Args) ([]byte, error) {
 	require.NoError(t, err)
 	return exec.Command("sh", "-c", cmd).CombinedOutput()
 }
+
+// The change comes back as a diff, so the model sees where it landed and
+// the human sees it side by side.
+func TestEditFile_ShowsWhatChanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "f.go")
+	require.NoError(t, os.WriteFile(path, []byte("a\nb\nc\n"), 0o644))
+	out, err := runEdit(t, Args{"path": path, "old_string": "b", "new_string": "B"})
+	require.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "--- "+path+"\n+++ "+path+"\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n c\n")
+}

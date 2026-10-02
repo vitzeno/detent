@@ -96,8 +96,11 @@ func fallbackChain(r *callRow, output string) []*viewspec.Compiled {
 	}
 	var chain []*viewspec.Compiled
 	// A tool that declared its shape is not guessing, so it goes first.
-	if r.renders == event.RendersMarkdown {
+	switch r.renders {
+	case event.RendersMarkdown:
 		return []*viewspec.Compiled{compiledMarkdown, compiledPlain}
+	case event.RendersDiff:
+		return []*viewspec.Compiled{compiledFallback["diff"], compiledPlain}
 	}
 	kind := r.kind()
 	if kind == "file_content" && markdown.Wants(r.command, output) {

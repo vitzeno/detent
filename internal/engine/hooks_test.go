@@ -175,3 +175,19 @@ func repeatReplies(n int) []model.Reply {
 	}
 	return out
 }
+
+// The file tools lower to scripts with their own housekeeping in them. A
+// pattern that matched it would flag every edit, as rm -f once did.
+func TestRegexHook_LeavesTheFileToolsAlone(t *testing.T) {
+	reg := tool.Standard()
+	for name, args := range map[string]map[string]any{
+		"edit_file":  {"path": "a.go", "old_string": "a", "new_string": "b"},
+		"write_file": {"path": "a.go", "content": "x"},
+	} {
+		c, err := reg.Prepare(name, args)
+		require.NoError(t, err)
+		got, err := regexHook{}.Assess(context.Background(), c, event.UnknownRisk())
+		require.NoError(t, err)
+		assert.False(t, got.Dangerous, "%s tripped %q", name, got.Note)
+	}
+}

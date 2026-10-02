@@ -41,9 +41,8 @@ func containsLine(body, delim string) bool {
 // its footer is never what the capture cuts off.
 const outputBudget = 7 * 1024
 
-// window prints lines start to start+max-1 of its input, stopping early at
-// outputBudget bytes, then a footer: more is filled with the count left and
-// the line to resume from, and empty is printed when there was nothing.
+// window prints max lines from start, stopping early at outputBudget bytes. more
+// gets the count left and the line to resume from, empty is for no input.
 func window(start, max int, more, empty string) string {
 	return fmt.Sprintf("awk -v s=%d -v n=%d -v b=%d -v more=%s -v empty=%s %s",
 		start, max, outputBudget, quote(more+`\n`), quote(empty+`\n`), quote(windowScript))
@@ -58,6 +57,13 @@ END {
   if (stop) printf more, NR - stop + 1, stop
   else if (NR < s) printf empty, NR
 }`
+
+// showDiff prints what changed in file since before, a copy taken first,
+// then removes the copy and exits with rc, which the caller set from the change.
+func showDiff(before, file string) string {
+	return fmt.Sprintf(`[ $rc -eq 0 ] && diff -u -L %[2]s -L %[2]s "%[1]s" %[2]s | %[3]s; rm -- "%[1]s"; exit $rc`,
+		before, path(file), window(1, 400, "[%d more lines of diff]", "[no change]"))
+}
 
 // path guards a path awk or find would read as a flag, since macOS's awk
 // takes no "--".

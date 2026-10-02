@@ -513,6 +513,14 @@ func TestFallbackChain_AToolThatDeclaresMarkdownGetsIt(t *testing.T) {
 	assert.NotSame(t, compiledMarkdown, fallbackChain(plain, searchOutput)[0])
 }
 
+// An edit declares its output a diff, so it is drawn as one even when
+// the judge has not looked.
+func TestFallbackChain_AnEditIsDrawnAsADiff(t *testing.T) {
+	const out = "--- f.go\n+++ f.go\n@@ -1 +1 @@\n-a\n+b\n"
+	r := &callRow{command: "edit_file path=f.go", renders: event.RendersDiff, result: &event.Result{Stdout: out}}
+	assert.Same(t, compiledFallback["diff"], fallbackChain(r, out)[0])
+}
+
 // A judged kind must not override what the tool actually knows.
 func TestFallbackChain_ADeclaredShapeBeatsAJudgedGuess(t *testing.T) {
 	r := &callRow{

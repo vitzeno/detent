@@ -26,6 +26,9 @@ func (w rawWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		}
 	}
 	src := splitLines(body)
+	if w.mode == "diff" && f.Width >= splitMinWidth {
+		return splitDiff(src, f), nil
+	}
 	out := make([]string, 0, len(src))
 	for i, l := range src {
 		switch w.mode {
@@ -65,7 +68,7 @@ func (w rawWidget) describe() Description {
 		}
 	case "diff":
 		return Description{
-			What:     "a unified diff, added and removed lines coloured",
+			What:     "a unified diff, old and new side by side, added and removed lines coloured",
 			NotFor:   "prose describing changes; this needs the literal diff format",
 			Examples: []string{"git diff", "diff -u a b"},
 		}

@@ -228,6 +228,9 @@ func (CallProposed) Kind() Kind { return CallProposedKind }
 // RendersMarkdown says a tool's output is a markdown document.
 const RendersMarkdown = "markdown"
 
+// RendersDiff says a tool's output is a unified diff, as an edit prints.
+const RendersDiff = "diff"
+
 // CallAssessed is the hook chain's verdict on a Call.
 type CallAssessed struct {
 	fact
