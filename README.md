@@ -60,7 +60,7 @@ A Step can ask for several Calls and runs the read-only ones together. A Turn
 runs Steps until the model stops asking for tools, capped at 50. The cap asks
 whether to continue rather than stopping
 
-Current Tools: `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`, `web_search`.
+Current Tools: `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`, `grep`, `find_files`, `web_search`.
 
 `web_search` is just curl so no API key exists, it needs the sandbox to have network, which is the default
 

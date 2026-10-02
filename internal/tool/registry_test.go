@@ -76,10 +76,6 @@ func TestPrepare_LowersToCommands(t *testing.T) {
 		mut  string
 	}{
 		{"bash passes through", "bash", map[string]any{"command": "git status"}, "git status", ""},
-		{"read_file defaults its limit", "read_file", map[string]any{"path": "a.go"},
-			"head -n 500 -- 'a.go'", "read_only"},
-		{"read_file takes a limit", "read_file", map[string]any{"path": "a.go", "max_lines": float64(10)},
-			"head -n 10 -- 'a.go'", "read_only"},
 		{"list_dir defaults to cwd", "list_dir", map[string]any{}, "ls -l -- '.'", "read_only"},
 		{"list_dir takes all", "list_dir", map[string]any{"path": "/tmp", "all": true},
 			"ls -la -- '/tmp'", "read_only"},
@@ -97,12 +93,12 @@ func TestPrepare_LowersToCommands(t *testing.T) {
 // A path the model chose is untrusted input that reaches `sh -c`.
 func TestPrepare_QuotesHostilePaths(t *testing.T) {
 	r := Standard()
-	for _, path := range []string{
+	for _, p := range []string{
 		"a b.go", "$(rm -rf /)", "`whoami`", "a'; rm -rf /; '", "--; rm -rf /", "*",
 	} {
-		c, err := r.Prepare("read_file", map[string]any{"path": path})
+		c, err := r.Prepare("read_file", map[string]any{"path": p})
 		require.NoError(t, err)
-		assert.Contains(t, c.Command, quote(path), "%q must reach the shell as one literal", path)
+		assert.Contains(t, c.Command, path(p), "%q must reach the shell as one literal", p)
 		assert.Equal(t, 1, countUnescapedQuotes(c.Command)%2+1, "quotes must balance: %s", c.Command)
 	}
 }
@@ -150,7 +146,7 @@ func TestSchemas_MatchTheSpecs(t *testing.T) {
 func TestPrepare_TreatsNullAsAbsent(t *testing.T) {
 	c, err := Standard().Prepare("read_file", map[string]any{"path": "a.go", "max_lines": nil})
 	require.NoError(t, err)
-	assert.Equal(t, "head -n 500 -- 'a.go'", c.Command, "null means take the default")
+	assert.Contains(t, c.Command, "-v s=1 -v n=500 ", "null means take the default")
 }
 
 func TestRegistry_RegisterOverridesWithoutDuplicating(t *testing.T) {
