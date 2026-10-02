@@ -73,7 +73,7 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 	e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.user(t.n, t.prompt) })
 
 	var total event.Usage
-	limit := e.maxSteps
+	limit, nudges := e.maxSteps, 0
 	for step := 1; ; step++ {
 		t.drain()
 
@@ -110,22 +110,32 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 			e.endTurn(t, event.EndError, err.Error(), total)
 			return
 		}
-		e.bus.Publish(event.StepEnded{Turn: t.id, Step: stepID, Usage: used, Calls: len(reply.Calls)})
+		e.bus.Publish(event.StepEnded{Turn: t.id, Step: stepID, Usage: used, Calls: len(reply.Calls), Stop: reply.Stop})
 		e.bus.Publish(e.measure(used.PromptTokens))
 		if reply.Text != "" {
 			e.bus.Publish(event.ModelText{Turn: t.id, Step: stepID, Text: reply.Text})
 		}
 
-		// No calls means the model is finished asking.
+		// No calls means the model is finished asking, unless it stopped mid-thought.
 		if len(reply.Calls) == 0 {
 			e.appended(t.id, stepID, func() []event.Message { return e.tr.say(reply.Text) })
+			if reply.Unfinished() && nudges < DefaultNudges {
+				nudges++
+				e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(unfinishedNote) })
+				continue
+			}
 			e.endTurn(t, event.EndDone, reply.Text, total)
 			return
 		}
+		nudges = 0
 		answers := e.runStep(ctx, t, stepID, reply)
 		e.appended(t.id, stepID, func() []event.Message { return e.tr.step(reply, answers) })
 	}
 }
+
+// unfinishedNote answers a reply that ended with neither a call nor an answer.
+const unfinishedNote = "[your last reply ended with no answer and no tool call] " +
+	"Carry on with the request: call a tool, or give your final answer."
 
 // endTurn flushes queued notes before closing, or a correction typed
 // as the last Step finished never reaches the next Turn.

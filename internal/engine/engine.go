@@ -22,6 +22,8 @@ const (
 	// A Step is never split by compaction, so its results must fit the budget whole.
 	DefaultCallsPerStep = 10
 	DefaultRepeatLimit  = 3
+	// An Unfinished reply is answered with a nudge this many times in a row, then taken as the end.
+	DefaultNudges = 2
 	// A human can stop a command sooner. This bounds the one nobody watches.
 	DefaultCommandTimeout = 10 * time.Minute
 )

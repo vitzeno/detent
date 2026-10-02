@@ -81,6 +81,7 @@ func decode(r wireResponse) (Reply, error) {
 	c := r.Choices[0]
 	out := Reply{Text: firstNonEmpty(c.Message.Content, c.Message.ReasoningContent, c.Message.Reasoning),
 		Stop: c.FinishReason}
+	out.Thinking = c.Message.Content == "" && out.Text != ""
 	for i, wc := range c.Message.ToolCalls {
 		out.Calls = append(out.Calls, decodeCall(wc, i))
 	}

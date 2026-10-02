@@ -224,6 +224,41 @@ func TestTurn_ModelErrorEndsTheTurnCleanly(t *testing.T) {
 	answered(t, r.eng)
 }
 
+// A model that stops mid-thought is told to carry on, not taken as done.
+func TestTurn_AnUnfinishedReplyIsNudgedOn(t *testing.T) {
+	r := newRig(t, []model.Reply{
+		{Text: "I could replace insight with", Thinking: true, Stop: "stop"},
+		{Text: "half an ans", Stop: "length"},
+		{Calls: []event.ToolCall{bashCall("c1", "ls")}},
+	})
+	end := r.run("fix it")
+
+	assert.Equal(t, event.EndDone, end.Reason)
+	assert.Equal(t, "finished", end.Summary)
+	assert.Equal(t, []string{"ls"}, r.runner.commands())
+	notes := 0
+	for _, m := range r.model.lastSent() {
+		if m.Role == event.RoleUser && m.Content == unfinishedNote {
+			notes++
+		}
+	}
+	assert.Equal(t, 2, notes)
+	answered(t, r.eng)
+}
+
+// The nudge is bounded, so a model that never answers still ends the Turn.
+func TestTurn_NudgingGivesUpAfterTheLimit(t *testing.T) {
+	var replies []model.Reply
+	for range DefaultNudges + 3 {
+		replies = append(replies, model.Reply{Stop: "stop"})
+	}
+	r := newRig(t, replies)
+	end := r.run("fix it")
+
+	assert.Equal(t, event.EndDone, end.Reason)
+	assert.Len(t, r.of(event.StepEndedKind), DefaultNudges+1)
+}
+
 // A panicking Runner must cost one Call, not the session: every
 // checkpoint a human could still roll back to lives in the engine.
 func TestTurn_PanickingRunnerIsOneFailedCall(t *testing.T) {

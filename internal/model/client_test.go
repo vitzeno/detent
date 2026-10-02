@@ -62,9 +62,12 @@ func TestComplete_TolerantOfEndpointQuirks(t *testing.T) {
 		check      func(*testing.T, Reply)
 	}{
 		{
-			name:  "reasoning_content when content is empty",
-			body:  `{"choices":[{"message":{"content":"","reasoning_content":"thought"}}]}`,
-			check: func(t *testing.T, r Reply) { assert.Equal(t, "thought", r.Text) },
+			name: "reasoning_content when content is empty",
+			body: `{"choices":[{"message":{"content":"","reasoning_content":"thought"}}]}`,
+			check: func(t *testing.T, r Reply) {
+				assert.Equal(t, "thought", r.Text)
+				assert.True(t, r.Thinking, "reasoning is not an answer")
+			},
 		},
 		{
 			name:  "openrouter reasoning field",

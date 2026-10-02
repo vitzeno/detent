@@ -140,7 +140,8 @@ type StepEnded struct {
 	fact
 	Turn, Step uuid.UUID
 	Usage      Usage
-	Calls      int // how many the model asked for, 0 when it stopped
+	Calls      int    // how many the model asked for, 0 when it stopped
+	Stop       string // the endpoint's reason the reply ended
 }
 
 func (StepEnded) Kind() Kind { return StepEndedKind }
