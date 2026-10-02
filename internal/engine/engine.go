@@ -18,7 +18,7 @@ import (
 // Defaults. MaxSteps is generous and soft: hitting it asks rather than
 // stops, because a human is watching.
 const (
-	DefaultMaxSteps = 50
+	DefaultMaxSteps = 100
 	// A Step is never split by compaction, so its results must fit the budget whole.
 	DefaultCallsPerStep = 10
 	DefaultRepeatLimit  = 3
