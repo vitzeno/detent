@@ -44,6 +44,26 @@ func TestShapes_StoredFactsKeepTheirShape(t *testing.T) {
 		"what a stored fact writes changed. If that was meant, add a store migration that rewrites old records, then run: go test ./event -run TestShapes -update")
 }
 
+// Status and RenderKind were plain strings when sessions were stored, so
+// a named type must write and read the very same JSON.
+func TestShapes_NamedStringsStoreAsPlainStrings(t *testing.T) {
+	data, err := json.Marshal(ToolCallJudged{Status: StatusFailed, RenderKind: RendersError})
+	require.NoError(t, err)
+	var stored map[string]any
+	require.NoError(t, json.Unmarshal(data, &stored))
+	assert.Equal(t, "failed", stored["Status"])
+	assert.Equal(t, "error_text", stored["RenderKind"])
+
+	e, err := Decode(ToolCallJudgedKind, []byte(`{"Status":"failed","RenderKind":"error_text"}`))
+	require.NoError(t, err)
+	assert.Equal(t, StatusFailed, e.(ToolCallJudged).Status)
+	assert.Equal(t, RendersError, e.(ToolCallJudged).RenderKind)
+
+	e, err = Decode(ToolCallProposedKind, []byte(`{"Renders":"markdown"}`))
+	require.NoError(t, err)
+	assert.Equal(t, RendersMarkdown, e.(ToolCallProposed).Renders)
+}
+
 var (
 	jsonMarshaler = reflect.TypeFor[json.Marshaler]()
 	textMarshaler = reflect.TypeFor[encoding.TextMarshaler]()
@@ -99,23 +119,3 @@ func join(path, key string) string {
 }
 
 func leaf(path, ty string) string { return fmt.Sprintf("%s %s", path, ty) }
-
-// Status and RenderKind were plain strings when sessions were stored, so
-// a named type must write and read the very same JSON.
-func TestShapes_NamedStringsStoreAsPlainStrings(t *testing.T) {
-	data, err := json.Marshal(ToolCallJudged{Status: StatusFailed, RenderKind: RendersError})
-	require.NoError(t, err)
-	var stored map[string]any
-	require.NoError(t, json.Unmarshal(data, &stored))
-	assert.Equal(t, "failed", stored["Status"])
-	assert.Equal(t, "error_text", stored["RenderKind"])
-
-	e, err := Decode(ToolCallJudgedKind, []byte(`{"Status":"failed","RenderKind":"error_text"}`))
-	require.NoError(t, err)
-	assert.Equal(t, StatusFailed, e.(ToolCallJudged).Status)
-	assert.Equal(t, RendersError, e.(ToolCallJudged).RenderKind)
-
-	e, err = Decode(ToolCallProposedKind, []byte(`{"Renders":"markdown"}`))
-	require.NoError(t, err)
-	assert.Equal(t, RendersMarkdown, e.(ToolCallProposed).Renders)
-}

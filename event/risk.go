@@ -1,5 +1,15 @@
 package event
 
+// The mutability ladder, least to most. Widen climbs it. Unknown sits
+// above read-only, so a hook calling bash read-only cannot parallelise it.
+const (
+	MutRead         = "read_only"
+	MutUnknown      = "unknown"
+	MutWorkspace    = "writes_workspace"
+	MutSystem       = "system_affecting"
+	MutIrreversible = "likely_irreversible"
+)
+
 // Risk is what the hook chain decided about one tool call, before it runs.
 type Risk struct {
 	// Dangerous is the only field that gates anything.
@@ -45,16 +55,6 @@ func Declared(m string) string {
 	}
 	return m
 }
-
-// The mutability ladder, least to most. Widen climbs it. Unknown sits
-// above read-only, so a hook calling bash read-only cannot parallelise it.
-const (
-	MutRead         = "read_only"
-	MutUnknown      = "unknown"
-	MutWorkspace    = "writes_workspace"
-	MutSystem       = "system_affecting"
-	MutIrreversible = "likely_irreversible"
-)
 
 func rank(m string) int {
 	switch m {

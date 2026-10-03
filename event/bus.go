@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// queueDepth: past this, a lagging subscriber drops lossy events.
+const queueDepth = 512
+
 // Bus fans Records out. Publish never blocks, so publishing from
 // inside a handler is safe. Each subscriber has its own queue, and a
 // lagging one grows it and drops only Lossy events past queueDepth.
@@ -54,20 +57,6 @@ func (b *Bus) Publish(e Event) {
 	}
 }
 
-// wants runs a filter, and treats one that panics as not interested
-// rather than letting it unwind through Publish.
-func wants(f Filter, e Event) (ok bool) {
-	if f == nil {
-		return true
-	}
-	defer func() {
-		if recover() != nil {
-			ok = false
-		}
-	}()
-	return f(e)
-}
-
 // Subscribe returns matching Records and a func that stops them. The
 // channel closes on either, so a range over it terminates.
 func (b *Bus) Subscribe(f Filter) (<-chan Record, func()) {
@@ -114,25 +103,6 @@ func (b *Bus) Handle(f Filter, h func(Record)) func() {
 		s.stop()
 		<-finished
 	}
-}
-
-// add registers s, or reports that the bus no longer takes subscribers.
-func (b *Bus) add(s *sub) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.shut {
-		return false
-	}
-	s.id = b.next
-	b.next++
-	b.subs[s.id] = s
-	return true
-}
-
-func (b *Bus) remove(s *sub) {
-	b.mu.Lock()
-	delete(b.subs, s.id)
-	b.mu.Unlock()
 }
 
 // Drain stops accepting publishes, then waits up to timeout for every
@@ -206,8 +176,38 @@ func Intents() Filter { return func(e Event) bool { return e.Kind().IsIntent() }
 // Facts takes what happened, which a front-end listens to.
 func Facts() Filter { return func(e Event) bool { return !e.Kind().IsIntent() } }
 
-// queueDepth: past this, a lagging subscriber drops lossy events.
-const queueDepth = 512
+// wants runs a filter, and treats one that panics as not interested
+// rather than letting it unwind through Publish.
+func wants(f Filter, e Event) (ok bool) {
+	if f == nil {
+		return true
+	}
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	return f(e)
+}
+
+// add registers s, or reports that the bus no longer takes subscribers.
+func (b *Bus) add(s *sub) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.shut {
+		return false
+	}
+	s.id = b.next
+	b.next++
+	b.subs[s.id] = s
+	return true
+}
+
+func (b *Bus) remove(s *sub) {
+	b.mu.Lock()
+	delete(b.subs, s.id)
+	b.mu.Unlock()
+}
 
 type sub struct {
 	id      int
