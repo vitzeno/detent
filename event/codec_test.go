@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,22 +20,24 @@ import (
 // A type with a Kind method but no codec fails only on replay, so read the
 // source for the real list rather than keeping one by hand.
 func TestCodecs_CoverEveryEventType(t *testing.T) {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", nil, 0)
+	files, err := filepath.Glob("*.go")
 	require.NoError(t, err)
-
+	fset := token.NewFileSet()
 	declared := map[string]bool{}
-	for _, pkg := range pkgs {
-		for _, file := range pkg.Files {
-			for _, d := range file.Decls {
-				fn, ok := d.(*ast.FuncDecl)
-				if !ok || fn.Name.Name != "Kind" || fn.Recv == nil || len(fn.Recv.List) != 1 {
-					continue
-				}
-				if id, ok := fn.Recv.List[0].Type.(*ast.Ident); ok {
-					declared[id.Name] = true
-				}
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		require.NoError(t, err)
+		for _, d := range file.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Name.Name != "Kind" || fn.Recv == nil || len(fn.Recv.List) != 1 {
+				continue
 			}
+			id, ok := fn.Recv.List[0].Type.(*ast.Ident)
+			require.True(t, ok, "%s: Kind must have a value receiver, or codecs cannot decode it", name)
+			declared[id.Name] = true
 		}
 	}
 	require.NotEmpty(t, declared, "found no event types at all")

@@ -265,7 +265,6 @@ func (CallStarted) Kind() Kind { return CallStartedKind }
 // OutputChunk is one live line, and the only lossy event. Parallel
 // Calls interleave, so route by Call rather than assume one is running.
 type OutputChunk struct {
-	fact
 	Call   uuid.UUID
 	Line   string
 	Stderr bool

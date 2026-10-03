@@ -3,7 +3,9 @@ package event
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 
 	"github.com/google/uuid"
 )
@@ -24,14 +26,8 @@ func Decode(k Kind, payload []byte) (Event, error) {
 	return decode(payload)
 }
 
-// Kinds is every kind that can be decoded, which is every kind.
-func Kinds() []Kind {
-	out := make([]Kind, 0, len(codecs))
-	for k := range codecs {
-		out = append(out, k)
-	}
-	return out
-}
+// Kinds is every kind that can be decoded, which is every kind, sorted.
+func Kinds() []Kind { return slices.Sorted(maps.Keys(codecs)) }
 
 // Subject is which Turn and Call a fact is about, read off the fields
 // rather than switched on, since a switch is a second list.
@@ -42,7 +38,7 @@ func Subject(e Event) (turn, call uuid.UUID) {
 	}
 	read := func(name string) (out uuid.UUID) {
 		f := v.FieldByName(name)
-		if f.IsValid() && f.Type() == reflect.TypeOf(out) {
+		if f.IsValid() && f.Type() == reflect.TypeFor[uuid.UUID]() {
 			out = f.Interface().(uuid.UUID)
 		}
 		return out

@@ -34,43 +34,11 @@ func TestPackage_DependsOnlyOnStdlibOnlyPackages(t *testing.T) {
 	}
 }
 
-// Every Kind names exactly one event type. A duplicate makes a log query
-// match two things and a reducer switch on the wrong one.
-func TestKinds_AreUniqueAndComplete(t *testing.T) {
-	all := []Event{
-		SessionStarted{}, SessionResumed{}, TurnStarted{}, TurnEnded{}, CheckpointTaken{},
-		RolledBack{}, BoundReached{}, StepStarted{}, StepEnded{}, ModelText{},
-		Appended{}, Compacted{},
-		CallProposed{}, CallAssessed{}, ApprovalAsked{}, CallStarted{},
-		OutputChunk{}, CallEnded{}, CallJudged{}, ViewReady{},
-		ShellStarted{}, ShellEnded{},
-		Notice{}, SessionsListed{}, ServersListed{},
-		SubmitPrompt{}, ResolveApproval{}, NoteContext{}, Abort{},
-		RequestStop{}, Continue{}, RequestRollback{}, ResetSession{}, ListSessions{}, RenameSession{},
-		RunCommand{}, CancelCommand{},
-	}
-	seen := map[Kind]bool{}
-	for _, e := range all {
-		k := e.Kind()
-		assert.NotEmpty(t, k, "%T has no Kind", e)
-		assert.False(t, seen[k], "%T reuses kind %q", e, k)
-		seen[k] = true
-	}
-	assert.Len(t, all, len(seen))
-}
-
-// Tense is the convention that tells a reader which way an event
-// travels, so it has to actually hold.
-func TestKinds_IntentsAndFactsAreDistinct(t *testing.T) {
-	facts := []Event{TurnStarted{}, CallEnded{}, Notice{}, ApprovalAsked{},
-		ShellStarted{}, ShellEnded{}}
-	for _, e := range facts {
-		assert.False(t, e.Kind().IsIntent(), "%T is a fact", e)
-	}
-	intents := []Event{SubmitPrompt{}, Abort{}, RequestStop{}, ResetSession{},
-		RunCommand{}, CancelCommand{}}
-	for _, e := range intents {
-		assert.True(t, e.Kind().IsIntent(), "%T is an intent", e)
+// Every intent is a "do." kind and nothing else is, so a new one left out
+// of intents would go to the front-ends instead of its owner.
+func TestKinds_IntentsAreExactlyTheDoKinds(t *testing.T) {
+	for _, k := range Kinds() {
+		assert.Equal(t, strings.HasPrefix(string(k), "do."), k.IsIntent(), "%s", k)
 	}
 }
 

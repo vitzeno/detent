@@ -5,15 +5,18 @@ package event
 
 import "time"
 
-// Event is anything the Bus carries.
+// Event is anything the Bus carries. Every subscriber is handed the
+// same maps, slices and pointers, so an Event is immutable once
+// published: copy before changing.
 type Event interface {
 	Kind() Kind
 	// Lossy: a lagging subscriber may drop this. Live output only.
 	Lossy() bool
 }
 
-// Record is one Event plus what the Bus stamped on it. Ordinal is gapless,
-// so a subscriber that filters can be told apart from one that lost something.
+// Record is one Event plus what the Bus stamped on it. Ordinals are
+// gapless across the bus and arrive in order, so an unfiltered
+// subscriber can tell a lost record from one never published.
 type Record struct {
 	Ordinal uint64
 	At      time.Time
@@ -102,7 +105,8 @@ var intents = map[Kind]bool{
 	AuthorizeServerKind: true, OpenAuthKind: true, MeasureContextKind: true,
 }
 
-// fact is embedded by everything but OutputChunk.
+// fact marks an event as never dropped. Every event but OutputChunk
+// embeds it, intents included.
 type fact struct{}
 
 func (fact) Lossy() bool { return false }
