@@ -20,16 +20,21 @@ jobs:
     test:
         name: Test (${{ matrix.os }})
         runs-on: ${{ matrix.os }}
+        # Windows reports but does not fail the run until it has been green a while.
+        continue-on-error: ${{ matrix.experimental == true }}
         strategy:
             # Every platform reports independently; one failure should not hide
             # the others, since platform differences are the point of the matrix.
             fail-fast: false
             matrix:
-                # No Windows: commands go through `sh -c` and the sandbox needs
-                # a unix socket. It still cross-builds below, so nothing rots.
                 os:
                     - ubuntu-latest
                     - macos-latest
+                include:
+                    # Host mode only: the sandbox needs a unix socket. The runner
+                    # has PowerShell 7, so the pwsh tests run rather than skip.
+                    - os: windows-latest
+                      experimental: true
         steps:
             - name: Checkout
               uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -39,10 +44,17 @@ jobs:
             - name: Setup Go
               uses: ./.github/actions/go/setup
 
+            - name: Show the PowerShell the tests will find
+              if: runner.os == 'Windows'
+              run: pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+
             # The sandbox tests skip themselves without a containerd daemon,
             # which is the case here. Rollback is covered locally.
             - name: Run Go tests
               uses: ./.github/actions/go/tests
+              with:
+                  # The race detector needs cgo on Windows, which the runner lacks.
+                  race: ${{ runner.os != 'Windows' }}
 
     fuzz:
         name: Fuzz viewspec

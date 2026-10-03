@@ -57,11 +57,12 @@ that the endpoint really does tool calling, and the containerd tests
 skip themselves when no daemon answers.
 
 CI (`.github/workflows/ci.yaml`) runs `go test -race -cover` on ubuntu
-and macos, gofmt/vet/`go mod tidy`, and a five-target cross-build with
-`CGO_ENABLED=0`. Windows is cross-built, and its PowerShell and Job
-Object code has only been compile-checked: nothing here has run it on
-Windows yet, and the sandbox talks to containerd over a unix socket, so
-Windows is host mode only. Keeping `CGO_ENABLED=0` green is why the store uses
+and macos, `go test -cover` on windows (the race detector needs cgo
+there), gofmt/vet/`go mod tidy`, lint, viewspec fuzzing and a five-target
+cross-build with `CGO_ENABLED=0`. The Windows job is allowed to fail
+until it has been green for a while: its PowerShell, Git Bash and Job
+Object code had never run on Windows when it was added. The sandbox
+talks to containerd over a unix socket, so Windows is host mode only. Keeping `CGO_ENABLED=0` green is why the store uses
 `modernc.org/sqlite`, a pure-Go driver. `govulncheck` is not in CI yet:
 three containerd 1.7 advisories have no fix short of containerd v2.
 
