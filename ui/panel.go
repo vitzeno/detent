@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/status"
 	"github.com/vitzeno/detent/version"
 )
@@ -246,20 +247,10 @@ func orNone(s string) string {
 	return s
 }
 
-func pad(s string, n int) string {
-	if len(s) >= n {
-		return s
-	}
-	return s + strings.Repeat(" ", n-len(s))
-}
+func pad(s string, n int) string { return padWidth(s, n) }
 
+// truncCell fits a cell by display width, since a session name or a
+// skill's description is whatever someone typed.
 func truncCell(s string, w int) string {
-	if w < 8 {
-		w = 8
-	}
-	r := []rune(strings.Join(strings.Fields(s), " "))
-	if len(r) <= w {
-		return string(r)
-	}
-	return string(r[:w-1]) + "…"
+	return layout.Truncate(strings.Join(strings.Fields(s), " "), max(w, 8))
 }
