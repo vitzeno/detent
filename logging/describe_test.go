@@ -2,6 +2,7 @@ package logging
 
 import (
 	"go/build"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -17,12 +18,23 @@ func TestDescribe_EveryLoggedFactHasFields(t *testing.T) {
 	for _, k := range event.Kinds() {
 		e, err := event.Decode(k, []byte(`{}`))
 		require.NoError(t, err)
-		if !worthKeeping(e) {
+		if !worthKeeping(e) || !carriesData(e) {
 			continue
 		}
 		_, fields := describe(e)
 		assert.NotEmpty(t, fields, "%s is logged with no fields", k)
 	}
+}
+
+// carriesData says whether an event has any exported field to log.
+func carriesData(e event.Event) bool {
+	t := reflect.TypeOf(e)
+	for i := range t.NumField() {
+		if t.Field(i).IsExported() {
+			return true
+		}
+	}
+	return false
 }
 
 // Anything logging imports, everything that logs imports too, and event

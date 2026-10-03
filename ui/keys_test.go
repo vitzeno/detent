@@ -105,27 +105,24 @@ func TestKeys_ProposedTextCannotDriveTheTerminal(t *testing.T) {
 	assert.Contains(t, ansi.Strip(view), "^[]52;c;", "it is shown instead")
 }
 
-// The engine only aborts a Turn on reset, so /new must not clear a
-// screen whose conversation the model would keep.
-func TestKeys_NewIsRefusedWhileATurnRuns(t *testing.T) {
-	k := newKeyed(t)
-	turn := uuid.Must(uuid.NewV7())
-	k.m.apply(event.TurnStarted{Turn: turn, N: 1, Prompt: "slow"})
-	for _, r := range "/new" {
-		k.press(t, string(r))
+// The engine aborts a running Turn on reset and clears its transcript once
+// it ends, so /new clears the screen at once in either case.
+func TestKeys_NewResetsWhetherOrNotATurnRuns(t *testing.T) {
+	for _, running := range []bool{true, false} {
+		k := newKeyed(t)
+		turn := uuid.Must(uuid.NewV7())
+		k.m.apply(event.TurnStarted{Turn: turn, N: 1, Prompt: "slow"})
+		if !running {
+			k.m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+		}
+		for _, r := range "/new" {
+			k.press(t, string(r))
+		}
+		k.press(t, "enter")
+		_, ok := k.intent(t).(event.ResetSession)
+		require.True(t, ok, "running=%v resets", running)
+		assert.Empty(t, k.m.blocks)
 	}
-	k.press(t, "enter")
-	assert.Len(t, k.m.blocks, 1, "history stays")
-	assert.Contains(t, k.m.notice.text, "abort")
-
-	k.m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
-	for _, r := range "/new" {
-		k.press(t, string(r))
-	}
-	k.press(t, "enter")
-	_, ok := k.intent(t).(event.ResetSession)
-	require.True(t, ok, "idle, it resets")
-	assert.Empty(t, k.m.blocks)
 }
 
 func TestUndo_IsRefusedWhileATurnRuns(t *testing.T) {

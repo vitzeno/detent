@@ -45,7 +45,7 @@ type Row struct {
 	Running   bool
 	HasResult bool
 	ExitCode  int
-	Summary   string // e.g. capture.Result.Summary()
+	Summary   string // a one-line digest of the result
 	LiveLines int
 	Dropped   int
 	Judged    bool

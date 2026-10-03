@@ -75,7 +75,7 @@ func TestWatch_AHighScoreAsksTheTurnToStop(t *testing.T) {
 	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: turn, N: 1, Prompt: "count the files"})
 	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
-	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "12\n"}})
+	ran(bus, call, event.Result{Stdout: "12\n"})
 
 	select {
 	case rec := <-intents:
@@ -103,7 +103,7 @@ func TestWatch_ALowScoreLetsItCarryOn(t *testing.T) {
 	call := uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
 	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
-	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "partial\n"}})
+	ran(bus, call, event.Result{Stdout: "partial\n"})
 
 	judged, ok := next(t, facts).(event.CallJudged)
 	require.True(t, ok, "the judgement comes first")
@@ -127,7 +127,7 @@ func TestWatch_AGuessNeverStopsATurn(t *testing.T) {
 	call := uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
 	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
-	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "done\n"}})
+	ran(bus, call, event.Result{Stdout: "done\n"})
 
 	assert.Equal(t, event.CallJudgedKind, next(t, facts).Kind())
 	stop()
@@ -148,12 +148,12 @@ func TestWatch_ALateVerdictStopsOnlyItsOwnTurn(t *testing.T) {
 
 	first, second := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: first, N: 1, Prompt: "count the files"})
-	bus.Publish(event.CallEnded{Call: uuid.Must(uuid.NewV7()), Result: event.Result{Stdout: "12\n"}})
+	ran(bus, uuid.Must(uuid.NewV7()), event.Result{Stdout: "12\n"})
 	waitFor(t, asker.asked)
 	bus.Publish(event.TurnEnded{Turn: first})
 	bus.Publish(event.TurnStarted{Turn: second, N: 2, Prompt: "now delete them"})
 	// Asked only once the loop has moved past the end of the first Turn.
-	bus.Publish(event.CallEnded{Call: uuid.Must(uuid.NewV7()), Result: event.Result{Stdout: "ok\n"}})
+	ran(bus, uuid.Must(uuid.NewV7()), event.Result{Stdout: "ok\n"})
 	waitFor(t, asker.asked)
 	close(asker.gate)
 
@@ -187,7 +187,7 @@ func TestWatch_StopCancelsWhatIsInFlight(t *testing.T) {
 	defer unsub()
 
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
-	bus.Publish(event.CallEnded{Call: uuid.Must(uuid.NewV7()), Result: event.Result{Stdout: "x\n"}})
+	ran(bus, uuid.Must(uuid.NewV7()), event.Result{Stdout: "x\n"})
 	waitFor(t, asker.asked)
 
 	stopped := make(chan struct{})
@@ -268,7 +268,7 @@ func TestWatch_TheJudgeSeesTheCommand(t *testing.T) {
 	call := uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "list it"})
 	bus.Publish(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "ls -la"}})
-	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "total 0\n"}})
+	ran(bus, call, event.Result{Stdout: "total 0\n"})
 
 	select {
 	case s := <-asker.states:
@@ -298,4 +298,25 @@ func (f fakeAsker) Ask(context.Context, classify.State, classify.Questions) (cla
 		return nil, classify.Usage{}, f.err
 	}
 	return f.answers, classify.Usage{}, nil
+}
+
+// ran publishes a Call starting and ending, as the engine does for one that ran.
+func ran(bus *event.Bus, call uuid.UUID, res event.Result) {
+	bus.Publish(event.CallStarted{Call: call, Runner: "host"})
+	bus.Publish(event.CallEnded{Call: call, Result: res})
+}
+
+// A Call that was declined or abandoned never ran, so nobody asks about it.
+func TestWatch_ACallThatNeverRanIsNotJudged(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	asker := recordingAsker{states: make(chan classify.State, 1)}
+	defer Watch(bus, asker)()
+	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "p"})
+	bus.Publish(event.CallEnded{Call: uuid.Must(uuid.NewV7()), Result: event.Result{Err: "declined"}})
+	select {
+	case <-asker.states:
+		t.Fatal("judged a Call that never ran")
+	case <-time.After(200 * time.Millisecond):
+	}
 }

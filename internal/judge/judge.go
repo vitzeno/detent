@@ -77,7 +77,8 @@ func (j ResultJudge) Judge(ctx context.Context, command string, res event.Result
 // goal-achieved becomes a RequestStop, honoured at the next Step boundary.
 func Watch(bus *event.Bus, asker classify.Asker) func() {
 	facts, unsub := bus.Subscribe(event.Only(
-		event.TurnStartedKind, event.TurnEndedKind, event.CallProposedKind, event.CallEndedKind))
+		event.TurnStartedKind, event.TurnEndedKind, event.CallProposedKind, event.CallStartedKind,
+		event.CallEndedKind))
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &watcher{bus: bus, ctx: ctx, slots: make(chan struct{}, maxJudging)}
 	looped := make(chan struct{})
@@ -85,18 +86,27 @@ func Watch(bus *event.Bus, asker classify.Asker) func() {
 		defer close(looped)
 		var prompt string
 		var turn uuid.UUID
-		cmds := map[uuid.UUID]string{}
+		cmds, started := map[uuid.UUID]string{}, map[uuid.UUID]bool{}
 		for rec := range facts {
 			switch v := rec.Event.(type) {
 			case event.TurnStarted:
 				prompt, turn = v.Prompt, v.Turn
 				clear(cmds)
+				clear(started)
 				w.setTurn(v.Turn)
 			case event.TurnEnded:
 				w.setTurn(uuid.Nil)
 			case event.CallProposed:
 				cmds[v.Call] = event.Command(v.Tool, v.Args)
+			case event.CallStarted:
+				started[v.Call] = true
 			case event.CallEnded:
+				// A declined or abandoned Call never ran, so there is nothing to judge.
+				if !started[v.Call] {
+					delete(cmds, v.Call)
+					continue
+				}
+				delete(started, v.Call)
 				j := ResultJudge{Asker: asker, Prompt: prompt}
 				w.wg.Add(1)
 				go w.publish(j, turn, v, cmds[v.Call])
