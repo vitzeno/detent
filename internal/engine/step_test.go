@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"os"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/capture"
 	"github.com/vitzeno/detent/internal/model"
 	"github.com/vitzeno/detent/internal/tool"
 )
@@ -153,4 +155,33 @@ func TestStep_OnTheHostANativeToolRunsHere(t *testing.T) {
 	started := r.of(event.ToolCallStartedKind)
 	require.NotEmpty(t, started)
 	assert.Equal(t, hostMode, started[0].(event.ToolCallStarted).Runner)
+}
+
+// slowNative is a native tool that runs until its context ends.
+type slowNative struct{}
+
+func (slowNative) Name() string { return "slow" }
+func (slowNative) Describe() tool.Spec {
+	return tool.Spec{Description: "waits", Mutability: event.MutRead}
+}
+func (slowNative) Lower(tool.Args) (string, error) { return "sleep 600", nil }
+func (slowNative) Run(ctx context.Context, _ tool.Args) capture.Result {
+	<-ctx.Done()
+	return capture.Result{ExitCode: 1, Stdout: "read 3 of 9\n"}
+}
+
+// A native tool past its limit is stopped and reported as a command would be.
+func TestStep_ANativeToolPastItsLimitIsStoppedAndSaysSo(t *testing.T) {
+	fm := &fakeModel{replies: []model.Reply{
+		{Requests: []event.ToolRequest{{ID: "c1", Name: "slow", Args: map[string]any{}}}},
+		{Text: "done"},
+	}}
+	runner := &fakeRunner{}
+	r := rigOn(t, event.New(), fm, runner, hostSelector{runner}, tool.Standard(slowNative{}),
+		WithCommandTimeout(50*time.Millisecond))
+	r.run("wait")
+
+	ended := r.of(event.ToolCallEndedKind)[0].(event.ToolCallEnded)
+	assert.Equal(t, "stopped after 50ms, still running", ended.Result.Err)
+	assert.Equal(t, "read 3 of 9\n", ended.Result.Stdout, "what it read before it was stopped is kept")
 }

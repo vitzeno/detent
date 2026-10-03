@@ -240,6 +240,9 @@ func (e *Engine) runNative(ctx context.Context, p *toolCallPlan, n tool.Native) 
 	defer cancel()
 	res := nativeSafely(cctx, n, p.prepared.Args)
 	out := event.Result{ExitCode: res.ExitCode, Stdout: res.Stdout, Stderr: res.Stderr, Truncated: res.Truncated}
+	if err := cctx.Err(); err != nil {
+		out.Err = e.why(ctx, cctx, fmt.Errorf("%s: %w", n.Name(), err))
+	}
 	e.bus.Publish(event.ToolCallEnded{ToolCall: p.id, Result: out, Took: time.Since(start)})
 	p.finish(formatResult(event.Command(p.prepared.Tool, p.prepared.Args), out))
 	e.repeat.ran(p.cmd, p.answer)
