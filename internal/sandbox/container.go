@@ -303,9 +303,8 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 	return res, delErr
 }
 
-// await waits for the task to exit, killing it if ctx ends first or its
-// output outgrows maxOutputFile. Waiting on bg is what lets a kill land:
-// a cancelled wait returns at once and leaves the task running.
+// await waits on bg, not ctx, for the task to exit, since a cancelled wait
+// returns at once and leaves the task running. A cancel or a flood kills it.
 func await(ctx, bg context.Context, task containerd.Task, exitCh <-chan containerd.ExitStatus, files ...string) (code uint32, overflow bool, err error) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
@@ -474,9 +473,8 @@ func clearStale(ctx context.Context, client *containerd.Client, sessionID string
 	return dropLease(ctx, client, sessionID)
 }
 
-// dropContainer deletes a container and its snapshot, refusing one a
-// live session holds. Between Calls a live session has no task, so its
-// holder label says so too. Any doubt refuses, since this path destroys.
+// dropContainer deletes a container and its snapshot, refusing one a live
+// session holds: between Calls only its holder label says so. Doubt refuses.
 func dropContainer(ctx context.Context, cont containerd.Container, sessionID string) error {
 	labels, err := cont.Labels(ctx)
 	if err != nil {
@@ -521,9 +519,8 @@ func holder() string {
 	return strconv.Itoa(os.Getpid()) + "@" + host
 }
 
-// heldElsewhere reports whether another process on this machine still
-// holds a container. One on another machine cannot be asked, so there
-// only a running task keeps it.
+// heldElsewhere reports whether another live process on this machine holds
+// a container. One elsewhere cannot be asked, so only a running task keeps it.
 func heldElsewhere(label string) bool {
 	pidText, host, ok := strings.Cut(label, "@")
 	pid, err := strconv.Atoi(pidText)

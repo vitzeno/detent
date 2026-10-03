@@ -40,10 +40,8 @@ type Result struct {
 	Truncated bool
 }
 
-// ScanCapped reads r line by line until EOF, capping buf at limit bytes
-// and emitting a StreamEvent per line if events is non-nil. A line too
-// long to carry is cut, never the end of the scan. The caller must keep
-// draining events, since a send blocks until it is read.
+// ScanCapped reads r by line, capping buf at limit bytes and sending each
+// line on events if non-nil, which the caller must drain. An overlong line is cut, not the scan.
 func ScanCapped(r io.Reader, isStderr bool, buf *bytes.Buffer, limit int, events chan<- StreamEvent) (truncated bool, err error) {
 	lw := &limitedWriter{buf: buf, limit: limit}
 	br := bufio.NewReaderSize(r, readSize)
