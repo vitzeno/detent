@@ -262,7 +262,7 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 	}
 	// Theirs, not the model's, wherever the row happened to land.
 	if r.human {
-		icon = styleGoal.Render("$") + icon
+		icon = styleGoal.Render(m.prompt.mark()) + icon
 	}
 
 	// Truncated, not wrapped: a command is often one unbreakable token.

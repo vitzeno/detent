@@ -138,7 +138,7 @@ Together they are capped at 128KB, about 32k tokens, cutting the outermost file 
 | `web_search` | searches the web                  |
 | `skill`      | loads a skill, when there are any |
 
-Each one is a shell command underneath, so it runs in the sandbox like everything else and goes through the same checks. The read-only ones run together
+On this machine the file tools, `skill` and `web_search` run as Go inside detent, so they behave the same on macOS, Linux and Windows. In the sandbox each one is a shell command instead, and either way it goes through the same checks. The read-only ones run together
 
 `edit_file` and `write_file` come back as a diff, drawn side by side when the pane is wide enough
 
@@ -178,6 +178,12 @@ So it knows what you checked instead of checking again
 When the directory is inside a git repository, detent checkpoints your files with git before each request, without touching your index, branch or stash, and undo asks whether to revert them too. Anything you changed after that request ended is left alone and named
 
 In the sandbox, undo also restores the container to its snapshot, and commands you ran yourself go back with it. Your working directory is mounted at `/workspace`, outside that snapshot, so the git checkpoint is what covers it there too
+
+## Windows
+
+Commands run on this machine, since the sandbox needs containerd. The model's commands and yours go to PowerShell 7 (`winget install Microsoft.PowerShell`), or to Git Bash if that is all you have, and its shell tool is called `powershell` rather than `bash`. `host_shell: gitbash` prefers Git Bash, and `host_shell: sh` works anywhere a POSIX shell is on PATH
+
+Windows support is new and has not yet been run on Windows itself
 
 ## Sandboxing (**Experimental**)
 

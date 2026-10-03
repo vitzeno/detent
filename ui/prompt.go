@@ -75,6 +75,14 @@ func (p *prompt) SetShell(on bool) {
 	p.rematch()
 }
 
+// mark is what a human's own command is shown with, the prompt it was typed at.
+func (p prompt) mark() string {
+	if p.powershell {
+		return "PS>"
+	}
+	return "$"
+}
+
 // glyph opens the box's first row: a request, or a command as the shell prompts for one.
 func (p prompt) glyph() string {
 	switch {

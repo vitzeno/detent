@@ -32,7 +32,7 @@ func (Grep) Describe() Spec {
 		Description: "Search file contents for an extended regular expression, recursively. " +
 			"Prints path:line:text for each match, skipping binary files and .git.",
 		Params: []Param{
-			{Name: "pattern", Type: TypeString, Desc: "extended regular expression to search for", Required: true},
+			{Name: "pattern", Type: TypeString, Desc: "extended regular expression to search for, without backreferences", Required: true},
 			{Name: "path", Type: TypeString, Desc: "file or directory to search (default .)"},
 			{Name: "include", Type: TypeString, Desc: "only files whose name matches this glob, such as *.go"},
 			{Name: "ignore_case", Type: TypeBool, Desc: "match case-insensitively"},

@@ -25,7 +25,7 @@ func (WebSearch) Name() string { return "web_search" }
 func (WebSearch) Describe() Spec {
 	return Spec{
 		Description: "Search the web. Returns a numbered list of results, each with a title, " +
-			"a short snippet and a URL. Read a result with bash and curl.",
+			"a short snippet and a URL. Read a result by fetching its URL with curl from your shell tool.",
 		Params: []Param{
 			{Name: "query", Type: TypeString, Desc: "what to search for, as you would type it", Required: true},
 		},

@@ -58,9 +58,10 @@ skip themselves when no daemon answers.
 
 CI (`.github/workflows/ci.yaml`) runs `go test -race -cover` on ubuntu
 and macos, gofmt/vet/`go mod tidy`, and a five-target cross-build with
-`CGO_ENABLED=0`. Windows is cross-built but never tested, since every
-command goes through `sh -c` and the sandbox talks to containerd over
-a unix socket. Keeping `CGO_ENABLED=0` green is why the store uses
+`CGO_ENABLED=0`. Windows is cross-built, and its PowerShell and Job
+Object code has only been compile-checked: nothing here has run it on
+Windows yet, and the sandbox talks to containerd over a unix socket, so
+Windows is host mode only. Keeping `CGO_ENABLED=0` green is why the store uses
 `modernc.org/sqlite`, a pure-Go driver. `govulncheck` is not in CI yet:
 three containerd 1.7 advisories have no fix short of containerd v2.
 
@@ -76,7 +77,14 @@ key. Relevant env vars: `DETENT_BASE_URL`, `DETENT_MODEL`,
 names). The full list is `envKeys` in `internal/config/resolve.go`.
 Boolean variables take 1/0, true/false, yes/no or on/off. A `.env` in
 the working directory is also loaded at startup, and real env vars
-always win over it.
+always win over it. An unknown key in the config file is an error that
+names its line, so a typo cannot silently do nothing.
+
+`host_shell` (`DETENT_HOST_SHELL`) picks what host commands run in: `sh`,
+`pwsh` (PowerShell 7 only, never Windows PowerShell 5.1) or `gitbash`.
+Empty picks sh, or on Windows pwsh and then Git Bash, and fails at startup
+naming `winget install Microsoft.PowerShell` and Git for Windows. The
+sandbox is always Linux sh, and `sandbox_mode: auto` is refused on Windows.
 
 A directory's own `.detent.yaml`, `.env` and `.mcp.json` are read only
 once trusted, because each can redirect the key or start a program
@@ -87,8 +95,7 @@ MCP commands and URLs, never a value) and asks `Trust this directory?
 by the directory and a hash of the files, so any change asks again. A
 no runs on the user's own config only. Headless runs never ask:
 untrusted files are ignored with a warning unless `-trust` is passed,
-which trusts them for that run without recording it. An unknown key in the config file is an error that
-names its line, so a typo cannot silently do nothing.
+which trusts them for that run without recording it.
 
 At startup `run()` pings the endpoint's `/models` and fails fast
 with a clear message. Don't remove it: it's the difference between a
@@ -284,8 +291,8 @@ event       →  the standard library, plus viewspec and google/uuid
 viewspec    →  the standard library, nothing else
 views       →  viewspec
 logging     →  the standard library, plus event
-config      →  engine, model, classify, sandbox (for their defaults only)
-host        →  capture
+config      →  engine, model, classify, sandbox, host (for defaults and names only)
+host        →  capture, winjob
 sandbox     →  capture (never host or engine)
 routing     →  engine, sandbox
 ```
@@ -344,9 +351,19 @@ adding a fat dependency fails with the transitive import named.
   than bringing back what the human threw away.
 
 - **`internal/tool`**: the closed set a model may call, each lowered
-  to one shell command so the sandbox stays the only executor. A Tool
-  is pure: `args → command`, which is why the whole layer tests with
-  no I/O. `bash` is not privileged: same registry, same schema, same
+  to one shell command so the sandbox stays the only executor of the
+  sandbox. `Lower` is pure: `args → command`, which is why that layer
+  tests with no I/O. On the host, a tool that is also `Native` (every
+  file tool, `skill` and `web_search`) runs its own `Run` in this
+  process instead, the same Go on every OS, so no host needs a shell
+  dialect for them. Parity tests run both sides in one directory and
+  require the same output and exit code, since the model reads
+  whichever ran. The deliberate gaps: the host's grep is RE2 (no
+  backreferences), and `list_dir` has its own format because `ls -l`
+  differs by OS. When the host shell is pwsh the shell tool is
+  `powershell` rather than `bash` (`tool.StandardFor`), so a model
+  asked for PowerShell does not write bash, and it is shown literally
+  like bash. The shell tool is not privileged: same registry, same schema, same
   hook chain. If it ever needs a code path the others don't have, the
   registry is wrong. Every bad call comes back as a **tool result**,
   never a Go error: an unregistered name, arguments failing the
@@ -355,10 +372,10 @@ adding a fat dependency fails with the transitive import named.
   every property must appear in `required`, so an optional parameter
   is nullable rather than omitted, found by running it, not by
   asserting on it. `web_search` is what proves the rule holds even for
-  the network: it lowers to one curl against a **keyless** engine, so
+  the network: in the sandbox it is one curl against a **keyless** engine, so
   there is no API key to put in the container, in the command, or in
   the log. It reads results through `r.jina.ai`, so two third parties
-  see every query, and a query is capped at 256 bytes. Reading a result stays an ordinary `bash` curl, which is the
+  see every query, and a query is capped at 256 bytes. Reading a result stays an ordinary curl from the shell tool, which is the
   distinction worth keeping: searching is the harness reaching out,
   fetching is a command, and only the second goes through flagging.
 
@@ -370,7 +387,8 @@ adding a fat dependency fails with the transitive import named.
   `Err` set: the assistant message already named that id, so dropping
   it leaves the transcript owing an answer. `Environment` is what the
   prompt says about where commands run. Describing this process while
-  they run in a container is how BSD flags end up in a Linux one. A
+  they run in a container is how BSD flags end up in a Linux one, and
+  `Environment.Shell` names the shell so the prompt's rules match it. A
   429 or 5xx is retried twice, honouring `Retry-After`, and `Ping`
   sends the same key and headers `Complete` does.
 
@@ -381,12 +399,18 @@ adding a fat dependency fails with the transitive import named.
   `Run` returns, never the Runner. No `exec.Cmd` or containerd
   knowledge of its own.
 
-- **`internal/host`**: runs a command on this machine, all in
-  `shell.go`. Not the only `exec.Command`: a stdio MCP server, the
+- **`internal/host`**: runs a command on this machine through sh,
+  PowerShell 7 or Git Bash (`dialect.go`). pwsh gets its script as
+  `-EncodedCommand`, with a prelude for UTF-8 output and no progress
+  bars, and a trailer that exits as sh would. Not the only `exec.Command`: a stdio MCP server, the
   worktree's git and opening a sign-in link each start their own
   process. A non-zero exit is a `Result`, not an error. A command runs
-  in its own process group, so a timeout or abort kills its children
-  too, and detent's own API keys are removed from its environment.
+  in its own process group, or on Windows a Job Object
+  (`internal/winjob`), so a timeout or abort kills its children too,
+  while a backgrounded child outlives a command that finishes. detent's
+  own API keys are removed from its environment. The regex backstop in
+  `engine/hooks.go` has a PowerShell table, applied to `powershell`
+  calls before the unix one.
 
 - **`internal/sandbox`**: `Container`, a session-scoped containerd
   Runner, one per session so filesystem state accumulates. Imports

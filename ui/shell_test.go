@@ -170,6 +170,22 @@ func TestShell_TheRowSaysItWasTheirs(t *testing.T) {
 		"a row the human ran carries its own mark wherever it landed")
 }
 
+// In PowerShell the row is marked with the prompt it was typed at.
+func TestShell_APowerShellRowSaysPS(t *testing.T) {
+	shell := uuid.Must(uuid.NewV7())
+	m := feed(t,
+		event.UserCommandStarted{UserCommand: shell, Command: "Get-ChildItem", Runner: "host"},
+		event.UserCommandEnded{UserCommand: shell, Result: event.Result{Stdout: "a.txt\n"}},
+	)
+	m.prompt.powershell = true
+	m.sizeViewport()
+
+	lines, _ := m.historyLines()
+	got := stripStyle(strings.Join(lines, "\n"))
+	assert.Contains(t, got, "PS>")
+	assert.NotContains(t, got, "$", "not the sh mark")
+}
+
 // Nothing ever ends a shell block, so anything keyed on "not ended"
 // would treat it as live for the rest of the session.
 func TestShell_AShellBlockDoesNotReadAsALiveTurn(t *testing.T) {
