@@ -82,7 +82,7 @@ func (m *Model) statusLines() []string {
 			out = append(out, "")
 			continue
 		}
-		out = append(out, fmt.Sprintf("  %s  %s", styleFaint.Render(pad(r[0], 12)), r[1]))
+		out = append(out, fmt.Sprintf("  %s  %s", styleFaint.Render(padWidth(r[0], 12)), r[1]))
 	}
 	return out
 }
@@ -104,7 +104,7 @@ func (m Model) contextDetail() string {
 func (m *Model) helpLines() []string {
 	out := []string{styleGoal.Render("commands"), ""}
 	for _, c := range append(slashCommands(), m.skillCmds...) {
-		out = append(out, fmt.Sprintf("  %s  %s", styleGoal.Render(pad(c.Name, 12)),
+		out = append(out, fmt.Sprintf("  %s  %s", styleGoal.Render(padWidth(c.Name, 12)),
 			styleFaint.Render(c.Desc)))
 	}
 	return append(out, "", styleGoal.Render("keys"), "",
@@ -133,7 +133,7 @@ func (m *Model) sessionLines() []string {
 		out = append(out, fmt.Sprintf("%s%s  %s  %s  %s", mark,
 			styleGoal.Render(s.ID.String()),
 			styleFaint.Render(s.Started.Local().Format("2006-01-02 15:04")),
-			styleFaint.Render(pad(countOf(s.Events, "event"), 12)), name))
+			styleFaint.Render(padWidth(countOf(s.Events, "event"), 12)), name))
 	}
 	if len(m.sessions) == 0 {
 		out = append(out, styleFaint.Render("  (nothing recorded yet)"))
@@ -151,7 +151,7 @@ func (m *Model) mcpLines() []string {
 	}
 	for _, s := range m.servers {
 		out = append(out, fmt.Sprintf("  %s %s  %s",
-			serverMark(s), styleGoal.Render(pad(s.Name, 14)), serverState(s)))
+			serverMark(s), styleGoal.Render(padWidth(s.Name, 14)), serverState(s)))
 		if s.Command != "" {
 			out = append(out, styleFaint.Render("     "+s.Command))
 		}
@@ -248,8 +248,6 @@ func orNone(s string) string {
 	}
 	return s
 }
-
-func pad(s string, n int) string { return padWidth(s, n) }
 
 // truncCell fits a cell by display width, since a session name or a
 // skill's description is whatever someone typed.
