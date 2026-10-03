@@ -138,11 +138,6 @@ func TestCompose_AViewThatCannotBeSavedStillDraws(t *testing.T) {
 	require.NotNil(t, got.Spec)
 }
 
-func TestKinds_IsACopy(t *testing.T) {
-	viewgen.Kinds()[0].Name = "changed"
-	assert.NotEqual(t, event.RenderKind("changed"), viewgen.Kinds()[0].Name)
-}
-
 // A judge deciding shape needs a sample, not the whole thing.
 func TestCompose_TheJudgeSeesABoundedSample(t *testing.T) {
 	g, judge := composer(t, map[string]string{"header_line": "none", "parse_kind": "prefix"})
@@ -372,26 +367,6 @@ func TestExisting_AShippedViewThatHidesTheOutputIsNotUsed(t *testing.T) {
 	assert.True(t, ok, "the summary alone still draws with it")
 }
 
-// One table defines a kind's criteria and what may draw it, so a kind
-// cannot be judged into existence with nothing able to render it.
-// event owns the render kinds, so a shape added here or in views fails
-// until it exists there, and one added there fails until it is judged.
-func TestKinds_AgreeWithEvent(t *testing.T) {
-	var judged []event.RenderKind
-	for _, k := range viewgen.Kinds() {
-		judged = append(judged, k.Name)
-		assert.Contains(t, event.RenderKinds(), k.Name)
-	}
-	for _, k := range event.RenderKinds() {
-		if k != event.RendersMarkdown { // only ever declared by a tool
-			assert.Contains(t, judged, k, "nothing can judge output to be %s", k)
-		}
-	}
-	for _, k := range views.Kinds() {
-		assert.Contains(t, judged, k, "views ships a spec for %s, which nothing judges", k)
-	}
-}
-
 func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
 	criteria := viewgen.RenderKindCriteria()
 	require.Len(t, criteria, len(viewgen.Kinds()))
@@ -426,6 +401,26 @@ func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
 	}
 }
 
+// One table defines a kind's criteria and what may draw it, so a kind
+// cannot be judged into existence with nothing able to render it.
+// event owns the render kinds, so a shape added here or in views fails
+// until it exists there, and one added there fails until it is judged.
+func TestKinds_AgreeWithEvent(t *testing.T) {
+	var judged []event.RenderKind
+	for _, k := range viewgen.Kinds() {
+		judged = append(judged, k.Name)
+		assert.Contains(t, event.RenderKinds(), k.Name)
+	}
+	for _, k := range event.RenderKinds() {
+		if k != event.RendersMarkdown { // only ever declared by a tool
+			assert.Contains(t, judged, k, "nothing can judge output to be %s", k)
+		}
+	}
+	for _, k := range views.Kinds() {
+		assert.Contains(t, judged, k, "views ships a spec for %s, which nothing judges", k)
+	}
+}
+
 // Text offers a tree for kubectl describe, and file content a table for
 // a cat of /etc/hosts.
 func TestKinds_OfferWhatTheirOutputsHold(t *testing.T) {
@@ -439,6 +434,11 @@ func TestKinds_OfferWhatTheirOutputsHold(t *testing.T) {
 	}
 	assert.Subset(t, offered(event.RendersText), []string{"tree", "keyvalue", "list"})
 	assert.Subset(t, offered(event.RendersContent), []string{"table", "keyvalue", "list"})
+}
+
+func TestKinds_IsACopy(t *testing.T) {
+	viewgen.Kinds()[0].Name = "changed"
+	assert.NotEqual(t, event.RenderKind("changed"), viewgen.Kinds()[0].Name)
 }
 
 func TestKey_SharesAShapeButNotAKind(t *testing.T) {
