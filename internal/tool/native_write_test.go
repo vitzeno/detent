@@ -93,6 +93,27 @@ func TestWriteFile_NativeRefusesAnEmptyPath(t *testing.T) {
 	assert.Contains(t, got.Stderr, "path must not be empty")
 }
 
+// An ambiguous change sits where GNU diff, the sandbox's, puts it. macOS's BSD
+// diff can choose otherwise, so the parity cases avoid ambiguous changes.
+func TestUnifiedDiff_ReadsAsGNUDiff(t *testing.T) {
+	for name, c := range map[string]struct{ before, after, want string }{
+		"a repeated line goes last": {"a\n}\n}\n}\n", "a\n}\n}\n",
+			"--- p\n+++ p\n@@ -1,4 +1,3 @@\n a\n }\n }\n-}\n"},
+		"a change pairs with the line it replaces": {"x\n}\n}\ny\n", "x\n\n}\ny\n",
+			"--- p\n+++ p\n@@ -1,4 +1,4 @@\n x\n-}\n+\n }\n y\n"},
+		"a repeated block goes last": {"k\na\nb\na\nb\nk\n", "k\na\nb\nk\n",
+			"--- p\n+++ p\n@@ -1,6 +1,4 @@\n k\n a\n b\n-a\n-b\n k\n"},
+		"from empty":   {"", "one\n", "--- p\n+++ p\n@@ -0,0 +1 @@\n+one\n"},
+		"to empty":     {"one\n", "", "--- p\n+++ p\n@@ -1 +0,0 @@\n-one\n"},
+		"one line on":  {"a\n", "a\nb\n", "--- p\n+++ p\n@@ -1 +1,2 @@\n a\n+b\n"},
+		"no newline":   {"a\n", "a", "--- p\n+++ p\n@@ -1 +1 @@\n-a\n+a\n\\ No newline at end of file\n"},
+		"the same":     {"a\n", "a\n", ""},
+		"binary files": {"a\x00b", "a\x00c", "Binary files p and p differ\n"},
+	} {
+		assert.Equal(t, c.want, unifiedDiff("p", c.before, c.after), name)
+	}
+}
+
 // parityWriting is parity for a tool that changes files: each side starts from
 // its own copy and must leave the same bytes. It ends in the native side's dir.
 func parityWriting(t *testing.T, tl Native, args Args, files map[string]string) {
@@ -140,25 +161,4 @@ func filesUnder(t *testing.T, dir string) map[string]string {
 		return err
 	}))
 	return files
-}
-
-// An ambiguous change sits where GNU diff, the sandbox's, puts it. macOS's BSD
-// diff can choose otherwise, so the parity cases avoid ambiguous changes.
-func TestUnifiedDiff_ReadsAsGNUDiff(t *testing.T) {
-	for name, c := range map[string]struct{ before, after, want string }{
-		"a repeated line goes last": {"a\n}\n}\n}\n", "a\n}\n}\n",
-			"--- p\n+++ p\n@@ -1,4 +1,3 @@\n a\n }\n }\n-}\n"},
-		"a change pairs with the line it replaces": {"x\n}\n}\ny\n", "x\n\n}\ny\n",
-			"--- p\n+++ p\n@@ -1,4 +1,4 @@\n x\n-}\n+\n }\n y\n"},
-		"a repeated block goes last": {"k\na\nb\na\nb\nk\n", "k\na\nb\nk\n",
-			"--- p\n+++ p\n@@ -1,6 +1,4 @@\n k\n a\n b\n-a\n-b\n k\n"},
-		"from empty":   {"", "one\n", "--- p\n+++ p\n@@ -0,0 +1 @@\n+one\n"},
-		"to empty":     {"one\n", "", "--- p\n+++ p\n@@ -1 +0,0 @@\n-one\n"},
-		"one line on":  {"a\n", "a\nb\n", "--- p\n+++ p\n@@ -1 +1,2 @@\n a\n+b\n"},
-		"no newline":   {"a\n", "a", "--- p\n+++ p\n@@ -1 +1 @@\n-a\n+a\n\\ No newline at end of file\n"},
-		"the same":     {"a\n", "a\n", ""},
-		"binary files": {"a\x00b", "a\x00c", "Binary files p and p differ\n"},
-	} {
-		assert.Equal(t, c.want, unifiedDiff("p", c.before, c.after), name)
-	}
 }

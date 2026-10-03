@@ -69,8 +69,6 @@ func TestSkill_ShortensDescriptionsToFitTheCatalog(t *testing.T) {
 	assert.Equal(t, 40, strings.Count(got, "\n"), "every skill keeps its line")
 }
 
-type fakeMCP struct{ name string }
-
 func (f fakeMCP) Name() string               { return f.name }
 func (f fakeMCP) Describe() Spec             { return Spec{Description: "x", Executor: "mcp"} }
 func (f fakeMCP) Lower(Args) (string, error) { return "", nil }
@@ -88,3 +86,5 @@ func TestSkill_FailsWhenItsFileIsGone(t *testing.T) {
 	_, err = shIn("", cmd)
 	assert.Error(t, err)
 }
+
+type fakeMCP struct{ name string }

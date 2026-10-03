@@ -9,28 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// cParity is parity in the C locale, which is what a sandbox's sort
-// collates in and what the native side's byte order matches.
-func cParity(t *testing.T, tl Native, args Args, files map[string]string) {
-	t.Helper()
-	t.Setenv("LC_ALL", "C")
-	parity(t, tl, args, files)
-}
-
-var searchTree = map[string]string{
-	"a.go":          "package a\nfunc Alpha() {}\nfunc beta() {}\n",
-	"a-b.go":        "alphabeta\n",
-	"B.go":          "Alpha at the top\n",
-	"_x.txt":        "nothing\nAlpha\n",
-	"sub/b.go":      "x\nx\nx\nx\nx\nx\nx\nx\nAlpha 9\nAlpha 10\n",
-	"sub/deep/c.md": "Alpha in prose",
-	".hid/d.go":     "Alpha hidden\n",
-	".git/config":   "Alpha\n",
-	"sub/.git/e":    "Alpha\n",
-	"bin.dat":       "Alpha\x00\x01\n",
-	"[x].go":        "Alpha\n",
-}
-
 func TestGrep_NativeMatchesTheSandbox(t *testing.T) {
 	long := map[string]string{"l.txt": "hit short\nhit " + strings.Repeat("y", outputBudget+50) + "\nhit after\n"}
 	for name, c := range map[string]struct {
@@ -173,4 +151,26 @@ func TestFnmatch_ReadsGlobsAsFindDoes(t *testing.T) {
 	} {
 		assert.Equal(t, c.want, fnmatch(c.pattern, c.name), "%q against %q", c.pattern, c.name)
 	}
+}
+
+// cParity is parity in the C locale, which is what a sandbox's sort
+// collates in and what the native side's byte order matches.
+func cParity(t *testing.T, tl Native, args Args, files map[string]string) {
+	t.Helper()
+	t.Setenv("LC_ALL", "C")
+	parity(t, tl, args, files)
+}
+
+var searchTree = map[string]string{
+	"a.go":          "package a\nfunc Alpha() {}\nfunc beta() {}\n",
+	"a-b.go":        "alphabeta\n",
+	"B.go":          "Alpha at the top\n",
+	"_x.txt":        "nothing\nAlpha\n",
+	"sub/b.go":      "x\nx\nx\nx\nx\nx\nx\nx\nAlpha 9\nAlpha 10\n",
+	"sub/deep/c.md": "Alpha in prose",
+	".hid/d.go":     "Alpha hidden\n",
+	".git/config":   "Alpha\n",
+	"sub/.git/e":    "Alpha\n",
+	"bin.dat":       "Alpha\x00\x01\n",
+	"[x].go":        "Alpha\n",
 }

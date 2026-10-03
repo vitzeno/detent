@@ -19,26 +19,6 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// endless is a reader that never ends and never sends a newline.
-type endless struct{ read int }
-
-func (e *endless) Read(p []byte) (int, error) {
-	for i := range p {
-		p[i] = 'x'
-	}
-	e.read += len(p)
-	return len(p), nil
-}
-
-// allocated is how many bytes f allocates, give or take the runtime's own.
-func allocated(f func()) uint64 {
-	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	f()
-	runtime.ReadMemStats(&after)
-	return after.TotalAlloc - before.TotalAlloc
-}
-
 // A line with no end is counted, not held, and the read stops with its context.
 func TestWindowLines_HoldsLittleOfALineThatNeverEnds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
@@ -205,4 +185,24 @@ func TestListDir_CountsEntriesPastItsLimit(t *testing.T) {
 	shown := len(lines) - 1
 	assert.Contains(t, lines[0], "f0000")
 	assert.Equal(t, fmt.Sprintf("[%d more entries, list a narrower path]", listEntries+100-shown), lines[shown])
+}
+
+// endless is a reader that never ends and never sends a newline.
+type endless struct{ read int }
+
+func (e *endless) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'x'
+	}
+	e.read += len(p)
+	return len(p), nil
+}
+
+// allocated is how many bytes f allocates, give or take the runtime's own.
+func allocated(f func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	f()
+	runtime.ReadMemStats(&after)
+	return after.TotalAlloc - before.TotalAlloc
 }
