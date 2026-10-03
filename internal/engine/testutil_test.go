@@ -99,7 +99,13 @@ func (r *fakeRunner) commands() []string {
 
 type fakeSelector struct{ r Runner }
 
-func (f fakeSelector) Select(event.Risk) (Runner, string) { return f.r, "host" }
+// The sandbox, so every tool reaches the fake runner as a command. The host
+// would run native tools in this process, which hostSelector is for.
+func (f fakeSelector) Select(event.Risk) (Runner, string) { return f.r, "sandbox" }
+
+type hostSelector struct{ r Runner }
+
+func (h hostSelector) Select(event.Risk) (Runner, string) { return h.r, hostMode }
 
 // snapRunner adds Snapshotter, which the engine finds by type assertion.
 type snapRunner struct {
@@ -153,9 +159,15 @@ func rigWith(t *testing.T, bus *event.Bus, fm *fakeModel, runner Runner, opts ..
 // shipped set does not have.
 func rigWithTools(t *testing.T, bus *event.Bus, fm *fakeModel, runner Runner, reg *tool.Registry, opts ...Option) *rig {
 	t.Helper()
+	return rigOn(t, bus, fm, runner, fakeSelector{runner}, reg, opts...)
+}
+
+// rigOn takes the selector too, for a test about where a tool call runs.
+func rigOn(t *testing.T, bus *event.Bus, fm *fakeModel, runner Runner, sel RunnerSelector, reg *tool.Registry, opts ...Option) *rig {
+	t.Helper()
 	// The finishing check adds a Step to most Turns, so tests that are not
 	// about it turn it off, and its own tests turn it back on.
-	eng := New(bus, fm, reg, fakeSelector{runner}, append([]Option{WithFinishCheck(false)}, opts...)...)
+	eng := New(bus, fm, reg, sel, append([]Option{WithFinishCheck(false)}, opts...)...)
 	inner, _ := runner.(*fakeRunner)
 	if s, ok := runner.(*snapRunner); ok {
 		inner = s.fakeRunner

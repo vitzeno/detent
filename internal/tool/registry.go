@@ -131,6 +131,14 @@ func (r *Registry) Schemas() []map[string]any {
 	return out
 }
 
+// Native is the named tool when it can run in this process.
+func (r *Registry) Native(name string) (Native, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	n, ok := r.tools[name].(Native)
+	return n, ok
+}
+
 // Call is one validated, lowered tool call.
 type Call struct {
 	Tool       string

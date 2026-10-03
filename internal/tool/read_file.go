@@ -1,10 +1,13 @@
 package tool
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/capture"
 )
 
 // ReadFile reads one file. Sandboxed, this reads the container's
@@ -27,17 +30,49 @@ func (ReadFile) Describe() Spec {
 }
 
 func (ReadFile) Lower(a Args) (string, error) {
-	p := a.String("path")
+	p, from, n, err := readArgs(a)
+	if err != nil {
+		return "", err
+	}
+	return window(from, n, readMore, readEmpty) + " " + path(p), nil
+}
+
+// Run reads the file here, in the same window and with the same footers.
+func (ReadFile) Run(_ context.Context, a Args) capture.Result {
+	p, from, n, err := readArgs(a)
+	if err != nil {
+		return failed(2, "read_file: %v", err)
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return failed(1, "read_file: %v", err)
+	}
+	defer func() { _ = f.Close() }() // read only, so closing cannot lose anything
+	out, err := windowLines(f, from, n, readMore, readEmpty)
+	if err != nil {
+		return capture.Result{ExitCode: 1, Stdout: out, Stderr: "read_file: " + err.Error() + "\n"}
+	}
+	return capture.Result{Stdout: out}
+}
+
+const (
+	readMore  = "[%d more lines, read on with offset %d]"
+	readEmpty = "[the file has %d lines]"
+)
+
+// readArgs is what both ways of reading accept.
+func readArgs(a Args) (p string, from, n int, err error) {
+	p = a.String("path")
 	if p == "" {
-		return "", errors.New("path must not be empty")
+		return "", 0, 0, errors.New("path must not be empty")
 	}
-	n := a.Int("max_lines", 500)
+	n = a.Int("max_lines", 500)
 	if n <= 0 {
-		return "", fmt.Errorf("max_lines must be positive, got %d", n)
+		return "", 0, 0, fmt.Errorf("max_lines must be positive, got %d", n)
 	}
-	from := a.Int("offset", 1)
+	from = a.Int("offset", 1)
 	if from <= 0 {
-		return "", fmt.Errorf("offset counts from 1, got %d", from)
+		return "", 0, 0, fmt.Errorf("offset counts from 1, got %d", from)
 	}
-	return window(from, n, "[%d more lines, read on with offset %d]", "[the file has %d lines]") + " " + path(p), nil
+	return p, from, n, nil
 }

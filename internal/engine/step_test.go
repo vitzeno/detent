@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/model"
+	"github.com/vitzeno/detent/internal/tool"
 )
 
 // Read-only tool calls run together, anything else runs alone and in the
@@ -125,4 +127,30 @@ func TestStep_ACommandPastItsLimitIsStoppedAndSaysSo(t *testing.T) {
 	}
 	assert.Contains(t, answer, "stopped after 50ms, still running. Output so far:")
 	assert.Contains(t, answer, "compiling 1 of 40")
+}
+
+// On the host a native tool runs in this process and never reaches the
+// runner, while bash still does. In the sandbox both are commands.
+func TestStep_OnTheHostANativeToolRunsHere(t *testing.T) {
+	t.Chdir(t.TempDir())
+	require.NoError(t, os.WriteFile("notes.txt", []byte("from the file\n"), 0o600))
+	runner := &fakeRunner{out: "from the runner"}
+	fm := &fakeModel{replies: []model.Reply{
+		{Requests: []event.ToolRequest{readCall("c1", "notes.txt"), bashCall("c2", "date")}},
+		{Text: "done"},
+	}}
+	r := rigOn(t, event.New(), fm, runner, hostSelector{runner}, tool.Standard())
+	r.run("read it")
+
+	assert.Equal(t, []string{"date"}, runner.commands(), "only bash went to the runner")
+	var read event.ToolCallEnded
+	for _, e := range r.of(event.ToolCallEndedKind) {
+		if ended, ok := e.(event.ToolCallEnded); ok && strings.Contains(ended.Result.Stdout, "from the file") {
+			read = ended
+		}
+	}
+	assert.Equal(t, "from the file\n", read.Result.Stdout, "read_file read the real file")
+	started := r.of(event.ToolCallStartedKind)
+	require.NotEmpty(t, started)
+	assert.Equal(t, hostMode, started[0].(event.ToolCallStarted).Runner)
 }

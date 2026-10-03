@@ -187,6 +187,12 @@ func (e *Engine) execute(ctx context.Context, p *toolCallPlan) {
 		return
 	}
 	runner, mode := e.runners.Select(p.risk)
+	// On the host a native tool runs here, the same on every OS. The
+	// sandbox only has its shell, so there it runs the lowered command.
+	if n, ok := e.tools.Native(p.prepared.Tool); ok && mode == hostMode {
+		e.runNative(ctx, p, n)
+		return
+	}
 	if runner == nil {
 		p.finish("No runner is wired; nothing could be executed.")
 		return
@@ -220,6 +226,33 @@ func (e *Engine) execute(ctx context.Context, p *toolCallPlan) {
 	e.bus.Publish(event.ToolCallEnded{ToolCall: p.id, Result: out, Took: took})
 	p.finish(formatResult(p.cmd, out))
 	e.repeat.ran(p.cmd, p.answer)
+}
+
+// hostMode is what routing names this machine.
+const hostMode = "host"
+
+// runNative runs a native tool in this process, bounded like a command.
+func (e *Engine) runNative(ctx context.Context, p *toolCallPlan, n tool.Native) {
+	p.ended = true
+	e.bus.Publish(event.ToolCallStarted{ToolCall: p.id, Runner: hostMode})
+	start := time.Now()
+	cctx, cancel := context.WithTimeout(ctx, e.commandTimeout)
+	defer cancel()
+	res := nativeSafely(cctx, n, p.prepared.Args)
+	out := event.Result{ExitCode: res.ExitCode, Stdout: res.Stdout, Stderr: res.Stderr, Truncated: res.Truncated}
+	e.bus.Publish(event.ToolCallEnded{ToolCall: p.id, Result: out, Took: time.Since(start)})
+	p.finish(formatResult(event.Command(p.prepared.Tool, p.prepared.Args), out))
+	e.repeat.ran(p.cmd, p.answer)
+}
+
+// nativeSafely turns a panicking native tool into a failed one, as runSafely does for a Runner.
+func nativeSafely(ctx context.Context, n tool.Native, args tool.Args) (res capture.Result) {
+	defer func() {
+		if v := recover(); v != nil {
+			res = capture.Result{ExitCode: 1, Stderr: fmt.Sprintf("%s panicked: %v\n", n.Name(), v)}
+		}
+	}()
+	return n.Run(ctx, args)
 }
 
 // invoke runs a tool call with no command. Runner names the executor, so
