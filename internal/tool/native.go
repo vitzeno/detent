@@ -114,9 +114,15 @@ func writeAsShell(p, s string) error {
 	return os.WriteFile(p, []byte(s), 0o666) //nolint:gosec // the mode a command's own redirect would give it
 }
 
-// osReason is err without the operation Go puts in front of it, so a
-// failure reads "nope: no such file or directory" as a command's does.
+// osReason is err without the operation Go puts in front of it, so a failure
+// reads "nope: no such file or directory" as a command's does, on every OS.
 func osReason(p string, err error) string {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return p + ": no such file or directory"
+	case errors.Is(err, fs.ErrPermission):
+		return p + ": permission denied"
+	}
 	var pe *fs.PathError
 	if errors.As(err, &pe) {
 		return p + ": " + pe.Err.Error()
