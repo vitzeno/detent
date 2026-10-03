@@ -11,6 +11,13 @@ import (
 // Version is the spec format this package understands.
 const Version = 1
 
+// RowKind lays its panes side by side and PanelKind frames its one pane.
+// The interpreter draws both, since a Widget never sees the registry.
+const (
+	RowKind   = "row"
+	PanelKind = "panel"
+)
+
 // Spec is one view. Blocks render top to bottom.
 type Spec struct {
 	// Version 0 means the current one.
@@ -76,13 +83,6 @@ type Pane struct {
 	Weight int     `json:"weight,omitempty"`
 	Blocks []Block `json:"blocks"`
 }
-
-// RowKind lays its panes side by side and PanelKind frames its one pane.
-// The interpreter draws both, since a Widget never sees the registry.
-const (
-	RowKind   = "row"
-	PanelKind = "panel"
-)
 
 // Column is one table or keyvalue column. Width 0 shares the frame
 // proportionally.
