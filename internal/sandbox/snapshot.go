@@ -15,8 +15,13 @@ import (
 // container at a fresh one on top. Returns the checkpoint's key.
 func (c *Container) Snapshot(ctx context.Context) (string, error) {
 	if c.container == nil {
-		return "", fmt.Errorf("sandbox: Start not called")
+		return "", errNotStarted
 	}
+	release, err := c.acquire(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	ctx = c.leased(ctx)
 	info, err := c.container.Info(ctx)
 	if err != nil {
@@ -42,8 +47,13 @@ func (c *Container) Snapshot(ctx context.Context) (string, error) {
 // as its child and re-pointing the container at it.
 func (c *Container) Rollback(ctx context.Context, id string) error {
 	if c.container == nil {
-		return fmt.Errorf("sandbox: Start not called")
+		return errNotStarted
 	}
+	release, err := c.acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	ctx = c.leased(ctx)
 	info, err := c.container.Info(ctx)
 	if err != nil {
@@ -57,6 +67,8 @@ func (c *Container) Rollback(ctx context.Context, id string) error {
 	if err := c.container.Update(ctx, withSnapshotKey(active)); err != nil {
 		return fmt.Errorf("sandbox: repoint snapshot: %w", err)
 	}
+	// Nothing can reach the abandoned branch again, and the lease would keep it till Close.
+	_ = sn.Remove(ctx, info.SnapshotKey)
 	return nil
 }
 

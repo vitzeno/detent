@@ -1,6 +1,10 @@
 package sandbox
 
-import "github.com/vitzeno/detent/internal/capture"
+import (
+	"maps"
+
+	"github.com/vitzeno/detent/internal/capture"
+)
 
 // Option configures a Container.
 type Option func(*Container)
@@ -10,9 +14,10 @@ func NewContainer(opts ...Option) *Container {
 	c := &Container{
 		namespace:  DefaultNamespace,
 		image:      DefaultImage,
-		mountPoint: "/workspace",
+		mountPoint: DefaultMountPoint,
 		network:    DefaultNetwork,
 		limit:      capture.MaxOutputBytes,
+		slot:       make(chan struct{}, 1),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -23,7 +28,7 @@ func NewContainer(opts ...Option) *Container {
 // WithReadOnly mounts each host directory at its destination, unwritable
 // from inside, as skills are.
 func WithReadOnly(dirs map[string]string) Option {
-	return func(c *Container) { c.readOnly = dirs }
+	return func(c *Container) { c.readOnly = maps.Clone(dirs) }
 }
 
 // WithSocket sets the containerd socket path.
@@ -58,7 +63,7 @@ func WithRuntime(name string) Option {
 	return func(c *Container) { c.runtime = name }
 }
 
-// WithNetwork picks the posture: NetworkHost or NetworkNone.
+// WithNetwork picks the posture: NetworkHost or NetworkNone. Start refuses anything else.
 func WithNetwork(mode string) Option {
 	return func(c *Container) { c.network = mode }
 }

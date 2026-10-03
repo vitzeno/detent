@@ -1,5 +1,6 @@
 // Package sandbox runs commands inside a containerd-backed container,
-// one persistent instance per session.
+// one persistent instance per session. The last command run stays in the
+// container's stored spec until the session closes.
 package sandbox
 
 import (
@@ -33,6 +34,9 @@ import (
 // under NetworkNone too. Fully qualified, since containerd won't expand it.
 const DefaultImage = "docker.io/library/buildpack-deps:24.04-scm"
 
+// DefaultMountPoint is where the working directory appears in the container.
+const DefaultMountPoint = "/workspace"
+
 // Network postures. Host means the daemon's host: the colima VM on
 // macOS, this machine on Linux.
 const (
@@ -53,6 +57,36 @@ const defaultSnapshotter = "overlayfs"
 
 // defaultRuntime is the runc shim, which NewContainer does not default.
 const defaultRuntime = "io.containerd.runc.v2"
+
+// sandboxOutputDir, relative to the workspace, holds each session's
+// own subdirectory of stdout/stderr capture files (see Run).
+const sandboxOutputDir = ".detent-sandbox"
+
+// maxOutputFile stops a command whose capture file passes it, since the
+// file lives in the human's directory and only its head is ever read.
+const maxOutputFile = 64 << 20
+
+// Bounds on the calls that clean up after a command, so a hung daemon
+// cannot hold the container forever.
+const (
+	killWait    = 5 * time.Second
+	cleanupWait = 10 * time.Second
+)
+
+// containerPrefix marks a container as detent's own, which is how Prune
+// tells ours from anything else in the namespace.
+const containerPrefix = "detent-"
+
+const leaseSuffix = "-checkpoints"
+
+// holderLabel names the process holding a session's container, as pid@host.
+const holderLabel = "detent/holder"
+
+// ErrSessionLive marks a container another detent still holds, so
+// neither starting over it nor pruning it may touch it.
+var ErrSessionLive = errors.New("already running somewhere")
+
+var errNotStarted = errors.New("sandbox: Start not called")
 
 // Container is a session-scoped containerd Runner, satisfied structurally:
 // it imports neither host nor engine.
@@ -75,20 +109,35 @@ type Container struct {
 	fifoDir   string // client-side dir for cio's stdio FIFOs
 	sessionID string
 
-	// running serialises Run: one task and one spec per container, so
-	// parallel commands would overwrite each other's.
-	running sync.Mutex
+	// slot serialises Run, Snapshot and Rollback: one task and one spec
+	// per container, and a whole-record Update would undo another's.
+	slot chan struct{}
 }
 
 // Start connects to the daemon and creates the session's container,
 // named from sessionID. Must be called once before Run.
 func (c *Container) Start(ctx context.Context, sessionID string) error {
+	if c.client != nil {
+		return errors.New("sandbox: already started")
+	}
+	if c.network != NetworkNone && c.network != NetworkHost {
+		return fmt.Errorf("sandbox: unknown network %q, want %q or %q", c.network, NetworkNone, NetworkHost)
+	}
+	if c.limit <= 0 {
+		return fmt.Errorf("sandbox: output limit must be positive, got %d", c.limit)
+	}
+	if c.slot == nil {
+		c.slot = make(chan struct{}, 1)
+	}
 	workspace, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("sandbox: getwd: %w", err)
 	}
 	c.workspace = workspace
 	c.sessionID = sessionID
+	if err := writeIgnore(filepath.Join(workspace, sandboxOutputDir)); err != nil {
+		return err
+	}
 
 	// The shim opening these FIFOs runs where the daemon does, so the dir
 	// must be shared with it (colima mounts $HOME), not the OS temp dir.
@@ -149,6 +198,7 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 		containerd.WithSnapshotter(defaultSnapshotter),
 		containerd.WithNewSnapshot(containerID(sessionID)+"-snap", img),
 		containerd.WithNewSpec(specOpts...),
+		containerd.WithContainerLabels(map[string]string{holderLabel: holder()}),
 	}
 	runtimeName := c.runtime
 	if runtimeName == "" {
@@ -164,18 +214,18 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 	return nil
 }
 
-// sandboxOutputDir, relative to the workspace, holds each session's
-// own subdirectory of stdout/stderr capture files (see Run).
-const sandboxOutputDir = ".detent-sandbox"
-
 // Run runs one command at a time as a task on the current snapshot, so
-// state carries over. Output goes to files, since cio's FIFOs need one kernel.
+// state carries over. Output goes to files, since cio's FIFOs need one
+// kernel. Run sends nothing after it returns, and the caller closes events.
 func (c *Container) Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error) {
 	if c.container == nil {
-		return capture.Result{}, fmt.Errorf("sandbox: Start not called")
+		return capture.Result{}, errNotStarted
 	}
-	c.running.Lock()
-	defer c.running.Unlock()
+	release, err := c.acquire(ctx)
+	if err != nil {
+		return capture.Result{}, err
+	}
+	defer release()
 
 	// Session-scoped: recreating one path across containers on a virtiofs
 	// mount can serve the guest a stale, empty view of it.
@@ -205,95 +255,206 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 		return capture.Result{}, fmt.Errorf("sandbox: update spec: %w", err)
 	}
 
-	task, err := c.container.NewTask(ctx, cio.NewCreator(cio.WithFIFODir(c.fifoDir)))
+	// Once a task exists it must be gone before the next Run, so only the
+	// command itself is cut short by ctx.
+	bg := context.WithoutCancel(ctx)
+	tctx, cancel := context.WithTimeout(bg, cleanupWait)
+	task, err := c.container.NewTask(tctx, cio.NewCreator(cio.WithFIFODir(c.fifoDir)))
+	cancel()
 	if err != nil {
 		return capture.Result{}, fmt.Errorf("sandbox: create task: %w", err)
 	}
-
-	exitCh, err := task.Wait(ctx)
+	exitCh, err := task.Wait(bg)
 	if err != nil {
-		_, _ = task.Delete(context.Background())
-		return capture.Result{}, fmt.Errorf("sandbox: wait task: %w", err)
+		return capture.Result{}, errors.Join(fmt.Errorf("sandbox: wait task: %w", err), deleteTask(bg, task))
 	}
-
-	if err := task.Start(ctx); err != nil {
-		_, _ = task.Delete(context.Background())
-		return capture.Result{}, fmt.Errorf("sandbox: start task: %w", err)
+	if err := task.Start(bg); err != nil {
+		return capture.Result{}, errors.Join(fmt.Errorf("sandbox: start task: %w", err), deleteTask(bg, task))
 	}
 
 	done := make(chan struct{})
 	var stdout, stderr bytes.Buffer
+	var outCut, errCut bool
 	var scanWG sync.WaitGroup
 	scanWG.Add(2)
-	go func() { defer scanWG.Done(); tailFile(hostOutPath, false, &stdout, c.limit, events, done) }()
-	go func() { defer scanWG.Done(); tailFile(hostErrPath, true, &stderr, c.limit, events, done) }()
+	go func() { defer scanWG.Done(); outCut = tailFile(hostOutPath, false, &stdout, c.limit, events, done) }()
+	go func() { defer scanWG.Done(); errCut = tailFile(hostErrPath, true, &stderr, c.limit, events, done) }()
 
-	var exitCode uint32
-	select {
-	case status := <-exitCh:
-		exitCode = status.ExitCode()
-	case <-ctx.Done():
-		bg := context.Background()
-		_ = task.Kill(bg, syscall.SIGKILL)
-		<-exitCh
-	}
+	exitCode, overflow, waitErr := await(ctx, bg, task, exitCh, hostOutPath, hostErrPath)
 
 	close(done)
 	scanWG.Wait()
-	if events != nil {
-		close(events)
-	}
-
-	_, _ = task.Delete(context.Background())
+	delErr := deleteTask(bg, task)
 
 	res := capture.Result{
 		Stdout:    stdout.String(),
 		Stderr:    stderr.String(),
 		ExitCode:  int(exitCode),
-		Truncated: stdout.Len() >= c.limit || stderr.Len() >= c.limit,
+		Truncated: outCut || errCut || overflow,
 	}
-	if ctx.Err() != nil {
-		return res, fmt.Errorf("sandbox: %w", ctx.Err())
+	switch {
+	case ctx.Err() != nil:
+		return res, errors.Join(fmt.Errorf("sandbox: %w", ctx.Err()), delErr)
+	case overflow:
+		return res, errors.Join(fmt.Errorf("sandbox: output passed %d MiB, so the command was stopped", maxOutputFile>>20), delErr)
+	case waitErr != nil:
+		return res, errors.Join(fmt.Errorf("sandbox: wait: %w", waitErr), delErr)
 	}
-	return res, nil
+	return res, delErr
+}
+
+// await waits for the task to exit, killing it if ctx ends first or its
+// output outgrows maxOutputFile. Waiting on bg is what lets a kill land:
+// a cancelled wait returns at once and leaves the task running.
+func await(ctx, bg context.Context, task containerd.Task, exitCh <-chan containerd.ExitStatus, files ...string) (code uint32, overflow bool, err error) {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case st := <-exitCh:
+			code, _, err = st.Result()
+			return code, false, err
+		case <-ctx.Done():
+			kill(bg, task, exitCh)
+			return 0, false, nil
+		case <-tick.C:
+			if tooBig(files) {
+				kill(bg, task, exitCh)
+				return 0, true, nil
+			}
+		}
+	}
+}
+
+func kill(bg context.Context, task containerd.Task, exitCh <-chan containerd.ExitStatus) {
+	_ = task.Kill(bg, syscall.SIGKILL)
+	select {
+	case <-exitCh:
+	case <-time.After(killWait):
+	}
+}
+
+func tooBig(files []string) bool {
+	for _, f := range files {
+		if st, err := os.Stat(f); err == nil && st.Size() > maxOutputFile {
+			return true
+		}
+	}
+	return false
+}
+
+// deleteTask removes a finished or stuck task, killing it if it still
+// runs: one left behind fails every later NewTask with "already exists".
+func deleteTask(bg context.Context, task containerd.Task) error {
+	ctx, cancel := context.WithTimeout(bg, cleanupWait)
+	defer cancel()
+	if _, err := task.Delete(ctx, containerd.WithProcessKill); err != nil && !errdefs.IsNotFound(err) {
+		return fmt.Errorf("sandbox: delete task: %w", err)
+	}
+	return nil
+}
+
+// acquire takes the container, giving up when ctx does: a Call queued
+// behind a long human command must still honour its own bound.
+func (c *Container) acquire(ctx context.Context) (func(), error) {
+	select {
+	case c.slot <- struct{}{}:
+		return func() { <-c.slot }, nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("sandbox: waiting for the container: %w", ctx.Err())
+	}
 }
 
 // Close tears down the container, its current snapshot, and the
-// client connection. Safe to call even if Start failed partway.
+// client connection. Safe to call even if Start failed partway, and twice.
 func (c *Container) Close(ctx context.Context) error {
-	var errs []error
-	if c.container != nil {
-		if err := c.container.Delete(ctx, containerd.WithSnapshotCleanup); err != nil {
-			errs = append(errs, err)
+	if c.slot != nil {
+		release, err := c.closeSlot(ctx)
+		if err != nil {
+			return err
 		}
+		defer release()
 	}
-	// Dropping the lease is what lets the GC reclaim this session's checkpoints.
-	if c.lease != nil && c.client != nil {
+	var errs []error
+	containerGone := true
+	if c.container != nil {
+		if task, err := c.container.Task(ctx, nil); err == nil {
+			if err := deleteTask(ctx, task); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if err := c.container.Delete(ctx, containerd.WithSnapshotCleanup); err != nil && !errdefs.IsNotFound(err) {
+			errs = append(errs, fmt.Errorf("sandbox: delete container: %w", err))
+			containerGone = false
+		}
+		c.container = nil
+	}
+	// Dropping the lease is what lets the GC reclaim this session's
+	// checkpoints, so it stays while their container does.
+	if c.lease != nil && c.client != nil && containerGone {
 		if err := c.client.LeasesService().Delete(ctx, *c.lease); err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("sandbox: delete lease: %w", err))
 		}
 		c.lease = nil
 	}
 	if c.client != nil {
 		if err := c.client.Close(); err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("sandbox: close client: %w", err))
 		}
+		c.client = nil
 	}
 	if c.fifoDir != "" {
 		if err := os.RemoveAll(c.fifoDir); err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("sandbox: fifo dir: %w", err))
 		}
+		c.fifoDir = ""
 	}
 	if c.workspace != "" {
-		// Only this session's subdirectory, never the shared parent (see Run).
+		// This session's subdirectory, then the parent once nobody else uses it.
 		_ = os.RemoveAll(filepath.Join(c.workspace, sandboxOutputDir, c.sessionID))
+		removeOutputDir(filepath.Join(c.workspace, sandboxOutputDir))
 	}
 	return errors.Join(errs...)
 }
 
-// ErrSessionLive marks a container another detent still holds, so
-// neither starting over it nor pruning it may touch it.
-var ErrSessionLive = errors.New("already running somewhere")
+// closeSlot takes the container from whatever still runs in it, killing
+// that rather than waiting out a long command.
+func (c *Container) closeSlot(ctx context.Context) (func(), error) {
+	quick, cancel := context.WithTimeout(ctx, killWait)
+	release, err := c.acquire(quick)
+	cancel()
+	if err == nil {
+		return release, nil
+	}
+	if c.container != nil {
+		if task, err := c.container.Task(ctx, nil); err == nil {
+			_ = deleteTask(ctx, task)
+		}
+	}
+	return c.acquire(ctx)
+}
+
+// writeIgnore gives the output directory its own .gitignore, so a commit
+// made inside the sandbox never takes the file its output is going to.
+func writeIgnore(dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("sandbox: create output dir: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*\n"), 0o644); err != nil {
+		return fmt.Errorf("sandbox: ignore output dir: %w", err)
+	}
+	return nil
+}
+
+// removeOutputDir removes the shared directory once only its .gitignore is left.
+func removeOutputDir(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 || entries[0].Name() != ".gitignore" {
+		return
+	}
+	_ = os.Remove(filepath.Join(dir, ".gitignore"))
+	_ = os.Remove(dir)
+}
 
 // clearStale removes what a killed process left behind, since its ids
 // are per session and resuming it would otherwise collide with them.
@@ -313,11 +474,28 @@ func clearStale(ctx context.Context, client *containerd.Client, sessionID string
 	return dropLease(ctx, client, sessionID)
 }
 
-// dropContainer deletes a container and its snapshot, refusing one
-// whose task still runs: that is a live session, not a leftover.
+// dropContainer deletes a container and its snapshot, refusing one a
+// live session holds. Between Calls a live session has no task, so its
+// holder label says so too. Any doubt refuses, since this path destroys.
 func dropContainer(ctx context.Context, cont containerd.Container, sessionID string) error {
-	if task, err := cont.Task(ctx, nil); err == nil {
-		if st, err := task.Status(ctx); err == nil && st.Status == containerd.Running {
+	labels, err := cont.Labels(ctx)
+	if err != nil {
+		return fmt.Errorf("sandbox: labels of %s: %w", sessionID, err)
+	}
+	if heldElsewhere(labels[holderLabel]) {
+		return fmt.Errorf("sandbox: session %s is %w", sessionID, ErrSessionLive)
+	}
+	task, err := cont.Task(ctx, nil)
+	switch {
+	case errdefs.IsNotFound(err):
+	case err != nil:
+		return fmt.Errorf("sandbox: task of %s: %w", sessionID, err)
+	default:
+		st, err := task.Status(ctx)
+		if err != nil {
+			return fmt.Errorf("sandbox: status of %s: %w", sessionID, err)
+		}
+		if st.Status == containerd.Running {
 			return fmt.Errorf("sandbox: session %s is %w", sessionID, ErrSessionLive)
 		}
 		if _, err := task.Delete(ctx, containerd.WithProcessKill); err != nil && !errdefs.IsNotFound(err) {
@@ -338,11 +516,25 @@ func dropLease(ctx context.Context, client *containerd.Client, sessionID string)
 	return nil
 }
 
-// containerPrefix marks a container as detent's own, which is how Prune
-// tells ours from anything else in the namespace.
-const containerPrefix = "detent-"
+func holder() string {
+	host, _ := os.Hostname()
+	return strconv.Itoa(os.Getpid()) + "@" + host
+}
 
-const leaseSuffix = "-checkpoints"
+// heldElsewhere reports whether another process on this machine still
+// holds a container. One on another machine cannot be asked, so there
+// only a running task keeps it.
+func heldElsewhere(label string) bool {
+	pidText, host, ok := strings.Cut(label, "@")
+	pid, err := strconv.Atoi(pidText)
+	if !ok || err != nil || pid <= 0 {
+		return false
+	}
+	if self, _ := os.Hostname(); host != self || pid == os.Getpid() {
+		return false
+	}
+	return processAlive(pid)
+}
 
 // containerID names a container after the session that owns it.
 func containerID(sessionID string) string { return containerPrefix + sessionID }

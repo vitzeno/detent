@@ -11,8 +11,8 @@ import (
 	"github.com/containerd/containerd/leases"
 )
 
-// Prune removes what abandoned sessions left in containerd. Anything
-// without a running task goes, since starting a session never adopts one.
+// Prune removes what abandoned sessions left in containerd. Anything no
+// live process holds goes, since starting a session never adopts one.
 func Prune(ctx context.Context, socket, namespace string) (Pruned, error) {
 	client, err := containerd.New(socket, containerd.WithDefaultNamespace(namespace))
 	if err != nil {
@@ -54,7 +54,7 @@ type Pruned struct {
 func (p Pruned) Empty() bool { return len(p.Containers) == 0 && len(p.Leases) == 0 }
 
 // Forget removes one session's container, snapshot and lease.
-// Refuses one whose task is still running.
+// Refuses one a live process still holds.
 func Forget(ctx context.Context, socket, namespace, sessionID string) error {
 	client, err := containerd.New(socket, containerd.WithDefaultNamespace(namespace))
 	if err != nil {

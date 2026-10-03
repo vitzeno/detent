@@ -381,6 +381,46 @@ func TestContainer_RefusesASessionThatIsStillRunning(t *testing.T) {
 		"a live session was cleared out from under another process")
 }
 
+// A cancelled command must not outlive its Run, or every later Run fails to create a task.
+func TestContainer_RunsAgainAfterACancel(t *testing.T) {
+	c := newTestContainer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := c.Run(ctx, "sleep 30", nil)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	res, err := c.Run(context.Background(), "echo ok", nil)
+	require.NoError(t, err, "the cancelled task was left behind")
+	assert.Equal(t, "ok\n", res.Stdout)
+}
+
+// Between Calls a live session has no task, so its holder is what keeps it.
+func TestPrune_LeavesAnIdleLiveSessionAlone(t *testing.T) {
+	if !daemonAvailable() {
+		t.Skip("containerd not reachable at", testSocket)
+	}
+	ctx := context.Background()
+	const ns = "detent-test-prune-idle"
+	id := testContainerID(t)
+
+	live := NewContainer(WithSocket(testSocket), WithNamespace(ns))
+	require.NoError(t, live.Start(ctx, id))
+	t.Cleanup(func() { _ = live.Close(ctx) })
+	// Held by another process on this machine: the test's parent will do.
+	host, err := os.Hostname()
+	require.NoError(t, err)
+	_, err = live.container.SetLabels(ctx, map[string]string{holderLabel: fmt.Sprintf("%d@%s", os.Getppid(), host)})
+	require.NoError(t, err)
+
+	out, err := Prune(ctx, testSocket, ns)
+	require.NoError(t, err)
+	assert.Contains(t, out.Kept, id)
+
+	res, err := live.Run(ctx, "echo survived", nil)
+	require.NoError(t, err, "prune broke an idle live session")
+	assert.Equal(t, "survived\n", res.Stdout)
+}
+
 // A session nobody resumes leaks its container forever, since only
 // Close and clearStale delete one and neither will ever run again.
 func TestPrune_RemovesWhatAnAbandonedSessionLeft(t *testing.T) {
@@ -526,6 +566,7 @@ func forceGC(t *testing.T, c *Container) {
 // taskRunning reports whether the session's container has a running
 // task, read-only, so waiting for one cannot disturb it.
 func taskRunning(t *testing.T, sessionID string) bool {
+	t.Helper()
 	return taskRunningIn(t, "detent-test", sessionID)
 }
 

@@ -12,18 +12,21 @@ import (
 const tailPollInterval = 20 * time.Millisecond
 
 // tailFile feeds path's growing contents to capture.ScanCapped until done
-// closes and the file is drained. A file that never appears reads as empty.
-func tailFile(path string, isStderr bool, buf *bytes.Buffer, limit int, events chan<- capture.StreamEvent, done <-chan struct{}) {
+// closes and the file is drained, and reports whether anything was cut.
+// A file that never appears reads as empty.
+func tailFile(path string, isStderr bool, buf *bytes.Buffer, limit int, events chan<- capture.StreamEvent, done <-chan struct{}) bool {
 	f, err := openWithRetry(path, done)
 	if err != nil {
-		return
+		return false
 	}
 	defer f.Close()
-	capture.ScanCapped(&pollingReader{f: f, done: done}, isStderr, buf, limit, events)
+	truncated, _ := capture.ScanCapped(&pollingReader{f: f, done: done}, isStderr, buf, limit, events)
+	return truncated
 }
 
+// openWithRetry waits for the file as long as the command runs, since a
+// cold start or a stale virtiofs view can be slow to show it.
 func openWithRetry(path string, done <-chan struct{}) (*os.File, error) {
-	deadline := time.Now().Add(5 * time.Second)
 	for {
 		f, err := os.Open(path)
 		if err == nil {
@@ -32,12 +35,8 @@ func openWithRetry(path string, done <-chan struct{}) (*os.File, error) {
 		select {
 		case <-done:
 			return os.Open(path)
-		default:
+		case <-time.After(tailPollInterval):
 		}
-		if time.Now().After(deadline) {
-			return nil, err
-		}
-		time.Sleep(tailPollInterval)
 	}
 }
 
@@ -58,14 +57,14 @@ func (r *pollingReader) Read(p []byte) (int, error) {
 		if err != nil && err != io.EOF {
 			return 0, err
 		}
+		if r.sawClose {
+			return 0, io.EOF
+		}
 		select {
 		case <-r.done:
-			if r.sawClose {
-				return 0, io.EOF
-			}
+			// One more read straight away catches what landed before done.
 			r.sawClose = true
-		default:
+		case <-time.After(tailPollInterval):
 		}
-		time.Sleep(tailPollInterval)
 	}
 }
