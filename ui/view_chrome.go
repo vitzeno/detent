@@ -168,8 +168,9 @@ func panelName(k panelKind) string {
 		return "mcp"
 	case panelSkills:
 		return "skills"
+	default:
+		return "detent"
 	}
-	return "detent"
 }
 
 func (m Model) historyHeader() string {

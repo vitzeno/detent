@@ -16,8 +16,10 @@ func (m *Model) sizeViewport() {
 	m.prompt.Resize(m.layout.width)
 	// Measured, not guessed: a question varies with its rationale, and the
 	// input grows with what is typed.
-	bottom := m.prompt.Rows() + 2
+	var bottom int
 	switch m.mode {
+	case modeInput:
+		bottom = m.prompt.Rows() + 2
 	case modeConfirm:
 		bottom = len(strings.Split(m.confirmBox(), "\n"))
 	case modeBound, modeUndo, modeForget:

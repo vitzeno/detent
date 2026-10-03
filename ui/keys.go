@@ -60,6 +60,7 @@ func (m Model) handlePaste(text string) (tea.Model, tea.Cmd) {
 	case ownerInput, ownerBusy:
 		m.prompt.Paste(text)
 		m.clearNotice()
+	case ownerConfirm, ownerOutput, ownerHistory:
 	}
 	return m, nil
 }

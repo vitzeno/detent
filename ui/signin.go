@@ -109,6 +109,8 @@ func signInPageLines(s *signInState, width int) []string {
 	case stageStale:
 		return []string{styleFaint.Render("this link is from an earlier run, and nothing is listening for it now"),
 			"", retry}
+	case stageWaiting:
+		// Drawn below, the one stage that asks for something.
 	}
 	link := lipgloss.NewStyle().Foreground(accent).Bold(true).Hyperlink(s.url).Render("Sign in to " + s.server + " ↗")
 	out := []string{styleGoal.Render(s.server + " wants you to sign in"), "", "  " + link, "",
@@ -134,9 +136,10 @@ func (m Model) signInKey(s *signInState, key string) (tea.Model, tea.Cmd, bool) 
 			// Asking again would throw a working token away.
 			m.noteOK(s.server + " is already signed in · /mcp auth " + s.server + " signs in again")
 			return m, nil, true
+		case stageFailed, stageStale:
+			m.noteOK("asking " + s.server + " for a new link")
+			return m, m.send(event.AuthorizeServer{Server: s.server}), true
 		}
-		m.noteOK("asking " + s.server + " for a new link")
-		return m, m.send(event.AuthorizeServer{Server: s.server}), true
 	case "c":
 		if s.stage != stageWaiting {
 			return m, nil, false

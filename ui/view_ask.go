@@ -106,6 +106,7 @@ func (m Model) questionBox() string {
 	case modeForget:
 		return styleDanger.Render("⚠ delete — this cannot be undone") + "\n" +
 			styleFaint.Render("  [y] delete   [n/enter/esc] cancel")
+	default:
+		return ""
 	}
-	return ""
 }
