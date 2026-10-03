@@ -38,36 +38,12 @@ func containsLine(body, delim string) bool {
 	return false
 }
 
-// outputBudget keeps a windowed result under capture.MaxOutputBytes, so
-// its footer is never what the capture cuts off.
-const outputBudget = 7 * 1024
-
-// window prints limit lines from start, stopping early at outputBudget bytes. more
-// gets the count left and the line to resume from, empty is for no input.
-func window(start, limit int, more, empty string) string {
-	return fmt.Sprintf("awk -v s=%d -v n=%d -v b=%d -v more=%s -v empty=%s %s",
-		start, limit, outputBudget, quote(awkString(more)+`\n`), quote(awkString(empty)+`\n`), quote(windowScript))
-}
-
 // keepStatus runs cmd | rest and exits with cmd's status when it is above ok,
 // since a pipeline otherwise reports only its last stage.
 func keepStatus(cmd, rest string, ok int) string {
 	return fmt.Sprintf(`t=$(mktemp); { %s; echo $? > "$t"; } | %s; rc=$(cat "$t"); rm -- "$t"; [ "$rc" -le %d ] || exit "$rc"`,
 		cmd, rest, ok)
 }
-
-// awkString escapes the backslashes awk -v would otherwise read as escapes.
-func awkString(s string) string { return strings.ReplaceAll(s, `\`, `\\`) }
-
-const windowScript = `NR < s { next }
-!stop && NR >= s + n { stop = NR }
-!stop && used > 0 && used + length($0) + 1 > b { stop = NR }
-stop { next }
-{ line = length($0) > b ? substr($0, 1, b) " [line cut]" : $0; print line; used += length(line) + 1 }
-END {
-  if (stop) printf more, NR - stop + 1, stop
-  else if (NR < s) printf empty, NR
-}`
 
 // showDiff prints what changed in file since before, a copy taken first,
 // then removes the copy and exits with rc, which the caller set from the change.
