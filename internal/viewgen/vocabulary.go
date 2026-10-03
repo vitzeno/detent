@@ -127,7 +127,7 @@ func mostCommon(lines []string, count func(string) int) int {
 
 func nonBlank(output string) []string {
 	var out []string
-	for _, l := range strings.Split(output, "\n") {
+	for l := range strings.SplitSeq(output, "\n") {
 		if strings.TrimSpace(l) != "" {
 			out = append(out, l)
 		}

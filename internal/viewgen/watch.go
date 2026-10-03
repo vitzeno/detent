@@ -113,9 +113,7 @@ func (w *watcher) start(call uuid.UUID, p *pending) {
 // spawn runs fn on its own goroutine once a slot is free, giving up when
 // stopped or when the wait outlasts composeTimeout.
 func (w *watcher) spawn(fn func(context.Context)) {
-	w.wg.Add(1)
-	go func() {
-		defer w.wg.Done()
+	w.wg.Go(func() {
 		ctx, cancel := context.WithTimeout(w.ctx, composeTimeout)
 		defer cancel()
 		select {
@@ -125,7 +123,7 @@ func (w *watcher) spawn(fn func(context.Context)) {
 		}
 		defer func() { <-w.slots }()
 		fn(ctx)
-	}()
+	})
 }
 
 func (w *watcher) compose(ctx context.Context, call uuid.UUID, p pending) {

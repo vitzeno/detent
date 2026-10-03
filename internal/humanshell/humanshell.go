@@ -95,13 +95,11 @@ func (s *shell) start(command string) {
 		s.bus.Publish(event.Notice{Level: "warn", Text: "a command is already running"})
 		return
 	}
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.wg.Go(func() {
 		defer cancel()
 		s.run(ctx, id, command)
 		s.done(id)
-	}()
+	})
 }
 
 // run publishes the two facts the command is, then the message the
