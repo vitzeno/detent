@@ -1,15 +1,22 @@
 package tool
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
+	"syscall"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/capture"
 )
 
 // EditFile replaces one exact piece of a file, so a small change does
 // not mean resending the whole file through write_file.
 type EditFile struct{}
+
+var _ Native = EditFile{}
 
 func (EditFile) Name() string { return "edit_file" }
 
@@ -32,14 +39,9 @@ func (EditFile) Describe() Spec {
 }
 
 func (EditFile) Lower(a Args) (string, error) {
-	path, old, repl := a.String("path"), a.String("old_string"), a.String("new_string")
-	switch {
-	case path == "":
-		return "", errors.New("path must not be empty")
-	case old == "":
-		return "", errors.New("old_string must not be empty, use write_file to create or overwrite a file")
-	case old == repl:
-		return "", errors.New("old_string and new_string are the same, so there is nothing to change")
+	path, old, repl, err := editArgs(a)
+	if err != nil {
+		return "", err
 	}
 	all := "0"
 	if a.Bool("replace_all", false) {
@@ -69,6 +71,53 @@ die "edit_file: old_string is in $p " . @at . " times, so give more context or s
 substr($s, $_, length $o) = $n for reverse @at;
 open($f, ">", $p) or die "edit_file: $p: $!\n"; binmode $f; print $f $s; close $f or die "edit_file: $p: $!\n";
 print "replaced " . @at . " in $p\n";`
+
+// Run is editScript in Go, with the same messages and exit statuses.
+func (EditFile) Run(_ context.Context, a Args) capture.Result {
+	p, old, repl, err := editArgs(a)
+	if err != nil {
+		return failed(2, "edit_file: %v", err)
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return failed(perlStatus(err), "edit_file: %v", err)
+	}
+	before := string(b)
+	n := strings.Count(before, old)
+	switch {
+	case n == 0:
+		return failed(255, "edit_file: old_string is not in %s", p)
+	case n > 1 && !a.Bool("replace_all", false):
+		return failed(255, "edit_file: old_string is in %s %d times, so give more context or set replace_all", p, n)
+	}
+	after := strings.Replace(before, old, repl, n)
+	if err := writeAsShell(p, after); err != nil {
+		return failed(perlStatus(err), "edit_file: %v", err)
+	}
+	return capture.Result{Stdout: fmt.Sprintf("replaced %d in %s\n", n, p) + changeShown(p, before, after)}
+}
+
+func editArgs(a Args) (p, old, repl string, err error) {
+	p, old, repl = a.String("path"), a.String("old_string"), a.String("new_string")
+	switch {
+	case p == "":
+		return "", "", "", errors.New("path must not be empty")
+	case old == "":
+		return "", "", "", errors.New("old_string must not be empty, use write_file to create or overwrite a file")
+	case old == repl:
+		return "", "", "", errors.New("old_string and new_string are the same, so there is nothing to change")
+	}
+	return p, old, repl, nil
+}
+
+// perlStatus is the status perl's die exits with: errno when one is set.
+func perlStatus(err error) int {
+	var errno syscall.Errno
+	if errors.As(err, &errno) && errno > 0 && errno < 256 {
+		return int(errno)
+	}
+	return 255
+}
 
 // delimFor grows base until no line of body could end its heredoc early.
 func delimFor(body, base string) string {
