@@ -4,6 +4,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/ui/search"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -69,6 +70,11 @@ type historyRow struct {
 
 	expanded    bool
 	tableCursor int
+
+	// found is the row's text made ready for the finder, and foundOf the
+	// result it was made from, so a new result makes it again.
+	found   *search.Text
+	foundOf *event.Result
 
 	// view is this row's bound spec, resolved once. viewTried marks
 	// the attempt so a spec that does not fit is not retried per frame.

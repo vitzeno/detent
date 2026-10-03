@@ -58,7 +58,7 @@ skip themselves when no daemon answers.
 
 CI (`.github/workflows/ci.yaml`) runs `go test -race -cover` on ubuntu
 and macos, `go test -cover` on windows (the race detector needs cgo
-there), gofmt/vet/`go mod tidy`, lint, viewspec fuzzing and a five-target
+there), gofmt/vet/`go mod tidy`, lint, viewspec and finder fuzzing and a five-target
 cross-build with `CGO_ENABLED=0`. The Windows job is allowed to fail
 until it has been green for a while: its PowerShell, Git Bash and Job
 Object code had never run on Windows when it was added. The sandbox
@@ -599,10 +599,13 @@ adding a fat dependency fails with the transitive import named.
   escape characters in anything the model wrote are shown, never sent
   to the terminal, and a command taller than the box shows a "more"
   marker and is not approved until its last line has been on screen.
-  A view that panics while drawing falls back to plain text.
+  A question raised while the human is in something they opened (the
+  finder, undo, delete) waits for it to close (`askingOwn`), so a key
+  typed there can never answer it. A view that panics while drawing
+  falls back to plain text.
 
   **A thing leaves `ui` when it stops needing Model.** That is why
-  `island`, `layout`, `markdown`, `status`, `theme` and `welcome` are
+  `island`, `layout`, `markdown`, `search`, `status`, `theme` and `welcome` are
   subpackages and nothing else is: they take values and return
   strings. The compiler enforces it, since a subpackage importing
   `ui` would be an import cycle. Rendering could go the same way once

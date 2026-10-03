@@ -164,6 +164,19 @@ exit 0
 
 So it knows what you checked instead of checking again
 
+## Finding
+
+ctrl+r opens a finder over everything this session did. Type and the list
+narrows: requests and commands match fuzzily, output a line at a time. The
+selected one is drawn on the right as the output pane would draw it
+
+enter jumps to it in history, and new rows leave it there until `end`.
+Pressing ctrl+r again narrows to requests, commands or output. esc puts you
+back where you were. `/search <words>` opens it with the words already typed
+
+A question the agent asks while the finder is up waits for it to close, so
+nothing typed into it can approve a command
+
 ## Undoing
 
 `/undo 2` trims the transcript to before your second request

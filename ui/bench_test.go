@@ -282,3 +282,20 @@ func withBigOutput(m Model, lines int) Model {
 	m.sizeViewport()
 	return m
 }
+
+// The finder rebuilds its hits on every key, so this is a keystroke on a
+// long session whose every output is at the 8KB cap.
+func BenchmarkFinder_Keystroke(b *testing.B) {
+	m := session(200, 5, 0)
+	out := strings.Repeat("  ok   detent/internal/pkg  0.42s  PASS coverage: 81.2% of statements\n", 8*1024/70)
+	for _, r := range m.rows() {
+		r.result = &event.Result{Stdout: out}
+	}
+	for _, q := range []string{"t", "go test", "coverage 99"} {
+		b.Run(q, func(b *testing.B) {
+			for b.Loop() {
+				_ = m.findHits(q, findAll)
+			}
+		})
+	}
+}

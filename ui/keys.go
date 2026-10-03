@@ -9,8 +9,8 @@ import (
 // Keystroke routing. handleKey hands each key to exactly one owner,
 // so no two panes can claim the same key.
 
-// keyOwner names who owns a keystroke. The undo, delete and bound
-// questions are not owners: they take every key before owner() runs.
+// keyOwner names who owns a keystroke. The undo, delete and bound questions
+// and the finder are not owners: they take every key before owner() runs.
 type keyOwner int
 
 const (
@@ -37,7 +37,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.mode == modeBound {
 		return m.boundKey(msg)
 	}
+	if m.mode == modeFind {
+		return m.findKey(msg)
+	}
 	switch msg.String() {
+	case "ctrl+r":
+		return m.openFind("")
 	case "esc":
 		return m.onEscape()
 	case "tab":
@@ -61,6 +66,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 // anywhere else has no meaning, so it is dropped.
 func (m Model) handlePaste(text string) (Model, tea.Cmd) {
 	if text == "" {
+		return m, nil
+	}
+	if m.mode == modeFind {
+		m.find.query += oneLine(text)
+		m.refind()
 		return m, nil
 	}
 	if m.mode != modeInput {

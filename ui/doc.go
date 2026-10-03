@@ -19,6 +19,7 @@
 //	prompt.go       the input box and its slash dropdown
 //	slash.go        the slash registry
 //	panel.go        the /status, /help, /sessions, /mcp and /skills pages
+//	finder.go       ctrl+r: what the finder matches and where a jump lands
 //	context.go      the /context page: what fills the model's context
 //	undo.go         the undo question
 //	forget.go       the /delete question
@@ -34,13 +35,14 @@
 //	view_history.go the history pane
 //	view_detail.go  the output pane
 //	view_ask.go     the question boxes
+//	view_find.go    the finder's box, laid over the panes
 //	cache.go        the keys that let a block, history and the output pane skip a redraw
 //
 // # What leaves this package
 //
 // A thing moves to a subpackage when it stops needing Model. That is
-// the whole rule, and it is why island, layout, markdown, status,
-// theme and welcome are subpackages while everything above is not:
+// the whole rule, and it is why island, layout, markdown, search,
+// status, theme and welcome are subpackages while everything above is not:
 // they take values and return strings. The compiler enforces it,
 // since a subpackage importing ui would be an import cycle.
 //

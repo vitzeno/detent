@@ -131,14 +131,20 @@ func (m *Model) setViewContent(s string) {
 // viewBody draws the row's view whole. Height lets a plot grow into the
 // pane but clips nothing, so a view scrolls like any other output.
 func (m Model) viewBody(r *historyRow) (viewspec.Render, bool) {
+	return m.drawRow(r, paneInner(m.layout.outputColW), m.output.Height(), m.nav.focus == focusOutput)
+}
+
+// drawRow draws a row's view at any size, for the output pane and the
+// finder's preview alike, so a row looks the same wherever it is shown.
+func (m Model) drawRow(r *historyRow, width, height int, focused bool) (viewspec.Render, bool) {
 	b, ok := boundView(r)
 	if !ok {
 		return viewspec.Render{}, false
 	}
 	out, err := drawSafely(b, viewspec.Frame{
-		Width:   paneInner(m.layout.outputColW),
-		Height:  m.output.Height(),
-		Focused: m.nav.focus == focusOutput,
+		Width:   width,
+		Height:  height,
+		Focused: focused,
 		Cursor:  r.tableCursor,
 		Paint:   painter{},
 	})

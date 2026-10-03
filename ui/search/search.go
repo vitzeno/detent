@@ -30,9 +30,8 @@ const (
 	penaltyGapExtend = 1
 )
 
-// Fuzzy reports whether every space-separated term of query appears in text
-// in order, though not necessarily together. A query with an upper-case
-// letter matches case exactly, one without ignores it.
+// Fuzzy reports whether each term of query appears in text in order, not
+// necessarily together. Case counts only once the query has an upper-case letter.
 func Fuzzy(query, text string) (Hit, bool) {
 	terms := strings.Fields(query)
 	if len(terms) == 0 {
@@ -55,20 +54,69 @@ func Fuzzy(query, text string) (Hit, bool) {
 	return hit, true
 }
 
+// Text is output made ready for many queries. Lowering it is most of what a
+// search costs, so it happens once rather than once a key.
+type Text struct{ raw, lower string }
+
+// NewText prepares s for Lines.
+func NewText(s string) Text { return Text{raw: s, lower: strings.ToLower(s)} }
+
+// Line is line i of the text as it was given.
+func (t Text) Line(i int) string {
+	rest := t.raw
+	for range i {
+		_, rest, _ = strings.Cut(rest, "\n")
+	}
+	line, _, _ := strings.Cut(rest, "\n")
+	return line
+}
+
 // Lines finds the first line of text holding every term of query literally,
 // and returns its index with the matched offsets in that line.
-func Lines(query, text string) (int, Hit, bool) {
+func Lines(query, text string) (int, Hit, bool) { return NewText(text).Lines(query) }
+
+// Lines is the package's Lines over prepared text.
+func (t Text) Lines(query string) (int, Hit, bool) {
 	terms := strings.Fields(query)
 	if len(terms) == 0 {
 		return 0, Hit{}, false
 	}
 	exact := hasUpper(query)
-	for i, line := range strings.Split(text, "\n") {
-		if h, ok := literal(terms, line, exact); ok {
-			return i, h, true
+	hay, needles := t.raw, terms
+	if !exact {
+		hay, needles = t.lower, make([]string, len(terms))
+		for i, term := range terms {
+			needles[i] = strings.ToLower(term)
 		}
 	}
-	return 0, Hit{}, false
+	// Most outputs hold no match at all, and say so without being split.
+	if !containsAll(hay, needles) {
+		return 0, Hit{}, false
+	}
+	// Lowering never adds or removes a newline, so the two keep in line step.
+	raw := t.raw
+	for i := 0; ; i++ {
+		hl, hrest, more := strings.Cut(hay, "\n")
+		rl, rrest, _ := strings.Cut(raw, "\n")
+		if containsAll(hl, needles) {
+			if h, ok := literal(terms, rl, exact); ok {
+				return i, h, true
+			}
+		}
+		if !more {
+			return 0, Hit{}, false
+		}
+		hay, raw = hrest, rrest
+	}
+}
+
+func containsAll(s string, terms []string) bool {
+	for _, term := range terms {
+		if !strings.Contains(s, term) {
+			return false
+		}
+	}
+	return true
 }
 
 // fuzzyTerm finds the tightest window holding term: the earliest end going
@@ -145,7 +193,9 @@ func literal(terms []string, line string, exact bool) (Hit, bool) {
 		for i := range needle {
 			hit.Pos = merge(hit.Pos, []int{at + i})
 		}
-		hit.Score += len(needle) * scoreMatch
+		// Scored as a fuzzy run would be, so a whole word typed and found
+		// is never outranked by the same letters scattered.
+		hit.Score += len(needle)*(scoreMatch+bonusConsecutive) + bonusAt(hay, at)*bonusFirstRune
 	}
 	return hit, true
 }

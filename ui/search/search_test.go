@@ -110,3 +110,21 @@ func checkPos(t *testing.T, pos []int, n int) {
 		}
 	}
 }
+
+// A word found whole in output must outrank its letters scattered through a
+// prompt, or typing a word buries the line that holds it.
+func TestLines_AWholeWordOutranksScatteredLetters(t *testing.T) {
+	_, whole, ok := Lines("tls", "tls-port:6380")
+	require.True(t, ok)
+	scattered, ok := Fuzzy("tls", "list the go files")
+	require.True(t, ok)
+	assert.Greater(t, whole.Score, scattered.Score)
+}
+
+func TestText_LineIsTheLineLinesFound(t *testing.T) {
+	text := NewText("one\nTwo Three\nfour")
+	i, _, ok := text.Lines("three")
+	require.True(t, ok)
+	assert.Equal(t, "Two Three", text.Line(i))
+	assert.Empty(t, text.Line(9), "past the end is empty, not a panic")
+}

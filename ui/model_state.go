@@ -14,6 +14,7 @@ const (
 	modeBound        // the engine hit its step bound and is asking
 	modeUndo         // asks before reverting the human's own files
 	modeForget       // asks before deleting a stored session
+	modeFind         // the finder holds every key until it jumps or closes
 )
 
 // focusPane is which zone the arrow keys act in.
@@ -62,6 +63,18 @@ const (
 	panelMCP
 	panelSkills
 )
+
+// findState is the finder: what is typed, what it matched, and where the
+// human was so esc can put them back.
+type findState struct {
+	query  string
+	kind   findKind
+	hits   []findHit
+	cursor int
+	// scroll moves the preview from where it centres on the match.
+	scroll int
+	saved  navState
+}
 
 // forgetState is the session /delete is asking about.
 type forgetState struct {
