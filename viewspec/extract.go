@@ -15,11 +15,12 @@ import (
 	"unicode/utf8"
 )
 
-// tabWidth is how many spaces of indent a leading tab counts as.
-const tabWidth = 4
-
-// borders are what a drawn table puts between its cells.
-const borders = "|│┃║"
+const (
+	// tabWidth is how many spaces of indent a leading tab counts as.
+	tabWidth = 4
+	// borders are what a drawn table puts between its cells.
+	borders = "|│┃║"
+)
 
 // extract reads rows and, from an extractor that knows it, their order.
 func extract(e Extractor, output string) ([]Row, []Column, error) {
@@ -44,6 +45,10 @@ type skipExtractor struct {
 	n     int
 }
 
+// ColumnOrder is found by assertion, so a renamed method would quietly
+// fall back to alphabetical keys.
+var _ ColumnOrder = skipExtractor{}
+
 func (e skipExtractor) Extract(output string) ([]Row, error) {
 	rows, _, err := e.ExtractColumns(output)
 	return rows, err
@@ -57,26 +62,14 @@ func (e skipExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
 	return extract(e.inner, strings.Join(lines[e.n:], "\n"))
 }
 
-// ColumnOrder is found by assertion, so a renamed method would quietly
-// fall back to alphabetical keys.
-var (
-	_ ColumnOrder = linesExtractor{}
-	_ ColumnOrder = columnsExtractor{}
-	_ ColumnOrder = skipExtractor{}
-	_ ColumnOrder = fixedExtractor{}
-	_ ColumnOrder = pairsExtractor{}
-	_ ColumnOrder = delimitedExtractor{}
-	_ ColumnOrder = indentExtractor{}
-	_ ColumnOrder = boxExtractor{}
-	_ ColumnOrder = prefixExtractor{}
-)
-
 // linesExtractor makes a row per line matching a named-capture regexp,
 // so a field can be in the wrong place but never invented.
 type linesExtractor struct {
 	re    *regexp.Regexp
 	order []Column
 }
+
+var _ ColumnOrder = linesExtractor{}
 
 func newLinesExtractor(p Parse) (Extractor, error) {
 	if p.Pattern == "" {
@@ -129,6 +122,8 @@ type columnsExtractor struct {
 	header bool
 	fields []string
 }
+
+var _ ColumnOrder = columnsExtractor{}
 
 func newColumnsExtractor(p Parse) (Extractor, error) {
 	if !p.Header && len(p.Fields) == 0 {
@@ -290,10 +285,11 @@ func scalar(v any) string {
 	}
 }
 
-// fixedExtractor slices rows between the values they line up, which
-// reads "CONTAINER ID" as one column where whitespace fields see two.
-// Offsets count runes, so a wide CJK or emoji header can misplace a cut.
+// fixedExtractor slices rows between the values they line up, reading "CONTAINER ID"
+// as one column. Offsets count runes, so a wide CJK header can misplace a cut.
 type fixedExtractor struct{}
+
+var _ ColumnOrder = fixedExtractor{}
 
 func newFixedExtractor(p Parse) (Extractor, error) {
 	return skipping(p, fixedExtractor{}), nil
@@ -479,6 +475,8 @@ func slice(r []rune, start, end int) string {
 // describe-shaped output. One row per line, keyed key and value.
 type pairsExtractor struct{ sep string }
 
+var _ ColumnOrder = pairsExtractor{}
+
 func newPairsExtractor(p Parse) (Extractor, error) {
 	if p.Sep == "" {
 		return nil, fmt.Errorf("parse kind %q needs a sep", p.Kind)
@@ -510,6 +508,8 @@ type delimitedExtractor struct {
 	header bool
 	fields []string
 }
+
+var _ ColumnOrder = delimitedExtractor{}
 
 func newDelimitedExtractor(p Parse) (Extractor, error) {
 	if p.Sep == "" {
@@ -585,6 +585,8 @@ func splitQuoted(line, sep string) []string {
 // from the distinct indents present, so any indent width works.
 type indentExtractor struct{}
 
+var _ ColumnOrder = indentExtractor{}
+
 func newIndentExtractor(p Parse) (Extractor, error) {
 	return skipping(p, indentExtractor{}), nil
 }
@@ -626,6 +628,8 @@ func (e indentExtractor) ExtractColumns(output string) ([]Row, []Column, error) 
 // headerless shape of git log, du and wc. Two fields, never a guessed third.
 type prefixExtractor struct{}
 
+var _ ColumnOrder = prefixExtractor{}
+
 func newPrefixExtractor(p Parse) (Extractor, error) { return skipping(p, prefixExtractor{}), nil }
 
 func (prefixExtractor) Extract(output string) ([]Row, error) {
@@ -659,6 +663,8 @@ func cutField(line string) (first, rest string) {
 // boxExtractor reads a table drawn with borders: mysql, psql, sqlite
 // -box, markdown.
 type boxExtractor struct{}
+
+var _ ColumnOrder = boxExtractor{}
 
 func newBoxExtractor(p Parse) (Extractor, error) {
 	return skipping(p, boxExtractor{}), nil
