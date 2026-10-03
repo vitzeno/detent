@@ -9,8 +9,21 @@ import (
 	"github.com/aymanbagabas/go-udiff/lcs"
 )
 
+const (
+	diffWindow = 400
+	diffMore   = "[%d more lines of diff]"
+	diffEmpty  = "[no change]"
+)
+
 // diffContext is diff -u's lines of context around each change.
 const diffContext = 3
+
+// showDiff prints what changed in file since before, a copy taken first,
+// then removes the copy and exits with rc, which the caller set from the change.
+func showDiff(before, file string) string {
+	return fmt.Sprintf(`[ $rc -eq 0 ] && diff -u -L %[2]s -L %[2]s "%[1]s" %[2]s | %[3]s; rm -- "%[1]s"; exit $rc`,
+		before, path(file), window(1, diffWindow, diffMore, diffEmpty))
+}
 
 // changeShown is showDiff in Go: what changed in p, windowed the same way.
 // Like read_file it drops each line's \r, which the sandbox's awk keeps.
