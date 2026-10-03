@@ -139,7 +139,7 @@ func (s *session) openSandbox() error {
 // buildEngine assembles the client, the store, the judge, the tools and
 // the bus, then the engine over them, restored from any resumed records.
 func (s *session) buildEngine() error {
-	timeout, err := s.cfg.Timeout()
+	timeout, err := s.cfg.CommandTimeoutDuration()
 	if err != nil {
 		return err
 	}

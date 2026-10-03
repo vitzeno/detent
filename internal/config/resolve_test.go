@@ -194,14 +194,14 @@ func TestEnvBool_ReadsTheUsualSpellings(t *testing.T) {
 	}
 }
 
-func TestTimeout_ReadsADurationOrTakesTheBuiltIn(t *testing.T) {
+func TestCommandTimeoutDuration_ReadsADurationOrTakesTheBuiltIn(t *testing.T) {
 	for in, want := range map[string]time.Duration{"": engine.DefaultCommandTimeout, "30m": 30 * time.Minute, "90s": 90 * time.Second} {
-		got, err := Config{CommandTimeout: in}.Timeout()
+		got, err := Config{CommandTimeout: in}.CommandTimeoutDuration()
 		require.NoError(t, err, in)
 		assert.Equal(t, want, got, in)
 	}
 	for _, bad := range []string{"10", "soon", "-5m", "0s"} {
-		_, err := Config{CommandTimeout: bad}.Timeout()
+		_, err := Config{CommandTimeout: bad}.CommandTimeoutDuration()
 		assert.Error(t, err, bad)
 	}
 }

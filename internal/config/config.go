@@ -26,8 +26,8 @@ import (
 	"github.com/vitzeno/detent/internal/sandbox"
 )
 
-// Defaults: OpenRouter and a large-window model, pinned Jev. Aliased
-// from model rather than redeclared, so the two can't silently drift.
+// The model defaults are aliased from model rather than redeclared, so
+// the two cannot drift.
 const (
 	DefaultBaseURL = model.DefaultBaseURL
 	DefaultModel   = model.DefaultModel
@@ -41,8 +41,7 @@ const DefaultContextTokens = engine.DefaultContextTokens
 // source is always the working directory (see sandbox.Container).
 const DefaultSandboxWorkspace = "/workspace"
 
-// DefaultTheme mirrors theme.DefaultName, duplicated to avoid the same
-// dependency.
+// DefaultTheme mirrors theme.DefaultName, since config cannot import ui.
 const DefaultTheme = "dark"
 
 // The sandbox modes: a container when one can be had, or this machine.
@@ -174,8 +173,8 @@ func Load(path string, local map[string][]byte) (Config, error) {
 // checked by main, which can import ui.
 func (c Config) Validate() error { return c.validate(runtime.GOOS) }
 
-// Timeout is CommandTimeout as a duration, the built-in when it is empty.
-func (c Config) Timeout() (time.Duration, error) {
+// CommandTimeoutDuration is CommandTimeout as a duration, the built-in when it is empty.
+func (c Config) CommandTimeoutDuration() (time.Duration, error) {
 	if c.CommandTimeout == "" {
 		return engine.DefaultCommandTimeout, nil
 	}
@@ -236,7 +235,7 @@ func (c Config) validate(goos string) error {
 	if c.ContextTokens < 0 {
 		bad("context_tokens %d: want 0 for the built-in, or more", c.ContextTokens)
 	}
-	if _, err := c.Timeout(); err != nil {
+	if _, err := c.CommandTimeoutDuration(); err != nil {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)

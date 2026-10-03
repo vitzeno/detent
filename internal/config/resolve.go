@@ -57,6 +57,7 @@ func merge(c *Config, o Config) {
 	if o.JevEndpoint != "" {
 		c.JevEndpoint = o.JevEndpoint
 	}
+	// 0 cannot be told from an omitted key, so a flag for it would need steps' -1.
 	if o.RiskThreshold != 0 {
 		c.RiskThreshold = o.RiskThreshold
 	}
@@ -134,9 +135,6 @@ func envConfig(getenv func(string) string) Config {
 		SandboxNetwork: getenv("DETENT_SANDBOX_NETWORK"),
 	}
 }
-
-// A risk_threshold of 0 cannot be told from an omitted key. A flag for
-// it would need the -1 sentinel steps uses.
 
 // envInt reads a numeric variable. Unset and unparseable both give 0,
 // which merge skips.
