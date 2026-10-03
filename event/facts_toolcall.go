@@ -59,7 +59,7 @@ type ToolCallStarted struct {
 func (ToolCallStarted) Kind() Kind { return ToolCallStartedKind }
 
 // OutputChunk is one live line, and the only lossy event. Parallel
-// Tool calls interleave, so route by id rather than assume one is running.
+// tool calls interleave, so route by id rather than assume one is running.
 type OutputChunk struct {
 	// Exactly one is set: a tool call the model asked for, or a user command.
 	ToolCall    uuid.UUID `json:"ToolCall"`

@@ -42,8 +42,6 @@ const (
 	StepEndedKind   Kind = "step.ended"
 	ModelTextKind   Kind = "step.text"
 
-	// The transcript, which is derived rather than carried by the
-	// facts above, so replay needs its own record of it.
 	AppendedKind  Kind = "transcript.appended"
 	CompactedKind Kind = "transcript.compacted"
 	MeasuredKind  Kind = "transcript.measured"
@@ -57,19 +55,18 @@ const (
 	ToolCallJudgedKind   Kind = "tool_call.judged"
 	ViewReadyKind        Kind = "view.ready"
 
-	// A user command is one command the human ran themselves.
 	UserCommandStartedKind Kind = "user_command.started"
 	UserCommandEndedKind   Kind = "user_command.ended"
 
-	ServersListedKind Kind = "servers.listed"
-	// An MCP server asking a human to sign in, and how it ended.
+	ServersListedKind        Kind = "servers.listed"
 	AuthorizationWaitingKind Kind = "auth.waiting"
 	ServerAuthorizedKind     Kind = "auth.done"
 	AuthorizationFailedKind  Kind = "auth.failed"
 )
 
-// Intents. Imperative, published by anyone.
+// Intents. Imperative, published by anyone, each owned by one subscriber.
 const (
+	// The engine's.
 	SubmitPromptKind    Kind = "do.prompt"
 	NoteContextKind     Kind = "do.note"
 	ResolveApprovalKind Kind = "do.approve"
@@ -80,14 +77,18 @@ const (
 	ResetSessionKind    Kind = "do.reset"
 	MeasureContextKind  Kind = "do.measure_context"
 
+	// The store's.
 	ListSessionsKind  Kind = "do.list_sessions"
 	RenameSessionKind Kind = "do.rename_session"
 
+	// forget's.
 	DeleteSessionKind Kind = "do.delete_session"
 
+	// usercommand's.
 	RunCommandKind    Kind = "do.run_command"
 	CancelCommandKind Kind = "do.cancel_command"
 
+	// mcp's.
 	ListServersKind     Kind = "do.list_servers"
 	AuthorizeServerKind Kind = "do.authorize"
 	OpenAuthKind        Kind = "do.open_authorization"

@@ -2,6 +2,8 @@ package event
 
 import "time"
 
+// MCP servers, and a human signing in to one.
+
 // ServersListed answers ListServers, failures included: a missing
 // server is the thing a human needs told.
 type ServersListed struct {

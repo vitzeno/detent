@@ -5,6 +5,8 @@ import "github.com/google/uuid"
 // What anyone publishes, imperative. Each kind has exactly one owner
 // subscribed to it.
 
+// The engine's, which drive the agent loop.
+
 // SubmitPrompt opens a Turn. Typed mid-Turn it becomes a NoteContext.
 type SubmitPrompt struct {
 	fact
@@ -81,6 +83,8 @@ type MeasureContext struct{ fact }
 
 func (MeasureContext) Kind() Kind { return MeasureContextKind }
 
+// The store's, which holds every session's log.
+
 // ListSessions asks what can be resumed. Whatever holds the log
 // answers with SessionsListed.
 type ListSessions struct{ fact }
@@ -97,6 +101,8 @@ type RenameSession struct {
 
 func (RenameSession) Kind() Kind { return RenameSessionKind }
 
+// forget's, which destroys what a session left.
+
 // DeleteSession forgets a stored session: its events, its log and
 // its container. Irreversible, so nothing sends it unasked.
 type DeleteSession struct {
@@ -105,6 +111,8 @@ type DeleteSession struct {
 }
 
 func (DeleteSession) Kind() Kind { return DeleteSessionKind }
+
+// usercommand's, for commands the human runs.
 
 // RunCommand runs what the human typed. Not a request: nothing is
 // assessed, nothing is approved, and no Turn opens.
@@ -123,6 +131,8 @@ type CancelCommand struct {
 }
 
 func (CancelCommand) Kind() Kind { return CancelCommandKind }
+
+// mcp's, for the MCP servers and their sign-ins.
 
 // ListServers asks which MCP servers are wired and how they fared.
 // Whatever holds them answers, since a front-end cannot ask directly.

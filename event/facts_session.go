@@ -6,8 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// What happened, past tense. ApprovalAsked is the one question among
-// them, correlated by tool call.
+// A Session is the process lifetime and its one message log.
 
 // SessionStarted is published once. Welcome, status and the log all
 // read it, so it is the one description of a run.

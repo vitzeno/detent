@@ -2,8 +2,11 @@ package event
 
 import "github.com/google/uuid"
 
+// The transcript is derived, not carried by the other facts, so replay
+// needs its own record of it.
+
 // Appended is what went into the transcript, verbatim. Rebuilding it
-// from CallEnded would mean reproducing formatResult forever.
+// from ToolCallEnded would mean reproducing formatResult forever.
 type Appended struct {
 	fact
 	Turn     uuid.UUID `json:"Turn"`
