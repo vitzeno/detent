@@ -98,6 +98,13 @@ func TestComplete_TolerantOfEndpointQuirks(t *testing.T) {
 	}
 }
 
+func TestComplete_NullArgumentsAreAnEmptyMap(t *testing.T) {
+	c, _ := serve(t, `{"choices":[{"message":{"tool_calls":[{"id":"c","type":"function","function":{"name":"list_dir","arguments":"null"}}]}}]}`)
+	reply, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{}, reply.Requests[0].Args, "null must not go back to the endpoint as null")
+}
+
 func TestComplete_SurfacesFailures(t *testing.T) {
 	t.Run("an error object beats an empty choices list", func(t *testing.T) {
 		c, _ := serve(t, `{"error":{"message":"model not found"}}`)
@@ -126,51 +133,6 @@ func TestComplete_SurfacesFailures(t *testing.T) {
 		_, _, err := c.Complete(context.Background(), nil, nil)
 		assert.ErrorContains(t, err, "empty transcript")
 	})
-}
-
-// serve replies with body and captures the request that asked for it.
-func serve(t *testing.T, body string) (*Client, *map[string]any) {
-	t.Helper()
-	got := map[string]any{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		assert.NoError(t, json.Unmarshal(raw, &got)) // require cannot stop a test from a handler
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, body)
-	}))
-	t.Cleanup(srv.Close)
-	return &Client{BaseURL: srv.URL, Model: "m"}, &got
-}
-
-// The request carries the key, the configured headers and the model,
-// and Ping sends the same, or a gateway keyed by header fails at startup.
-func TestClient_AuthenticatesEveryRequest(t *testing.T) {
-	headers := make(chan http.Header, 2)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		headers <- r.Header.Clone()
-		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"ok"}}]}`)
-	}))
-	defer srv.Close()
-	c := &Client{BaseURL: srv.URL + "/", APIKey: "k", Headers: map[string]string{"X-API-Key": "g"}}
-
-	require.NoError(t, c.Ping(context.Background()))
-	_, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
-	require.NoError(t, err)
-
-	for _, name := range []string{"ping", "complete"} {
-		h := <-headers
-		assert.Equal(t, "Bearer k", h.Get("Authorization"), name)
-		assert.Equal(t, "g", h.Get("X-API-Key"), name)
-	}
-}
-
-func TestPing_ANon200Fails(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer srv.Close()
-	err := (&Client{BaseURL: srv.URL}).Ping(context.Background())
-	assert.ErrorContains(t, err, "HTTP 401")
 }
 
 // A transient failure is asked again and a bad request is not, and either
@@ -210,25 +172,41 @@ func TestComplete_RetriesOnlyTransientFailures(t *testing.T) {
 	}
 }
 
-// fastRetries keeps a 5xx from making a test wait out the real backoff.
-func fastRetries(t *testing.T) {
-	t.Helper()
-	old := retryWaits
-	retryWaits = []time.Duration{time.Millisecond, time.Millisecond}
-	t.Cleanup(func() { retryWaits = old })
-}
-
 func TestRetryAfter_ReadsSeconds(t *testing.T) {
 	assert.Equal(t, 3*time.Second, retryAfter("3"))
 	assert.Zero(t, retryAfter(""))
 	assert.Zero(t, retryAfter("Wed, 21 Oct 2015 07:28:00 GMT"))
 }
 
-func TestComplete_NullArgumentsAreAnEmptyMap(t *testing.T) {
-	c, _ := serve(t, `{"choices":[{"message":{"tool_calls":[{"id":"c","type":"function","function":{"name":"list_dir","arguments":"null"}}]}}]}`)
-	reply, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
+// The request carries the key, the configured headers and the model,
+// and Ping sends the same, or a gateway keyed by header fails at startup.
+func TestClient_AuthenticatesEveryRequest(t *testing.T) {
+	headers := make(chan http.Header, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headers <- r.Header.Clone()
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL + "/", APIKey: "k", Headers: map[string]string{"X-API-Key": "g"}}
+
+	require.NoError(t, c.Ping(context.Background()))
+	_, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]any{}, reply.Requests[0].Args, "null must not go back to the endpoint as null")
+
+	for _, name := range []string{"ping", "complete"} {
+		h := <-headers
+		assert.Equal(t, "Bearer k", h.Get("Authorization"), name)
+		assert.Equal(t, "g", h.Get("X-API-Key"), name)
+	}
+}
+
+func TestPing_ANon200Fails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	err := (&Client{BaseURL: srv.URL}).Ping(context.Background())
+	assert.ErrorContains(t, err, "HTTP 401")
 }
 
 func TestReply_Unfinished(t *testing.T) {
@@ -252,4 +230,26 @@ func TestReply_Unfinished(t *testing.T) {
 			assert.Equal(t, tt.want, tt.reply.Unfinished())
 		})
 	}
+}
+
+// serve replies with body and captures the request that asked for it.
+func serve(t *testing.T, body string) (*Client, *map[string]any) {
+	t.Helper()
+	got := map[string]any{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		assert.NoError(t, json.Unmarshal(raw, &got)) // require cannot stop a test from a handler
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return &Client{BaseURL: srv.URL, Model: "m"}, &got
+}
+
+// fastRetries keeps a 5xx from making a test wait out the real backoff.
+func fastRetries(t *testing.T) {
+	t.Helper()
+	old := retryWaits
+	retryWaits = []time.Duration{time.Millisecond, time.Millisecond}
+	t.Cleanup(func() { retryWaits = old })
 }
