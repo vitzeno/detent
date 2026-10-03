@@ -22,7 +22,11 @@ func failed(code int, format string, a ...any) capture.Result {
 
 // stopped is a native tool cut short by its context, keeping what it printed.
 func stopped(name, out string, err error) capture.Result {
-	return capture.Result{ExitCode: 1, Stdout: out, Stderr: name + ": stopped: " + err.Error() + "\n"}
+	why := "stopped"
+	if err != nil {
+		why += ": " + err.Error()
+	}
+	return capture.Result{ExitCode: 1, Stdout: out, Stderr: name + ": " + why + "\n"}
 }
 
 // openRegular opens p to read, refusing anything but a regular file before

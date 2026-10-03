@@ -84,7 +84,7 @@ func (s Skill) Run(ctx context.Context, a Args) capture.Result {
 	defer func() { _ = f.Close() }() // read only, so closing cannot lose anything
 	out, err := windowLines(ctx, f, 1, 500, skillMore(file), skillEmpty)
 	if ctx.Err() != nil {
-		return stopped("skill", out, err)
+		return stopped("skill", out, ctx.Err())
 	}
 	if err != nil {
 		return capture.Result{ExitCode: 2, Stdout: out, Stderr: "skill: " + err.Error() + "\n"}

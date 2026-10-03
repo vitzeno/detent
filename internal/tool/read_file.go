@@ -58,7 +58,7 @@ func (ReadFile) Run(ctx context.Context, a Args) capture.Result {
 	defer func() { _ = f.Close() }() // read only, so closing cannot lose anything
 	out, err := windowLines(ctx, f, from, n, readMore, readEmpty)
 	if ctx.Err() != nil {
-		return stopped("read_file", out, err)
+		return stopped("read_file", out, ctx.Err())
 	}
 	if err != nil {
 		return capture.Result{ExitCode: 1, Stdout: out, Stderr: "read_file: " + err.Error() + "\n"}

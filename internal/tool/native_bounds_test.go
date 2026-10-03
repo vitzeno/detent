@@ -206,3 +206,12 @@ func allocated(f func()) uint64 {
 	runtime.ReadMemStats(&after)
 	return after.TotalAlloc - before.TotalAlloc
 }
+
+// A context that ends after the last read leaves no read error, and saying
+// the tool stopped must not need one.
+func TestStopped_NeedsNoError(t *testing.T) {
+	got := stopped("read_file", "partial\n", nil)
+	assert.Equal(t, "read_file: stopped\n", got.Stderr)
+	assert.Equal(t, 1, got.ExitCode)
+	assert.Equal(t, "partial\n", got.Stdout)
+}
