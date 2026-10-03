@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	"github.com/vitzeno/detent/ui/island"
 	"github.com/vitzeno/detent/ui/layout"
 )
 
@@ -50,7 +51,5 @@ const (
 	minBodyRows = 6
 )
 
-// paneInner matches island.Render's own inner := width-4.
-func paneInner(outer int) int {
-	return max(20, outer-4)
-}
+// paneInner is what island.Render leaves for content.
+func paneInner(outer int) int { return island.Inner(outer) }

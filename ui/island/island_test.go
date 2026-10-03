@@ -47,10 +47,37 @@ func TestRender_EmptyTitleKeepsContent(t *testing.T) {
 	assert.Contains(t, lines[2], "│", "second line pads blank, no title consumed")
 }
 
-func TestRender_TruncatesWideLines(t *testing.T) {
-	wide := strings.Repeat("x", 300)
-	out := Render("t", lipgloss.Color("#333333"), []string{wide}, 40, 2)
-	for _, l := range strings.Split(out, "\n") {
-		assert.LessOrEqual(t, lipgloss.Width(l), 40, "no physical line may exceed the frame")
+// Command output reaches here raw, so tabs and embedded newlines must
+// not let lipgloss grow the frame after it was measured.
+func TestRender_HoldsItsSize(t *testing.T) {
+	tests := []struct {
+		name          string
+		lines         []string
+		width, height int
+	}{
+		{"a wide line", []string{strings.Repeat("x", 300)}, 40, 2},
+		{"tabs", []string{"a\tb\tc\td\te\tf"}, 14, 2},
+		{"embedded newlines", []string{"a\nb\nc"}, 20, 2},
+		{"a carriage return", []string{"50%\r100%"}, 20, 2},
+		{"wide runes", []string{"日本語日本語日本語日本語"}, 12, 2},
+		{"zero height", []string{"a"}, 20, 0},
+		{"negative height", []string{"a"}, 20, -3},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := Render("t", lipgloss.Color("#333333"), tt.lines, tt.width, tt.height)
+			lines := strings.Split(out, "\n")
+			assert.Len(t, lines, max(1, tt.height)+2)
+			for _, l := range lines {
+				assert.Equal(t, tt.width, lipgloss.Width(l), "no physical line may leave the frame")
+			}
+		})
+	}
+}
+
+func TestRender_SplitsALineHoldingNewlines(t *testing.T) {
+	out := Render("", lipgloss.Color("#333333"), []string{"a\nb"}, 20, 3)
+	lines := strings.Split(plain(out), "\n")
+	assert.Contains(t, lines[1], "a")
+	assert.Contains(t, lines[2], "b")
 }
