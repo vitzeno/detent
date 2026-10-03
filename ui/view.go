@@ -62,7 +62,7 @@ func (m Model) inputBorder() color.Color {
 	if m.nav.focus != focusInput {
 		return palette.Border
 	}
-	if m.entry == entryShell {
+	if m.prompt.shell {
 		return palette.Caution
 	}
 	return palette.Accent

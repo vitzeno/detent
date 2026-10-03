@@ -62,7 +62,7 @@
 // back is a transform and keeps a verb: railed, wrapPlain, wrapStyled.
 //
 // State structs end in State (navState, undoState). An enum is named
-// for what it enumerates (mode, entry, focusPane, keyOwner) and
-// its constants all carry the type's stem, so modeConfirm, entryShell,
+// for what it enumerates (mode, focusPane, keyOwner, panelKind) and
+// its constants all carry the type's stem, so modeConfirm, focusOutput,
 // ownerBusy and panelContext each say what they belong to.
 package ui

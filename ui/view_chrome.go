@@ -227,7 +227,7 @@ func (m Model) statusHint() string {
 		}
 		return "[tab] output · [↑/↓] move · [space] expand · [enter] expand"
 	case ownerBusy:
-		if m.entry == entryShell {
+		if m.prompt.shell {
 			return m.shellHint()
 		}
 		if m.prompt.Open() {
@@ -235,7 +235,7 @@ func (m Model) statusHint() string {
 		}
 		return "[esc] abort · [enter] steers · [tab] history"
 	default: // ownerInput
-		if m.entry == entryShell {
+		if m.prompt.shell {
 			return m.shellHint()
 		}
 		if m.prompt.Open() {

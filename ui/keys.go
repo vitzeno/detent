@@ -198,11 +198,7 @@ func (m Model) onTab() (Model, tea.Cmd) {
 // toggleEntry switches the bar between a request and a command.
 // Focus follows, unless a question is up: that still comes first.
 func (m Model) toggleEntry() (Model, tea.Cmd) {
-	m.entry = entryShell
-	if m.prompt.shell {
-		m.entry = entryPrompt
-	}
-	m.prompt.SetShell(m.entry == entryShell)
+	m.prompt.SetShell(!m.prompt.shell)
 	if m.mode == modeInput {
 		m.nav.focus = focusInput
 		m.prompt.Focus()
@@ -244,7 +240,7 @@ func (m Model) inputKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	}
 	switch msg.String() {
 	case "enter":
-		if m.entry == entryShell {
+		if m.prompt.shell {
 			return m.runShell()
 		}
 		return m.submit()

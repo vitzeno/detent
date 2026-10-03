@@ -16,15 +16,6 @@ const (
 	modeForget       // asks before deleting a stored session
 )
 
-// entry is which language the input bar is in. Orthogonal to mode: an
-// approval can arrive while a command is half typed.
-type entry int
-
-const (
-	entryPrompt entry = iota
-	entryShell
-)
-
 // focusPane is which zone the arrow keys act in.
 type focusPane int
 

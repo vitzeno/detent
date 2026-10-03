@@ -19,7 +19,7 @@ import (
 func TestShell_EnterRunsACommandRatherThanAskingForOne(t *testing.T) {
 	k := newKeyed(t)
 	k.press(t, "shift+tab")
-	require.Equal(t, entryShell, k.m.entry)
+	require.True(t, k.m.prompt.shell)
 
 	for _, r := range "ls" {
 		k.press(t, string(r))
@@ -68,9 +68,9 @@ func TestShell_ShiftTabFlipsFromEveryOwner(t *testing.T) {
 			owner := k.m.owner()
 
 			k.press(t, "shift+tab")
-			assert.Equal(t, entryShell, k.m.entry, "from owner %v", owner)
+			assert.True(t, k.m.prompt.shell, "from owner %v", owner)
 			k.press(t, "shift+tab")
-			assert.Equal(t, entryPrompt, k.m.entry, "and back")
+			assert.False(t, k.m.prompt.shell, "and back")
 		})
 	}
 }
@@ -86,7 +86,7 @@ func TestShell_ShiftTabDoesNotAnswerAPendingQuestion(t *testing.T) {
 	k.press(t, "shift+tab")
 	assert.Equal(t, modeConfirm, k.m.mode, "the call is still waiting")
 	assert.NotNil(t, k.m.asking)
-	assert.Equal(t, entryShell, k.m.entry, "but the bar switched underneath it")
+	assert.True(t, k.m.prompt.shell, "but the bar switched underneath it")
 }
 
 // Theirs stops before the Turn does: they are watching it, and the
@@ -222,7 +222,7 @@ func TestShell_TheInputBorderSaysWhichModeItIsIn(t *testing.T) {
 	require.Equal(t, focusInput, m.nav.focus)
 	assert.Equal(t, palette.Accent, m.inputBorder(), "a request gets the ordinary accent")
 
-	m.entry = entryShell
+	m.prompt.SetShell(true)
 	assert.Equal(t, palette.Caution, m.inputBorder(), "a command is marked as one")
 
 	m.nav.focus = focusHistory
@@ -253,7 +253,7 @@ func TestShell_TheRenderedBorderFollowsTheMode(t *testing.T) {
 	m.sizeViewport()
 	inPrompt := inputTopBorder(t, m)
 
-	m.entry = entryShell
+	m.prompt.SetShell(true)
 	inShell := inputTopBorder(t, m)
 
 	assert.NotEqual(t, inPrompt, inShell, "the input island is drawn in the mode's colour")

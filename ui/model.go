@@ -48,7 +48,6 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, and helpe
 	cur    *turnBlock
 
 	mode    mode
-	entry   entry
 	waiting bool
 
 	// asking and bound are the two questions the engine can put to a
