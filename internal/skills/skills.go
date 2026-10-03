@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/vitzeno/detent/internal/gitroot"
 )
 
 // maxHead bounds what is read of a SKILL.md at startup, where only its header is wanted.
@@ -48,7 +50,7 @@ type Root struct {
 // directory from dir up to its repository root, then the human's own.
 func Roots(dir, home string) []Root {
 	var out []Root
-	dirs := upToRoot(dir)
+	dirs := gitroot.Dirs(dir)
 	// A repository's skill may link only within it, never out to the rest of this machine.
 	repo := dirs[len(dirs)-1]
 	for _, d := range dirs {
@@ -81,7 +83,7 @@ func Find(roots []Root) ([]Skill, []string) {
 			if !isDir(dir) {
 				continue
 			}
-			if root.Within != "" && (!inside(dir, root.Within) || !inside(filepath.Join(dir, "SKILL.md"), root.Within)) {
+			if root.Within != "" && !contained(root.Within, dir) {
 				warnings = append(warnings, fmt.Sprintf("skills: %s links outside the repository, so it was skipped", dir))
 				continue
 			}
@@ -203,36 +205,14 @@ func quoteValues(head string) string {
 	return strings.Join(lines, "\n")
 }
 
-// upToRoot is dir and each parent up to the one holding .git, nearest
-// first, or dir alone outside a repository.
-func upToRoot(dir string) []string {
-	if abs, err := filepath.Abs(dir); err == nil {
-		dir = abs
+// contained says whether a skill directory and its SKILL.md stay in the
+// repository. A folder with no SKILL.md is load's to skip, not a link outside.
+func contained(within, dir string) bool {
+	if in, err := gitroot.Contains(within, dir); err != nil || !in {
+		return false
 	}
-	var dirs []string
-	for d := filepath.Clean(dir); ; d = filepath.Dir(d) {
-		dirs = append(dirs, d)
-		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
-			return dirs
-		}
-		if filepath.Dir(d) == d {
-			return dirs[:1]
-		}
-	}
-}
-
-// inside reports whether p, links followed, is dir or under it.
-func inside(p, dir string) bool {
-	resolved, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		// Missing is load's to report, and nothing outside was reached.
-		return errors.Is(err, fs.ErrNotExist)
-	}
-	if d, err := filepath.EvalSymlinks(dir); err == nil {
-		dir = d
-	}
-	rel, err := filepath.Rel(dir, resolved)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	in, err := gitroot.Contains(within, filepath.Join(dir, "SKILL.md"))
+	return in || errors.Is(err, fs.ErrNotExist)
 }
 
 func isDir(p string) bool {

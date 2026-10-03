@@ -301,6 +301,7 @@ model       →  event
 event       →  the standard library, plus viewspec and google/uuid
 viewspec    →  the standard library, nothing else
 termsafe    →  the standard library, nothing else
+gitroot     →  the standard library (instructions and skills share it)
 private     →  the standard library, nothing else
 views       →  viewspec, event
 logging     →  the standard library, plus event

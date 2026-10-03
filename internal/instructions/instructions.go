@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/vitzeno/detent/internal/gitroot"
 )
 
 // names are tried in order in each directory, and only the first found is read.
@@ -45,7 +47,7 @@ func Find(dir, global string) ([]File, error) {
 	}
 	var found []File
 	var errs []error
-	dirs := upToRoot(dir)
+	dirs := gitroot.Dirs(dir)
 	// A project file may link only within its own repository, never to a key elsewhere on this machine.
 	within := dirs[len(dirs)-1]
 	// Nearest first, so the file that matters most is the last to be cut.
@@ -138,8 +140,10 @@ func read(p, name, within string) (File, bool, error) {
 	if !info.Mode().IsRegular() {
 		return File{}, false, nil
 	}
-	if within != "" && !inside(p, within) {
-		return File{}, false, fmt.Errorf("%s links outside the repository, so it was not read", p)
+	if within != "" {
+		if in, err := gitroot.Contains(within, p); err != nil || !in {
+			return File{}, false, fmt.Errorf("%s links outside the repository, so it was not read", p)
+		}
 	}
 	f, err := os.Open(p)
 	if err != nil {
@@ -154,39 +158,12 @@ func read(p, name, within string) (File, bool, error) {
 	return File{Path: name, Text: string(text)}, true, nil
 }
 
-// inside reports whether p, links followed, is dir or under it.
-func inside(p, dir string) bool {
-	resolved, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		return false
-	}
-	if d, err := filepath.EvalSymlinks(dir); err == nil {
-		dir = d
-	}
-	rel, err := filepath.Rel(dir, resolved)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
 // tilde shortens a path under the home directory, for the prompt and /status.
 func tilde(p string) string {
 	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(p, home+string(filepath.Separator)) {
 		return "~" + p[len(home):]
 	}
 	return p
-}
-
-// upToRoot is dir and each parent up to the one holding .git, nearest first.
-func upToRoot(dir string) []string {
-	var dirs []string
-	for d := filepath.Clean(dir); ; d = filepath.Dir(d) {
-		dirs = append(dirs, d)
-		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
-			return dirs
-		}
-		if filepath.Dir(d) == d {
-			return dirs[:1]
-		}
-	}
 }
 
 // cut keeps at most n bytes, ending on a whole line where there is one

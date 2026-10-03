@@ -154,6 +154,21 @@ func TestRoots_FenceProjectSkillsToTheRepository(t *testing.T) {
 	}
 }
 
+// A SKILL.md linking to nothing cannot be shown to stay inside, so it is
+// skipped. A folder with no SKILL.md is not a skill, and is not a link outside.
+func TestFind_ADanglingSkillIsSkippedAndAPlainFolderIsNotAWarning(t *testing.T) {
+	repo := tree(t, map[string]string{"skills/real/SKILL.md": skill("real", "fine")})
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, "skills", "plain"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, "skills", "dangling"), 0o755))
+	require.NoError(t, os.Symlink(filepath.Join(repo, "nowhere", "SKILL.md"), filepath.Join(repo, "skills", "dangling", "SKILL.md")))
+
+	got, warnings := Find([]Root{{Dir: filepath.Join(repo, "skills"), Project: true, Within: repo}})
+	require.Len(t, got, 1)
+	assert.Equal(t, "real", got[0].Name)
+	require.Len(t, warnings, 1, "only the dangling link warns: %v", warnings)
+	assert.Contains(t, warnings[0], "dangling")
+}
+
 func skill(name, description string) string {
 	return "---\nname: " + name + "\ndescription: |\n  " + strings.ReplaceAll(description, "\n", "\n  ") + "\n---\n# " + name + "\n"
 }
