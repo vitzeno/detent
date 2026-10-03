@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -90,6 +91,9 @@ func TestTokens_RoundTrip(t *testing.T) {
 
 // Only this user may read a token, and the directory holding it.
 func TestTokens_AreReadableByTheirOwnerAlone(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no mode bits, a profile is private by ACL")
+	}
 	tokens := Tokens{Dir: filepath.Join(t.TempDir(), "mcp")}
 	require.NoError(t, tokens.Save("notion", notionURL, saved()))
 	dir, err := os.Stat(tokens.Dir)

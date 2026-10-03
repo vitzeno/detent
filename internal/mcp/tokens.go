@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"golang.org/x/oauth2"
+
+	"github.com/vitzeno/detent/internal/private"
 )
 
 // Tokens keeps each sign-in on disk, one 0600 file per name and URL, not
@@ -59,7 +61,7 @@ func (t Tokens) Load(server, resource string) (*Saved, error) {
 		return nil, fmt.Errorf("mcp: %s token: %w", server, err)
 	}
 	// Refused rather than read, as ssh refuses a key others can read.
-	if info.Mode().Perm()&0o077 != 0 {
+	if !private.Is(info) {
 		return nil, fmt.Errorf("mcp: %s is readable by others; chmod 600 it", path)
 	}
 	raw, err := os.ReadFile(path)

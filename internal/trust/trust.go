@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/vitzeno/detent/internal/private"
 )
 
 // Files are what detent reads from the working directory, in hash order.
@@ -158,7 +160,7 @@ func load(path string) (map[string]string, error) {
 		return nil, fmt.Errorf("trust: %w", err)
 	}
 	// Anyone who can write it can approve a directory, so it is refused as ssh refuses a key.
-	if info.Mode().Perm()&0o077 != 0 {
+	if !private.Is(info) {
 		return nil, fmt.Errorf("trust: %s is open to others; chmod 600 it", path)
 	}
 	raw, err := os.ReadFile(path)

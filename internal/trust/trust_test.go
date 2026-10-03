@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -83,6 +84,9 @@ func TestDecide(t *testing.T) {
 }
 
 func TestDecide_RecordIsPrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no mode bits, a profile is private by ACL")
+	}
 	dir, state := t.TempDir(), filepath.Join(t.TempDir(), "state")
 	write(t, dir, ".mcp.json", `{"mcpServers":{}}`)
 	var asked bool
@@ -99,6 +103,9 @@ func TestDecide_RecordIsPrivate(t *testing.T) {
 
 // Anyone who can write the record could approve a directory for us.
 func TestDecide_RefusesAnOpenRecord(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no mode bits, a profile is private by ACL")
+	}
 	dir, state := t.TempDir(), t.TempDir()
 	write(t, dir, ".env", "A=1\n")
 	write(t, state, "trust.json", `{"dirs":{}}`)

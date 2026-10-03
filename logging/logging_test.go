@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -113,6 +114,9 @@ func TestEvents_NoNameSaysGoal(t *testing.T) {
 // With bodies on, the log holds every prompt and output, so nobody else
 // on the machine may read it, even if the file was made wider before.
 func TestSetup_LogIsOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no mode bits, a profile is private by ACL")
+	}
 	dir := filepath.Join(t.TempDir(), "logs")
 	closer, err := logging.Setup("m1", logging.WithDir(dir))
 	require.NoError(t, err)
