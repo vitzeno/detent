@@ -15,8 +15,8 @@ import (
 // never wired: failing loudly beats running it on the host instead.
 var ErrNoSandbox = errors.New("routing: no sandbox is configured")
 
-// Selector picks host or sandbox: a global toggle, with Risk
-// threaded through so a real rule can replace the body later.
+// Selector picks host or sandbox by a global toggle. Host is read only
+// when HostOnly is set.
 type Selector struct {
 	Host     engine.Runner
 	Sandbox  engine.Runner
