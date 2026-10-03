@@ -1,6 +1,6 @@
 // Package logging writes one JSONL stream per session, not a file per
-// component, since a step crosses several. Standard library only, so
-// ui may import it.
+// component, since a step crosses several. Standard library plus event,
+// so event itself can never log.
 package logging
 
 import (
@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"unicode/utf8"
 )
 
 // Setup opens this session's log as the default logger. A path it cannot
@@ -25,19 +27,34 @@ func Setup(session string, opts ...Option) (func() error, error) {
 	if session == "" {
 		session = "session"
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if session != filepath.Base(session) {
+		return disable(fmt.Errorf("logging: %q is not a session name", session))
+	}
+	// Owner only: with bodies on the file holds every prompt and output.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return disable(fmt.Errorf("logging: %w", err))
 	}
 	path := filepath.Join(dir, session+".jsonl")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return disable(fmt.Errorf("logging: %w", err))
 	}
-	bodies = o.bodies
+	// OpenFile keeps an existing file's mode, which may predate this.
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return disable(fmt.Errorf("logging: %w", err))
+	}
+	lvl, lvlErr := parseLevel(o.level)
+	bodies.Store(o.bodies)
 	slog.SetDefault(slog.New(slog.NewJSONHandler(f, &slog.HandlerOptions{
-		Level: parseLevel(o.level),
+		Level: lvl,
 	})).With(KeySession, session))
-	return f.Close, nil
+	closer := func() error {
+		// A late write after this goes nowhere rather than to a closed file.
+		slog.SetDefault(slog.New(slog.DiscardHandler))
+		return f.Close()
+	}
+	return closer, lvlErr
 }
 
 // For returns the logger a component writes with.
@@ -48,11 +65,26 @@ func For(component string) *slog.Logger {
 // Body returns text only when bodies are allowed, a length
 // otherwise. Use it for anything unbounded.
 func Body(text string) string {
-	if bodies {
+	if bodies.Load() {
 		return text
 	}
 	return fmt.Sprintf("(%d bytes, set log_bodies to record)", len(text))
 }
+
+// Snippet is Body for text worth keeping some of, such as an error that
+// may quote an endpoint's reply: its first snippetBytes when withheld.
+func Snippet(text string) string {
+	if bodies.Load() || len(text) <= snippetBytes {
+		return text
+	}
+	cut := snippetBytes
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return fmt.Sprintf("%s... (%d bytes, set log_bodies to record)", text[:cut], len(text))
+}
+
+const snippetBytes = 200
 
 // DefaultDir is where session logs live, beside the saved views.
 func DefaultDir() string {
@@ -64,19 +96,20 @@ func DefaultDir() string {
 }
 
 // bodies is package-level so no call site has to thread it.
-var bodies bool
+var bodies atomic.Bool
 
-func parseLevel(s string) slog.Level {
+func parseLevel(s string) (slog.Level, error) {
 	switch strings.ToLower(s) {
 	case "debug":
-		return slog.LevelDebug
+		return slog.LevelDebug, nil
+	case "", "info":
+		return slog.LevelInfo, nil
 	case "warn":
-		return slog.LevelWarn
+		return slog.LevelWarn, nil
 	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
+		return slog.LevelError, nil
 	}
+	return slog.LevelInfo, fmt.Errorf("logging: unknown level %q, logging at info", s)
 }
 
 func disable(err error) (func() error, error) {

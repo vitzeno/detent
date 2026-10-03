@@ -13,13 +13,14 @@ import (
 // ids come off the event, so no call site has to thread them.
 func Watch(bus *event.Bus) func() {
 	facts, unsub := bus.Subscribe(worthKeeping)
-	log := For(Engine)
+	// Bus, not the publisher: the bus does not know who that was.
+	log := For(Bus)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		for rec := range facts {
 			level, fields := describe(rec.Event)
-			log.Log(context.TODO(), level, string(rec.Event.Kind()),
+			log.Log(context.Background(), level, string(rec.Event.Kind()),
 				append([]any{KeyEvent, string(rec.Event.Kind()), KeyOrdinal, rec.Ordinal}, fields...)...)
 		}
 	}()
@@ -88,12 +89,12 @@ func describe(e event.Event) (slog.Level, []any) {
 	case event.CallAssessed:
 		return slog.LevelInfo, []any{KeyCall, v.Call, "dangerous", v.Risk.Dangerous,
 			"mutability", v.Risk.Mutability, "scope_risk", v.Risk.ScopeRisk,
-			"from_judge", v.Risk.FromJudge, KeyReason, v.Risk.Note}
+			"from_judge", v.Risk.FromJudge, KeyReason, Snippet(v.Risk.Note)}
 	case event.ApprovalAsked:
 		// The same string the human was shown, since what they approved
 		// is the whole of what this record is for.
 		return slog.LevelInfo, []any{KeyCall, v.Call, "tool", v.Tool,
-			"command", Body(event.Command(v.Tool, v.Args)), KeyReason, v.Rationale}
+			"command", Body(event.Command(v.Tool, v.Args)), KeyReason, Snippet(v.Rationale)}
 	case event.CallStarted:
 		return slog.LevelDebug, []any{KeyCall, v.Call, "runner", v.Runner}
 	case event.CallEnded:
@@ -101,7 +102,7 @@ func describe(e event.Event) (slog.Level, []any) {
 			KeyCall, v.Call, "exit", v.Result.ExitCode, KeyMS, v.Took.Milliseconds(),
 			"bytes", len(v.Result.Stdout) + len(v.Result.Stderr),
 			"stdout", Body(v.Result.Stdout), "stderr", Body(v.Result.Stderr),
-			KeyReason, v.Result.Err}
+			KeyReason, Snippet(v.Result.Err)}
 	case event.CallJudged:
 		return slog.LevelDebug, []any{KeyCall, v.Call, "status", v.Status,
 			"kind", v.RenderKind, "attention", v.Attention,
@@ -118,11 +119,25 @@ func describe(e event.Event) (slog.Level, []any) {
 			KeyShell, v.Shell, "exit", v.Result.ExitCode, KeyMS, v.Took.Milliseconds(),
 			"bytes", len(v.Result.Stdout) + len(v.Result.Stderr),
 			"stdout", Body(v.Result.Stdout), "stderr", Body(v.Result.Stderr),
-			KeyReason, v.Result.Err}
+			KeyReason, Snippet(v.Result.Err)}
 	case event.Notice:
 		// severity, not level: slog writes its own "level" key, and two
 		// in one object means the last one silently wins.
-		return level(v.Level == "error" || v.Level == "warn"), []any{"severity", v.Level, "text", v.Text}
+		// Snippet: a notice can carry an endpoint's error body, which may echo the request.
+		return level(v.Level == "error" || v.Level == "warn"), []any{"severity", v.Level, "text", Snippet(v.Text)}
+	case event.ContextMeasured:
+		return slog.LevelDebug, []any{"total", v.Total, "budget", v.Budget, "exact", v.Exact}
+	case event.SessionsListed:
+		return slog.LevelDebug, []any{"sessions", len(v.Sessions)}
+	case event.ServersListed:
+		return slog.LevelDebug, []any{"servers", len(v.Servers)}
+	case event.AuthorizationWaiting:
+		// Not the URL: it carries the sign-in's state.
+		return slog.LevelInfo, []any{"server", v.Server, "until", v.Until}
+	case event.ServerAuthorized:
+		return slog.LevelInfo, []any{"server", v.Server}
+	case event.AuthorizationFailed:
+		return slog.LevelWarn, []any{"server", v.Server, KeyReason, Snippet(v.Reason)}
 	}
 	return slog.LevelDebug, nil
 }

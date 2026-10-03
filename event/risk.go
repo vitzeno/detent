@@ -9,7 +9,8 @@ type Risk struct {
 	// ScopeRisk is blast radius, 0 to 1, or -1 when nothing answered.
 	// A zero from a hook that is not the judge is no answer.
 	ScopeRisk float64
-	Note      string
+	// Note is harness text. Never quote the command in it: the log withholds that.
+	Note string
 	// FromJudge is false when only the cheap hooks spoke.
 	FromJudge bool
 }

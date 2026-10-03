@@ -5,8 +5,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -81,32 +83,92 @@ func TestSetup_LevelFiltersAsAsked(t *testing.T) {
 	assert.Equal(t, slog.LevelWarn.String(), got[0]["level"])
 }
 
+// names is every record name events.go declares, one list so the two
+// tests below cannot disagree about what exists.
+var names = []string{
+	logging.SessionOpen,
+	logging.LLMRequest, logging.LLMReply, logging.LLMError,
+	logging.ViewLookup, logging.ViewSkipped, logging.ViewInvalid,
+	logging.ViewFit, logging.ViewAccepted, logging.ViewDeclined, logging.ViewDrawn,
+}
+
 // An event name is a record's primary key, so two sharing one makes a
 // query return both. Facts use event.Kind, which event's tests cover.
 func TestEvents_NamesAreUnique(t *testing.T) {
-	names := map[string]int{}
-	for _, e := range []string{
-		logging.SessionOpen,
-		logging.LLMRequest, logging.LLMReply, logging.LLMError,
-		logging.ViewLookup, logging.ViewSkipped, logging.ViewInvalid,
-		logging.ViewFit, logging.ViewAccepted, logging.ViewDeclined, logging.ViewDrawn,
-	} {
-		names[e]++
-		assert.Equal(t, 1, names[e], "%s is used by more than one event", e)
+	seen := map[string]int{}
+	for _, e := range names {
+		seen[e]++
+		assert.Equal(t, 1, seen[e], "%s is used by more than one event", e)
 	}
 }
 
 // No name may say "goal": the unit is a Turn, and a query for the
 // wrong word finds nothing.
 func TestEvents_NoNameSaysGoal(t *testing.T) {
-	for _, e := range []string{
-		logging.SessionOpen, logging.LLMRequest, logging.LLMReply, logging.LLMError,
-		logging.ViewLookup, logging.ViewSkipped, logging.ViewInvalid,
-		logging.ViewFit, logging.ViewAccepted, logging.ViewDeclined, logging.ViewDrawn,
-		logging.KeyTurn, logging.KeyStep, logging.KeyCall,
-	} {
+	for _, e := range append(slices.Clone(names), logging.KeyTurn, logging.KeyStep, logging.KeyCall) {
 		assert.NotContains(t, e, "goal", "%q still names a goal", e)
 	}
+}
+
+// With bodies on, the log holds every prompt and output, so nobody else
+// on the machine may read it, even if the file was made wider before.
+func TestSetup_LogIsOwnerOnly(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "logs")
+	closer, err := logging.Setup("m1", logging.WithDir(dir))
+	require.NoError(t, err)
+	require.NoError(t, closer())
+
+	info, err := os.Stat(dir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+	info, err = os.Stat(filepath.Join(dir, "m1.jsonl"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+
+	wide := filepath.Join(dir, "m2.jsonl")
+	require.NoError(t, os.WriteFile(wide, nil, 0o644))
+	require.NoError(t, os.Chmod(wide, 0o644))
+	closer, err = logging.Setup("m2", logging.WithDir(dir))
+	require.NoError(t, err)
+	require.NoError(t, closer())
+	info, err = os.Stat(wide)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+}
+
+// A typo in the level is said, not silently read as info.
+func TestSetup_UnknownLevelIsReportedAndLogsAtInfo(t *testing.T) {
+	dir := t.TempDir()
+	closer, err := logging.Setup("l1", logging.WithDir(dir), logging.WithLevel("debgu"))
+	require.ErrorContains(t, err, "debgu")
+	logging.For(logging.Host).Debug("quiet")
+	logging.For(logging.Host).Info("kept")
+	require.NoError(t, closer())
+	assert.Len(t, records(t, dir, "l1"), 1)
+}
+
+// A late write after the closer goes nowhere, not to a closed file.
+func TestSetup_CloserLeavesADiscardingDefault(t *testing.T) {
+	dir := t.TempDir()
+	closer, err := logging.Setup("d1", logging.WithDir(dir))
+	require.NoError(t, err)
+	require.NoError(t, closer())
+	logging.For(logging.Host).Info("late")
+	assert.Empty(t, records(t, dir, "d1"))
+}
+
+func TestSnippet_KeepsTheStartOfLongTextWhenBodiesAreOff(t *testing.T) {
+	dir := t.TempDir()
+	closer, err := logging.Setup("p1", logging.WithDir(dir))
+	require.NoError(t, err)
+	defer closer() //nolint:errcheck
+
+	assert.Equal(t, "short error", logging.Snippet("short error"))
+	long := "endpoint said: " + strings.Repeat("é", 300)
+	got := logging.Snippet(long)
+	assert.True(t, strings.HasPrefix(got, "endpoint said: "))
+	assert.Less(t, len(got), len(long))
+	assert.True(t, utf8.ValidString(got), "a cut must not split a rune")
 }
 
 // records reads what has been written so far, skipping a half-written

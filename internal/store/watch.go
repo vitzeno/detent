@@ -21,14 +21,14 @@ func Watch(bus *event.Bus, s *Store, session uuid.UUID) func() {
 			}
 			if err := s.Append(session, rec); err != nil {
 				if failed == 0 {
-					logging.For(logging.Engine).Error("this session is not being recorded",
+					logging.For(logging.Store).Error("this session is not being recorded",
 						logging.KeyReason, err.Error(), logging.KeyOrdinal, rec.Ordinal)
 				}
 				failed++
 			}
 		}
 		if failed > 1 {
-			logging.For(logging.Engine).Error("records were lost", "lost", failed)
+			logging.For(logging.Store).Error("records were lost", "lost", failed)
 		}
 	}()
 	return func() {
@@ -55,7 +55,7 @@ func (s *Store) serve(bus *event.Bus, e event.Event) bool {
 	}
 	all, err := s.Sessions()
 	if err != nil {
-		logging.For(logging.Engine).Error("could not list sessions", logging.KeyReason, err.Error())
+		logging.For(logging.Store).Error("could not list sessions", logging.KeyReason, err.Error())
 		return true
 	}
 	bus.Publish(event.SessionsListed{Sessions: all})

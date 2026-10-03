@@ -44,4 +44,7 @@ const (
 	Host    = "host"
 	Sandbox = "sandbox"
 	Viewgen = "viewgen"
+	Store   = "store"
+	// Bus is every fact Watch writes, whoever published it.
+	Bus = "bus"
 )
