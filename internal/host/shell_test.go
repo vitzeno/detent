@@ -12,7 +12,7 @@ import (
 )
 
 func TestShell_DeliversLinesAndResult(t *testing.T) {
-	res, events, err := runCollect(context.Background(), "echo out; echo err >&2; echo two")
+	res, events, err := runCollect(t.Context(), "echo out; echo err >&2; echo two")
 	require.NoError(t, err)
 	assert.Equal(t, 0, res.ExitCode)
 	assert.Equal(t, "out\ntwo\n", res.Stdout)
@@ -28,20 +28,20 @@ func TestShell_DeliversLinesAndResult(t *testing.T) {
 }
 
 func TestShell_NilChannelSkipsEvents(t *testing.T) {
-	res, err := NewShell().Run(context.Background(), "echo hi", nil)
+	res, err := NewShell().Run(t.Context(), "echo hi", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "hi\n", res.Stdout)
 }
 
 func TestShell_NonZeroExitIsAResult(t *testing.T) {
-	res, events, err := runCollect(context.Background(), "echo before; exit 3")
+	res, events, err := runCollect(t.Context(), "echo before; exit 3")
 	require.NoError(t, err)
 	assert.Equal(t, 3, res.ExitCode)
 	assert.Len(t, events, 1)
 }
 
 func TestShell_PartialFinalLineDelivered(t *testing.T) {
-	res, events, err := runCollect(context.Background(), "printf 'nonl'")
+	res, events, err := runCollect(t.Context(), "printf 'nonl'")
 	require.NoError(t, err)
 	assert.Equal(t, "nonl\n", res.Stdout)
 	require.Len(t, events, 1)
@@ -49,7 +49,7 @@ func TestShell_PartialFinalLineDelivered(t *testing.T) {
 }
 
 func TestShell_OutputBounded(t *testing.T) {
-	res, events, err := runCollect(context.Background(), "yes | head -c 100000")
+	res, events, err := runCollect(t.Context(), "yes | head -c 100000")
 	require.NoError(t, err)
 	assert.True(t, res.Truncated)
 	assert.LessOrEqual(t, len(res.Stdout), capture.MaxOutputBytes)
@@ -58,7 +58,7 @@ func TestShell_OutputBounded(t *testing.T) {
 
 func TestShell_ABackgroundedChildDoesNotHoldTheResult(t *testing.T) {
 	start := time.Now()
-	res, err := NewShell().Run(context.Background(), "echo hi; sleep 20 &", nil)
+	res, err := NewShell().Run(t.Context(), "echo hi; sleep 20 &", nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, res.ExitCode)
 	assert.Equal(t, "hi\n", res.Stdout)
@@ -66,12 +66,12 @@ func TestShell_ABackgroundedChildDoesNotHoldTheResult(t *testing.T) {
 }
 
 func TestShell_EmptyCommandRejected(t *testing.T) {
-	_, err := NewShell().Run(context.Background(), "  ", nil)
+	_, err := NewShell().Run(t.Context(), "  ", nil)
 	assert.ErrorIs(t, err, ErrEmptyCommand)
 }
 
 func TestShell_ContextTimeoutWins(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
 	defer cancel()
 	// tail blocks everywhere, while sleep is a no-op shim in some sandboxes.
 	_, err := NewShell().Run(ctx, "tail -f /dev/null", nil)
