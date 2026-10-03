@@ -67,8 +67,8 @@ func TestWatch_AShellGetsTheShippedViewWithoutAJudge(t *testing.T) {
 	assert.Equal(t, string(viewgen.SourceShipped), got.Source)
 }
 
-// A Shell is asked its shape and nothing else: how it went is the
-// human's to read, which is the line a Shell was made to hold.
+// A user command is asked its shape and nothing else: how it went is the
+// human's to read, which is the line a user command was made to hold.
 func TestWatch_AShellIsAskedItsShapeAndNothingElse(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
@@ -101,7 +101,7 @@ func TestWatch_AShellIsAskedItsShapeAndNothingElse(t *testing.T) {
 	}
 }
 
-// A diff composes nothing, and a Shell's row has no kind for ui to fall
+// A diff composes nothing, and a user command's row has no kind for ui to fall
 // back on, so the kind's own view is sent instead.
 func TestWatch_AShellFallsBackToItsKindsView(t *testing.T) {
 	bus := event.New()
@@ -122,7 +122,7 @@ func TestWatch_AShellFallsBackToItsKindsView(t *testing.T) {
 	assert.Equal(t, "diff", got.Spec.Blocks[0].Kind)
 }
 
-// With no judge wired nothing publishes CallJudged, and a Call must not
+// With no judge wired nothing publishes CallJudged, and a tool call must not
 // wait for one: the shipped view draws as soon as it ends.
 func TestWatch_AnUnjudgedCallResolvesWhenItEnds(t *testing.T) {
 	bus := event.New()
@@ -143,7 +143,7 @@ func TestWatch_AnUnjudgedCallResolvesWhenItEnds(t *testing.T) {
 	assert.Equal(t, "go test", got.Spec.Match)
 }
 
-// Shells of one shipped command resolve at once, in parallel, and share
+// User commands of one shipped command resolve at once, in parallel, and share
 // nothing mutable with each other or with ui.
 func TestWatch_ParallelShellsShareNoState(t *testing.T) {
 	bus := event.New()

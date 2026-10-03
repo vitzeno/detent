@@ -16,7 +16,7 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// toolCallPlan is one Call's journey. answer is always set by the end,
+// toolCallPlan is one tool call's journey. answer is always set by the end,
 // which is what keeps the transcript well formed.
 type toolCallPlan struct {
 	id     uuid.UUID
@@ -48,8 +48,8 @@ const (
 	abandoned
 )
 
-// runStep answers every Call however it went, in the order asked.
-// Contiguous read-only Calls run together, never ahead of an earlier write.
+// runStep answers every tool call however it went, in the order asked.
+// Contiguous read-only tool calls run together, never ahead of an earlier write.
 func (e *Engine) runStep(ctx context.Context, t *turnState, step uuid.UUID, reply model.Reply) []string {
 	plans := e.plan(ctx, step, reply)
 	stopping := func() bool { return t.aborted.Load() || ctx.Err() != nil }
@@ -145,7 +145,7 @@ func (e *Engine) plan(ctx context.Context, step uuid.UUID, reply model.Reply) []
 	return out
 }
 
-// runParallel runs read-only Calls together. They change nothing, so
+// runParallel runs read-only tool calls together. They change nothing, so
 // nothing depends on their order.
 func (e *Engine) runParallel(ctx context.Context, plans []*toolCallPlan) {
 	var wg sync.WaitGroup
@@ -222,7 +222,7 @@ func (e *Engine) execute(ctx context.Context, p *toolCallPlan) {
 	e.repeat.ran(p.cmd, p.answer)
 }
 
-// invoke runs a Call with no command. Runner names the executor, so
+// invoke runs a tool call with no command. Runner names the executor, so
 // the row says where it ran rather than implying the sandbox.
 func (e *Engine) invoke(ctx context.Context, p *toolCallPlan) {
 	if e.invoker == nil {
@@ -246,7 +246,7 @@ func (e *Engine) invoke(ctx context.Context, p *toolCallPlan) {
 	p.finish(formatResult(p.cmd, out))
 }
 
-// runSafely turns a panicking Runner into a failed Call. Taking the
+// runSafely turns a panicking Runner into a failed tool call. Taking the
 // session down would lose every checkpoint still rollable.
 func runSafely(ctx context.Context, r Runner, cmd string, lines chan<- capture.StreamEvent) (res capture.Result, err error) {
 	defer func() {
@@ -257,7 +257,7 @@ func runSafely(ctx context.Context, r Runner, cmd string, lines chan<- capture.S
 	return r.Run(ctx, cmd, lines)
 }
 
-// invokeSafely turns a panicking Invoker into a failed Call, the way
+// invokeSafely turns a panicking Invoker into a failed tool call, the way
 // runSafely does for a Runner.
 func invokeSafely(ctx context.Context, in Invoker, c tool.Call) (res capture.Result, err error) {
 	defer func() {
@@ -268,7 +268,7 @@ func invokeSafely(ctx context.Context, in Invoker, c tool.Call) (res capture.Res
 	return in.Invoke(ctx, c), nil
 }
 
-// why says what stopped a Call. The time limit is named with its length,
+// why says what stopped a tool call. The time limit is named with its length,
 // so the model can tell a slow command from a broken one.
 func (e *Engine) why(ctx, cctx context.Context, err error) string {
 	if errors.Is(cctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {

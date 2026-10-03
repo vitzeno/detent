@@ -1,5 +1,5 @@
-// Package humanshell runs the commands a human types. A Shell is a
-// fifth scope beside Session, Turn, Step and Call: no model asked for
+// Package usercommand runs the commands a human types. A user command is a
+// fifth scope beside Session, Turn, Step and tool call: no model asked for
 // one, so nothing here assesses, approves or judges it.
 package usercommand
 

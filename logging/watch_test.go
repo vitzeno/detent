@@ -60,7 +60,7 @@ func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 	}
 }
 
-// A command the human ran is logged like a Call, under its own key:
+// A command the human ran is logged like a tool call, under its own key:
 // the id has to be findable, and a failure has to be worth finding.
 func TestWatch_LogsAHumanCommand(t *testing.T) {
 	dir := t.TempDir()

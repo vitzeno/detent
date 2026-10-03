@@ -72,7 +72,7 @@ func TestShutdown_StopsTheShellBeforeTheEngineAndTheDrain(t *testing.T) {
 		}
 	}()
 
-	// Stands in for what humanshell.Watch returns: it publishes what
+	// Stands in for what usercommand.Watch returns: it publishes what
 	// the cancelled command owes and only then returns.
 	shell := func() {
 		bus.Publish(event.UserCommandEnded{Result: event.Result{Err: "stopped by the human"}})

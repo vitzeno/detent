@@ -14,7 +14,7 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// A Call with an executor goes to the Invoker, and the Runner never
+// A tool call with an executor goes to the Invoker, and the Runner never
 // sees it: there is no command for a shell to run.
 func TestExecute_ARemoteCallGoesToTheInvoker(t *testing.T) {
 	in := &fakeInvoker{out: capture.Result{Stdout: "from the server\n"}}
@@ -43,7 +43,7 @@ func TestExecute_CallStartedNamesTheServer(t *testing.T) {
 	assert.Equal(t, "srv", started[0].(event.ToolCallStarted).Runner)
 }
 
-// A shell Call must keep going to the Runner untouched.
+// A shell tool call must keep going to the Runner untouched.
 func TestExecute_AShellCallStillGoesToTheRunner(t *testing.T) {
 	in := &fakeInvoker{}
 	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
@@ -53,7 +53,7 @@ func TestExecute_AShellCallStillGoesToTheRunner(t *testing.T) {
 	assert.Equal(t, []string{"ls"}, r.runner.commands())
 }
 
-// Without an Invoker the Call says so rather than running or hanging.
+// Without an Invoker the tool call says so rather than running or hanging.
 func TestExecute_NoInvokerIsAnAnswerNotAFailure(t *testing.T) {
 	r := remoteRig(t, nil, []model.Reply{{Requests: []event.ToolRequest{remoteCall("r1")}}})
 	r.approve(t)
@@ -76,7 +76,7 @@ func TestExecute_APanickingInvokerIsAFailedCall(t *testing.T) {
 	assert.Contains(t, r.eng.Transcript()[2].Content, "panicked")
 }
 
-// The gate itself: an MCP Call waits for a human, and one nobody
+// The gate itself: an MCP tool call waits for a human, and one nobody
 // answers never runs. This is why the tests above have to approve.
 func TestExecute_ARemoteCallWaitsForAHuman(t *testing.T) {
 	in := &fakeInvoker{out: capture.Result{Stdout: "ok\n"}}
@@ -95,7 +95,7 @@ func TestExecute_ARemoteCallWaitsForAHuman(t *testing.T) {
 	assert.Empty(t, in.calls(), "a declined Call still reached the server")
 }
 
-// Declining stops a Call, not a Turn: its siblings still run.
+// Declining stops a tool call, not a Turn: its siblings still run.
 func TestExecute_DecliningARemoteCallLeavesItsSiblings(t *testing.T) {
 	in := &fakeInvoker{out: capture.Result{Stdout: "ok\n"}}
 	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{
@@ -114,7 +114,7 @@ func TestExecute_DecliningARemoteCallLeavesItsSiblings(t *testing.T) {
 	assert.Equal(t, []string{"echo still here"}, r.runner.commands())
 }
 
-// fakeInvoker answers a Call the way a connected server would.
+// fakeInvoker answers a tool call the way a connected server would.
 type fakeInvoker struct {
 	mu    sync.Mutex
 	saw   []tool.Call

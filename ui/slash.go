@@ -84,7 +84,7 @@ func skillCommands(skills []event.SkillSummary) []slashCmd {
 }
 
 // useSkill asks the model to load a skill, so a skill asked for by hand
-// is a skill Call like any other, and replays as one.
+// is a call to the skill tool like any other, and replays as one.
 func (m Model) useSkill(name, input string) (tea.Model, tea.Cmd) {
 	text := "Load the " + name + " skill and follow it."
 	if _, rest, ok := strings.Cut(strings.TrimSpace(input), " "); ok && strings.TrimSpace(rest) != "" {

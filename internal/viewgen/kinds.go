@@ -58,7 +58,7 @@ func RenderKindCriteria() map[string]any {
 }
 
 // RenderKindQuestion asks which shape an output has. The judge asks it
-// of a Call and viewgen of a Shell, so the wording lives in one place.
+// of a tool call and viewgen of a user command, so the wording lives in one place.
 func RenderKindQuestion() classify.Question {
 	return classify.Question{
 		Instructions: "What shape is this output? Pick how a human should read it.",

@@ -12,7 +12,7 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// A Step asking for several Calls runs them all, and the Turn ends when
+// A Step asking for several tool calls runs them all, and the Turn ends when
 // the model stops asking.
 func TestTurn_MultiCallStep(t *testing.T) {
 	r := newRig(t, []model.Reply{{
@@ -81,7 +81,7 @@ func TestTurn_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
 	}
 }
 
-// Declining stops a Call, not a Turn. Its siblings still
+// Declining stops a tool call, not a Turn. Its siblings still
 // run and the model gets to react.
 func TestTurn_DeclineStopsOneCallOnly(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
@@ -165,7 +165,7 @@ func TestTurn_RequestStopEndsAtTheNextBoundary(t *testing.T) {
 		{Requests: []event.ToolRequest{bashCall("b", "second")}},
 	}
 	r := newRig(t, replies)
-	// Hold the first Call so the stop lands inside a Step, or the fake
+	// Hold the first tool call so the stop lands inside a Step, or the fake
 	// model finishes the whole Turn before anything is published at it.
 	r.runner.mu.Lock()
 	r.runner.hold = make(chan struct{})
@@ -175,7 +175,7 @@ func TestTurn_RequestStopEndsAtTheNextBoundary(t *testing.T) {
 	r.await(event.ToolCallStartedKind)
 	turn := r.of(event.TurnStartedKind)[0].(event.TurnStarted)
 	r.bus.Publish(event.RequestStop{Turn: turn.Turn, Reason: "the goal looks met"})
-	// Settled before the Call is let go: the engine reads intents on
+	// Settled before the tool call is let go: the engine reads intents on
 	// its own goroutine, so releasing straight away races the hop.
 	r.bus.Settle(3 * time.Second)
 	close(r.runner.hold)
@@ -263,7 +263,7 @@ func TestTurn_NudgingGivesUpAfterTheLimit(t *testing.T) {
 	assert.Len(t, r.of(event.StepEndedKind), DefaultNudges+1)
 }
 
-// A panicking Runner must cost one Call, not the session: every
+// A panicking Runner must cost one tool call, not the session: every
 // checkpoint a human could still roll back to lives in the engine.
 func TestTurn_PanickingRunnerIsOneFailedCall(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "boom")}}})
@@ -334,7 +334,7 @@ func TestCallProposed_CarriesTheToolsDeclaredShape(t *testing.T) {
 }
 
 // A front-end says what a rollback cannot take back, so it has to be
-// told which Calls ran outside the sandbox.
+// told which tool calls ran outside the sandbox.
 func TestCallProposed_CarriesTheExecutor(t *testing.T) {
 	reg := tool.Standard()
 	require.NoError(t, reg.Register(remoteTool{name: "srv__do"}))
@@ -350,7 +350,7 @@ func TestCallProposed_CarriesTheExecutor(t *testing.T) {
 		"nothing said this Call ran outside the sandbox")
 }
 
-// A shell Call must not claim one, or undo would say it cannot
+// A shell tool call must not claim one, or undo would say it cannot
 // reverse things it can.
 func TestCallProposed_AShellCallHasNoExecutor(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})

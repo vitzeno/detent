@@ -118,7 +118,7 @@ func (p *Printer) handle(ev event.Event) (event.EndReason, bool) {
 	return "", false
 }
 
-// clip keeps a Call to one line of at most n runes.
+// clip keeps a tool call to one line of at most n runes.
 func clip(s string, n int) string {
 	first, _, more := strings.Cut(s, "\n")
 	r := []rune(first)
@@ -131,7 +131,7 @@ func clip(s string, n int) string {
 	return first
 }
 
-// outcome is how a Call ended: its exit code, or why it has none.
+// outcome is how a tool call ended: its exit code, or why it has none.
 func outcome(r event.Result) string {
 	if r.Err != "" {
 		return r.Err

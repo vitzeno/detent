@@ -88,7 +88,7 @@ func TestAssess_APanickingHookIsSkipped(t *testing.T) {
 	assert.Contains(t, notice.Text, "panicked")
 }
 
-// An outage fails every Call, but warns once a Turn rather than once a Call.
+// An outage fails every tool call, but warns once per Turn, not once per tool call.
 func TestAssess_AFailingHookWarnsOnceATurn(t *testing.T) {
 	r := rigWith(t, event.New(), &fakeModel{}, &fakeRunner{}, WithAssessor(brokenHook{}))
 	for range 3 {
@@ -192,7 +192,7 @@ func TestDescribe_ReadsAsASentence(t *testing.T) {
 	assert.Empty(t, describe(event.Risk{ScopeRisk: -1}))
 }
 
-// Every MCP Call is confirmed: it runs outside the sandbox and no
+// Every MCP tool call is confirmed: it runs outside the sandbox and no
 // checkpoint can undo it.
 func TestMCPFloor_ConfirmsEveryRemoteCall(t *testing.T) {
 	risk, err := mcpFloor{}.Assess(context.Background(),
@@ -202,7 +202,7 @@ func TestMCPFloor_ConfirmsEveryRemoteCall(t *testing.T) {
 	assert.Contains(t, risk.Note, "github")
 }
 
-// A shell Call must not pick it up, or everything would need approval.
+// A shell tool call must not pick it up, or everything would need approval.
 func TestMCPFloor_LeavesShellCallsAlone(t *testing.T) {
 	risk, err := mcpFloor{}.Assess(context.Background(),
 		tool.Call{Tool: "bash", Command: "ls"}, event.Risk{})

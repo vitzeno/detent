@@ -20,7 +20,7 @@ func WithMaxSteps(n int) Option {
 	}
 }
 
-// WithToolCallsPerStep caps how many Calls one Step may ask for.
+// WithToolCallsPerStep caps how many tool calls one Step may ask for.
 func WithToolCallsPerStep(n int) Option {
 	return func(e *Engine) {
 		if n > 0 {
@@ -65,8 +65,8 @@ func WithAssessor(a Assessor) Option {
 // snapshot never covers.
 func WithWorktree(w Worktreer) Option { return func(e *Engine) { e.worktreer = w } }
 
-// WithInvoker wires what answers a Call with no command. Without one
-// those Calls come back saying so, rather than running.
+// WithInvoker wires what answers a tool call with no command. Without one
+// those tool calls come back saying so, rather than running.
 func WithInvoker(in Invoker) Option { return func(e *Engine) { e.invoker = in } }
 
 // WithDescription is what the session says about itself at startup,
@@ -83,7 +83,7 @@ func WithInstructions(paths []string) Option {
 	return func(e *Engine) { e.instructions = paths }
 }
 
-// WithCommandTimeout bounds each Call. Zero keeps the default.
+// WithCommandTimeout bounds each tool call. Zero keeps the default.
 func WithCommandTimeout(d time.Duration) Option {
 	return func(e *Engine) {
 		if d > 0 {

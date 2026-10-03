@@ -10,7 +10,7 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Watch composes a view per judged Call and per Shell. A subscriber, so
+// Watch composes a view per judged tool call and per user command. A subscriber, so
 // a redraw cannot fire a second model call: a redraw is not an event.
 // Cancelling ctx abandons compositions in flight, as the stop does.
 func (g *Generator) Watch(ctx context.Context, bus *event.Bus) func() {
@@ -37,7 +37,7 @@ func (g *Generator) Watch(ctx context.Context, bus *event.Bus) func() {
 	}
 }
 
-// pending is what is known about one Call so far: the command, output
+// pending is what is known about one tool call so far: the command, output
 // and judged kind arrive in three separate facts.
 type pending struct {
 	command string
@@ -59,9 +59,9 @@ type watcher struct {
 	ctx   context.Context
 	wg    sync.WaitGroup
 	calls map[uuid.UUID]*pending
-	// commands is the command each running Shell was started with.
+	// commands is the command each running user command was started with.
 	commands map[uuid.UUID]string
-	// slots holds maxComposing: parallel Calls finish together and each
+	// slots holds maxComposing: parallel tool calls finish together and each
 	// costs a judge round trip.
 	slots chan struct{}
 }
@@ -80,7 +80,7 @@ func (w *watcher) take(e event.Event) {
 		}
 		result := v.Result
 		p.result = &result
-		// With no judge wired no CallJudged follows, so the Call resolves now.
+		// With no judge wired no CallJudged follows, so the tool call resolves now.
 		if w.gen.Unjudged {
 			w.start(v.ToolCall, p)
 		}
@@ -106,7 +106,7 @@ func (w *watcher) take(e event.Event) {
 	}
 }
 
-// start composes a Call's view once, whatever happens next.
+// start composes a tool call's view once, whatever happens next.
 func (w *watcher) start(call uuid.UUID, p *pending) {
 	delete(w.calls, call)
 	got := *p
@@ -141,7 +141,7 @@ func (w *watcher) userCommand(ctx context.Context, id uuid.UUID, p pending) {
 	p.kind = w.gen.Shape(ctx, p.command, outputOf(p.result))
 	got, ok := w.resolve(ctx, p)
 	if !ok {
-		// A Call's row falls back to its kind's view in ui, but a Shell's
+		// A tool call's row falls back to its kind's view in ui, but a user command's
 		// row has no kind there, so the fallback is sent from here.
 		got, ok = w.gen.forKind(ctx, w.request(p))
 	}

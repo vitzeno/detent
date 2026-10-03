@@ -43,7 +43,7 @@ func TestWatch_StoresEveryFactInOrder(t *testing.T) {
 	}
 }
 
-// Live output is the one fact a replay has no use for: a replayed Call
+// Live output is the one fact a replay has no use for: a replayed tool call
 // has already finished, so there is nothing to redraw.
 func TestWatch_SkipsLiveOutputAndIntents(t *testing.T) {
 	s := open(t)

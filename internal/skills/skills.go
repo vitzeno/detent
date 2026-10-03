@@ -98,7 +98,7 @@ func Find(roots []Root) ([]Skill, []string) {
 }
 
 // frontmatter is what detent reads of SKILL.md's header. allowed-tools is
-// deliberately absent: nothing in detent pre-approves a Call.
+// deliberately absent: nothing in detent pre-approves a tool call.
 type frontmatter struct {
 	Name                   string `yaml:"name"`
 	Description            string `yaml:"description"`

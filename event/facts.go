@@ -9,7 +9,7 @@ import (
 )
 
 // What happened, past tense. ApprovalAsked is the one question among
-// them, correlated by Call.
+// them, correlated by tool call.
 
 // SessionStarted is published once. Welcome, status and the log all
 // read it, so it is the one description of a run.
@@ -94,7 +94,7 @@ type TurnEnded struct {
 
 func (TurnEnded) Kind() Kind { return TurnEndedKind }
 
-// EndReason is how a Turn stopped. No Declined: that stops a Call.
+// EndReason is how a Turn stopped. No Declined: that stops a tool call.
 type EndReason string
 
 const (
@@ -212,9 +212,9 @@ type ContextPart struct {
 	LargestTokens int
 }
 
-// A Call is one tool invocation.
+// A tool call is one tool invocation.
 
-// ToolCallProposed is a Call the model asked for, before anything assesses it.
+// ToolCallProposed is a tool call the model asked for, before anything assesses it.
 type ToolCallProposed struct {
 	fact
 	ToolCall, Step uuid.UUID
@@ -237,7 +237,7 @@ const RendersMarkdown = "markdown"
 // RendersDiff says a tool's output is a unified diff, as an edit prints.
 const RendersDiff = "diff"
 
-// ToolCallAssessed is the hook chain's verdict on a Call.
+// ToolCallAssessed is the hook chain's verdict on a tool call.
 type ToolCallAssessed struct {
 	fact
 	ToolCall uuid.UUID
@@ -246,7 +246,7 @@ type ToolCallAssessed struct {
 
 func (ToolCallAssessed) Kind() Kind { return ToolCallAssessedKind }
 
-// ApprovalAsked blocks the engine until a ResolveApproval names this Call.
+// ApprovalAsked blocks the engine until a ResolveApproval names this tool call.
 type ApprovalAsked struct {
 	fact
 	ToolCall  uuid.UUID
@@ -258,7 +258,7 @@ type ApprovalAsked struct {
 
 func (ApprovalAsked) Kind() Kind { return ApprovalAskedKind }
 
-// ToolCallStarted says a Call began running.
+// ToolCallStarted says a tool call began running.
 type ToolCallStarted struct {
 	fact
 	ToolCall uuid.UUID
@@ -268,16 +268,16 @@ type ToolCallStarted struct {
 func (ToolCallStarted) Kind() Kind { return ToolCallStartedKind }
 
 // OutputChunk is one live line, and the only lossy event. Parallel
-// Calls interleave, so route by id rather than assume one is running.
+// Tool calls interleave, so route by id rather than assume one is running.
 type OutputChunk struct {
-	// Exactly one is set: a ToolCall the model asked for, or the human's Shell.
+	// Exactly one is set: a tool call the model asked for, or a user command.
 	ToolCall    uuid.UUID
 	UserCommand uuid.UUID
 	Line        string
 	Stderr      bool
 }
 
-// Owner is whichever of Call and Shell printed the line.
+// Owner is whichever of tool call and user command printed the line.
 func (o OutputChunk) Owner() uuid.UUID {
 	if o.UserCommand != uuid.Nil {
 		return o.UserCommand
@@ -288,7 +288,7 @@ func (o OutputChunk) Owner() uuid.UUID {
 func (OutputChunk) Kind() Kind  { return OutputChunkKind }
 func (OutputChunk) Lossy() bool { return true }
 
-// ToolCallEnded is a Call's whole result.
+// ToolCallEnded is a tool call's whole result.
 type ToolCallEnded struct {
 	fact
 	ToolCall uuid.UUID
@@ -322,7 +322,7 @@ type ToolCallJudged struct {
 
 func (ToolCallJudged) Kind() Kind { return ToolCallJudgedKind }
 
-// ViewReady is a spec for a Call's output.
+// ViewReady is a spec for a tool call's output.
 type ViewReady struct {
 	fact
 	// Exactly one is set, as on OutputChunk.
@@ -342,10 +342,10 @@ func (v ViewReady) Owner() uuid.UUID {
 	return v.ToolCall
 }
 
-// A Shell is one command the human ran themselves. Not a Call: the
+// A user command is one command the human ran themselves. Not a tool call: the
 // model never asked for it, so nothing assesses or approves it.
 
-// UserCommandStarted says a Shell began running.
+// UserCommandStarted says a user command began running.
 type UserCommandStarted struct {
 	fact
 	UserCommand uuid.UUID
@@ -355,7 +355,7 @@ type UserCommandStarted struct {
 
 func (UserCommandStarted) Kind() Kind { return UserCommandStartedKind }
 
-// UserCommandEnded is a Shell's whole result.
+// UserCommandEnded is a user command's whole result.
 type UserCommandEnded struct {
 	fact
 	UserCommand uuid.UUID
@@ -446,7 +446,7 @@ type AuthorizationFailed struct {
 
 func (AuthorizationFailed) Kind() Kind { return AuthorizationFailedKind }
 
-// Notice is anything to say that is not about one Call.
+// Notice is anything to say that is not about one tool call.
 type Notice struct {
 	fact
 	Level string // info, warn, error

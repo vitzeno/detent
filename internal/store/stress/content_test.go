@@ -14,7 +14,7 @@ import (
 type kind struct {
 	name     string
 	runner   string
-	executor string // what ran a Call that is not a shell command
+	executor string // what ran a tool call that is not a shell command
 	render   string
 	renders  string
 	args     func(*rand.Rand) map[string]any

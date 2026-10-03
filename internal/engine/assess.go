@@ -10,7 +10,7 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// assessTimeout bounds the whole chain for one Call, since the network
+// assessTimeout bounds the whole chain for one tool call, since the network
 // hook sits between the model asking and anything running.
 const assessTimeout = 20 * time.Second
 
@@ -24,7 +24,7 @@ type Assessor interface {
 }
 
 // assess folds the chain in order, cheap hooks first. Every hook is
-// asked, the network one included, so a flagged Call still gets its scope.
+// asked, the network one included, so a flagged tool call still gets its scope.
 func (e *Engine) assess(ctx context.Context, c tool.Call) event.Risk {
 	ctx, cancel := context.WithTimeout(ctx, assessTimeout)
 	defer cancel()

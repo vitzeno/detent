@@ -153,7 +153,7 @@ func TestServer_ToolsStopsOnACursorThatNeverEnds(t *testing.T) {
 	}
 }
 
-// A Call stopped by its deadline says how long it waited, so a slow
+// A tool call stopped by its deadline says how long it waited, so a slow
 // server is not read as a broken one.
 func TestServer_ACallOutOfTimeSaysHowLongItRan(t *testing.T) {
 	s := serve(t, fake{name: "slow", handle: func(ctx context.Context, _ *sdk.CallToolRequest) (*sdk.CallToolResult, error) {

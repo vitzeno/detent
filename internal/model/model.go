@@ -9,7 +9,7 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Reply is one Step's result. No Calls means the model stopped asking
+// Reply is one Step's result. No tool calls means the model stopped asking
 // for tools, which ends the Turn unless the reply is Unfinished.
 type Reply struct {
 	Text     string

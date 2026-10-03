@@ -72,7 +72,7 @@ func TestGenerated_EveryToolCallIsAnswered(t *testing.T) {
 	}
 }
 
-// A front-end folds it with no harness, and every Call becomes a row
+// A front-end folds it with no harness, and every tool call becomes a row
 // except in a Turn that was rolled back, which takes its rows with it.
 func TestGenerated_TheUiFoldsEveryCallIntoARow(t *testing.T) {
 	records, _ := generate(t, 40)

@@ -24,7 +24,7 @@ type Generator struct {
 	Judge    Judge
 	Registry *viewspec.Registry
 	Store    *Store
-	// Unjudged says nothing publishes CallJudged, so Watch resolves a Call
+	// Unjudged says nothing publishes CallJudged, so Watch resolves a tool call
 	// when it ends rather than waiting for a verdict that never comes.
 	Unjudged bool
 }

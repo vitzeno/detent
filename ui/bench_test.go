@@ -13,7 +13,7 @@ import (
 )
 
 // stressSizes are multiples of one real session measured from the
-// logs: 21 Turns, 84 Calls, 871 events.
+// logs: 21 Turns, 84 tool calls, 871 events.
 var stressSizes = []struct {
 	name         string
 	turns, calls int

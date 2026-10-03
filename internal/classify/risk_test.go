@@ -64,7 +64,7 @@ func TestRiskJudge_Assess(t *testing.T) {
 	}
 }
 
-// Every Call waits on this, so a stalled endpoint is given up on soon,
+// Every tool call waits on this, so a stalled endpoint is given up on soon,
 // and says so rather than passing for a quiet verdict.
 func TestRiskJudge_GivesUpOnAStalledJudge(t *testing.T) {
 	start := time.Now()

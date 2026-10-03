@@ -15,7 +15,7 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// Invokers answers Calls with no command, routing each to the server
+// Invokers answers tool calls with no command, routing each to the server
 // that offered it. Safe for concurrent use: servers connect late.
 type Invokers struct {
 	// registering makes choosing a free name and taking it one step.
@@ -76,7 +76,7 @@ func (i *Invokers) connected(server string) bool {
 	return i.servers[server] != nil
 }
 
-// Invoke answers one Call. A tool nothing owns comes back as a result
+// Invoke answers one tool call. A tool nothing owns comes back as a result
 // saying so, never a Go error the Turn would end on.
 func (i *Invokers) Invoke(ctx context.Context, c tool.Call) capture.Result {
 	i.mu.RLock()

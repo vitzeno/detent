@@ -50,8 +50,8 @@ type CancelCommand struct {
 
 func (CancelCommand) Kind() Kind { return CancelCommandKind }
 
-// Abort cancels in-flight Calls and ends the Turn. The Step still
-// completes, with a result per unrun Call, or the next Step fails.
+// Abort cancels in-flight tool calls and ends the Turn. The Step still
+// completes, with a result per unrun tool call, or the next Step fails.
 type Abort struct {
 	fact
 	Turn uuid.UUID

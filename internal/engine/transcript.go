@@ -16,7 +16,7 @@ const (
 	DefaultContextTokens = 200_000
 	// BytesPerToken is the rough ratio a token budget is measured in.
 	BytesPerToken = 4
-	// MaxResultBytes bounds one result, the same bound a human's Shell gets.
+	// MaxResultBytes bounds one result, the same bound a user command gets.
 	MaxResultBytes = capture.MaxResultBytes
 	// minCompactShare is the fraction of the budget a cut must free to
 	// be worth a summariser round trip when it cannot reach budget.

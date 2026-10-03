@@ -16,7 +16,7 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Two calls in one response are two Calls, with the prose beside them kept.
+// Two calls in one response are two tool calls, with the prose beside them kept.
 func TestComplete_DecodesAStep(t *testing.T) {
 	const two = `{"choices":[{"message":{"content":"looking","tool_calls":[
 		{"id":"c1","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"a.go\"}"}},

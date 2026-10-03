@@ -353,7 +353,7 @@ func deleteTask(bg context.Context, task containerd.Task) error {
 	return nil
 }
 
-// acquire takes the container, giving up when ctx does: a Call queued
+// acquire takes the container, giving up when ctx does: a tool call queued
 // behind a long human command must still honour its own bound.
 func (c *Container) acquire(ctx context.Context) (func(), error) {
 	select {
@@ -474,7 +474,7 @@ func clearStale(ctx context.Context, client *containerd.Client, sessionID string
 }
 
 // dropContainer deletes a container and its snapshot, refusing one a live
-// session holds: between Calls only its holder label says so. Doubt refuses.
+// session holds: between tool calls only its holder label says so. Doubt refuses.
 func dropContainer(ctx context.Context, cont containerd.Container, sessionID string) error {
 	labels, err := cont.Labels(ctx)
 	if err != nil {

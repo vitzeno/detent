@@ -12,7 +12,7 @@ import (
 	"github.com/vitzeno/detent/internal/model"
 )
 
-// Read-only Calls run together, anything else runs alone and in the
+// Read-only tool calls run together, anything else runs alone and in the
 // order the model asked.
 func TestStep_ReadOnlyCallsRunTogether(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
@@ -60,7 +60,7 @@ func TestStep_CapsHowManyCallsOneStepMayAskFor(t *testing.T) {
 	assert.Equal(t, 3, refused, "the rest are told why, not silently dropped")
 }
 
-// Only a Dangerous Call is shown. Everything else runs straight
+// Only a Dangerous tool call is shown. Everything else runs straight
 // through, which is the harness's whole posture.
 func TestStep_OnlyDangerousCallsAreShown(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{

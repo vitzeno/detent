@@ -37,7 +37,7 @@ func TestDispatch_IntentsForAnEndedTurnAreDropped(t *testing.T) {
 }
 
 // Reset mid-Turn aborts at once rather than queueing behind a blocked
-// Call, and the transcript the model sees is really gone afterwards.
+// tool call, and the transcript the model sees is really gone afterwards.
 func TestReset_MidTurnAbortsAndForgets(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "sleep 60")}}})
 	r.runner.mu.Lock()
@@ -169,7 +169,7 @@ func TestApproval_AnAbortIsNotADecline(t *testing.T) {
 	}
 }
 
-// Every proposed row gets an end, however its Call was settled.
+// Every proposed row gets an end, however its tool call was settled.
 func TestStep_EveryProposedCallEnds(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		{ID: "bad", Name: "bash", Err: "arguments are not JSON"},

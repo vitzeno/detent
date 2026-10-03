@@ -131,7 +131,7 @@ func (r *Registry) Schemas() []map[string]any {
 	return out
 }
 
-// Call is one validated, lowered invocation.
+// Call is one validated, lowered tool call.
 type Call struct {
 	Tool       string
 	Command    string

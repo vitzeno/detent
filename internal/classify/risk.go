@@ -11,7 +11,7 @@ import (
 // DefaultRiskThreshold is the scope risk at which a command is flagged.
 const DefaultRiskThreshold = 0.5
 
-// DefaultRiskTimeout bounds one assessment. Every Call waits on it, and
+// DefaultRiskTimeout bounds one assessment. Every tool call waits on it, and
 // an answer usually takes well under a second.
 const DefaultRiskTimeout = 5 * time.Second
 

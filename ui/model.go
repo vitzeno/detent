@@ -219,7 +219,7 @@ func welcomeTick() tea.Cmd {
 
 const welcomeFrameEvery = 90 * time.Millisecond
 
-// maxFactBatch bounds one batch so a loud Call cannot starve keys.
+// maxFactBatch bounds one batch so a loud tool call cannot starve keys.
 const maxFactBatch = 256
 
 // coalesceWindow is how long a batch gathers. The bus hands over one
@@ -275,7 +275,7 @@ func (m Model) focused() *historyRow {
 }
 
 // spinning reports whether anything on screen is still turning: the
-// model thinking, a Call running, or a command the human ran.
+// model thinking, a tool call running, or a command the human ran.
 func (m Model) spinning() bool {
 	return m.waiting || slices.ContainsFunc(m.blocks, anyRunning)
 }

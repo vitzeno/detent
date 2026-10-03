@@ -1,4 +1,4 @@
-// Package judge reads a finished Call: how it went, how to draw it,
+// Package judge reads a finished tool call: how it went, how to draw it,
 // and whether the request now looks answered. A bus subscriber, so
 // none of it gates execution.
 package judge
@@ -29,7 +29,7 @@ const (
 // opinion and becomes a reason to stop asking for tools.
 const GoalMet = 0.9
 
-// maxJudging caps judgements in flight, since a Step's parallel Calls
+// maxJudging caps judgements in flight, since a Step's parallel tool calls
 // all finish together.
 const maxJudging = 4
 
@@ -37,7 +37,7 @@ const maxJudging = 4
 // is worth less than the heuristic now.
 const judgeTimeout = 20 * time.Second
 
-// ResultJudge judges one finished Call.
+// ResultJudge judges one finished tool call.
 type ResultJudge struct {
 	Asker classify.Asker
 	// Prompt is the request goal_achieved is judged against, kept per Turn by Watch.
@@ -73,7 +73,7 @@ func (j ResultJudge) Judge(ctx context.Context, command string, res event.Result
 	return out
 }
 
-// Watch judges every finished Call and publishes what it decided. A high
+// Watch judges every finished tool call and publishes what it decided. A high
 // goal-achieved becomes a RequestStop, honoured at the next Step boundary.
 // Cancelling ctx abandons judgements in flight, as the stop does.
 func Watch(ctx context.Context, bus *event.Bus, asker classify.Asker) func() {
@@ -102,7 +102,7 @@ func Watch(ctx context.Context, bus *event.Bus, asker classify.Asker) func() {
 			case event.ToolCallStarted:
 				started[v.ToolCall] = true
 			case event.ToolCallEnded:
-				// A declined or abandoned Call never ran, so there is nothing to judge.
+				// A declined or abandoned tool call never ran, so there is nothing to judge.
 				if !started[v.ToolCall] {
 					delete(cmds, v.ToolCall)
 					continue
@@ -156,7 +156,7 @@ func (w *watcher) shouldStop(turn uuid.UUID) bool {
 	return true
 }
 
-// publish judges one Call on its own goroutine, so one slow judgement
+// publish judges one tool call on its own goroutine, so one slow judgement
 // cannot hold up the others or the events behind them.
 func (w *watcher) publish(j ResultJudge, turn uuid.UUID, done event.ToolCallEnded, command string) {
 	defer w.wg.Done()

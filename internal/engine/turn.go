@@ -31,7 +31,7 @@ type turnState struct {
 	// aborted is written by the dispatcher and read by the Turn goroutine.
 	aborted atomic.Bool
 
-	// changed is set once a Call that is not read-only has run.
+	// changed is set once a tool call that is not read-only has run.
 	changed bool
 
 	mu    sync.Mutex
@@ -169,7 +169,7 @@ func (e *Engine) endTurn(ctx context.Context, t *turnState, why event.EndReason,
 	e.bus.Publish(event.TurnEnded{Turn: t.id, Reason: why, Summary: summary, Usage: used})
 }
 
-// checkpoint takes the Turn's one snapshot, before any Call runs. One
+// checkpoint takes the Turn's one snapshot, before any tool call runs. One
 // that fails is said now, not discovered at undo.
 func (e *Engine) checkpoint(ctx context.Context, t *turnState) {
 	if s, ok := e.snapshotter(); ok {

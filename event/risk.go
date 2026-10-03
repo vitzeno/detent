@@ -1,6 +1,6 @@
 package event
 
-// Risk is what the hook chain decided about one Call, before it runs.
+// Risk is what the hook chain decided about one tool call, before it runs.
 type Risk struct {
 	// Dangerous is the only field that gates anything.
 	Dangerous bool

@@ -13,7 +13,7 @@ import (
 // The transcript's vocabulary. Here rather than in the model client
 // because a fact carries it, and this package may import neither side.
 
-// Message is one transcript entry. An assistant message with Calls and
+// Message is one transcript entry. An assistant message with tool calls and
 // the tool messages answering it are one Step, and indivisible.
 type Message struct {
 	Role    Role

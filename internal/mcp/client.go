@@ -1,6 +1,6 @@
 // Package mcp reaches tools an MCP server holds, so a credentialed
 // service can be called without its credentials entering the sandbox.
-// Calls run in this process, not the sandbox.
+// Tool calls run in this process, not the sandbox.
 package mcp
 
 import (

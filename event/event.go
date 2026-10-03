@@ -56,7 +56,7 @@ const (
 
 	SessionResumedKind Kind = "session.resumed"
 
-	// A Shell is one command the human ran themselves.
+	// A user command is one command the human ran themselves.
 	UserCommandStartedKind Kind = "user_command.started"
 	UserCommandEndedKind   Kind = "user_command.ended"
 

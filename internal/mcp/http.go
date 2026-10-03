@@ -26,7 +26,7 @@ func (h HTTP) Transport() sdk.Transport {
 }
 
 // client carries the configured headers to this server alone. It has no
-// Timeout: the event stream lasts the session, and each Call has its own deadline.
+// Timeout: the event stream lasts the session, and each tool call has its own deadline.
 func (h HTTP) client() *http.Client {
 	if len(h.Headers) == 0 {
 		return &http.Client{}

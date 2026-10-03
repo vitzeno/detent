@@ -276,7 +276,7 @@ func TestShell_ACancelledCommandDoesNotReadAsASuccess(t *testing.T) {
 }
 
 // The container snapshot covers a command run inside it exactly as it
-// covers a Call, and the undo page must not claim otherwise.
+// covers a tool call, and the undo page must not claim otherwise.
 func TestShell_TheirCommandIsUndoneWithTheTurnItRanIn(t *testing.T) {
 	turn, shell := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := feed(t,

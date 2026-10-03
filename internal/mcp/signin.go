@@ -18,7 +18,7 @@ import (
 )
 
 // signInMax is a backstop for a human who walked away, not a deadline
-// on signing in. esc stops a Call waiting on one sooner.
+// on signing in. esc stops a tool call waiting on one sooner.
 const signInMax = 10 * time.Minute
 
 var errSignInExpired = errors.New("the sign-in link expired")

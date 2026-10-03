@@ -282,7 +282,7 @@ func readCall(id, path string) event.ToolRequest {
 	return event.ToolRequest{ID: id, Name: "read_file", Args: map[string]any{"path": path}}
 }
 
-// answered checks every Call of a finished engine was answered.
+// answered checks every tool call of a finished engine was answered.
 func answered(t *testing.T, e *Engine) {
 	t.Helper()
 	wellFormed(t, e.Transcript())

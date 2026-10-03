@@ -32,7 +32,7 @@ const (
 	stageStale
 )
 
-// addSignIn puts the row where a Shell would go: in the Turn a Call got
+// addSignIn puts the row where a user command would go: in the Turn a tool call got
 // its 401 in, or between Turns for one asked at startup.
 func (m *Model) addSignIn(v event.AuthorizationWaiting) {
 	b := m.cur

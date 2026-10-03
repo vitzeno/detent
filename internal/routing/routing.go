@@ -1,4 +1,4 @@
-// Package routing picks the Runner that executes a Call.
+// Package routing picks the Runner that executes a tool call.
 package routing
 
 import (

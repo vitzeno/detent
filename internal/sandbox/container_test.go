@@ -297,7 +297,7 @@ func TestContainer_RunHandlesMultilineCommands(t *testing.T) {
 	assert.Equal(t, "err\n", res.Stderr)
 }
 
-// The engine runs read-only Calls together, and each must get its own output.
+// The engine runs read-only tool calls together, and each must get its own output.
 func TestContainer_ConcurrentRunsDoNotCrossContaminate(t *testing.T) {
 	c := newTestContainer(t)
 
@@ -392,7 +392,7 @@ func TestContainer_RunsAgainAfterACancel(t *testing.T) {
 	assert.Equal(t, "ok\n", res.Stdout)
 }
 
-// Between Calls a live session has no task, so its holder is what keeps it.
+// Between tool calls a live session has no task, so its holder is what keeps it.
 func TestPrune_LeavesAnIdleLiveSessionAlone(t *testing.T) {
 	if !daemonAvailable() {
 		t.Skip("containerd not reachable at", testSocket)

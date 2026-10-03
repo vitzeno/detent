@@ -50,7 +50,7 @@ func TestLossy_IsOutputChunkAlone(t *testing.T) {
 	}
 }
 
-// A Step mints all its Call ids inside one millisecond, so ordering rests
+// A Step mints all its tool call ids inside one millisecond, so ordering rests
 // on google/uuid's v7 being monotonic within one. Pinned against a bump.
 func TestNewV7_OrdersWithinOneMillisecond(t *testing.T) {
 	const n = 500

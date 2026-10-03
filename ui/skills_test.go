@@ -14,7 +14,7 @@ import (
 )
 
 // Asking for a skill by hand asks the model to load it, so it shows and
-// replays as a skill Call like one the model chose.
+// replays as a call to the skill tool, like one the model chose.
 func TestSkill_ByHandAsksTheModelToLoadIt(t *testing.T) {
 	bus := event.New()
 	asked, unsub := bus.Subscribe(event.Only(event.SubmitPromptKind))

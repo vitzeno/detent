@@ -32,7 +32,7 @@ func (toolFloor) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Ris
 	return r, nil
 }
 
-// mcpFloor confirms every Call that runs outside the sandbox: no
+// mcpFloor confirms every tool call that runs outside the sandbox: no
 // checkpoint can undo one, so a human sees each before it happens.
 type mcpFloor struct{}
 

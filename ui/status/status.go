@@ -29,7 +29,7 @@ func init() {
 	RefreshStyles()
 }
 
-// RefreshStyles rebuilds status's styles from the current theme. Call
+// RefreshStyles rebuilds status's styles from the current theme. Tool call
 // it after theme.Apply.
 func RefreshStyles() {
 	muted = lipgloss.NewStyle().Foreground(theme.TextMuted)

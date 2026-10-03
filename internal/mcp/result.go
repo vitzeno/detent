@@ -10,7 +10,7 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// toResult flattens a tool result into what every Call reports. The
+// toResult flattens a tool result into what every tool call reports. The
 // transcript is text, so a non-text block becomes a line about it.
 func toResult(res *sdk.CallToolResult) capture.Result {
 	var b strings.Builder

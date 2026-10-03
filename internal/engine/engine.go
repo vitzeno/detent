@@ -51,7 +51,7 @@ type Engine struct {
 
 	maxSteps     int
 	maxToolCalls int
-	// commandTimeout bounds every Call, host or sandbox alike.
+	// commandTimeout bounds every tool call, host or sandbox alike.
 	commandTimeout time.Duration
 	// finishCheck asks once for a check before a Turn that changed something ends.
 	finishCheck   bool
@@ -192,13 +192,13 @@ type Runner interface {
 	Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error)
 }
 
-// Invoker answers a Call that has no command to run. internal/mcp
+// Invoker answers a tool call that has no command to run. internal/mcp
 // satisfies it, so the engine never imports a client.
 type Invoker interface {
 	Invoke(ctx context.Context, c tool.Call) capture.Result
 }
 
-// RunnerSelector picks host or sandbox per Call.
+// RunnerSelector picks host or sandbox per tool call.
 type RunnerSelector interface {
 	Select(r event.Risk) (Runner, string)
 }
@@ -257,7 +257,7 @@ func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{
 		// Answered now, even mid-Turn: it only reads, under the transcript's lock.
 		e.bus.Publish(e.measure(0))
 	case event.Abort:
-		// Not queued: a blocked Call never reaches a boundary, and
+		// Not queued: a blocked tool call never reaches a boundary, and
 		// the inbox is only drained at one.
 		if t != nil {
 			t.absorb(v)

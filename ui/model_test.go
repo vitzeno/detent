@@ -11,7 +11,7 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Output is one event per line, so a loud Call would otherwise cost
+// Output is one event per line, so a loud tool call would otherwise cost
 // one full render per line.
 func TestNextFact_DrainsWhatIsAlreadyQueued(t *testing.T) {
 	bus := event.New()

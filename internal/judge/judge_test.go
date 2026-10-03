@@ -325,13 +325,13 @@ func (f fakeAsker) Ask(context.Context, classify.State, classify.Questions) (cla
 	return f.answers, classify.Usage{}, nil
 }
 
-// ran publishes a Call starting and ending, as the engine does for one that ran.
+// ran publishes a tool call starting and ending, as the engine does for one that ran.
 func ran(bus *event.Bus, call uuid.UUID, res event.Result) {
 	bus.Publish(event.ToolCallStarted{ToolCall: call, Runner: "host"})
 	bus.Publish(event.ToolCallEnded{ToolCall: call, Result: res})
 }
 
-// A Call that was declined or abandoned never ran, so nobody asks about it.
+// A tool call that was declined or abandoned never ran, so nobody asks about it.
 func TestWatch_ACallThatNeverRanIsNotJudged(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()

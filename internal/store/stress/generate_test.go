@@ -162,7 +162,7 @@ func (w *writer) step(turn uuid.UUID, n int, last bool) event.Usage {
 // call is proposed, assessed, maybe approved, run and judged.
 func (w *writer) call(step uuid.UUID) (event.ToolRequest, event.Message) {
 	call := uuid.Must(uuid.NewV7())
-	// The Call's own id, so no two Turns share one and mask a missing answer.
+	// The tool call's own id, so no two Turns share one and mask a missing answer.
 	id := call.String()
 	t := pick(w.rng, tools)
 	args := t.args(w.rng)

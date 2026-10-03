@@ -195,7 +195,7 @@ func TestSignIn_ExpiresWhenNobodySignsIn(t *testing.T) {
 	assert.Eventually(t, func() bool { return failedWith(seen(), "the link expired") }, 2*time.Second, 10*time.Millisecond)
 }
 
-// esc on a waiting Call, or quitting: the wait ends at once.
+// esc on a waiting tool call, or quitting: the wait ends at once.
 func TestSignIn_StopsWithItsContext(t *testing.T) {
 	f := newFakeAuth(t)
 	r := rig(t, Tokens{Dir: t.TempDir()})

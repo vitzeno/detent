@@ -493,7 +493,7 @@ func TestDetailCache_NeverGoesStale(t *testing.T) {
 	// Rows must draw differently, or a cursor move proves nothing.
 	m.apply(event.ToolCallEnded{ToolCall: rows[2].id, Result: event.Result{Stdout: "row two is its own thing\n"}})
 
-	// A fresh Call: a row binds its view once, so a second result on
+	// A fresh tool call: a row binds its view once, so a second result on
 	// an existing row would leave it drawing the first.
 	shown := uuid.Must(uuid.NewV7())
 	m.apply(event.ToolCallProposed{ToolCall: shown, Tool: "bash", Args: map[string]any{"command": "df -h"}})
@@ -1137,7 +1137,7 @@ func (m Model) coldDetail() string {
 	return m.viewContent
 }
 
-// undoTurn is a request holding both kinds of Call.
+// undoTurn is a request holding both kinds of tool call.
 func undoTurn(t *testing.T) Model {
 	t.Helper()
 	turn := uuid.Must(uuid.NewV7())

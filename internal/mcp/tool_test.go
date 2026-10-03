@@ -202,7 +202,7 @@ func TestPrepare_CommandDescribesTheCall(t *testing.T) {
 	assert.Contains(t, call.Command, `title="it broke"`)
 }
 
-// A shell tool must not pick up an executor, or every Call would take
+// A shell tool must not pick up an executor, or every tool call would take
 // the remote path.
 func TestPrepare_AShellToolHasNoExecutor(t *testing.T) {
 	call, err := tool.Standard().Prepare("bash", map[string]any{"command": "ls"})
