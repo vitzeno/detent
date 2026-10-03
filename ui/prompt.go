@@ -9,6 +9,17 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+const (
+	// maxInputRows caps how far the input box grows. Past it the
+	// textarea scrolls its own content instead.
+	maxInputRows = 10
+	// inputFrameW is the island's border and padding around the text.
+	inputFrameW = 4
+	// inputMarkW is the pane-mark gutter ("● ") to the left of the
+	// box, which every row has to clear, not just the first.
+	inputMarkW = 2
+)
+
 // prompt is the input box and the slash dropdown above it, owned
 // together so nothing else can put the two out of step.
 type prompt struct { //nolint:recvcheck // readers take a value so View can call them on a copy
@@ -199,17 +210,6 @@ func (p prompt) View(mark string) string {
 	}
 	return b.String()
 }
-
-const (
-	// maxInputRows caps how far the input box grows. Past it the
-	// textarea scrolls its own content instead.
-	maxInputRows = 10
-	// inputFrameW is the island's border and padding around the text.
-	inputFrameW = 4
-	// inputMarkW is the pane-mark gutter ("● ") to the left of the
-	// box, which every row has to clear, not just the first.
-	inputMarkW = 2
-)
 
 func (p *prompt) rematch() {
 	if p.shell {

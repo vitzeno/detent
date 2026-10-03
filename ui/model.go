@@ -16,6 +16,15 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
+const welcomeFrameEvery = 90 * time.Millisecond
+
+// maxFactBatch bounds one batch so a loud tool call cannot starve keys.
+const maxFactBatch = 256
+
+// coalesceWindow is how long a batch gathers. The bus hands over one
+// record at a time, so a burst needs a window to collect in.
+var coalesceWindow = 2 * time.Millisecond
+
 // Model is a projection of the event stream: facts.go folds facts in,
 // and every key publishes an intent.
 type Model struct { //nolint:recvcheck // Bubble Tea updates by value, and helpers mutate through a pointer
@@ -133,19 +142,19 @@ func (m Model) Init() tea.Cmd {
 // handler has to remember to resize or re-render.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { return m.update(msg) }
 
-// update is Update for callers that want the Model back, not an interface.
-func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
-	next, cmd := m.route(msg)
-	next.sizeViewport()
-	return next, cmd
-}
-
 // Idle reports whether no request is open or awaited. It and RowCount
 // exist for wiring tests outside ui, which cannot reach unexported state.
 func (m Model) Idle() bool { return m.cur == nil && !m.waiting }
 
 // RowCount is how many rows history holds.
 func (m Model) RowCount() int { return len(m.rows()) }
+
+// update is Update for callers that want the Model back, not an interface.
+func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
+	next, cmd := m.route(msg)
+	next.sizeViewport()
+	return next, cmd
+}
 
 func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -210,23 +219,6 @@ func (m Model) send(ev event.Event) tea.Cmd {
 // factMsg carries every fact that was ready, in order.
 type factMsg struct{ events []event.Event }
 
-type welcomeTickMsg struct{}
-
-// welcomeTick advances the boot pane's animation, and only while that
-// pane is what is on screen.
-func welcomeTick() tea.Cmd {
-	return tea.Tick(welcomeFrameEvery, func(time.Time) tea.Msg { return welcomeTickMsg{} })
-}
-
-const welcomeFrameEvery = 90 * time.Millisecond
-
-// maxFactBatch bounds one batch so a loud tool call cannot starve keys.
-const maxFactBatch = 256
-
-// coalesceWindow is how long a batch gathers. The bus hands over one
-// record at a time, so a burst needs a window to collect in.
-var coalesceWindow = 2 * time.Millisecond
-
 // nextFact waits for one fact, then gathers whatever follows closely.
 // Output is one event per line, so a burst becomes one render.
 func nextFact(facts <-chan event.Record) tea.Cmd {
@@ -251,6 +243,14 @@ func nextFact(facts <-chan event.Record) tea.Cmd {
 		}
 		return factMsg{batch}
 	}
+}
+
+type welcomeTickMsg struct{}
+
+// welcomeTick advances the boot pane's animation, and only while that
+// pane is what is on screen.
+func welcomeTick() tea.Cmd {
+	return tea.Tick(welcomeFrameEvery, func(time.Time) tea.Msg { return welcomeTickMsg{} })
 }
 
 // rows flattens every block's calls into the one list the cursor

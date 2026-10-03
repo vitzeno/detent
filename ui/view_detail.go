@@ -15,6 +15,10 @@ import (
 // The output pane: what the focused row renders into it, and the
 // viewport refresh that keeps it in step.
 
+// scrollMargin is how many lines of context the selection keeps. Two,
+// so reaching a table's first row brings its header back into view.
+const scrollMargin = 2
+
 // detailLines renders the focused row: a pending question first,
 // else the scrolling viewport.
 func (m Model) detailLines() []string {
@@ -32,6 +36,26 @@ func (m Model) detailLines() []string {
 		return m.welcomePane()
 	}
 	return strings.Split(m.output.View(), "\n")
+}
+
+// showWelcome reports whether the output pane has nothing of its own
+// to show yet, which is the boot state: no row has ever been focused.
+func (m Model) showWelcome() bool {
+	return m.focused() == nil
+}
+
+// welcomePane hands the boot pane the facts it reports, so nothing in
+// ui/welcome reaches into Model.
+func (m Model) welcomePane() []string {
+	return welcome.Lines(welcome.Facts{
+		Version: version.String(),
+		Model:   m.run.Model, Judge: m.run.Judge, RunMode: m.runMode(),
+		OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), WorkDir: m.workDir,
+		Image: m.info.Image, Mount: m.info.Mount,
+		Runtime: m.info.Runtime, Network: m.info.Network,
+		Turns: len(m.blocks), ToolCalls: m.calls, Sessions: len(m.sessions),
+		Session: m.run.Session.String(), Resumed: m.run.Resumed, Recorded: m.run.Recorded,
+	}, paneInner(m.layout.outputColW), m.output.Height(), m.welcomeFrame)
 }
 
 // refreshViewport redraws the output pane when its detailKey changed.
@@ -94,6 +118,16 @@ func (m *Model) refreshViewport() {
 	}
 }
 
+// setViewContent skips identical content: SetContent resets scroll
+// position, which must not happen just from resizing for the dropdown.
+func (m *Model) setViewContent(s string) {
+	if s == m.viewContent {
+		return
+	}
+	m.viewContent = s
+	m.output.SetContent(s)
+}
+
 // viewBody draws the row's view whole. Height lets a plot grow into the
 // pane but clips nothing, so a view scrolls like any other output.
 func (m Model) viewBody(r *historyRow) (viewspec.Render, bool) {
@@ -128,10 +162,6 @@ func drawSafely(b *viewspec.Bound, f viewspec.Frame) (out viewspec.Render, err e
 	return b.Draw(f)
 }
 
-// scrollMargin is how many lines of context the selection keeps. Two,
-// so reaching a table's first row brings its header back into view.
-const scrollMargin = 2
-
 // scrollToLine brings line into view without recentring: a selection
 // already on screen must not make the pane jump under the cursor.
 func (m *Model) scrollToLine(line int) {
@@ -147,20 +177,6 @@ func (m *Model) scrollToLine(line int) {
 	}
 }
 
-// welcomePane hands the boot pane the facts it reports, so nothing in
-// ui/welcome reaches into Model.
-func (m Model) welcomePane() []string {
-	return welcome.Lines(welcome.Facts{
-		Version: version.String(),
-		Model:   m.run.Model, Judge: m.run.Judge, RunMode: m.runMode(),
-		OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), WorkDir: m.workDir,
-		Image: m.info.Image, Mount: m.info.Mount,
-		Runtime: m.info.Runtime, Network: m.info.Network,
-		Turns: len(m.blocks), ToolCalls: m.calls, Sessions: len(m.sessions),
-		Session: m.run.Session.String(), Resumed: m.run.Resumed, Recorded: m.run.Recorded,
-	}, paneInner(m.layout.outputColW), m.output.Height(), m.welcomeFrame)
-}
-
 // tildePath trades a home prefix for ~, so a deep working directory
 // still fits the pane. Whole path elements only.
 func tildePath(dir, home string) string {
@@ -174,20 +190,4 @@ func tildePath(dir, home string) string {
 		return "~" + string(filepath.Separator) + rest
 	}
 	return dir
-}
-
-// showWelcome reports whether the output pane has nothing of its own
-// to show yet, which is the boot state: no row has ever been focused.
-func (m Model) showWelcome() bool {
-	return m.focused() == nil
-}
-
-// setViewContent skips identical content: SetContent resets scroll
-// position, which must not happen just from resizing for the dropdown.
-func (m *Model) setViewContent(s string) {
-	if s == m.viewContent {
-		return
-	}
-	m.viewContent = s
-	m.output.SetContent(s)
 }

@@ -11,6 +11,10 @@ import (
 	"github.com/vitzeno/detent/ui/status"
 )
 
+// maxLiveLines bounds what one running call keeps on screen. The rest
+// is counted away and the full output arrives with CallEnded.
+const maxLiveLines = 200
+
 // Restore rebuilds history from a stored session by looping over apply.
 // CheckpointTaken is skipped: its snapshot died with the container.
 func (m Model) Restore(records []event.Record) Model {
@@ -230,10 +234,6 @@ func (m *Model) commandBlock() *turnBlock {
 	m.blocks = append(m.blocks, b)
 	return b
 }
-
-// maxLiveLines bounds what one running call keeps on screen. The rest
-// is counted away and the full output arrives with CallEnded.
-const maxLiveLines = 200
 
 func (m *Model) addLine(v event.OutputChunk) {
 	r := m.row(v.Owner())

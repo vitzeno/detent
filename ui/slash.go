@@ -12,6 +12,10 @@ import (
 // Input-bar commands: registry, prefix matching, dropdown. Each entry
 // carries its handler, so listed and dispatchable can't drift apart.
 
+// maxSlashRows caps how many entries the dropdown shows at once. Past
+// it the list scrolls rather than growing into the history pane.
+const maxSlashRows = 6
+
 // slashCmd is one available command. run receives the whole input
 // line, so a command can take an argument (/undo 2).
 type slashCmd struct {
@@ -113,10 +117,6 @@ func (m Model) acceptSlash() (Model, tea.Cmd) {
 	m.prompt.Accept()
 	return m, nil
 }
-
-// maxSlashRows caps how many entries the dropdown shows at once. Past
-// it the list scrolls rather than growing into the history pane.
-const maxSlashRows = 6
 
 // matchSlash returns registry entries with the given input as a
 // prefix. Input must start with "/", or nothing matches.

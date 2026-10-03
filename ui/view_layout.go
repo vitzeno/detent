@@ -10,6 +10,19 @@ import (
 // How the three zones divide the window. Every size comes from here, so
 // the panes tile the terminal and the session bar stays on top.
 
+var bodyWeights = []int{3, 2} // output, history
+
+const (
+	// minPaneWidth is the outer-width floor below which a pane stops
+	// being worth rendering as its own island.
+	minPaneWidth = 28
+	// islandOverhead is a titled zone island's non-content lines:
+	// header plus top and bottom border.
+	islandOverhead = 3
+	// minBodyRows is the fewest rows the panes shrink to for a question.
+	minBodyRows = 6
+)
+
 // sizeViewport refits every pane to the window and what it holds, then
 // re-renders the output. Update calls it once per message.
 func (m *Model) sizeViewport() {
@@ -39,19 +52,6 @@ func (m *Model) sizeViewport() {
 	m.output.SetWidth(paneInner(m.layout.outputColW))
 	m.refreshViewport()
 }
-
-var bodyWeights = []int{3, 2} // output, history
-
-const (
-	// minPaneWidth is the outer-width floor below which a pane stops
-	// being worth rendering as its own island.
-	minPaneWidth = 28
-	// islandOverhead is a titled zone island's non-content lines:
-	// header plus top and bottom border.
-	islandOverhead = 3
-	// minBodyRows is the fewest rows the panes shrink to for a question.
-	minBodyRows = 6
-)
 
 // paneInner is what island.Render leaves for content.
 func paneInner(outer int) int { return island.Inner(outer) }

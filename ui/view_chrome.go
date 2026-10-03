@@ -14,6 +14,10 @@ import (
 // The frame around the panes, in screen order: the session bar, each
 // pane's header, and the status line above the input bar.
 
+// viewSourceMark precedes anything worth saying about how the pane
+// was drawn.
+const viewSourceMark = "✦"
+
 func (m Model) sessionBar() string {
 	jev := styleFaint.Render("jev ○ off")
 	if m.run.Judge != "" {
@@ -53,6 +57,15 @@ func (m Model) contextStyle() lipgloss.Style {
 		return styleCaution
 	}
 	return styleFaint
+}
+
+// runModeBadge says where commands actually run. Host is called out
+// rather than left implicit, since it is the unsandboxed case.
+func runModeBadge(mode string) string {
+	if mode == "sandbox" {
+		return styleSafe.Render("sandbox ●")
+	}
+	return styleCaution.Render("host ⚠ unsandboxed")
 }
 
 // fitSegments drops the least useful first: name, run mode and judge
@@ -131,10 +144,6 @@ func (m Model) viewportHeader() string {
 	return head + " — " + styleGoal.Render(layout.Truncate(r.command, width))
 }
 
-// viewSourceMark precedes anything worth saying about how the pane
-// was drawn.
-const viewSourceMark = "✦"
-
 // viewNote says how the pane was drawn, and usually says nothing: only
 // framing a model had a hand in is worth a word.
 func viewNote(r *historyRow) string {
@@ -143,14 +152,6 @@ func viewNote(r *historyRow) string {
 		return r.viewSource
 	}
 	return ""
-}
-
-// shellHint is the bar in shell mode, where / is a path.
-func (m Model) shellHint() string {
-	if m.userCommandRunning() {
-		return "[esc] stop · [shift+tab] back to a request"
-	}
-	return "[shift+tab] request · [enter] run · [tab] history"
 }
 
 // panelName is what the header calls an open page.
@@ -244,13 +245,12 @@ func (m Model) statusHint() string {
 	}
 }
 
-// runModeBadge says where commands actually run. Host is called out
-// rather than left implicit, since it is the unsandboxed case.
-func runModeBadge(mode string) string {
-	if mode == "sandbox" {
-		return styleSafe.Render("sandbox ●")
+// shellHint is the bar in shell mode, where / is a path.
+func (m Model) shellHint() string {
+	if m.userCommandRunning() {
+		return "[esc] stop · [shift+tab] back to a request"
 	}
-	return styleCaution.Render("host ⚠ unsandboxed")
+	return "[shift+tab] request · [enter] run · [tab] history"
 }
 
 func paneMark(active bool) string {

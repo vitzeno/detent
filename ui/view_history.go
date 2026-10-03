@@ -14,6 +14,13 @@ import (
 // The history pane: one block per request, its calls under it. View
 // calls this on a throwaway copy of Model, so nothing but the caches may write back.
 
+// railWidth is the gutter the rail and its space occupy.
+const railWidth = 2
+
+// contPrefix indents a wrapped line's continuation so it reads as one
+// paragraph under its label, not flush against the pane edge.
+const contPrefix = "    "
+
 // histWindow is what sizeViewport laid out. The fallback is the first
 // frame, which lands before any Update.
 func (m Model) histWindow() []string {
@@ -109,16 +116,18 @@ func (m Model) historyTail(height int) []string {
 	return lines
 }
 
-// blockLines is the cached front of drawBlock. Scrolling moves only
-// the cursor, so every block but the two it touched is a hit.
-func (m Model) blockLines(b *turnBlock, focused *historyRow) (lines []string, cursorAt int) {
-	key := m.blockKey(b, focused)
-	if b.cache != nil && b.cache.key == key {
-		return b.cache.lines, b.cache.cursorAt
+// focusedRow is the row the cursor is on, or nil. Resolved once and
+// passed down: asking per row rebuilds the whole row list each time.
+func (m Model) focusedRow() *historyRow {
+	rows := m.rows()
+	if len(rows) == 0 {
+		return nil
 	}
-	lines, cursorAt = m.drawBlock(b, key.focused)
-	b.cache = &blockCache{key: key, lines: lines, cursorAt: cursorAt}
-	return lines, cursorAt
+	at := max(m.nav.cursor, 0)
+	if at >= len(rows) {
+		at = len(rows) - 1
+	}
+	return rows[at]
 }
 
 // spinnerFrame is the frame a live block is drawing, or "" when none
@@ -130,6 +139,18 @@ func (m Model) spinnerFrame() string {
 		}
 	}
 	return ""
+}
+
+// blockLines is the cached front of drawBlock. Scrolling moves only
+// the cursor, so every block but the two it touched is a hit.
+func (m Model) blockLines(b *turnBlock, focused *historyRow) (lines []string, cursorAt int) {
+	key := m.blockKey(b, focused)
+	if b.cache != nil && b.cache.key == key {
+		return b.cache.lines, b.cache.cursorAt
+	}
+	lines, cursorAt = m.drawBlock(b, key.focused)
+	b.cache = &blockCache{key: key, lines: lines, cursorAt: cursorAt}
+	return lines, cursorAt
 }
 
 // drawBlock renders one block against its rail, reporting where the
@@ -183,75 +204,6 @@ func (m Model) seamLine(s *event.SessionResumed) string {
 	return styleFaint.Render(layout.Truncate(
 		fmt.Sprintf("─── resumed · %d records · %s", s.Records, where),
 		m.blockWidth()))
-}
-
-// join copies, because appending onto a cached slice writes into a
-// backing array the cache still owns.
-func join(parts ...[]string) []string {
-	n := 0
-	for _, p := range parts {
-		n += len(p)
-	}
-	out := make([]string, 0, n)
-	for _, p := range parts {
-		out = append(out, p...)
-	}
-	return out
-}
-
-// focusedRow is the row the cursor is on, or nil. Resolved once and
-// passed down: asking per row rebuilds the whole row list each time.
-func (m Model) focusedRow() *historyRow {
-	rows := m.rows()
-	if len(rows) == 0 {
-		return nil
-	}
-	at := max(m.nav.cursor, 0)
-	if at >= len(rows) {
-		at = len(rows) - 1
-	}
-	return rows[at]
-}
-
-// railWidth is the gutter the rail and its space occupy.
-const railWidth = 2
-
-// blockWidth is what a block's own content gets, once the island's
-// padding and the rail gutter have taken theirs.
-func (m Model) blockWidth() int { return max(12, m.layout.histColW-4-railWidth) }
-
-// railed draws a block's rows against a coloured bar spanning all of
-// them, whose colour says how the request went.
-func (m Model) railed(b *turnBlock, block []string) []string {
-	bar := m.railStyle(b).Render("┃") + " "
-	out := make([]string, len(block))
-	for i, l := range block {
-		out[i] = bar + l
-	}
-	return out
-}
-
-// railStyle colours the rail by outcome: accent while the request is
-// still running, then whatever it came to.
-func (m Model) railStyle(b *turnBlock) lipgloss.Style {
-	switch {
-	case b.seam != nil:
-		return styleFaint
-	case b.shell:
-		// Nothing ends a shell block, so the live colour would stay on
-		// it for the rest of the session.
-		return styleMuted
-	case !b.ended:
-		return styleRowCursor
-	case b.err != "" || b.end == event.EndError:
-		return styleDanger
-	case b.end == event.EndDone:
-		return styleSafe
-	case b.end == event.EndStopped:
-		return styleSafe
-	default:
-		return styleCaution
-	}
 }
 
 // rowLines draws one row: the model's words, or a call with its badge
@@ -314,33 +266,6 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 	return []string{fmt.Sprintf("%s%s %s %s", mark, icon, cmd, styleMuted.Render(tail))}
 }
 
-// stripStyle measures what a styled string occupies, since a row's
-// budget is cells and ANSI is bytes.
-func stripStyle(s string) string {
-	out := make([]rune, 0, len(s))
-	var inEsc bool
-	for _, r := range s {
-		switch {
-		case r == 0x1b:
-			inEsc = true
-		case inEsc && (r == 'm' || r == 'K'):
-			inEsc = false
-		case !inEsc:
-			out = append(out, r)
-		}
-	}
-	return string(out)
-}
-
-func anyRunning(b *turnBlock) bool {
-	for _, r := range b.rows {
-		if r.running {
-			return true
-		}
-	}
-	return false
-}
-
 // turnBanner is the one line under a finished block. The model's own
 // words have a row of their own, so this is the outcome alone.
 func (m Model) turnBanner(b *turnBlock) []string {
@@ -361,20 +286,43 @@ func (m Model) turnBanner(b *turnBlock) []string {
 	return []string{"  " + styleMuted.Render("ended: "+string(b.end))}
 }
 
-// resultSummary is the short form a row shows beside its badge.
-func resultSummary(r *event.Result) string {
-	if r.Err != "" {
-		return r.Err
-	}
-	out := outputOf(r)
-	if out == "" {
-		return "no output"
-	}
-	if i := strings.IndexByte(out, '\n'); i >= 0 {
-		out = out[:i]
+// railed draws a block's rows against a coloured bar spanning all of
+// them, whose colour says how the request went.
+func (m Model) railed(b *turnBlock, block []string) []string {
+	bar := m.railStyle(b).Render("┃") + " "
+	out := make([]string, len(block))
+	for i, l := range block {
+		out[i] = bar + l
 	}
 	return out
 }
+
+// railStyle colours the rail by outcome: accent while the request is
+// still running, then whatever it came to.
+func (m Model) railStyle(b *turnBlock) lipgloss.Style {
+	switch {
+	case b.seam != nil:
+		return styleFaint
+	case b.shell:
+		// Nothing ends a shell block, so the live colour would stay on
+		// it for the rest of the session.
+		return styleMuted
+	case !b.ended:
+		return styleRowCursor
+	case b.err != "" || b.end == event.EndError:
+		return styleDanger
+	case b.end == event.EndDone:
+		return styleSafe
+	case b.end == event.EndStopped:
+		return styleSafe
+	default:
+		return styleCaution
+	}
+}
+
+// blockWidth is what a block's own content gets, once the island's
+// padding and the rail gutter have taken theirs.
+func (m Model) blockWidth() int { return max(12, m.layout.histColW-4-railWidth) }
 
 func previewLines(r *historyRow, width int) []string {
 	src := r.live
@@ -392,9 +340,61 @@ func previewLines(r *historyRow, width int) []string {
 	return out
 }
 
-// contPrefix indents a wrapped line's continuation so it reads as one
-// paragraph under its label, not flush against the pane edge.
-const contPrefix = "    "
+// resultSummary is the short form a row shows beside its badge.
+func resultSummary(r *event.Result) string {
+	if r.Err != "" {
+		return r.Err
+	}
+	out := outputOf(r)
+	if out == "" {
+		return "no output"
+	}
+	if i := strings.IndexByte(out, '\n'); i >= 0 {
+		out = out[:i]
+	}
+	return out
+}
+
+func anyRunning(b *turnBlock) bool {
+	for _, r := range b.rows {
+		if r.running {
+			return true
+		}
+	}
+	return false
+}
+
+// stripStyle measures what a styled string occupies, since a row's
+// budget is cells and ANSI is bytes.
+func stripStyle(s string) string {
+	out := make([]rune, 0, len(s))
+	var inEsc bool
+	for _, r := range s {
+		switch {
+		case r == 0x1b:
+			inEsc = true
+		case inEsc && (r == 'm' || r == 'K'):
+			inEsc = false
+		case !inEsc:
+			out = append(out, r)
+		}
+	}
+	return string(out)
+}
+
+// join copies, because appending onto a cached slice writes into a
+// backing array the cache still owns.
+func join(parts ...[]string) []string {
+	n := 0
+	for _, p := range parts {
+		n += len(p)
+	}
+	out := make([]string, 0, n)
+	for _, p := range parts {
+		out = append(out, p...)
+	}
+	return out
+}
 
 // wrapPlain word-wraps unstyled text. History wraps rather than
 // truncates, since the part that would be cut may be the one wanted.

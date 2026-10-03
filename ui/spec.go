@@ -14,9 +14,11 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// Registry is the vocabulary detent draws with. cmd/detent hands it to
-// the composer, so the judge is offered exactly what will draw.
-func Registry() *viewspec.Registry { return viewRegistry }
+// errHides is a view that would leave most of the output undrawn.
+var errHides = errors.New("the view hides most of the output")
+
+// maxMarkdownRenders bounds the cache. Past it, it starts over.
+const maxMarkdownRenders = 16
 
 // viewRegistry is Standard plus what only detent can provide. A widget
 // registered here reaches the model's schema too.
@@ -25,6 +27,19 @@ var viewRegistry = func() *viewspec.Registry {
 	must(r.Widget("markdown", &markdownWidget{}))
 	return r
 }()
+
+// The specs from views, compiled once against this registry, since
+// Compile is per spec and Bind is per output.
+var (
+	compiledFallback = compileAll(byKind())
+	compiledMarkdown = compileAll(map[string]viewspec.Spec{"m": views.Raw("markdown")})["m"]
+	// compiledPlain is the floor: raw bytes, no interpretation.
+	compiledPlain = compileAll(map[string]viewspec.Spec{"p": views.Raw("log")})["p"]
+)
+
+// Registry is the vocabulary detent draws with. cmd/detent hands it to
+// the composer, so the judge is offered exactly what will draw.
+func Registry() *viewspec.Registry { return viewRegistry }
 
 // seedFromView puts a row's on_enter command in the prompt as
 // editable text. It does not run: from there it is an ordinary prompt.
@@ -117,9 +132,6 @@ func fallbackChain(r *historyRow, output string) []*viewspec.Compiled {
 	return append(chain, compiledPlain)
 }
 
-// errHides is a view that would leave most of the output undrawn.
-var errHides = errors.New("the view hides most of the output")
-
 // markdownWidget renders prose through glamour, which viewspec cannot
 // import. It caches renders because Draw runs per frame, and one
 // instance serves every row, so the cache holds several.
@@ -128,16 +140,13 @@ type markdownWidget struct {
 	cache map[markdownKey][]string
 }
 
+var _ viewspec.Described = (*markdownWidget)(nil)
+
 // markdownKey is everything a render depends on, the theme included.
 type markdownKey struct {
 	raw, style string
 	width      int
 }
-
-// maxMarkdownRenders bounds the cache. Past it, it starts over.
-const maxMarkdownRenders = 16
-
-var _ viewspec.Described = (*markdownWidget)(nil)
 
 func (w *markdownWidget) Draw(_ viewspec.Block, d viewspec.Data, f viewspec.Frame) ([]string, error) {
 	key := markdownKey{raw: d.Raw, style: theme.Current().Markdown, width: f.Width}
@@ -170,21 +179,6 @@ func (*markdownWidget) Describe() viewspec.Description {
 	}
 }
 
-func must(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
-// The specs from views, compiled once against this registry, since
-// Compile is per spec and Bind is per output.
-var (
-	compiledFallback = compileAll(byKind())
-	compiledMarkdown = compileAll(map[string]viewspec.Spec{"m": views.Raw("markdown")})["m"]
-	// compiledPlain is the floor: raw bytes, no interpretation.
-	compiledPlain = compileAll(map[string]viewspec.Spec{"p": views.Raw("log")})["p"]
-)
-
 // byKind is the shipped spec per judged output shape.
 func byKind() map[event.RenderKind]viewspec.Spec {
 	out := map[event.RenderKind]viewspec.Spec{}
@@ -206,4 +200,10 @@ func compileAll[K comparable](in map[K]viewspec.Spec) map[K]*viewspec.Compiled {
 		}
 	}
 	return out
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
 }

@@ -54,52 +54,6 @@ func (m *Model) panelLines() []string {
 	}
 }
 
-// skillLines lists the skills found at startup, and who may ask for each.
-func (m *Model) skillLines() []string {
-	out := []string{styleGoal.Render("skills"), ""}
-	if len(m.run.Skills) == 0 {
-		return append(out, styleFaint.Render("  (none found, add one under .agents/skills/<name>/SKILL.md)"))
-	}
-	for _, s := range m.run.Skills {
-		where := "personal"
-		if s.Project {
-			where = "project"
-		}
-		ask := "/" + s.Name
-		if !s.UserInvocable {
-			ask = "model only"
-		}
-		out = append(out, "  "+styleGoal.Render(s.Name)+styleFaint.Render("  "+where+" · "+ask),
-			"    "+truncCell(s.Description, m.layout.outputColW-6), "")
-	}
-	return out
-}
-
-// sessionLines is what can be resumed. Read-only, because resuming
-// is a process rather than a keystroke. The id is here to be copied.
-func (m *Model) sessionLines() []string {
-	out := []string{styleGoal.Render("sessions"), "",
-		styleFaint.Render("  resume one with  detent -resume <id or name>"), ""}
-	for _, s := range m.sessions {
-		mark := "  "
-		if s.ID == m.run.Session {
-			mark = styleGoal.Render("▸ ")
-		}
-		name := styleFaint.Render(s.Model)
-		if s.Name != "" {
-			name = styleGoal.Render(s.Name)
-		}
-		out = append(out, fmt.Sprintf("%s%s  %s  %s  %s", mark,
-			styleGoal.Render(s.ID.String()),
-			styleFaint.Render(s.Started.Local().Format("2006-01-02 15:04")),
-			styleFaint.Render(pad(countOf(s.Events, "event"), 12)), name))
-	}
-	if len(m.sessions) == 0 {
-		out = append(out, styleFaint.Render("  (nothing recorded yet)"))
-	}
-	return out
-}
-
 func (m *Model) statusLines() []string {
 	rows := [][2]string{
 		{"version", version.String()},
@@ -162,6 +116,31 @@ func (m *Model) helpLines() []string {
 		"  "+styleFaint.Render("ctrl+c    quit"))
 }
 
+// sessionLines is what can be resumed. Read-only, because resuming
+// is a process rather than a keystroke. The id is here to be copied.
+func (m *Model) sessionLines() []string {
+	out := []string{styleGoal.Render("sessions"), "",
+		styleFaint.Render("  resume one with  detent -resume <id or name>"), ""}
+	for _, s := range m.sessions {
+		mark := "  "
+		if s.ID == m.run.Session {
+			mark = styleGoal.Render("▸ ")
+		}
+		name := styleFaint.Render(s.Model)
+		if s.Name != "" {
+			name = styleGoal.Render(s.Name)
+		}
+		out = append(out, fmt.Sprintf("%s%s  %s  %s  %s", mark,
+			styleGoal.Render(s.ID.String()),
+			styleFaint.Render(s.Started.Local().Format("2006-01-02 15:04")),
+			styleFaint.Render(pad(countOf(s.Events, "event"), 12)), name))
+	}
+	if len(m.sessions) == 0 {
+		out = append(out, styleFaint.Render("  (nothing recorded yet)"))
+	}
+	return out
+}
+
 // mcpLines draws what connected, what failed, and why. Colour carries
 // the state: it is what a human opens this page to see.
 func (m *Model) mcpLines() []string {
@@ -181,6 +160,27 @@ func (m *Model) mcpLines() []string {
 		}
 	}
 	return append(out, "", styleFaint.Render("  [esc] close"))
+}
+
+// skillLines lists the skills found at startup, and who may ask for each.
+func (m *Model) skillLines() []string {
+	out := []string{styleGoal.Render("skills"), ""}
+	if len(m.run.Skills) == 0 {
+		return append(out, styleFaint.Render("  (none found, add one under .agents/skills/<name>/SKILL.md)"))
+	}
+	for _, s := range m.run.Skills {
+		where := "personal"
+		if s.Project {
+			where = "project"
+		}
+		ask := "/" + s.Name
+		if !s.UserInvocable {
+			ask = "model only"
+		}
+		out = append(out, "  "+styleGoal.Render(s.Name)+styleFaint.Render("  "+where+" · "+ask),
+			"    "+truncCell(s.Description, m.layout.outputColW-6), "")
+	}
+	return out
 }
 
 // recording says so when nothing is writing this down, because the

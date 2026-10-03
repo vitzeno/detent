@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"slices"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -73,4 +75,16 @@ func (m Model) toggleFocus() (Model, tea.Cmd) {
 		m.prompt.Focus()
 	}
 	return m, nil
+}
+
+// toggleExpand opens or shuts a row's preview, outside apply, so it
+// marks the row's block and history itself.
+func (m *Model) toggleExpand(r *historyRow) {
+	r.expanded = !r.expanded
+	for _, b := range m.blocks {
+		if slices.Contains(b.rows, r) {
+			b.rev++
+		}
+	}
+	m.histRev++
 }

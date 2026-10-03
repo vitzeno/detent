@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"slices"
-
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/vitzeno/detent/event"
@@ -10,6 +8,18 @@ import (
 
 // Keystroke routing. handleKey hands each key to exactly one owner,
 // so no two panes can claim the same key.
+
+// keyOwner names who owns a keystroke. The undo, delete and bound
+// questions are not owners: they take every key before owner() runs.
+type keyOwner int
+
+const (
+	ownerConfirm keyOwner = iota
+	ownerInput            // idle typing, slash dropdown included
+	ownerBusy             // waiting: types like input, but esc aborts
+	ownerOutput
+	ownerHistory
+)
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
@@ -65,18 +75,6 @@ func (m Model) handlePaste(text string) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// keyOwner names who owns a keystroke. The undo, delete and bound
-// questions are not owners: they take every key before owner() runs.
-type keyOwner int
-
-const (
-	ownerConfirm keyOwner = iota
-	ownerInput            // idle typing, slash dropdown included
-	ownerBusy             // waiting: types like input, but esc aborts
-	ownerOutput
-	ownerHistory
-)
-
 func (m Model) owner() keyOwner {
 	if m.mode == modeConfirm {
 		return ownerConfirm
@@ -91,69 +89,6 @@ func (m Model) owner() keyOwner {
 		return ownerBusy
 	}
 	return ownerInput
-}
-
-// onTab completes an open dropdown, otherwise cycles panes.
-func (m Model) onTab() (Model, tea.Cmd) {
-	if m.mode == modeConfirm {
-		return m, nil
-	}
-	if m.nav.focus == focusInput && m.mode == modeInput && m.prompt.Focused() && m.prompt.Open() {
-		return m.acceptSlash()
-	}
-	return m.toggleFocus()
-}
-
-// toggleEntry switches the bar between a request and a command.
-// Focus follows, unless a question is up: that still comes first.
-func (m Model) toggleEntry() (Model, tea.Cmd) {
-	m.entry = entryShell
-	if m.prompt.shell {
-		m.entry = entryPrompt
-	}
-	m.prompt.SetShell(m.entry == entryShell)
-	if m.mode == modeInput {
-		m.nav.focus = focusInput
-		m.prompt.Focus()
-	}
-	m.clearNotice()
-	return m, nil
-}
-
-// boundKey answers the step bound. The engine is paused, waiting.
-func (m Model) boundKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "y", "Y", "enter":
-		return m.answerBound(true)
-	case "n", "N", "esc":
-		return m.answerBound(false)
-	}
-	return m, nil
-}
-
-// confirmKey answers an approval. y waits until the whole command has
-// been on screen, since approving a tail nobody saw is no approval.
-func (m Model) confirmKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	_, room := m.confirmLines()
-	switch msg.String() {
-	case "y", "Y", "enter":
-		if !m.confirmReady() {
-			m.noteErr("read to the end of the command first: ↓ scrolls it")
-			return m, nil
-		}
-		return m.approve()
-	case "n", "N":
-		return m.decline()
-	case "down":
-		m.scrollConfirm(1)
-	case "up":
-		m.scrollConfirm(-1)
-	case "pgdown":
-		m.scrollConfirm(room)
-	case "pgup":
-		m.scrollConfirm(-room)
-	}
-	return m, nil
 }
 
 // undoKey owns every key while the undo question is up: three
@@ -189,6 +124,114 @@ func (m Model) undoKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	case "pgdown":
 		m.output.HalfPageDown()
 		return m, nil
+	}
+	return m, nil
+}
+
+// forgetKey answers the delete question. Every key but y cancels.
+func (m Model) forgetKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y":
+		return m.confirmForget()
+	case "up":
+		m.output.ScrollUp(1)
+		return m, nil
+	case "down":
+		m.output.ScrollDown(1)
+		return m, nil
+	}
+	return m.cancelForget()
+}
+
+// boundKey answers the step bound. The engine is paused, waiting.
+func (m Model) boundKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y", "enter":
+		return m.answerBound(true)
+	case "n", "N", "esc":
+		return m.answerBound(false)
+	}
+	return m, nil
+}
+
+// onEscape backs out of the innermost thing first: question, dropdown,
+// panel, output pane, then a running command or request.
+func (m Model) onEscape() (Model, tea.Cmd) {
+	if m.mode == modeConfirm {
+		return m.decline()
+	}
+	if m.prompt.Open() {
+		m.prompt.Close()
+		return m, nil
+	}
+	if m.closePanel() {
+		return m, nil
+	}
+	// Idle esc in the output pane steps back to history. A running
+	// request still aborts.
+	if m.nav.focus == focusOutput && m.cur == nil {
+		m.nav.focus = focusHistory
+		return m, nil
+	}
+	// A command the human ran stops before the Turn does: it is theirs,
+	// and they are watching it.
+	if m.userCommandRunning() {
+		return m, m.send(event.CancelCommand{})
+	}
+	if m.cur != nil {
+		return m.abortRunning()
+	}
+	return m, nil
+}
+
+// onTab completes an open dropdown, otherwise cycles panes.
+func (m Model) onTab() (Model, tea.Cmd) {
+	if m.mode == modeConfirm {
+		return m, nil
+	}
+	if m.nav.focus == focusInput && m.mode == modeInput && m.prompt.Focused() && m.prompt.Open() {
+		return m.acceptSlash()
+	}
+	return m.toggleFocus()
+}
+
+// toggleEntry switches the bar between a request and a command.
+// Focus follows, unless a question is up: that still comes first.
+func (m Model) toggleEntry() (Model, tea.Cmd) {
+	m.entry = entryShell
+	if m.prompt.shell {
+		m.entry = entryPrompt
+	}
+	m.prompt.SetShell(m.entry == entryShell)
+	if m.mode == modeInput {
+		m.nav.focus = focusInput
+		m.prompt.Focus()
+	}
+	m.clearNotice()
+	return m, nil
+}
+
+// confirmKey answers an approval. y waits until the whole command has
+// been on screen, since approving a tail nobody saw is no approval.
+func (m Model) confirmKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	_, room := m.confirmLines()
+	switch msg.String() {
+	case "y", "Y", "enter":
+		if !m.confirmReady() {
+			m.noteErr("read to the end of the command first: ↓ scrolls it")
+			return m, nil
+		}
+		return m.approve()
+	case "n", "N":
+		return m.decline()
+	case "down":
+		m.scrollConfirm(1)
+	case "up":
+		m.scrollConfirm(-1)
+	case "pgdown":
+		m.scrollConfirm(room)
+	case "pgup":
+		m.scrollConfirm(-room)
 	}
 	return m, nil
 }
@@ -296,61 +339,4 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.output, cmd = m.output.Update(msg)
 	return m, cmd
-}
-
-// onEscape backs out of the innermost thing first: question, dropdown,
-// panel, output pane, then a running command or request.
-func (m Model) onEscape() (Model, tea.Cmd) {
-	if m.mode == modeConfirm {
-		return m.decline()
-	}
-	if m.prompt.Open() {
-		m.prompt.Close()
-		return m, nil
-	}
-	if m.closePanel() {
-		return m, nil
-	}
-	// Idle esc in the output pane steps back to history. A running
-	// request still aborts.
-	if m.nav.focus == focusOutput && m.cur == nil {
-		m.nav.focus = focusHistory
-		return m, nil
-	}
-	// A command the human ran stops before the Turn does: it is theirs,
-	// and they are watching it.
-	if m.userCommandRunning() {
-		return m, m.send(event.CancelCommand{})
-	}
-	if m.cur != nil {
-		return m.abortRunning()
-	}
-	return m, nil
-}
-
-// toggleExpand opens or shuts a row's preview, outside apply, so it
-// marks the row's block and history itself.
-func (m *Model) toggleExpand(r *historyRow) {
-	r.expanded = !r.expanded
-	for _, b := range m.blocks {
-		if slices.Contains(b.rows, r) {
-			b.rev++
-		}
-	}
-	m.histRev++
-}
-
-// forgetKey answers the delete question. Every key but y cancels.
-func (m Model) forgetKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "y", "Y":
-		return m.confirmForget()
-	case "up":
-		m.output.ScrollUp(1)
-		return m, nil
-	case "down":
-		m.output.ScrollDown(1)
-		return m, nil
-	}
-	return m.cancelForget()
 }
