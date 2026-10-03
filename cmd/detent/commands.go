@@ -59,7 +59,7 @@ func listServers() error {
 
 	reg, servers := tool.Standard(), mcppkg.NewInvokers()
 	errs := mcppkg.ConnectAll(ctx, reg, servers, cfg, nil)
-	defer servers.Close()
+	defer func() { _ = bounded(serverGrace, "mcp servers", servers.Close) }()
 
 	for _, s := range servers.Servers() {
 		tools, err := s.Tools(ctx)
@@ -75,15 +75,15 @@ func listServers() error {
 	for _, err := range errs {
 		fmt.Fprintln(os.Stderr, err)
 	}
+	if len(servers.Servers()) == 0 {
+		return fmt.Errorf("no mcp server connected")
+	}
 	return nil
 }
 
 // pruneSandbox reports what it removed rather than saying nothing,
 // because deleting someone's containers silently is the wrong default.
 func pruneSandbox(socket string) error {
-	if socket == "" {
-		socket = defaultSandboxSocket()
-	}
 	if socket == "" {
 		return fmt.Errorf("no default containerd socket for this OS: set -sandbox-socket (or sandbox_socket in config)")
 	}

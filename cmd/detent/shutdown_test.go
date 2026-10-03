@@ -167,8 +167,10 @@ func TestShutdown_ReportsHowItWentAndHowToResume(t *testing.T) {
 // Invokers.Close is serial and the SDK gives each server ten seconds,
 // so the deadline is what keeps a few slow ones from holding the terminal.
 func TestBounded_ReturnsWhenTheCloseWillNot(t *testing.T) {
+	never := make(chan struct{})
+	t.Cleanup(func() { close(never) })
 	err := bounded(50*time.Millisecond, "mcp servers", func() error {
-		time.Sleep(10 * time.Second)
+		<-never
 		return nil
 	})
 	require.Error(t, err)

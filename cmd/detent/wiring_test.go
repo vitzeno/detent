@@ -27,8 +27,9 @@ func TestWiring_TypingReachesTheEngineAndComesBack(t *testing.T) {
 	}}}, tool.Standard(), stubSelector{})
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go eng.Run(ctx)
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); eng.Run(ctx) }()
+	t.Cleanup(func() { cancel(); <-stopped })
 
 	m := ui.New(ctx, bus, ui.SessionInfo{})
 	var cmds []tea.Cmd
@@ -57,13 +58,19 @@ func TestWiring_TypingReachesTheEngineAndComesBack(t *testing.T) {
 func pump(t *testing.T, m ui.Model, first tea.Cmd, until func(ui.Model) bool) ui.Model {
 	t.Helper()
 	msgs := make(chan tea.Msg, 256)
+	// Closed on return, so a command finishing late does not block on msgs forever.
+	done := make(chan struct{})
+	defer close(done)
 	run := func(c tea.Cmd) {
 		if c == nil {
 			return
 		}
 		go func() {
 			if msg := c(); msg != nil {
-				msgs <- msg
+				select {
+				case msgs <- msg:
+				case <-done:
+				}
 			}
 		}()
 	}

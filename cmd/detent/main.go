@@ -4,10 +4,12 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -44,26 +46,37 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "detent:", err)
-		os.Exit(1)
+	err := run()
+	if err == nil {
+		return
 	}
+	code := 1
+	var ended endedError
+	if errors.As(err, &ended) {
+		code = ended.code()
+	}
+	if msg := err.Error(); msg != "" {
+		fmt.Fprintln(os.Stderr, "detent:", msg)
+	}
+	os.Exit(code)
 }
 
 func run() error {
-	loadDotenv(".env")
+	if err := loadDotenv(".env"); err != nil {
+		return err
+	}
 
-	baseURL := flag.String("url", "", "OpenAI-compatible base URL (default: config file, else "+config.DefaultBaseURL+")")
-	modelName := flag.String("model", "", "model name (default: config file, else "+config.DefaultModel+")")
-	apiKey := flag.String("key", "", "API key (default: config file, else env; empty for a local endpoint)")
+	baseURL := flag.String("url", "", "OpenAI-compatible base URL (default: env, else config file, else "+config.DefaultBaseURL+")")
+	modelName := flag.String("model", "", "model name (default: env, else config file, else "+config.DefaultModel+")")
+	apiKey := flag.String("key", "", "API key, better set as DETENT_API_KEY since a flag shows in ps (default: env, else config file; empty for a local endpoint)")
 	configPath := flag.String("config", "", "config file path (default: ./.detent.yaml, then ~/.config/detent/config.yaml)")
 	prompt := flag.String("prompt", "", "run one request through the agent loop and exit")
 	unattended := flag.Bool("unattended", false, "with -prompt, decline every flagged command instead of asking")
 	approveAll := flag.Bool("approve-all", false, "with -prompt, run every flagged command without asking, only where nothing can be harmed, like a throwaway container")
 	steps := flag.Int("steps", -1, "steps per request before it asks to continue (default: config file)")
-	themeName := flag.String("theme", "", "color scheme: "+strings.Join(theme.Names(), ", ")+" (default: config file, else "+config.DefaultTheme+")")
-	sandboxMode := flag.String("sandbox", "", "sandbox mode: auto, host (default: config file, else auto)")
-	sandboxSocket := flag.String("sandbox-socket", "", "containerd socket path (default: config file, else OS-conventional)")
+	themeName := flag.String("theme", "", "color scheme: "+strings.Join(theme.Names(), ", ")+" (default: env, else config file, else "+config.DefaultTheme+")")
+	sandboxMode := flag.String("sandbox", "", "sandbox mode: auto, host (default: env, else config file, else auto)")
+	sandboxSocket := flag.String("sandbox-socket", "", "containerd socket path (default: env, else config file, else OS-conventional)")
 	resume := flag.String("resume", "", "continue a stored session by id or name, or \"last\"")
 	sessions := flag.Bool("sessions", false, "list the sessions that can be resumed, and exit")
 	prune := flag.Bool("prune", false, "remove what abandoned sessions left in containerd, and exit")
@@ -81,6 +94,9 @@ func run() error {
 	if *unattended && *approveAll {
 		return fmt.Errorf("-unattended declines every flagged command and -approve-all runs them, so pick one")
 	}
+	if (*unattended || *approveAll) && *prompt == "" {
+		return fmt.Errorf("-unattended and -approve-all only apply with -prompt: the TUI always asks")
+	}
 
 	fileCfg, err := config.Load(*configPath)
 	if err != nil {
@@ -91,25 +107,26 @@ func run() error {
 		SandboxMode: *sandboxMode, SandboxSocket: *sandboxSocket,
 	}
 	resolved := config.Resolve(fileCfg, flagCfg, *steps)
+	resolved.SandboxSocket = cmp.Or(resolved.SandboxSocket, defaultSandboxSocket())
+
+	// Before the ping and the log, which a command that only answers has no use for.
+	if *prune {
+		return pruneSandbox(resolved.SandboxSocket)
+	}
+	if *listMCP {
+		return listServers()
+	}
 
 	// Validated even for -prompt, so a typo fails fast either way.
 	th, ok := theme.Themes[resolved.Theme]
 	if !ok {
 		return fmt.Errorf("unknown theme %q, choose one of: %s", resolved.Theme, strings.Join(theme.Names(), ", "))
 	}
+	if err := resolved.Validate(); err != nil {
+		return err
+	}
 	theme.Apply(th)
 	ui.RefreshStyles()
-
-	if resolved.Views == config.ViewsGenerate && resolved.JevAPIKey == "" {
-		return fmt.Errorf("views: generate composes a view by asking the judge, so it needs jev_api_key (or TYPESAFE_API_KEY). Set one, or use views: saved")
-	}
-	if resolved.SandboxMode != "auto" && resolved.SandboxMode != "host" {
-		return fmt.Errorf("unknown -sandbox %q, choose one of: auto, host", resolved.SandboxMode)
-	}
-	if resolved.SandboxNetwork != sandbox.NetworkHost && resolved.SandboxNetwork != sandbox.NetworkNone {
-		return fmt.Errorf("unknown sandbox_network %q, choose one of: %s, %s",
-			resolved.SandboxNetwork, sandbox.NetworkHost, sandbox.NetworkNone)
-	}
 
 	// Waited for below, so startup still fails fast. Nothing before the
 	// wait needs the endpoint, so the ping overlaps it.
@@ -124,14 +141,17 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// Said once something can show them: printed headless, a Notice in
+	// the TUI, whose screen would otherwise hide anything printed now.
+	var warnings []string
 	// A session that cannot log is still a session: Setup says so and
 	// carries on discarding.
 	closeLog, logErr := logging.Setup(sessionID.String(),
 		logging.WithDir(resolved.LogDir),
 		logging.WithLevel(resolved.LogLevel),
-		logging.WithBodies(resolved.LogBodies))
+		logging.WithBodies(resolved.LogsBodies()))
 	if logErr != nil {
-		fmt.Fprintln(os.Stderr, logErr)
+		warnings = append(warnings, logErr.Error())
 	}
 	defer func() { _ = closeLog() }()
 
@@ -141,27 +161,20 @@ func run() error {
 	sd.session = sessionID
 	defer func() { sd.close() }()
 
-	if *prune {
-		return pruneSandbox(resolved.SandboxSocket)
-	}
-	if *listMCP {
-		return listServers()
-	}
-
+	local := model.LocalEnvironment()
+	sandboxed := resolved.SandboxMode == config.SandboxAuto
 	// Found before the container, which has to mount the ones outside the working directory.
 	home, _ := os.UserHomeDir()
-	found := findSkills(model.LocalEnvironment().Dir, home, resolved.SandboxWorkspace, resolved.SandboxMode == "auto")
+	found := findSkills(local.Dir, home, resolved.SandboxWorkspace, sandboxed)
+	warnings = append(warnings, found.warnings...)
 
-	runners := routing.Selector{Host: host.NewShell(), HostOnly: resolved.SandboxMode == "host"}
+	runners := routing.Selector{Host: host.NewShell(), HostOnly: !sandboxed}
 	var container *sandbox.Container
 	// The model is told where commands actually run, so it writes for
 	// that OS and knows what survives.
-	env := model.LocalEnvironment()
-	if resolved.SandboxMode == "auto" {
+	env := local
+	if sandboxed {
 		socket := resolved.SandboxSocket
-		if socket == "" {
-			socket = defaultSandboxSocket()
-		}
 		if socket == "" {
 			return fmt.Errorf("no default containerd socket for this OS: set -sandbox-socket (or sandbox_socket in config), or run with -sandbox host")
 		}
@@ -198,7 +211,7 @@ func run() error {
 	}
 
 	if err := <-pinged; err != nil {
-		return fmt.Errorf("%v\n\nis the model endpoint up? Wanted %s with model %s. Check the key, or point -url/-model (or a config file) somewhere else. For a local LM Studio, load the model and Start Server",
+		return fmt.Errorf("%w\n\nis the model endpoint up? Wanted %s with model %s. Check the key, or point -url/-model (or a config file) somewhere else. For a local LM Studio, load the model and Start Server",
 			err, resolved.BaseURL, resolved.Model)
 	}
 
@@ -209,9 +222,9 @@ func run() error {
 	env.Timeout = timeout
 
 	// Read on the host, where the files are, whichever runner the commands use.
-	files, err := instructions.Find(model.LocalEnvironment().Dir, instructions.Global())
+	files, err := instructions.Find(local.Dir, instructions.Global())
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "instructions:", err)
+		warnings = append(warnings, "instructions: "+err.Error())
 	}
 	client := &model.Client{
 		BaseURL: resolved.BaseURL, Model: resolved.Model, APIKey: resolved.APIKey,
@@ -223,7 +236,7 @@ func run() error {
 	// being written down. A session that cannot be is still a session.
 	events, storeErr := store.Open(store.DefaultPath())
 	if storeErr != nil {
-		fmt.Fprintln(os.Stderr, storeErr)
+		warnings = append(warnings, storeErr.Error())
 	}
 	sd.events = events
 
@@ -281,10 +294,10 @@ func run() error {
 		sd.unwatch = append(sd.unwatch, store.Watch(bus, events, sessionID))
 	}
 	if judge != nil {
-		judgepkg.Watch(bus, judge)
+		sd.unwatch = append(sd.unwatch, judgepkg.Watch(bus, judge))
 	}
 	// Without a key there is nothing to compose with, but shipped and saved views still draw.
-	views(resolved.Views, judge).Watch(bus)
+	sd.unwatch = append(sd.unwatch, composer(resolved.Views, judge).Watch(bus))
 	sd.unwatch = append(sd.unwatch, forget.Watch(bus, sessionStore(events), sessionID,
 		forget.WithContainers(containerRemover(sandboxSocketFor(resolved)))))
 
@@ -292,12 +305,13 @@ func run() error {
 	announceResume(bus, sessionID, restore, env)
 
 	if *prompt != "" {
-		// Bubble Tea traps these for the TUI. Without it, a killed
-		// -prompt would leave its container behind.
-		ctx, untrap := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+		// Bubble Tea traps the first two for the TUI. Without it, a killed
+		// -prompt would leave its container behind. Deferred after sd.close,
+		// so it runs first and a second Ctrl-C during shutdown still kills.
+		ctx, untrap := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 		defer untrap()
 
-		for _, w := range found.warnings {
+		for _, w := range warnings {
 			fmt.Fprintln(os.Stderr, w)
 		}
 		sd.engine = runEngine(ctx, eng)
@@ -310,10 +324,10 @@ func run() error {
 		}
 		reason := headless.Run(ctx, bus, *prompt, approve)
 		fmt.Printf("\nrequest ended: %s\n", reason)
-		if reason == event.EndError {
-			return fmt.Errorf("the request failed")
+		if reason == event.EndDone {
+			return nil
 		}
-		return nil
+		return endedError(reason)
 	}
 
 	info := ui.SessionInfo{
@@ -322,8 +336,8 @@ func run() error {
 	}
 	// Built before the engine runs: SessionStarted is published once,
 	// and a front-end that subscribes afterwards loses it.
-	model := ui.New(ctx, bus, info).Restore(restore)
-	for _, w := range found.warnings {
+	tui := ui.New(ctx, bus, info).Restore(restore)
+	for _, w := range warnings {
 		bus.Publish(event.Notice{Level: "warn", Text: w})
 	}
 	// The same runner the model's commands go to: a shell that cannot
@@ -338,9 +352,39 @@ func run() error {
 
 	// Altscreen is declared by ui.Model.View: under Bubble Tea v2,
 	// terminal state is a property of what is rendered.
-	p := tea.NewProgram(model)
+	p := tea.NewProgram(tui)
+	// Bubble Tea traps neither, and a closed terminal would otherwise
+	// skip every deferred close above.
+	hup, unhup := signal.NotifyContext(ctx, syscall.SIGHUP)
+	defer unhup()
+	go func() { <-hup.Done(); p.Quit() }()
 	_, err = p.Run()
 	return err
+}
+
+// endedError is a headless request that ended other than done, so a
+// script driving -prompt can tell finished from gave up.
+type endedError event.EndReason
+
+func (e endedError) Error() string {
+	if event.EndReason(e) == event.EndError {
+		return "the request failed"
+	}
+	// The reason is already printed, so nothing more to say.
+	return ""
+}
+
+func (e endedError) code() int {
+	switch event.EndReason(e) {
+	case event.EndAborted:
+		return 130
+	case event.EndBound:
+		return 3
+	case event.EndStopped:
+		return 4
+	default:
+		return 1
+	}
 }
 
 // defaultSandboxSocket returns the OS-conventional containerd socket,
@@ -361,35 +405,61 @@ func defaultSandboxSocket() string {
 	}
 }
 
-// loadDotenv fills gaps from .env. Real environment variables always win.
-func loadDotenv(path string) {
+// loadDotenv fills gaps from .env in the working directory. Real
+// environment variables always win, even set to "".
+func loadDotenv(path string) error {
 	f, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
-		return
+		return err
 	}
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
+		key, value, ok := dotenvLine(scanner.Text())
+		if !ok {
 			continue
 		}
-		key, value, found := strings.Cut(line, "=")
-		if !found {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		value = strings.Trim(strings.TrimSpace(value), `"'`)
 		if _, exists := os.LookupEnv(key); !exists {
-			os.Setenv(key, value)
+			if err := os.Setenv(key, value); err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return nil
 }
 
-// views wires the composer. Only views: generate hands it the judge,
-// and run() refuses that mode without a jev key.
-func views(mode string, judge *classify.JevJudge) *viewgen.Generator {
+// dotenvLine reads one KEY=value line: an export prefix, one matched pair
+// of quotes, and a trailing # comment on an unquoted value are allowed.
+func dotenvLine(line string) (key, value string, ok bool) {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "#") {
+		return "", "", false
+	}
+	key, value, ok = strings.Cut(strings.TrimPrefix(line, "export "), "=")
+	key = strings.TrimSpace(key)
+	if !ok || key == "" {
+		return "", "", false
+	}
+	value = strings.TrimSpace(value)
+	if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+		return key, value[1 : len(value)-1], true
+	}
+	if i := strings.Index(value, " #"); i >= 0 {
+		value = strings.TrimSpace(value[:i])
+	}
+	return key, value, true
+}
+
+// composer wires the view composer. Only views: generate hands it the
+// judge, and Validate refuses that mode without a jev key.
+func composer(mode string, judge *classify.JevJudge) *viewgen.Generator {
 	g := &viewgen.Generator{
 		Registry: ui.Registry(),
 		Store:    &viewgen.Store{Dir: viewgen.DefaultDir()},
@@ -488,13 +558,10 @@ func containerRemover(socket string) func(context.Context, string) error {
 // sandboxSocketFor is the socket a deleted session's container would
 // be on, or "" when this run never had one to speak of.
 func sandboxSocketFor(c config.Config) string {
-	if c.SandboxMode != "auto" {
+	if c.SandboxMode != config.SandboxAuto {
 		return ""
 	}
-	if c.SandboxSocket != "" {
-		return c.SandboxSocket
-	}
-	return defaultSandboxSocket()
+	return c.SandboxSocket
 }
 
 // loadMCPConfig keeps MCP configuration out of headless runs entirely.

@@ -62,7 +62,7 @@ func (s shutdown) close() {
 		s.bus.Drain(drainGrace)
 	}
 	for _, f := range s.unwatch {
-		f()
+		errs = appendErr(errs, bounded(drainGrace, "a subscriber", func() error { f(); return nil }))
 	}
 	if s.events != nil {
 		errs = appendErr(errs, s.events.Close())

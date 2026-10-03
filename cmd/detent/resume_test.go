@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -86,12 +87,12 @@ func TestAnnounceResume_PublishesTheSeamThenTheNote(t *testing.T) {
 	id := uuid.Must(uuid.NewV7())
 	announceResume(bus, id, started(true), model.Environment{Dir: "/workspace", Sandboxed: true})
 
-	first := (<-seen).Event.(event.SessionResumed)
+	first := next[event.SessionResumed](t, seen)
 	assert.Equal(t, id, first.Session)
 	assert.Equal(t, 1, first.Records)
 	assert.True(t, first.Sandbox)
 
-	second := (<-seen).Event.(event.NoteContext)
+	second := next[event.NoteContext](t, seen)
 	assert.Contains(t, second.Text, model.ResumeMarker)
 }
 
@@ -104,8 +105,22 @@ func TestAnnounceResume_SaysNothingWithoutARestore(t *testing.T) {
 	announceResume(bus, uuid.Must(uuid.NewV7()), nil, model.Environment{})
 	bus.Publish(event.Notice{Text: "after"})
 
-	_, ok := (<-seen).Event.(event.Notice)
-	assert.True(t, ok, "the first thing on the bus is what came after it")
+	next[event.Notice](t, seen) // the first thing on the bus is what came after it
+}
+
+// next is the following record, which must be a T, failing rather than hanging when none comes.
+func next[T event.Event](t *testing.T, seen <-chan event.Record) T {
+	t.Helper()
+	select {
+	case r := <-seen:
+		got, ok := r.Event.(T)
+		require.True(t, ok, "got %T", r.Event)
+		return got
+	case <-time.After(5 * time.Second):
+		t.Fatal("nothing was published")
+	}
+	var zero T
+	return zero
 }
 
 func started(sandboxed bool) []event.Record {

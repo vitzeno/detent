@@ -44,7 +44,7 @@ func findSkills(cwd, home, mountPoint string, sandboxed bool) foundSkills {
 
 // sandboxDir is s.Dir as the container sees it, adding its folder to mounts when it is outside cwd.
 func sandboxDir(s skills.Skill, cwd, mountPoint string, roots []skills.Root, mounts map[string]string) string {
-	if rel, err := filepath.Rel(cwd, s.Dir); err == nil && !strings.HasPrefix(rel, "..") {
+	if rel, err := filepath.Rel(cwd, s.Dir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return path.Join(mountPoint, filepath.ToSlash(rel))
 	}
 	// Numbered by the root's place in the search, so the paths are stable.
