@@ -54,7 +54,7 @@ func TestSystemPrompt_StatesTheCommandLimit(t *testing.T) {
 
 // The prompt promises a shape another package emits, so it is checked
 // against that package's constant: prose drifting from it fails silently.
-func TestSystemPrompt_NamesTheMarkerHumanshellActuallyWrites(t *testing.T) {
+func TestSystemPrompt_NamesTheMarkerUsercommandActuallyWrites(t *testing.T) {
 	assert.Contains(t, systemPrompt(LocalEnvironment()), usercommand.Marker)
 	assert.Contains(t, systemPrompt(LocalEnvironment()), "read it rather than running it again",
 		"and says what to do with it, which is the point of naming it")
