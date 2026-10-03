@@ -55,7 +55,7 @@ func TestShell_SlashIsAPathNotADropdown(t *testing.T) {
 // must be too. Intercepted before owner() for exactly this reason.
 func TestShell_ShiftTabFlipsFromEveryOwner(t *testing.T) {
 	setups := map[string]func(*Model){
-		"input":   func(m *Model) {},
+		"input":   func(*Model) {},
 		"busy":    func(m *Model) { m.waiting = true },
 		"history": func(m *Model) { m.nav.focus = focusHistory },
 		"output":  func(m *Model) { m.nav.focus = focusOutput },

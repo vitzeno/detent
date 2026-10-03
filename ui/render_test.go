@@ -112,7 +112,7 @@ func TestView_RendersAtEverySize(t *testing.T) {
 		m := sized(t, size[0], size[1], evs...)
 		out := m.baseView()
 		require.NotEmpty(t, out)
-		for _, l := range strings.Split(out, "\n") {
+		for l := range strings.SplitSeq(out, "\n") {
 			assert.LessOrEqual(t, lipgloss.Width(stripANSI(l)), size[0],
 				"a line overflows a %dx%d screen: %q", size[0], size[1], stripANSI(l))
 		}
@@ -394,7 +394,7 @@ func TestBlockKey_CoversEverythingABlockDrawsFrom(t *testing.T) {
 			m.apply(event.CallJudged{Call: b.rows[0].id, Status: "failed"})
 		}},
 		{"the pane width", func(m *Model, _ *turnBlock) { m.layout.histColW = 44 }},
-		{"the cursor entering it", func(m *Model, b *turnBlock) { m.nav.cursor = len(m.rows()) - 1 }},
+		{"the cursor entering it", func(m *Model, _ *turnBlock) { m.nav.cursor = len(m.rows()) - 1 }},
 		{"the spinner while live", func(m *Model, _ *turnBlock) {
 			m.spinner, _ = m.spinner.Update(m.spinner.Tick())
 		}},
@@ -501,22 +501,23 @@ func TestDetailCache_NeverGoesStale(t *testing.T) {
 	m.layout.width, m.layout.height = 150, 45
 	m.sizeViewport()
 
-	table := "Filesystem      Size  Used Avail Capacity  Mounted on\n"
+	var table strings.Builder
+	table.WriteString("Filesystem      Size  Used Avail Capacity  Mounted on\n")
 	for i := range 20 {
-		table += fmt.Sprintf("/dev/disk%-3d    460Gi %dGi  %dGi    %d%%    /mnt/point%d\n", i, i*7, 400-i, i*3, i)
+		fmt.Fprintf(&table, "/dev/disk%-3d    460Gi %dGi  %dGi    %d%%    /mnt/point%d\n", i, i*7, 400-i, i*3, i)
 	}
 
 	steps := []struct {
 		name string
 		do   func(m *Model)
 	}{
-		{"first render", func(m *Model) {}},
+		{"first render", func(*Model) {}},
 		{"the shown row streams output", func(m *Model) {
 			m.apply(event.CallStarted{Call: shown, Runner: "sandbox"})
 			m.apply(event.OutputChunk{Call: shown, Line: "a fresh line nobody has drawn yet"})
 		}},
 		{"the shown row finishes", func(m *Model) {
-			m.apply(event.CallEnded{Call: shown, Result: event.Result{Stdout: table}})
+			m.apply(event.CallEnded{Call: shown, Result: event.Result{Stdout: table.String()}})
 		}},
 		{"the focused row changes", func(m *Model) { m.nav.cursor = 2 }},
 		{"and changes back", func(m *Model) { m.nav.cursor = len(m.rows()) - 1 }},
@@ -1041,7 +1042,9 @@ func TestTildePath_MatchesWholeElements(t *testing.T) {
 func TestWelcome_OffersOnlyRealCommands(t *testing.T) {
 	m := sized(t, 160, 60)
 	pane := stripANSI(strings.Join(m.welcomePane(), "\n"))
-	cmds := regexp.MustCompile(`/[a-z]+`).FindAllString(pane[strings.Index(pane, "slash command"):], -1)
+	_, after, found := strings.Cut(pane, "slash command")
+	require.True(t, found, "the welcome pane names slash commands")
+	cmds := regexp.MustCompile(`/[a-z]+`).FindAllString(after, -1)
 	require.NotEmpty(t, cmds)
 	for _, c := range cmds {
 		_, ok := lookupSlash(c, nil)
@@ -1161,6 +1164,7 @@ func undoTurn(t *testing.T) Model {
 
 // sessionsListed puts two sessions in view, one of them the running one.
 func sessionsListed(t *testing.T) (Model, uuid.UUID) {
+	t.Helper()
 	mine, other := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := feed(t, event.SessionStarted{Session: mine, Model: "m"},
 		event.SessionsListed{Sessions: []event.SessionSummary{
