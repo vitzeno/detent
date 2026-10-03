@@ -5,6 +5,9 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"path"
+	"strconv"
+	"strings"
 )
 
 //go:embed migrations/*.sql
@@ -16,6 +19,9 @@ func migrate(db *sql.DB) error {
 	files, err := fs.Glob(migrations, "migrations/*.sql")
 	if err != nil {
 		return fmt.Errorf("store: read migrations: %w", err)
+	}
+	if err := numbered(files); err != nil {
+		return err
 	}
 
 	var at int
@@ -33,6 +39,18 @@ func migrate(db *sql.DB) error {
 		}
 		if err := apply(db, string(body), i+1); err != nil {
 			return fmt.Errorf("store: %s: %w", files[i], err)
+		}
+	}
+	return nil
+}
+
+// numbered checks each file's own number is its place, since the version
+// is the place: a gap or a misnamed file would shift every later one.
+func numbered(files []string) error {
+	for i, f := range files {
+		prefix, _, _ := strings.Cut(path.Base(f), "_")
+		if n, err := strconv.Atoi(prefix); err != nil || n != i+1 {
+			return fmt.Errorf("store: migration %s is number %d in order, so it must be named %04d_*.sql", f, i+1, i+1)
 		}
 	}
 	return nil

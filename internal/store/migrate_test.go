@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"io/fs"
 	"path/filepath"
 	"testing"
 
@@ -66,6 +67,23 @@ func TestMigrate_DoesNotRecordAFailedMigration(t *testing.T) {
 	assert.Zero(t, version(t, db), "the version bump rolled back with it")
 	_, err = db.Exec(`SELECT 1 FROM fine LIMIT 1`)
 	assert.Error(t, err, "and so did the half that worked")
+}
+
+// The version is a file's place in order, so the name must agree with it.
+func TestMigrate_NumberingHasNoGaps(t *testing.T) {
+	files, err := fs.Glob(migrations, "migrations/*.sql")
+	require.NoError(t, err)
+	require.NoError(t, numbered(files), "the shipped migrations")
+
+	tests := [][]string{
+		{"migrations/0001_a.sql", "migrations/0003_b.sql"},
+		{"migrations/001_a.sql", "migrations/0002_b.sql", "migrations/02_c.sql"},
+		{"migrations/a.sql"},
+	}
+	for _, files := range tests {
+		assert.Error(t, numbered(files), "%v", files)
+	}
+	assert.NoError(t, numbered([]string{"migrations/0001_a.sql", "migrations/0002_b.sql"}))
 }
 
 func version(t *testing.T, db *sql.DB) int {
