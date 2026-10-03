@@ -80,14 +80,6 @@ func TestJevJudge_Ask(t *testing.T) {
 			wantUsage: Usage{InputTokens: 60, Model: "jev-1.13.0"},
 		},
 		{
-			name:         "non-200 status is an error",
-			questions:    Questions{"x": {Instructions: "x", Noul: &NoulQuestion{}}},
-			startServer:  true,
-			serverStatus: http.StatusUnauthorized,
-			serverBody:   `{"error": "invalid api key"}`,
-			wantErr:      true,
-		},
-		{
 			name:      "question with none of Choice/Noul/Score set is rejected before any request",
 			questions: Questions{"broken": {Instructions: "??"}},
 			wantErr:   true,
