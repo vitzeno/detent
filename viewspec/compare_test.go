@@ -115,7 +115,7 @@ func TestPanel_FramesOnePaneAndWillNotNest(t *testing.T) {
 	require.Len(t, got, 4, "a titled edge, two rows, and a bottom edge")
 	assert.True(t, strings.HasPrefix(got[0], "╭─ units "), "the title sits in the top edge")
 	for i, line := range got {
-		assert.Equal(t, 30, len([]rune(line)), "line %d fills the frame", i)
+		assert.Len(t, []rune(line), 30, "line %d fills the frame", i)
 	}
 	assert.True(t, strings.HasPrefix(got[1], "│ ") && strings.HasSuffix(got[1], " │"))
 	assert.True(t, strings.HasPrefix(got[3], "╰"))

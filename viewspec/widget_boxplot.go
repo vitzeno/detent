@@ -28,7 +28,7 @@ func (boxplotWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	for i, g := range order {
 		l, h := bounds(groups[g])
 		if i == 0 {
-			lo = l
+			lo, hi = l, h
 		}
 		lo, hi = min(lo, l), max(hi, h)
 	}

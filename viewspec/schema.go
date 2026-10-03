@@ -1,6 +1,10 @@
 package viewspec
 
-import "slices"
+import (
+	"maps"
+	"slices"
+	"strings"
+)
 
 // Schema describes the registry's vocabulary as a JSON Schema, strict
 // enough for a structured-output request, so a registered widget is offered.
@@ -40,7 +44,7 @@ func (r *Registry) parseSchema() map[string]any {
 				"json reads objects; none skips extraction"),
 			"pattern": str("lines only: a regexp with named captures, one row per matching line"),
 			"skip":    map[string]any{"type": "integer", "description": "leading lines to drop before parsing"},
-			"header":  map[string]any{"type": "boolean", "description": "columns only: first surviving line names the fields"},
+			"header":  map[string]any{"type": "boolean", "description": "columns and delimited: first surviving line names the fields"},
 			"fields": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
 				"description": "columns and delimited: field names when header is false"},
 			"sep": str("pairs and delimited: what to split each line on"),
@@ -97,9 +101,10 @@ func (r *Registry) blockSchema(allowContainers bool) map[string]any {
 				"required":             []string{"field", "map"},
 				"additionalProperties": false,
 			}),
-			"count_where": str(`meter only: which rows count as hits, as "field=value"`),
-			"of":          str(`meter only: the denominator, as "field=value" or "*" for every row`),
-			"on_enter":    str("a command template using {field}; it seeds the human's prompt and never runs. Only on a kind that draws one row per line: table, list, tree, keyvalue, bar, gauge, gantt, timeline, diverge, delta, dots, flow"),
+			"count_where": str(`meter and stat: which rows count as hits, as "field=value"`),
+			"of":          str(`meter and stat: the denominator, as "field=value" or "*" for every row`),
+			"on_enter": str("a command template using {field}; it seeds the human's prompt and never runs. Only on a kind that draws one row per line: " +
+				strings.Join(slices.DeleteFunc(slices.Clone(kinds), func(k string) bool { return !r.Selects(k) }), ", ")),
 		},
 		"required": []string{"kind", "title", "field", "depth", "columns", "where", "sort",
 			"accent", "count_where", "of", "on_enter"},
@@ -138,10 +143,7 @@ func enum[T any](values []T, desc string) map[string]any {
 // nullable keeps an optional object expressible under strict schemas,
 // where every property must be required.
 func nullable(schema map[string]any) map[string]any {
-	out := map[string]any{}
-	for k, v := range schema {
-		out[k] = v
-	}
+	out := maps.Clone(schema)
 	out["type"] = []string{"object", "null"}
 	return out
 }

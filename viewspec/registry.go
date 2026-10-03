@@ -8,7 +8,8 @@ import (
 )
 
 // Registry is the vocabulary a spec is compiled against, and the
-// extension point for a consumer's own widgets and parse kinds.
+// extension point for a consumer's own widgets and parse kinds. The zero
+// value is an empty registry.
 type Registry struct {
 	widgets    map[string]Widget
 	extractors map[string]func(Parse) (Extractor, error)
@@ -38,6 +39,9 @@ func (r *Registry) Widget(kind string, w Widget) error {
 	if w == nil {
 		return fmt.Errorf("viewspec: widget %q must not be nil", kind)
 	}
+	if r.widgets == nil {
+		r.widgets = map[string]Widget{}
+	}
 	r.widgets[kind] = w
 	return nil
 }
@@ -56,6 +60,9 @@ func (r *Registry) Extractor(kind string, mk func(Parse) (Extractor, error)) err
 	}
 	if mk == nil {
 		return fmt.Errorf("viewspec: parse kind %q must not be nil", kind)
+	}
+	if r.extractors == nil {
+		r.extractors = map[string]func(Parse) (Extractor, error){}
 	}
 	r.extractors[kind] = mk
 	return nil
@@ -108,11 +115,13 @@ func (r *Registry) Describe(kind string) (Description, bool) {
 // WidgetFunc adapts a plain function, as http.HandlerFunc does.
 type WidgetFunc func(Block, Data, Frame) ([]string, error)
 
+// Draw calls fn.
 func (fn WidgetFunc) Draw(b Block, d Data, f Frame) ([]string, error) { return fn(b, d, f) }
 
 // ExtractorFunc adapts a plain function.
 type ExtractorFunc func(string) ([]Row, error)
 
+// Extract calls fn.
 func (fn ExtractorFunc) Extract(output string) ([]Row, error) { return fn(output) }
 
 // Validator is an optional Widget extension. Bind calls it with the

@@ -30,7 +30,7 @@ pct 64%
 	bars := draw(t, viewspec.Spec{Parse: colsParse(), Blocks: []viewspec.Block{
 		{Kind: "bar", Columns: cols("name", "amount")}}}, sizes, 60)
 	require.Len(t, bars, 4)
-	assert.Greater(t, fills(bars[0]), 0, "900M is not zero just because it carries a unit")
+	assert.Positive(t, fills(bars[0]), "900M is not zero just because it carries a unit")
 	assert.Greater(t, fills(bars[1]), fills(bars[0]), "and 1.0G outranks it")
 }
 

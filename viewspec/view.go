@@ -1,6 +1,7 @@
 package viewspec
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"maps"
@@ -184,7 +185,14 @@ type Frame struct {
 type Option func(*options)
 
 // WithRegistry compiles against a custom vocabulary instead of Standard.
-func WithRegistry(r *Registry) Option { return func(o *options) { o.reg = r } }
+// A nil registry leaves Standard in place.
+func WithRegistry(r *Registry) Option {
+	return func(o *options) {
+		if r != nil {
+			o.reg = r
+		}
+	}
+}
 
 type options struct{ reg *Registry }
 
@@ -467,7 +475,7 @@ func compareRows(x, y Row, s Sort) int {
 	a, bb := x[s.Field], y[s.Field]
 	var n int
 	if s.Numeric {
-		n = cmpFloat(number(a), number(bb))
+		n = cmp.Compare(number(a), number(bb))
 	} else {
 		n = strings.Compare(a, bb)
 	}
@@ -475,16 +483,6 @@ func compareRows(x, y Row, s Sort) int {
 		return -n
 	}
 	return n
-}
-
-func cmpFloat(a, b float64) int {
-	switch {
-	case a < b:
-		return -1
-	case a > b:
-		return 1
-	}
-	return 0
 }
 
 // orderedColumns prefers the extractor's own order and spelling, keeping

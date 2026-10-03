@@ -90,8 +90,9 @@ func substitute(tmpl string, r Row) (string, error) {
 // templateFields lists the field names a template references, so a
 // widget can reject one naming a field the parse never produced.
 func templateFields(tmpl string) []string {
-	var out []string
-	for _, m := range placeholder.FindAllStringSubmatch(tmpl, -1) {
+	matches := placeholder.FindAllStringSubmatch(tmpl, -1)
+	out := make([]string, 0, len(matches))
+	for _, m := range matches {
 		out = append(out, m[1])
 	}
 	return out

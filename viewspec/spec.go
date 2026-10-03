@@ -8,6 +8,7 @@ const Version = 1
 
 // Spec is one view. Blocks render top to bottom.
 type Spec struct {
+	// Version 0 means the current one.
 	Version int     `json:"version"`
 	Match   string  `json:"match"`
 	Parse   Parse   `json:"parse"`

@@ -10,6 +10,7 @@ import (
 // own theme.
 type Role int
 
+// The roles, from plain text through the three verdict colours.
 const (
 	RoleDefault Role = iota
 	RoleMuted
@@ -59,6 +60,7 @@ func (r Role) MarshalJSON() ([]byte, error) {
 	return json.Marshal(n)
 }
 
+// UnmarshalJSON reads a role by name and refuses anything else.
 func (r *Role) UnmarshalJSON(b []byte) error {
 	var name string
 	if err := json.Unmarshal(b, &name); err != nil {
