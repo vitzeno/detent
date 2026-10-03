@@ -110,7 +110,8 @@ func (w *writer) turn(n int) {
 		w.emit(event.BoundReached{Turn: turn, Steps: steps, Calls: steps * 2})
 	}
 	w.emit(event.TurnEnded{Turn: turn, Reason: w.reason(), Summary: pick(w.rng, summaries), Usage: total})
-	if w.rng.IntN(60) == 0 {
+	// The third Turn always rolls back, so a short session still holds one.
+	if n == 3 || w.rng.IntN(60) == 0 {
 		w.emit(event.RolledBack{Turn: turn, RevertFiles: w.rng.IntN(2) == 0})
 	}
 	if w.rng.IntN(30) == 0 {
