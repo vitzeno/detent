@@ -118,6 +118,13 @@ func TestTools_EveryRegisteredToolHasAGenerator(t *testing.T) {
 	}
 }
 
+// A render kind event does not know folds as unknown and draws no view.
+func TestTools_RenderKindsAreRealOnes(t *testing.T) {
+	for _, k := range tools {
+		assert.Containsf(t, event.RenderKinds(), k.render, "%s renders as %q", k.name, k.render)
+	}
+}
+
 // generate writes to a scratch database and reads it back, as resume does.
 func generate(t *testing.T, turns int) ([]event.Record, uuid.UUID) {
 	t.Helper()

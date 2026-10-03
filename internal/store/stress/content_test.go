@@ -46,7 +46,10 @@ func kinds() []kind {
 		if !ok {
 			continue
 		}
-		t, _ := reg.Lookup(name)
+		t, ok := reg.Lookup(name)
+		if !ok {
+			continue
+		}
 		spec := t.Describe()
 		out = append(out, kind{name: name, runner: g.runner, render: g.render,
 			renders: spec.Renders, args: g.args, result: g.result, risk: riskFor(spec.Mutability)})
@@ -54,14 +57,14 @@ func kinds() []kind {
 	// Two MCP tools, which no registry holds until a server answers.
 	return append(out,
 		kind{
-			name: "github__create_issue", runner: "host", executor: "mcp:github", render: "text",
+			name: "github__create_issue", runner: "host", executor: "mcp:github", render: event.RendersText,
 			args: func(r *rand.Rand) map[string]any {
 				return map[string]any{"repo": "vitzeno/detent", "title": pick(r, prompts)}
 			},
 			risk: mcpRisk, result: issueResult,
 		},
 		kind{
-			name: "docs__search_docs", runner: "host", executor: "mcp:docs", render: "markdown", renders: event.RendersMarkdown,
+			name: "docs__search_docs", runner: "host", executor: "mcp:docs", render: event.RendersMarkdown, renders: event.RendersMarkdown,
 			args: func(r *rand.Rand) map[string]any {
 				return map[string]any{"q": pick(r, queries), "limit": 5}
 			},
@@ -82,28 +85,28 @@ func riskFor(mutability string) func(*rand.Rand) event.Risk {
 
 var gens = map[string]gen{
 	"bash": {
-		runner: "sandbox", render: "logs",
+		runner: "sandbox", render: event.RendersText,
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"command": pick(r, commands)}
 		},
 		result: shellResult,
 	},
 	"read_file": {
-		runner: "sandbox", render: "code",
+		runner: "sandbox", render: event.RendersContent,
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"path": pick(r, paths)}
 		},
 		result: fileResult,
 	},
 	"write_file": {
-		runner: "sandbox", render: "text",
+		runner: "sandbox", render: event.RendersText,
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"path": pick(r, paths), "content": pick(r, prose)}
 		},
 		result: wroteResult,
 	},
 	"edit_file": {
-		runner: "sandbox", render: "diff",
+		runner: "sandbox", render: event.RendersDiff,
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"path": pick(r, paths), "old_string": pick(r, codeLines),
 				"new_string": pick(r, codeLines), "replace_all": r.IntN(5) == 0}
@@ -111,14 +114,14 @@ var gens = map[string]gen{
 		result: diffResult,
 	},
 	"list_dir": {
-		runner: "sandbox", render: "table",
+		runner: "sandbox", render: event.RendersTable,
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"path": pick(r, dirs), "all": r.IntN(4) == 0}
 		},
 		result: listResult,
 	},
 	"grep": {
-		runner: "sandbox", render: "code",
+		runner: "sandbox", render: event.RendersContent,
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"pattern": pick(r, []string{"Publish", "func New", "TODO"}),
 				"path": pick(r, dirs), "include": "*.go", "ignore_case": false, "max_results": 200}
@@ -126,21 +129,21 @@ var gens = map[string]gen{
 		result: grepResult,
 	},
 	"find_files": {
-		runner: "sandbox", render: "table",
+		runner: "sandbox", render: event.RendersTable,
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"pattern": "*_test.go", "path": pick(r, dirs), "max_results": 200}
 		},
 		result: listResult,
 	},
 	"web_search": {
-		runner: "sandbox", render: "markdown",
+		runner: "sandbox", render: event.RendersMarkdown,
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"query": pick(r, queries)}
 		},
 		result: searchResult,
 	},
 	"skill": {
-		runner: "sandbox", render: "markdown",
+		runner: "sandbox", render: event.RendersMarkdown,
 		args: func(*rand.Rand) map[string]any {
 			return map[string]any{"name": "release"}
 		},

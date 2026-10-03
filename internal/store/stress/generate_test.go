@@ -220,13 +220,10 @@ func (w *writer) emit(e event.Event) {
 }
 
 func status(r event.Result) event.Status {
-	switch {
-	case r.Err != "":
-		return "error"
-	case r.ExitCode != 0:
-		return "failed"
+	if r.Err != "" || r.ExitCode != 0 {
+		return event.StatusFailed
 	}
-	return "ok"
+	return event.StatusClean
 }
 
 func pick[T any](r *rand.Rand, from []T) T { return from[r.IntN(len(from))] }
