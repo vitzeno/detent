@@ -3,16 +3,16 @@ package event
 // Risk is what the hook chain decided about one tool call, before it runs.
 type Risk struct {
 	// Dangerous is the only field that gates anything.
-	Dangerous bool
+	Dangerous bool `json:"Dangerous"`
 	// Mutability is one of the Mut* ladder below, or "" for no opinion.
-	Mutability string
+	Mutability string `json:"Mutability"`
 	// ScopeRisk is blast radius, 0 to 1, or -1 when nothing answered.
 	// A zero from a hook that is not the judge is no answer.
-	ScopeRisk float64
+	ScopeRisk float64 `json:"ScopeRisk"`
 	// Note is harness text. Never quote the command in it: the log withholds that.
-	Note string
+	Note string `json:"Note"`
 	// FromJudge is false when only the cheap hooks spoke.
-	FromJudge bool
+	FromJudge bool `json:"FromJudge"`
 }
 
 // UnknownRisk starts every chain.

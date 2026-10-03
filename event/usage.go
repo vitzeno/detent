@@ -5,10 +5,10 @@ import "time"
 // Usage is what one model call cost. Here rather than its own package
 // because StepEnded carries it and this one may import neither.
 type Usage struct {
-	PromptTokens     int
-	CompletionTokens int
-	Latency          time.Duration
-	Model            string
+	PromptTokens     int           `json:"PromptTokens"`
+	CompletionTokens int           `json:"CompletionTokens"`
+	Latency          time.Duration `json:"Latency"`
+	Model            string        `json:"Model"`
 }
 
 // Tokens is what a budget and a status bar both want.

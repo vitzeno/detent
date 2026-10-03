@@ -16,23 +16,23 @@ import (
 // Message is one transcript entry. An assistant message with tool calls and
 // the tool messages answering it are one Step, and indivisible.
 type Message struct {
-	Role    Role
-	Content string
+	Role    Role   `json:"Role"`
+	Content string `json:"Content"`
 	// Requests belong to an assistant message.
-	Requests []ToolRequest
+	Requests []ToolRequest `json:"Requests"`
 	// RequestID answers one call, and is set on RoleTool alone.
-	RequestID string
+	RequestID string `json:"RequestID"`
 }
 
 // ToolRequest is one thing the model wants run. ID is what the answering
 // message must carry back.
 type ToolRequest struct {
-	ID   string
-	Name string
-	Args map[string]any
+	ID   string         `json:"ID"`
+	Name string         `json:"Name"`
+	Args map[string]any `json:"Args"`
 	// Err is set when the model's arguments were not valid JSON. The
 	// call still needs a result, or the next Step is malformed.
-	Err string
+	Err string `json:"Err"`
 }
 
 // Role is who wrote a Message.
