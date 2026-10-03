@@ -10,33 +10,27 @@ import (
 // Watch records every fact and answers what ui cannot ask directly. One
 // subscription, so a rename cannot overtake the header it updates.
 func Watch(bus *event.Bus, s *Store, session uuid.UUID) func() {
-	records, unsub := bus.Subscribe(wanted)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		var failed int
-		for rec := range records {
-			if s.serve(bus, rec.Event) {
-				continue
-			}
-			if err := s.Append(session, rec); err != nil {
-				if failed == 0 {
-					logging.For(logging.Store).Error("this session is not being recorded",
-						logging.KeyReason, err.Error(), logging.KeyOrdinal, rec.Ordinal)
-					// Said once on screen too, since resume will be missing whatever follows.
-					bus.Publish(event.Notice{Level: "warn",
-						Text: "this session stopped being recorded, so resuming it will be incomplete: " + err.Error()})
-				}
-				failed++
-			}
+	var failed int
+	unhandle := bus.Handle(wanted, func(rec event.Record) {
+		if s.serve(bus, rec.Event) {
+			return
 		}
+		if err := s.Append(session, rec); err != nil {
+			if failed == 0 {
+				logging.For(logging.Store).Error("this session is not being recorded",
+					logging.KeyReason, err.Error(), logging.KeyOrdinal, rec.Ordinal)
+				// Said once on screen too, since resume will be missing whatever follows.
+				bus.Publish(event.Notice{Level: "warn",
+					Text: "this session stopped being recorded, so resuming it will be incomplete: " + err.Error()})
+			}
+			failed++
+		}
+	})
+	return func() {
+		unhandle()
 		if failed > 0 {
 			logging.For(logging.Store).Error("records were lost", "lost", failed)
 		}
-	}()
-	return func() {
-		unsub()
-		<-done
 	}
 }
 

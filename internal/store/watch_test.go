@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -120,28 +121,23 @@ func TestWatch_AnUnwritableStoreDoesNotBlockTheSession(t *testing.T) {
 func TestWatch_AFailedWriteIsSaidOnce(t *testing.T) {
 	s := open(t)
 	bus := event.New()
-	notices, unsub := bus.Subscribe(event.Only(event.NoticeKind))
-	defer unsub()
+	var warned atomic.Int32
+	defer bus.Handle(event.Only(event.NoticeKind), func(r event.Record) {
+		if r.Event.(event.Notice).Level == "warn" {
+			warned.Add(1)
+		}
+	})()
 	stop := store.Watch(bus, s, uuid.Must(uuid.NewV7()))
 	require.NoError(t, s.Close())
 
 	for range 5 {
 		bus.Publish(event.TurnEnded{Reason: event.EndDone})
 	}
-	var warned int
-	timeout := time.After(time.Second)
-	for done := false; !done; {
-		select {
-		case r := <-notices:
-			if r.Event.(event.Notice).Level == "warn" {
-				warned++
-			}
-		case <-timeout:
-			done = true
-		}
-	}
+	// The store settles and stops first, so its warnings are all out before they are counted.
+	bus.Settle(3 * time.Second)
 	stop()
-	assert.Equal(t, 1, warned)
+	bus.Settle(3 * time.Second)
+	assert.EqualValues(t, 1, warned.Load())
 }
 
 // A second process must continue the ordinals rather than mint 1 again,
@@ -210,7 +206,6 @@ func TestWatch_RenameSticksAcrossAResume(t *testing.T) {
 	// The resume: a second SessionStarted for the same session.
 	bus.Publish(event.SessionStarted{Session: session, Model: "m", Resumed: 2})
 	bus.Drain(3 * time.Second)
-	// Drain says delivered, not written, so stop before reading.
 	stop()
 
 	all, err := s.Sessions()
