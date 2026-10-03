@@ -58,6 +58,7 @@ func codec[T Event](payload []byte) (Event, error) {
 var codecs = map[Kind]func([]byte) (Event, error){
 	SessionStartedKind:  codec[SessionStarted],
 	SessionResumedKind:  codec[SessionResumed],
+	SessionResetKind:    codec[SessionReset],
 	TurnStartedKind:     codec[TurnStarted],
 	TurnEndedKind:       codec[TurnEnded],
 	CheckpointTakenKind: codec[CheckpointTaken],

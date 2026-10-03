@@ -27,6 +27,7 @@ type Kind string
 // Facts. Past tense, mostly published by the engine.
 const (
 	SessionStartedKind Kind = "session.started"
+	SessionResetKind   Kind = "session.reset"
 
 	TurnStartedKind     Kind = "turn.started"
 	TurnEndedKind       Kind = "turn.ended"

@@ -143,6 +143,9 @@ func (m *Model) apply(ev event.Event) {
 	case event.RolledBack:
 		m.rolledBack(v.Turn)
 
+	case event.SessionReset:
+		m.clearHistory()
+
 	case event.StepEnded:
 		m.steps++
 		if v.Usage.PromptTokens > 0 {
@@ -275,6 +278,14 @@ func (m *Model) rolledBack(id uuid.UUID) {
 	}
 	m.nav.cursor = min(m.nav.cursor, max(0, len(m.rows())-1))
 	m.noteOK("undone")
+}
+
+// clearHistory forgets every block, as the engine forgot the transcript.
+func (m *Model) clearHistory() {
+	m.blocks, m.cur = nil, nil
+	m.nav = navState{follow: true}
+	m.calls, m.steps, m.errors, m.views, m.tokens = 0, 0, 0, 0, 0
+	m.context = 0
 }
 
 // block and row find what an event is about and mark its block to redraw.

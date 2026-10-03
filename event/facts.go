@@ -124,6 +124,11 @@ type RolledBack struct {
 
 func (RolledBack) Kind() Kind { return RolledBackKind }
 
+// SessionReset says the transcript was cleared, so a replay clears it too.
+type SessionReset struct{ fact }
+
+func (SessionReset) Kind() Kind { return SessionResetKind }
+
 // A Step is one model round trip, and the transcript's atom.
 
 // StepStarted opens a Step.

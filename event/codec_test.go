@@ -72,6 +72,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		CheckpointTaken{Turn: turn, Snapshot: "snap", Tree: "tree"},
 		BoundReached{Turn: turn, Steps: 50, Calls: 9},
 		RolledBack{Turn: turn, RevertFiles: true},
+		SessionReset{},
 		StepStarted{Turn: turn, Step: step, N: 2},
 		StepEnded{Turn: turn, Step: step, Calls: 3, Usage: Usage{PromptTokens: 1}},
 		ModelText{Turn: turn, Step: step, Text: "prose"},

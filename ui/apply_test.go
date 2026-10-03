@@ -235,6 +235,21 @@ func TestRestore_RebuildsHistoryFromTheStream(t *testing.T) {
 	assert.False(t, b.undoable, "a resumed Turn has no checkpoint to restore")
 }
 
+// A reset is a fact, so a resumed session shows only what came after it.
+func TestRestore_HonoursAReset(t *testing.T) {
+	before, after := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	facts := []event.Event{
+		event.TurnStarted{Turn: before, N: 1, Prompt: "forgotten"},
+		event.TurnEnded{Turn: before, Reason: event.EndDone},
+		event.SessionReset{},
+		event.TurnStarted{Turn: after, N: 1, Prompt: "kept"},
+		event.TurnEnded{Turn: after, Reason: event.EndDone},
+	}
+	m := New(context.Background(), event.New(), SessionInfo{}).Restore(asRecords(facts))
+	require.Len(t, m.blocks, 1)
+	assert.Equal(t, "kept", m.blocks[0].prompt)
+}
+
 // /sessions asks over the bus rather than reaching into a store, so
 // ui keeps importing nothing under internal/.
 func TestSessions_AreAskedForAndFolded(t *testing.T) {
