@@ -14,7 +14,7 @@ func Preflight(ctx context.Context, socket string) error {
 	if err != nil {
 		return fmt.Errorf("sandbox: connect %s: %w", socket, err)
 	}
-	defer client.Close()
+	defer client.Close() //nolint:errcheck // closing a client that only asked is nothing to report
 	if _, err := client.Version(ctx); err != nil {
 		return fmt.Errorf("sandbox: %s unreachable: %w", socket, err)
 	}

@@ -22,18 +22,21 @@ func TestTailFile(t *testing.T) {
 		want  string
 	}{
 		{name: "a file that appears late", write: func(t *testing.T, path string, done chan struct{}) {
+			t.Helper()
 			time.Sleep(100 * time.Millisecond)
-			assert.NoError(t, os.WriteFile(path, []byte("late\n"), 0o644))
+			assert.NoError(t, os.WriteFile(path, []byte("late\n"), 0o644)) //nolint:testifylint // runs off the test goroutine
 			time.Sleep(50 * time.Millisecond)
 			close(done)
 		}, want: "late\n"},
 		{name: "what lands just before done is drained", write: func(t *testing.T, path string, done chan struct{}) {
-			assert.NoError(t, os.WriteFile(path, []byte("a\n"), 0o644))
+			t.Helper()
+			assert.NoError(t, os.WriteFile(path, []byte("a\n"), 0o644)) //nolint:testifylint // runs off the test goroutine
 			appendTo(t, path, "b\n")
 			close(done)
 		}, want: "a\nb\n"},
 		{name: "a line split across polls", write: func(t *testing.T, path string, done chan struct{}) {
-			assert.NoError(t, os.WriteFile(path, []byte("hal"), 0o644))
+			t.Helper()
+			assert.NoError(t, os.WriteFile(path, []byte("hal"), 0o644)) //nolint:testifylint // runs off the test goroutine
 			time.Sleep(3 * tailPollInterval)
 			appendTo(t, path, "f\n")
 			time.Sleep(3 * tailPollInterval)
@@ -58,7 +61,7 @@ func TestTailFile(t *testing.T) {
 func appendTo(t *testing.T, path, s string) {
 	t.Helper()
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
-	if !assert.NoError(t, err) {
+	if !assert.NoError(t, err) { //nolint:testifylint // called off the test goroutine
 		return
 	}
 	_, err = f.WriteString(s)

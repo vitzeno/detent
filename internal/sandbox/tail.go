@@ -18,7 +18,7 @@ func tailFile(path string, isStderr bool, buf *bytes.Buffer, limit int, events c
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read only, so closing loses nothing
 	truncated, _ := capture.ScanCapped(&pollingReader{f: f, done: done}, isStderr, buf, limit, events)
 	return truncated
 }

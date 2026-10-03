@@ -50,7 +50,7 @@ func TestContainer_ReadOnlyMountsCannotBeWritten(t *testing.T) {
 	// Under the working directory, since colima shares only $HOME with its VM.
 	src := filepath.Join(wd, ".sandbox-test-skills")
 	require.NoError(t, os.MkdirAll(src, 0o755))
-	t.Cleanup(func() { os.RemoveAll(src) })
+	t.Cleanup(func() { _ = os.RemoveAll(src) })
 	require.NoError(t, os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("be careful\n"), 0o644))
 
 	c := newTestContainer(t, WithReadOnly(map[string]string{src: "/opt/detent/skills/0"}))
@@ -75,7 +75,7 @@ func TestContainer_WorkspaceMountParity(t *testing.T) {
 	require.NoError(t, err)
 	marker := filepath.Join(wd, ".sandbox-test-marker")
 	require.NoError(t, os.WriteFile(marker, []byte("host-written\n"), 0o644))
-	t.Cleanup(func() { os.Remove(marker) })
+	t.Cleanup(func() { _ = os.Remove(marker) })
 
 	res, err := c.Run(ctx, "cat /workspace/.sandbox-test-marker", nil)
 	require.NoError(t, err)
@@ -86,7 +86,7 @@ func TestContainer_WorkspaceMountParity(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(wd, ".sandbox-test-marker2"))
 	require.NoError(t, err)
 	assert.Equal(t, "container-written\n", string(got), "a container-written file must be visible on the host")
-	os.Remove(filepath.Join(wd, ".sandbox-test-marker2"))
+	_ = os.Remove(filepath.Join(wd, ".sandbox-test-marker2"))
 }
 
 func TestContainer_StreamsLiveEvents(t *testing.T) {
@@ -213,7 +213,7 @@ func TestContainer_CheckpointsSurviveGarbageCollection(t *testing.T) {
 	sn := c.client.SnapshotService(info.Snapshotter)
 	for i, key := range checkpoints {
 		_, err := sn.Stat(ctx, key)
-		assert.NoError(t, err, "checkpoint %d must outlive the branch it was on", i+1)
+		require.NoError(t, err, "checkpoint %d must outlive the branch it was on", i+1)
 	}
 
 	// Which is the point: a later checkpoint is still reachable.
@@ -310,13 +310,11 @@ func TestContainer_ConcurrentRunsDoNotCrossContaminate(t *testing.T) {
 	out := make([]got, n)
 	var wg sync.WaitGroup
 	for i := range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			want := fmt.Sprintf("marker-%d", i)
 			res, err := c.Run(context.Background(), "echo "+want, nil)
 			out[i] = got{want: want, res: res, err: err}
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -576,7 +574,7 @@ func taskRunningIn(t *testing.T, namespace, sessionID string) bool {
 	if err != nil {
 		return false
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	ctx := context.Background()
 	cont, err := client.LoadContainer(ctx, containerID(sessionID))
 	if err != nil {

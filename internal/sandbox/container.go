@@ -146,7 +146,7 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 		return fmt.Errorf("sandbox: home dir: %w", err)
 	}
 	fifoRoot := filepath.Join(home, ".detent", "sandbox-fifo")
-	if err := os.MkdirAll(fifoRoot, 0o755); err != nil {
+	if err := os.MkdirAll(fifoRoot, 0o755); err != nil { //nolint:gosec // the shim reads it from inside the VM
 		return fmt.Errorf("sandbox: fifo dir: %w", err)
 	}
 	fifoDir, err := os.MkdirTemp(fifoRoot, sessionID+"-")
@@ -230,7 +230,7 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 	// Session-scoped: recreating one path across containers on a virtiofs
 	// mount can serve the guest a stale, empty view of it.
 	hostOutDir := filepath.Join(c.workspace, sandboxOutputDir, c.sessionID)
-	if err := os.MkdirAll(hostOutDir, 0o755); err != nil {
+	if err := os.MkdirAll(hostOutDir, 0o755); err != nil { //nolint:gosec // the container writes here as its own user
 		return capture.Result{}, fmt.Errorf("sandbox: create output dir: %w", err)
 	}
 	runID := strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -239,8 +239,8 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 	containerErrPath := path.Join(containerOutDir, runID+".stderr")
 	hostOutPath := filepath.Join(hostOutDir, runID+".stdout")
 	hostErrPath := filepath.Join(hostOutDir, runID+".stderr")
-	defer os.Remove(hostOutPath)
-	defer os.Remove(hostErrPath)
+	defer os.Remove(hostOutPath) //nolint:errcheck // a leftover is swept with the directory
+	defer os.Remove(hostErrPath) //nolint:errcheck // a leftover is swept with the directory
 
 	spec, err := c.container.Spec(ctx)
 	if err != nil {
@@ -436,10 +436,10 @@ func (c *Container) closeSlot(ctx context.Context) (func(), error) {
 // writeIgnore gives the output directory its own .gitignore, so a commit
 // made inside the sandbox never takes the file its output is going to.
 func writeIgnore(dir string) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // the container writes here as its own user
 		return fmt.Errorf("sandbox: create output dir: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*\n"), 0o644); err != nil { //nolint:gosec // an ordinary file in the human's repo
 		return fmt.Errorf("sandbox: ignore output dir: %w", err)
 	}
 	return nil

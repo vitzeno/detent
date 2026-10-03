@@ -18,7 +18,7 @@ func Prune(ctx context.Context, socket, namespace string) (Pruned, error) {
 	if err != nil {
 		return Pruned{}, fmt.Errorf("sandbox: connect %s: %w", socket, err)
 	}
-	defer client.Close()
+	defer client.Close() //nolint:errcheck // the work is done or already failed by now
 
 	var out Pruned
 	conts, err := client.Containers(ctx)
@@ -60,7 +60,7 @@ func Forget(ctx context.Context, socket, namespace, sessionID string) error {
 	if err != nil {
 		return fmt.Errorf("sandbox: connect %s: %w", socket, err)
 	}
-	defer client.Close()
+	defer client.Close() //nolint:errcheck // the work is done or already failed by now
 	return clearStale(ctx, client, sessionID)
 }
 
