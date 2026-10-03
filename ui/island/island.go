@@ -11,6 +11,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// lineFixer is built once: fitLine runs for every line of every frame.
+var lineFixer = strings.NewReplacer("\t", "    ", "\r", "")
+
 // Inner is the content width of an island width wide: border and
 // padding take two cells a side, and width never goes below 10.
 func Inner(width int) int { return max(10, width) - 4 }
@@ -47,6 +50,5 @@ func Render(title string, border color.Color, lines []string, width, height int)
 // fitLine cuts over-wide lines with an ANSI-aware … tail. lipgloss would
 // otherwise wrap them, and a tab it expands after measuring does the same.
 func fitLine(s string, n int) string {
-	s = strings.NewReplacer("\t", "    ", "\r", "").Replace(s)
-	return ansi.Truncate(s, n, "…")
+	return ansi.Truncate(lineFixer.Replace(s), n, "…")
 }
