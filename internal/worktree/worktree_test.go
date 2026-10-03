@@ -69,6 +69,27 @@ func TestRestore_UndoesARename(t *testing.T) {
 	assert.Equal(t, "original\n", read(t, dir, "tracked.txt"))
 }
 
+// Undo puts back the exact bytes, whatever line endings the human's git
+// converts: with autocrlf on, as Windows has it, LF must not come back CRLF.
+func TestRestore_KeepsLineEndingsAsTheyWere(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	git(t, dir, "config", "core.autocrlf", "true")
+	write(t, dir, ".gitattributes", "*.txt text\n")
+	write(t, dir, "lf.txt", "one\ntwo\n")
+	write(t, dir, "crlf.txt", "one\r\ntwo\r\n")
+	d := open(t, dir)
+
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "lf.txt", "changed\n")
+	write(t, dir, "crlf.txt", "changed\r\n")
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
+
+	assert.Equal(t, "one\ntwo\n", read(t, dir, "lf.txt"))
+	assert.Equal(t, "one\r\ntwo\r\n", read(t, dir, "crlf.txt"))
+}
+
 // detent's workspace is wherever it started, often below the repo root.
 func TestRestore_FromASubdirectory(t *testing.T) {
 	ctx := t.Context()

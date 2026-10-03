@@ -20,6 +20,9 @@ import (
 // ErrGone is a checkpoint git no longer has, usually pruned by gc.
 var ErrGone = errors.New("worktree: checkpoint no longer exists")
 
+// emptyTree is git's well-known empty tree, which exists in every repository.
+const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
 // keepEnv is the git environment that says how git is installed rather
 // than which repository to act on.
 var keepEnv = []string{"GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_EXEC_PATH"}
@@ -322,8 +325,8 @@ func (d *Dir) git(ctx context.Context, index string, stdin io.Reader, args ...st
 }
 
 func run(ctx context.Context, dir, index string, stdin io.Reader, args ...string) (string, error) {
-	// Hooks off: plumbing runs none today, and this keeps it so.
-	full := append([]string{"-c", "core.hooksPath=" + os.DevNull}, args...)
+	// Hooks off, and no line ending conversion, so a checkpoint holds the exact bytes.
+	full := append([]string{"-c", "core.hooksPath=" + os.DevNull, "-c", "core.autocrlf=false"}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Dir = dir
 	cmd.Env = env(index)
@@ -347,7 +350,9 @@ func env(index string) []string {
 		}
 		out = append(out, kv)
 	}
-	out = append(out, "GIT_OPTIONAL_LOCKS=0")
+	// The empty tree as the attribute source: no text, eol or filter rule
+	// (git-lfs included) rewrites what is captured or restored.
+	out = append(out, "GIT_OPTIONAL_LOCKS=0", "GIT_ATTR_SOURCE="+emptyTree)
 	if index != "" {
 		out = append(out, "GIT_INDEX_FILE="+index)
 	}
