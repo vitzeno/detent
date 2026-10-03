@@ -17,8 +17,8 @@ const (
 	TypeBool   = "boolean"
 )
 
-// Tool is a typed front end onto a shell command. Pure: no tool runs
-// anything, so the Runner stays the one place with I/O.
+// Tool is a typed front end onto a shell command. Lower does no I/O, so
+// only whatever runs the command touches anything.
 type Tool interface {
 	Name() string
 	Describe() Spec
@@ -79,7 +79,7 @@ func (a Args) Int(name string, def int) int {
 	switch v := a[name].(type) {
 	case int:
 		return v
-	case float64: // JSON numbers decode to float64
+	case float64: // only in Args nothing validated, since validate makes a whole number an int
 		return int(v)
 	}
 	return def

@@ -9,6 +9,7 @@ import (
 	"github.com/aymanbagabas/go-udiff/lcs"
 )
 
+// The window a change is shown in, as showDiff and changeShown both draw it.
 const (
 	diffWindow = 400
 	diffMore   = "[%d more lines of diff]"

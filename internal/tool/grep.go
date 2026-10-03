@@ -18,6 +18,7 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
+// grep's footers.
 const (
 	grepMore  = "[%d more matches, narrow the pattern or the path]"
 	grepEmpty = "[no matches]"
@@ -46,6 +47,7 @@ func (Grep) Describe() Spec {
 	}
 }
 
+// Lower is grep -rE, then sort and awk to window the matches.
 func (Grep) Lower(a Args) (string, error) {
 	g, err := grepArgs(a)
 	if err != nil {

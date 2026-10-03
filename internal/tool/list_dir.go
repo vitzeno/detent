@@ -37,6 +37,7 @@ func (ListDir) Describe() Spec {
 	}
 }
 
+// Lower is ls -l.
 func (ListDir) Lower(a Args) (string, error) {
 	flags := "-l"
 	if a.Bool("all", false) {

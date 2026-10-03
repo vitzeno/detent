@@ -30,6 +30,7 @@ func (WriteFile) Describe() Spec {
 	}
 }
 
+// Lower writes with a heredoc and shows the change with diff and awk.
 func (WriteFile) Lower(a Args) (string, error) {
 	path, err := writeArgs(a)
 	if err != nil {

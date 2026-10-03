@@ -37,6 +37,7 @@ func (EditFile) Describe() Spec {
 	}
 }
 
+// Lower edits with perl and shows the change with diff and awk.
 func (EditFile) Lower(a Args) (string, error) {
 	path, old, repl, err := editArgs(a)
 	if err != nil {

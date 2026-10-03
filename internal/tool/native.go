@@ -12,10 +12,8 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-const (
-	// maxEditBytes is the largest file write_file and edit_file read whole.
-	maxEditBytes = 50 << 20
-)
+// maxEditBytes is the largest file write_file and edit_file read whole.
+const maxEditBytes = 50 << 20
 
 // failed is a native tool refusing or failing, said the way a command would.
 func failed(code int, format string, a ...any) capture.Result {
@@ -92,7 +90,8 @@ func tooLarge(p string, limit int64) error {
 	return &fs.PathError{Op: "read", Path: p, Err: fmt.Errorf("larger than %d MB, so change it with a command", limit>>20)}
 }
 
-// ctxReader stops reading once ctx is done.
+// ctxReader stops reading once ctx is done. It checks between reads, so one
+// stuck on a hung mount still blocks.
 type ctxReader struct {
 	ctx context.Context
 	r   io.Reader
@@ -105,8 +104,8 @@ func (c ctxReader) Read(p []byte) (int, error) {
 	return c.r.Read(p)
 }
 
-// writeAsShell writes as a shell redirect does: truncating in place, or
-// creating with 0666 less the umask.
+// writeAsShell writes as a shell redirect does, truncating in place or creating with
+// 0666 less the umask. Not atomic, since a rename would lose mode, owner and links.
 func writeAsShell(p, s string) error {
 	return os.WriteFile(p, []byte(s), 0o666) //nolint:gosec // the mode a command's own redirect would give it
 }

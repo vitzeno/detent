@@ -24,4 +24,5 @@ func (PowerShell) Describe() Spec {
 	}
 }
 
+// Lower is the command as given, as bash's is.
 func (PowerShell) Lower(a Args) (string, error) { return Bash{}.Lower(a) }

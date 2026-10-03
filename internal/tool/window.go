@@ -12,11 +12,10 @@ import (
 	"unicode/utf8"
 )
 
-// outputBudget keeps a windowed result under capture.MaxOutputBytes, so
-// its footer is never what the capture cuts off.
-const outputBudget = 7 * 1024
-
 const (
+	// outputBudget keeps a windowed result under capture.MaxOutputBytes, so
+	// its footer is never what the capture cuts off.
+	outputBudget = 7 * 1024
 	// readChunk is how much of a line is read at a time.
 	readChunk = 64 * 1024
 	// lineKeep is as much of one line as a window can need: the budget,
@@ -31,6 +30,7 @@ func window(start, limit int, more, empty string) string {
 		start, limit, outputBudget, quote(awkString(more)+`\n`), quote(awkString(empty)+`\n`), quote(windowScript))
 }
 
+// windowScript is window's awk program, which windower mirrors in Go.
 const windowScript = `NR < s { next }
 !stop && NR >= s + n { stop = NR }
 !stop && used > 0 && used + length($0) + 1 > b { stop = NR }
@@ -115,6 +115,7 @@ func (w *windower) add(line string, long bool) {
 	w.used += len(line) + 1
 }
 
+// end adds the footer: more when the window stopped early, empty when it never began.
 func (w *windower) end(more, empty string) string {
 	switch {
 	case w.stop > 0:
@@ -161,6 +162,7 @@ type top[T any] struct {
 	bytes, total  int
 }
 
+// add counts v and keeps it while a window could still show it.
 func (t *top[T]) add(v T) {
 	t.total++
 	i, _ := slices.BinarySearchFunc(t.kept, v, t.cmp)

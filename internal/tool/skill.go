@@ -11,12 +11,11 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// catalogBudget bounds the list of skills in the tool's description.
-const catalogBudget = 8000
-
 const (
-	skillEmpty  = "[the skill is empty]"
-	skillOthers = "[other files in this skill]"
+	// catalogBudget bounds the list of skills in the tool's description.
+	catalogBudget = 8000
+	skillEmpty    = "[the skill is empty]"
+	skillOthers   = "[other files in this skill]"
 	// skillFiles is how many of a skill's other files it lists.
 	skillFiles = 50
 )
@@ -59,6 +58,7 @@ func (s Skill) Describe() Spec {
 	}
 }
 
+// Lower reads SKILL.md with awk and lists the other files with find and sort.
 func (s Skill) Lower(a Args) (string, error) {
 	e, err := s.entry(a)
 	if err != nil {

@@ -23,6 +23,7 @@ func (Bash) Describe() Spec {
 	}
 }
 
+// Lower is the command as given.
 func (Bash) Lower(a Args) (string, error) {
 	cmd := a.String("command")
 	if cmd == "" {

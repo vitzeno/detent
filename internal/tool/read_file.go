@@ -9,6 +9,7 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
+// read_file's footers.
 const (
 	readMore  = "[%d more lines, read on with offset %d]"
 	readEmpty = "[the file has %d lines]"
@@ -17,6 +18,8 @@ const (
 // ReadFile reads one file. Sandboxed, this reads the container's
 // filesystem, which is why it lowers to a command like everything else.
 type ReadFile struct{}
+
+var _ Native = ReadFile{}
 
 func (ReadFile) Name() string { return "read_file" }
 
@@ -33,6 +36,7 @@ func (ReadFile) Describe() Spec {
 	}
 }
 
+// Lower is awk over the file, through window.
 func (ReadFile) Lower(a Args) (string, error) {
 	p, from, n, err := readArgs(a)
 	if err != nil {

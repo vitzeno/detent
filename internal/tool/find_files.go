@@ -12,6 +12,7 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
+// find_files' footers.
 const (
 	findMore  = "[%d more files, narrow the pattern or the path]"
 	findEmpty = "[no files match]"
@@ -37,6 +38,7 @@ func (FindFiles) Describe() Spec {
 	}
 }
 
+// Lower is find, then sort and awk to window what it found.
 func (FindFiles) Lower(a Args) (string, error) {
 	f, err := findArgs(a)
 	if err != nil {
