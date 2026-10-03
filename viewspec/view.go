@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+// ErrNoRows is what a row-consuming block fails with when the parse
+// produced nothing to draw.
+var ErrNoRows = errors.New("parse produced no rows")
+
 // Compiled is a validated spec. Reusable across outputs and frames,
 // and cheap to keep: it holds no data and no styling.
 type Compiled struct {
@@ -46,6 +50,21 @@ func Compile(spec Spec, opts ...Option) (*Compiled, error) {
 	}
 	return &Compiled{spec: spec, reg: o.reg, ext: ext}, nil
 }
+
+// Option configures Compile.
+type Option func(*options)
+
+// WithRegistry compiles against a custom vocabulary instead of Standard.
+// A nil registry leaves Standard in place.
+func WithRegistry(r *Registry) Option {
+	return func(o *options) {
+		if r != nil {
+			o.reg = r
+		}
+	}
+}
+
+type options struct{ reg *Registry }
 
 // Spec returns what was compiled.
 func (c *Compiled) Spec() Spec { return c.spec }
@@ -161,15 +180,6 @@ func (b *Bound) Sample(n int) []Row {
 	return out
 }
 
-// Render is one drawn view. A struct rather than a bare []string so a
-// caller can scroll to the selection without knowing the layout.
-type Render struct {
-	Lines []string
-	// CursorLine indexes Lines for the selected row, or -1 when
-	// nothing in the view takes a selection.
-	CursorLine int
-}
-
 // Frame is everything Draw needs that Bind could not know. Painter is
 // here so Compile and Bind stay pure data.
 type Frame struct {
@@ -181,20 +191,14 @@ type Frame struct {
 	Paint   Painter
 }
 
-// Option configures Compile.
-type Option func(*options)
-
-// WithRegistry compiles against a custom vocabulary instead of Standard.
-// A nil registry leaves Standard in place.
-func WithRegistry(r *Registry) Option {
-	return func(o *options) {
-		if r != nil {
-			o.reg = r
-		}
-	}
+// Render is one drawn view. A struct rather than a bare []string so a
+// caller can scroll to the selection without knowing the layout.
+type Render struct {
+	Lines []string
+	// CursorLine indexes Lines for the selected row, or -1 when
+	// nothing in the view takes a selection.
+	CursorLine int
 }
-
-type options struct{ reg *Registry }
 
 // BindError says which block failed to resolve and why.
 type BindError struct {
@@ -213,10 +217,6 @@ func (e *BindError) Error() string {
 }
 
 func (e *BindError) Unwrap() error { return e.Err }
-
-// ErrNoRows is what a row-consuming block fails with when the parse
-// produced nothing to draw.
-var ErrNoRows = errors.New("parse produced no rows")
 
 // checkBlock validates one block against the vocabulary. topLevel
 // gates rows: nesting is capped at one, so a pane holds leaves only.
@@ -297,6 +297,16 @@ func checkStatic(b Block) error {
 	return nil
 }
 
+func fieldsOf(rows []Row) []string {
+	set := map[string]struct{}{}
+	for _, r := range rows {
+		for k := range r {
+			set[k] = struct{}{}
+		}
+	}
+	return slices.Sorted(maps.Keys(set))
+}
+
 type boundBlock struct {
 	block Block
 	w     Widget
@@ -345,6 +355,93 @@ func (c *Compiled) bindBlocks(blocks []Block, rows []Row, shared Data, fields []
 		*seq++
 	}
 	return out, nil
+}
+
+// selectRows applies a block's Where filter then its Sort. Both are
+// per-block, so two blocks can show different slices of one parse.
+func selectRows(b Block, rows []Row) ([]Row, error) {
+	m, err := parseMatch(b.Where)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Row, 0, len(rows))
+	for _, r := range rows {
+		if m.match(r) {
+			out = append(out, r)
+		}
+	}
+	if b.Sort != nil {
+		s := *b.Sort
+		slices.SortStableFunc(out, func(x, y Row) int { return compareRows(x, y, s) })
+	}
+	return out, nil
+}
+
+func compareRows(x, y Row, s Sort) int {
+	a, bb := x[s.Field], y[s.Field]
+	var n int
+	if s.Numeric {
+		n = cmp.Compare(number(a), number(bb))
+	} else {
+		n = strings.Compare(a, bb)
+	}
+	if s.Desc {
+		return -n
+	}
+	return n
+}
+
+// orderedColumns prefers the extractor's own order and spelling, keeping
+// only what the rows produced, and falls back to alphabetical by key.
+func orderedColumns(order []Column, present []string) []Column {
+	var out []Column
+	seen := map[string]bool{}
+	for _, c := range order {
+		if slices.Contains(present, c.Field) && !seen[c.Field] {
+			out, seen[c.Field] = append(out, c), true
+		}
+	}
+	for _, f := range present {
+		if !seen[f] {
+			out = append(out, Column{Field: f})
+		}
+	}
+	return out
+}
+
+// selectable is the block the cursor addresses: the first with on_enter,
+// else the first that draws a cursor at all.
+func (b *Bound) selectable() (boundBlock, bool) {
+	var first boundBlock
+	found := false
+	for _, bb := range leaves(b.blocks) {
+		if _, ok := bb.w.(Selector); !ok {
+			continue
+		}
+		if bb.block.OnEnter != "" {
+			return bb, true
+		}
+		if !found {
+			first, found = bb, true
+		}
+	}
+	return first, found
+}
+
+// leaves is every drawable block in draw order, a row's panes
+// flattened in, so selection never has to know about layout.
+func leaves(blocks []boundBlock) []boundBlock {
+	var out []boundBlock
+	for _, bb := range blocks {
+		if bb.panes == nil {
+			out = append(out, bb)
+			continue
+		}
+		for _, pane := range bb.panes {
+			out = append(out, leaves(pane)...)
+		}
+	}
+	return out
 }
 
 // drawBlocks stacks blocks vertically, reporting where the cursor
@@ -419,25 +516,6 @@ func drawContainer(bb boundBlock, f Frame, sel int) ([]string, int, error) {
 	return out, cursor, nil
 }
 
-// selectable is the block the cursor addresses: the first with on_enter,
-// else the first that draws a cursor at all.
-func (b *Bound) selectable() (boundBlock, bool) {
-	var first boundBlock
-	found := false
-	for _, bb := range leaves(b.blocks) {
-		if _, ok := bb.w.(Selector); !ok {
-			continue
-		}
-		if bb.block.OnEnter != "" {
-			return bb, true
-		}
-		if !found {
-			first, found = bb, true
-		}
-	}
-	return first, found
-}
-
 // perLine reports whether an extractor reads a record per line, which
 // is what makes counting lines meaningful: a JSON document is not.
 func perLine(e Extractor) bool {
@@ -449,82 +527,4 @@ func perLine(e Extractor) bool {
 		return false
 	}
 	return true
-}
-
-// selectRows applies a block's Where filter then its Sort. Both are
-// per-block, so two blocks can show different slices of one parse.
-func selectRows(b Block, rows []Row) ([]Row, error) {
-	m, err := parseMatch(b.Where)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]Row, 0, len(rows))
-	for _, r := range rows {
-		if m.match(r) {
-			out = append(out, r)
-		}
-	}
-	if b.Sort != nil {
-		s := *b.Sort
-		slices.SortStableFunc(out, func(x, y Row) int { return compareRows(x, y, s) })
-	}
-	return out, nil
-}
-
-func compareRows(x, y Row, s Sort) int {
-	a, bb := x[s.Field], y[s.Field]
-	var n int
-	if s.Numeric {
-		n = cmp.Compare(number(a), number(bb))
-	} else {
-		n = strings.Compare(a, bb)
-	}
-	if s.Desc {
-		return -n
-	}
-	return n
-}
-
-// orderedColumns prefers the extractor's own order and spelling, keeping
-// only what the rows produced, and falls back to alphabetical by key.
-func orderedColumns(order []Column, present []string) []Column {
-	var out []Column
-	seen := map[string]bool{}
-	for _, c := range order {
-		if slices.Contains(present, c.Field) && !seen[c.Field] {
-			out, seen[c.Field] = append(out, c), true
-		}
-	}
-	for _, f := range present {
-		if !seen[f] {
-			out = append(out, Column{Field: f})
-		}
-	}
-	return out
-}
-
-func fieldsOf(rows []Row) []string {
-	set := map[string]struct{}{}
-	for _, r := range rows {
-		for k := range r {
-			set[k] = struct{}{}
-		}
-	}
-	return slices.Sorted(maps.Keys(set))
-}
-
-// leaves is every drawable block in draw order, a row's panes
-// flattened in, so selection never has to know about layout.
-func leaves(blocks []boundBlock) []boundBlock {
-	var out []boundBlock
-	for _, bb := range blocks {
-		if bb.panes == nil {
-			out = append(out, bb)
-			continue
-		}
-		for _, pane := range bb.panes {
-			out = append(out, leaves(pane)...)
-		}
-	}
-	return out
 }
