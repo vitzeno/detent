@@ -859,6 +859,37 @@ func TestBoundView_SkipsAViewThatHidesMostOfTheOutput(t *testing.T) {
 	assert.Contains(t, strings.Join(drawPlain(t, b), "\n"), "mouse-scroll")
 }
 
+type panicWidget struct{}
+
+func (panicWidget) Draw(viewspec.Block, viewspec.Data, viewspec.Frame) ([]string, error) {
+	panic("strings: negative Repeat count")
+}
+
+// Draw runs inside View, so a widget that panics on odd output would
+// take the TUI with it. The output is still worth showing as text.
+func TestViewBody_APanickingViewFallsBackToText(t *testing.T) {
+	_, evs := oneTurn("list", "ls", "a.go\nb.go")
+	m := sized(t, 120, 40, evs...)
+	r := m.rows()[0]
+
+	reg := viewspec.Standard()
+	require.NoError(t, reg.Widget("boom", panicWidget{}))
+	c, err := viewspec.Compile(viewspec.Spec{Version: viewspec.Version,
+		Parse: viewspec.Parse{Kind: "none"}, Blocks: []viewspec.Block{{Kind: "boom"}}},
+		viewspec.WithRegistry(reg))
+	require.NoError(t, err)
+	b, err := c.Bind(r.text())
+	require.NoError(t, err)
+	r.view, r.viewTried = b, true
+
+	var out viewspec.Render
+	var ok bool
+	require.NotPanics(t, func() { out, ok = m.viewBody(r) })
+	assert.True(t, ok)
+	assert.Equal(t, []string{"a.go", "b.go"}, out.Lines)
+	assert.Equal(t, -1, out.CursorLine)
+}
+
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 func stripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }

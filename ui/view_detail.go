@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
+	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/ui/welcome"
 	"github.com/vitzeno/detent/version"
 	"github.com/vitzeno/detent/viewspec"
@@ -65,11 +67,11 @@ func (m *Model) refreshViewport() {
 		m.nav.histOffset = offset
 	}
 	// Scrolling moves the viewport, not the content, so it must not redraw.
-	if key := m.detailKey(); key == m.detail {
+	key := m.detailKey()
+	if key == m.detail {
 		return
-	} else {
-		m.detail = key
 	}
+	m.detail = key
 	if m.panel.open != panelNone {
 		m.setViewContent(strings.Join(m.panelLines(), "\n"))
 		return
@@ -123,7 +125,7 @@ func (m Model) viewBody(r *callRow) (viewspec.Render, bool) {
 	if !ok {
 		return viewspec.Render{}, false
 	}
-	out, err := b.Draw(viewspec.Frame{
+	out, err := drawSafely(b, viewspec.Frame{
 		Width:   paneInner(m.layout.outputColW),
 		Height:  m.output.Height(),
 		Focused: m.nav.focus == focusOutput,
@@ -131,9 +133,23 @@ func (m Model) viewBody(r *callRow) (viewspec.Render, bool) {
 		Paint:   painter{},
 	})
 	if err != nil {
-		return viewspec.Render{}, false
+		// The output is still worth reading when the view of it is not.
+		logging.For(logging.UI).Warn("a view could not draw this output",
+			logging.KeyEvent, logging.ViewInvalid, logging.KeyReason, err.Error())
+		return viewspec.Render{Lines: strings.Split(r.text(), "\n"), CursorLine: -1}, true
 	}
 	return out, true
+}
+
+// drawSafely turns a widget's panic into an error, so one bad view
+// cannot take the whole TUI down with it.
+func drawSafely(b *viewspec.Bound, f viewspec.Frame) (out viewspec.Render, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = fmt.Errorf("the view panicked: %v", p)
+		}
+	}()
+	return b.Draw(f)
 }
 
 // scrollMargin is how many lines of context the selection keeps. Two,
