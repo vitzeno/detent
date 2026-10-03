@@ -524,17 +524,14 @@ func browse(t *testing.T, bus *event.Bus) {
 // should not have been.
 func record(t *testing.T, bus *event.Bus) func() []event.Event {
 	t.Helper()
-	all, stop := bus.Subscribe(nil)
-	t.Cleanup(stop)
 	var mu sync.Mutex
 	var got []event.Event
-	go func() {
-		for rec := range all {
-			mu.Lock()
-			got = append(got, rec.Event)
-			mu.Unlock()
-		}
-	}()
+	// Handled, so Settle below means kept and not just received.
+	t.Cleanup(bus.Handle(nil, func(rec event.Record) {
+		mu.Lock()
+		got = append(got, rec.Event)
+		mu.Unlock()
+	}))
 	return func() []event.Event {
 		bus.Settle(time.Second)
 		mu.Lock()
