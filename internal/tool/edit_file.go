@@ -126,12 +126,3 @@ func perlStatus(err error) int {
 	}
 	return 255
 }
-
-// delimFor grows base until no line of body could end its heredoc early.
-func delimFor(body, base string) string {
-	delim := base
-	for n := 0; containsLine(body, delim); n++ {
-		delim = fmt.Sprintf("%s_%d", base, n)
-	}
-	return delim
-}

@@ -27,6 +27,15 @@ func heredoc(path, body string) string {
 	return fmt.Sprintf("cat > %s <<'%s'%s\n%s%s", quote(path), delim, trim, body, delim)
 }
 
+// delimFor grows base until no line of body could end its heredoc early.
+func delimFor(body, base string) string {
+	delim := base
+	for n := 0; containsLine(body, delim); n++ {
+		delim = fmt.Sprintf("%s_%d", base, n)
+	}
+	return delim
+}
+
 // containsLine reports whether delim appears as a line of its own,
 // which is the only place a heredoc would end early.
 func containsLine(body, delim string) bool {
