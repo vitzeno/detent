@@ -37,9 +37,8 @@ func Global() string {
 	return filepath.Join(home, ".config", "detent", "AGENTS.md")
 }
 
-// Find reads global, then one file per directory from dir's repository root
-// down to dir, nearest last. Outside a repository only dir is read. A file
-// that cannot be read is left out and named in the error, beside the rest.
+// Find reads global, then one file per directory from dir's repository root, or dir
+// alone outside one, nearest last. One it cannot read is left out and named in the error.
 func Find(dir, global string) ([]File, error) {
 	if abs, err := filepath.Abs(dir); err == nil {
 		dir = abs
@@ -126,9 +125,8 @@ func firstOf(dir, from, within string) (File, bool, error) {
 	return File{}, false, nil
 }
 
-// read returns the file at p, ok false when it is missing or not a regular
-// file. An empty AGENTS.md still hides a CLAUDE.md beside it.
-// Unless within is empty, a p that resolves outside it is an error.
+// read returns the file at p, ok false when it is missing or not a regular file,
+// and an error when within is set and p resolves outside it.
 func read(p, name, within string) (File, bool, error) {
 	info, err := os.Stat(p)
 	if errors.Is(err, fs.ErrNotExist) {

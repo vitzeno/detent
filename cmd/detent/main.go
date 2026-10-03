@@ -305,9 +305,8 @@ func run() error {
 	announceResume(bus, sessionID, restore, env)
 
 	if *prompt != "" {
-		// Bubble Tea traps the first two for the TUI. Without it, a killed
-		// -prompt would leave its container behind. Deferred after sd.close,
-		// so it runs first and a second Ctrl-C during shutdown still kills.
+		// Without this a killed -prompt leaves its container behind. Undone
+		// before sd.close runs, so a second Ctrl-C during shutdown still kills.
 		ctx, untrap := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 		defer untrap()
 
