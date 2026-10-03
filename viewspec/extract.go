@@ -15,11 +15,46 @@ import (
 	"unicode/utf8"
 )
 
-// linesExtractor makes a row per line matching a named-capture regexp,
-// so a field can be in the wrong place but never invented.
-type linesExtractor struct {
-	re    *regexp.Regexp
-	order []Column
+// tabWidth is how many spaces of indent a leading tab counts as.
+const tabWidth = 4
+
+// borders are what a drawn table puts between its cells.
+const borders = "|│┃║"
+
+// extract reads rows and, from an extractor that knows it, their order.
+func extract(e Extractor, output string) ([]Row, []Column, error) {
+	if co, ok := e.(ColumnOrder); ok {
+		return co.ExtractColumns(output)
+	}
+	rows, err := e.Extract(output)
+	return rows, nil, err
+}
+
+func skipping(p Parse, e Extractor) Extractor {
+	if p.Skip <= 0 {
+		return e
+	}
+	return skipExtractor{inner: e, n: p.Skip}
+}
+
+// skipExtractor drops leading lines so every parse kind gets banner
+// skipping free. A struct, not a closure, so it forwards ColumnOrder.
+type skipExtractor struct {
+	inner Extractor
+	n     int
+}
+
+func (e skipExtractor) Extract(output string) ([]Row, error) {
+	rows, _, err := e.ExtractColumns(output)
+	return rows, err
+}
+
+func (e skipExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
+	lines := splitLines(output)
+	if e.n >= len(lines) {
+		return nil, nil, nil
+	}
+	return extract(e.inner, strings.Join(lines[e.n:], "\n"))
 }
 
 // ColumnOrder is found by assertion, so a renamed method would quietly
@@ -35,6 +70,13 @@ var (
 	_ ColumnOrder = boxExtractor{}
 	_ ColumnOrder = prefixExtractor{}
 )
+
+// linesExtractor makes a row per line matching a named-capture regexp,
+// so a field can be in the wrong place but never invented.
+type linesExtractor struct {
+	re    *regexp.Regexp
+	order []Column
+}
 
 func newLinesExtractor(p Parse) (Extractor, error) {
 	if p.Pattern == "" {
@@ -181,295 +223,6 @@ func (jsonExtractor) Extract(output string) ([]Row, error) {
 	return jsonRows(objs), nil
 }
 
-// fixedExtractor slices rows between the values they line up, which
-// reads "CONTAINER ID" as one column where whitespace fields see two.
-// Offsets count runes, so a wide CJK or emoji header can misplace a cut.
-type fixedExtractor struct{}
-
-func newFixedExtractor(p Parse) (Extractor, error) {
-	return skipping(p, fixedExtractor{}), nil
-}
-
-func (e fixedExtractor) Extract(output string) ([]Row, error) {
-	rows, _, err := e.ExtractColumns(output)
-	return rows, err
-}
-
-func (fixedExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
-	lines := headed(splitLines(output))
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
-		return nil, nil, nil
-	}
-	var body [][]rune
-	for _, line := range lines[1:] {
-		if strings.TrimSpace(line) != "" && !isRule(line) {
-			body = append(body, []rune(line))
-		}
-	}
-	spans := gutterSpans([]rune(lines[0]), body)
-	if len(spans) < 2 {
-		return nil, nil, errors.New("header has fewer than two columns")
-	}
-	titles := make([]string, len(spans))
-	for i, s := range spans {
-		titles[i] = s.title
-	}
-	names := lower(titles)
-	cols := titledColumns(names, titles)
-	rows := make([]Row, 0, len(body))
-	for _, runes := range body {
-		row := Row{}
-		for i, s := range spans {
-			row[names[i]] = strings.TrimSpace(slice(runes, s.start, s.end))
-		}
-		rows = append(rows, row)
-	}
-	return rows, cols, nil
-}
-
-// pairsExtractor reads "key<sep>value" lines: env, git config, any
-// describe-shaped output. One row per line, keyed key and value.
-type pairsExtractor struct{ sep string }
-
-func newPairsExtractor(p Parse) (Extractor, error) {
-	if p.Sep == "" {
-		return nil, fmt.Errorf("parse kind %q needs a sep", p.Kind)
-	}
-	return skipping(p, pairsExtractor{sep: p.Sep}), nil
-}
-
-func (e pairsExtractor) Extract(output string) ([]Row, error) {
-	var rows []Row
-	for _, line := range splitLines(output) {
-		key, value, ok := strings.Cut(line, e.sep)
-		if !ok || strings.TrimSpace(key) == "" {
-			continue
-		}
-		rows = append(rows, Row{"key": strings.TrimSpace(key), "value": strings.TrimSpace(value)})
-	}
-	return rows, nil
-}
-
-func (e pairsExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
-	rows, err := e.Extract(output)
-	return rows, []Column{{Field: "key"}, {Field: "value"}}, err
-}
-
-// delimitedExtractor splits on a separator rather than whitespace:
-// CSV, TSV, /etc/passwd.
-type delimitedExtractor struct {
-	sep    string
-	header bool
-	fields []string
-}
-
-func newDelimitedExtractor(p Parse) (Extractor, error) {
-	if p.Sep == "" {
-		return nil, fmt.Errorf("parse kind %q needs a sep", p.Kind)
-	}
-	if !p.Header && len(p.Fields) == 0 {
-		return nil, fmt.Errorf("parse kind %q needs header or fields", p.Kind)
-	}
-	return skipping(p, delimitedExtractor{sep: p.Sep, header: p.Header, fields: p.Fields}), nil
-}
-
-func (e delimitedExtractor) Extract(output string) ([]Row, error) {
-	rows, _, err := e.ExtractColumns(output)
-	return rows, err
-}
-
-func (e delimitedExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
-	var grid [][]string
-	lines := splitLines(output)
-	if e.header {
-		lines = headed(lines)
-	}
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "" || isRule(line) {
-			continue
-		}
-		parts := splitQuoted(line, e.sep)
-		for i := range parts {
-			parts[i] = strings.TrimSpace(parts[i])
-		}
-		grid = append(grid, parts)
-	}
-	if len(grid) == 0 {
-		return nil, nil, nil
-	}
-	names, titles := e.fields, e.fields
-	if e.header {
-		titles = grid[0]
-		names = lower(titles)
-		grid = grid[1:]
-	}
-	cols := titledColumns(names, titles)
-	var rows []Row
-	for _, parts := range grid {
-		row := Row{}
-		for i, n := range names {
-			if i < len(parts) {
-				row[n] = parts[i]
-			}
-		}
-		rows = append(rows, row)
-	}
-	return rows, cols, nil
-}
-
-// tabWidth is how many spaces of indent a leading tab counts as.
-const tabWidth = 4
-
-// indentExtractor turns leading whitespace into a depth. Levels come
-// from the distinct indents present, so any indent width works.
-type indentExtractor struct{}
-
-func newIndentExtractor(p Parse) (Extractor, error) {
-	return skipping(p, indentExtractor{}), nil
-}
-
-func (indentExtractor) Extract(output string) ([]Row, error) {
-	type entry struct {
-		indent int
-		text   string
-	}
-	var entries []entry
-	seen := map[int]bool{}
-	for _, line := range splitLines(output) {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		lead := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
-		n := len(lead) + (tabWidth-1)*strings.Count(lead, "\t")
-		entries = append(entries, entry{indent: n, text: strings.TrimSpace(line)})
-		seen[n] = true
-	}
-	levels := slices.Sorted(maps.Keys(seen))
-	depthOf := make(map[int]int, len(levels))
-	for i, l := range levels {
-		depthOf[l] = i
-	}
-	rows := make([]Row, 0, len(entries))
-	for _, e := range entries {
-		rows = append(rows, Row{"depth": strconv.Itoa(depthOf[e.indent]), "text": e.text})
-	}
-	return rows, nil
-}
-
-func (e indentExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
-	rows, err := e.Extract(output)
-	return rows, []Column{{Field: "depth"}, {Field: "text"}}, err
-}
-
-// prefixExtractor splits each line at the first run of whitespace, the
-// headerless shape of git log, du and wc. Two fields, never a guessed third.
-type prefixExtractor struct{}
-
-func newPrefixExtractor(p Parse) (Extractor, error) { return skipping(p, prefixExtractor{}), nil }
-
-func (prefixExtractor) Extract(output string) ([]Row, error) {
-	var rows []Row
-	for _, line := range splitLines(output) {
-		first, rest := cutField(line)
-		if first == "" {
-			continue
-		}
-		rows = append(rows, Row{"first": first, "rest": rest})
-	}
-	return rows, nil
-}
-
-func (e prefixExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
-	rows, err := e.Extract(output)
-	return rows, []Column{{Field: "first"}, {Field: "rest"}}, err
-}
-
-// boxExtractor reads a table drawn with borders: mysql, psql, sqlite
-// -box, markdown.
-type boxExtractor struct{}
-
-func newBoxExtractor(p Parse) (Extractor, error) {
-	return skipping(p, boxExtractor{}), nil
-}
-
-func (e boxExtractor) Extract(output string) ([]Row, error) {
-	rows, _, err := e.ExtractColumns(output)
-	return rows, err
-}
-
-// ExtractColumns takes the first bordered line as the header. A line
-// with no border is a title or a footer, like psql's "(12 rows)".
-func (boxExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
-	var grid [][]string
-	for _, line := range headed(splitLines(output)) {
-		if isRule(line) {
-			continue
-		}
-		if cells := boxCells(line); cells != nil {
-			grid = append(grid, cells)
-		}
-	}
-	if len(grid) == 0 {
-		return nil, nil, nil
-	}
-	titles, names := grid[0], lower(grid[0])
-	cols := titledColumns(names, titles)
-	rows := make([]Row, 0, len(grid)-1)
-	for _, cells := range grid[1:] {
-		row := Row{}
-		for i, n := range names {
-			if i < len(cells) {
-				row[n] = cells[i]
-			}
-		}
-		rows = append(rows, row)
-	}
-	return rows, cols, nil
-}
-
-// noneExtractor produces no rows, for a view drawn from raw text only.
-type noneExtractor struct{}
-
-func newNoneExtractor(Parse) (Extractor, error) { return noneExtractor{}, nil }
-
-func (noneExtractor) Extract(string) ([]Row, error) { return nil, nil }
-
-// skipExtractor drops leading lines so every parse kind gets banner
-// skipping free. A struct, not a closure, so it forwards ColumnOrder.
-type skipExtractor struct {
-	inner Extractor
-	n     int
-}
-
-func skipping(p Parse, e Extractor) Extractor {
-	if p.Skip <= 0 {
-		return e
-	}
-	return skipExtractor{inner: e, n: p.Skip}
-}
-
-func (e skipExtractor) Extract(output string) ([]Row, error) {
-	rows, _, err := e.ExtractColumns(output)
-	return rows, err
-}
-
-func (e skipExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
-	lines := splitLines(output)
-	if e.n >= len(lines) {
-		return nil, nil, nil
-	}
-	return extract(e.inner, strings.Join(lines[e.n:], "\n"))
-}
-
-// extract reads rows and, from an extractor that knows it, their order.
-func extract(e Extractor, output string) ([]Row, []Column, error) {
-	if co, ok := e.(ColumnOrder); ok {
-		return co.ExtractColumns(output)
-	}
-	rows, err := e.Extract(output)
-	return rows, nil, err
-}
-
 // jsonLines reads newline-delimited objects. Every line must be one,
 // so a truncated stream fails rather than drawing the half it liked.
 func jsonLines(s string) ([]map[string]any, error) {
@@ -535,6 +288,52 @@ func scalar(v any) string {
 		}
 		return string(b)
 	}
+}
+
+// fixedExtractor slices rows between the values they line up, which
+// reads "CONTAINER ID" as one column where whitespace fields see two.
+// Offsets count runes, so a wide CJK or emoji header can misplace a cut.
+type fixedExtractor struct{}
+
+func newFixedExtractor(p Parse) (Extractor, error) {
+	return skipping(p, fixedExtractor{}), nil
+}
+
+func (e fixedExtractor) Extract(output string) ([]Row, error) {
+	rows, _, err := e.ExtractColumns(output)
+	return rows, err
+}
+
+func (fixedExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
+	lines := headed(splitLines(output))
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+		return nil, nil, nil
+	}
+	var body [][]rune
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) != "" && !isRule(line) {
+			body = append(body, []rune(line))
+		}
+	}
+	spans := gutterSpans([]rune(lines[0]), body)
+	if len(spans) < 2 {
+		return nil, nil, errors.New("header has fewer than two columns")
+	}
+	titles := make([]string, len(spans))
+	for i, s := range spans {
+		titles[i] = s.title
+	}
+	names := lower(titles)
+	cols := titledColumns(names, titles)
+	rows := make([]Row, 0, len(body))
+	for _, runes := range body {
+		row := Row{}
+		for i, s := range spans {
+			row[names[i]] = strings.TrimSpace(slice(runes, s.start, s.end))
+		}
+		rows = append(rows, row)
+	}
+	return rows, cols, nil
 }
 
 type span struct {
@@ -676,6 +475,176 @@ func slice(r []rune, start, end int) string {
 	return string(r[start:end])
 }
 
+// pairsExtractor reads "key<sep>value" lines: env, git config, any
+// describe-shaped output. One row per line, keyed key and value.
+type pairsExtractor struct{ sep string }
+
+func newPairsExtractor(p Parse) (Extractor, error) {
+	if p.Sep == "" {
+		return nil, fmt.Errorf("parse kind %q needs a sep", p.Kind)
+	}
+	return skipping(p, pairsExtractor{sep: p.Sep}), nil
+}
+
+func (e pairsExtractor) Extract(output string) ([]Row, error) {
+	var rows []Row
+	for _, line := range splitLines(output) {
+		key, value, ok := strings.Cut(line, e.sep)
+		if !ok || strings.TrimSpace(key) == "" {
+			continue
+		}
+		rows = append(rows, Row{"key": strings.TrimSpace(key), "value": strings.TrimSpace(value)})
+	}
+	return rows, nil
+}
+
+func (e pairsExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
+	rows, err := e.Extract(output)
+	return rows, []Column{{Field: "key"}, {Field: "value"}}, err
+}
+
+// delimitedExtractor splits on a separator rather than whitespace:
+// CSV, TSV, /etc/passwd.
+type delimitedExtractor struct {
+	sep    string
+	header bool
+	fields []string
+}
+
+func newDelimitedExtractor(p Parse) (Extractor, error) {
+	if p.Sep == "" {
+		return nil, fmt.Errorf("parse kind %q needs a sep", p.Kind)
+	}
+	if !p.Header && len(p.Fields) == 0 {
+		return nil, fmt.Errorf("parse kind %q needs header or fields", p.Kind)
+	}
+	return skipping(p, delimitedExtractor{sep: p.Sep, header: p.Header, fields: p.Fields}), nil
+}
+
+func (e delimitedExtractor) Extract(output string) ([]Row, error) {
+	rows, _, err := e.ExtractColumns(output)
+	return rows, err
+}
+
+func (e delimitedExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
+	var grid [][]string
+	lines := splitLines(output)
+	if e.header {
+		lines = headed(lines)
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" || isRule(line) {
+			continue
+		}
+		parts := splitQuoted(line, e.sep)
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
+		grid = append(grid, parts)
+	}
+	if len(grid) == 0 {
+		return nil, nil, nil
+	}
+	names, titles := e.fields, e.fields
+	if e.header {
+		titles = grid[0]
+		names = lower(titles)
+		grid = grid[1:]
+	}
+	cols := titledColumns(names, titles)
+	var rows []Row
+	for _, parts := range grid {
+		row := Row{}
+		for i, n := range names {
+			if i < len(parts) {
+				row[n] = parts[i]
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, cols, nil
+}
+
+// splitQuoted splits a line the way CSV does, so a quoted "Smith, John"
+// is one cell rather than two.
+func splitQuoted(line, sep string) []string {
+	r, size := utf8.DecodeRuneInString(sep)
+	if size != len(sep) || r == '"' {
+		return strings.Split(line, sep)
+	}
+	cr := csv.NewReader(strings.NewReader(line))
+	cr.Comma, cr.LazyQuotes, cr.FieldsPerRecord = r, true, -1
+	cells, err := cr.Read()
+	if err != nil {
+		return strings.Split(line, sep)
+	}
+	return cells
+}
+
+// indentExtractor turns leading whitespace into a depth. Levels come
+// from the distinct indents present, so any indent width works.
+type indentExtractor struct{}
+
+func newIndentExtractor(p Parse) (Extractor, error) {
+	return skipping(p, indentExtractor{}), nil
+}
+
+func (indentExtractor) Extract(output string) ([]Row, error) {
+	type entry struct {
+		indent int
+		text   string
+	}
+	var entries []entry
+	seen := map[int]bool{}
+	for _, line := range splitLines(output) {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		lead := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		n := len(lead) + (tabWidth-1)*strings.Count(lead, "\t")
+		entries = append(entries, entry{indent: n, text: strings.TrimSpace(line)})
+		seen[n] = true
+	}
+	levels := slices.Sorted(maps.Keys(seen))
+	depthOf := make(map[int]int, len(levels))
+	for i, l := range levels {
+		depthOf[l] = i
+	}
+	rows := make([]Row, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, Row{"depth": strconv.Itoa(depthOf[e.indent]), "text": e.text})
+	}
+	return rows, nil
+}
+
+func (e indentExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
+	rows, err := e.Extract(output)
+	return rows, []Column{{Field: "depth"}, {Field: "text"}}, err
+}
+
+// prefixExtractor splits each line at the first run of whitespace, the
+// headerless shape of git log, du and wc. Two fields, never a guessed third.
+type prefixExtractor struct{}
+
+func newPrefixExtractor(p Parse) (Extractor, error) { return skipping(p, prefixExtractor{}), nil }
+
+func (prefixExtractor) Extract(output string) ([]Row, error) {
+	var rows []Row
+	for _, line := range splitLines(output) {
+		first, rest := cutField(line)
+		if first == "" {
+			continue
+		}
+		rows = append(rows, Row{"first": first, "rest": rest})
+	}
+	return rows, nil
+}
+
+func (e prefixExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
+	rows, err := e.Extract(output)
+	return rows, []Column{{Field: "first"}, {Field: "rest"}}, err
+}
+
 // cutField takes the leading token and the remainder, each trimmed.
 // Leading whitespace goes first, since wc right-aligns its counts.
 func cutField(line string) (first, rest string) {
@@ -687,8 +656,48 @@ func cutField(line string) (first, rest string) {
 	return line[:i], strings.TrimSpace(line[i:])
 }
 
-// borders are what a drawn table puts between its cells.
-const borders = "|│┃║"
+// boxExtractor reads a table drawn with borders: mysql, psql, sqlite
+// -box, markdown.
+type boxExtractor struct{}
+
+func newBoxExtractor(p Parse) (Extractor, error) {
+	return skipping(p, boxExtractor{}), nil
+}
+
+func (e boxExtractor) Extract(output string) ([]Row, error) {
+	rows, _, err := e.ExtractColumns(output)
+	return rows, err
+}
+
+// ExtractColumns takes the first bordered line as the header. A line
+// with no border is a title or a footer, like psql's "(12 rows)".
+func (boxExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
+	var grid [][]string
+	for _, line := range headed(splitLines(output)) {
+		if isRule(line) {
+			continue
+		}
+		if cells := boxCells(line); cells != nil {
+			grid = append(grid, cells)
+		}
+	}
+	if len(grid) == 0 {
+		return nil, nil, nil
+	}
+	titles, names := grid[0], lower(grid[0])
+	cols := titledColumns(names, titles)
+	rows := make([]Row, 0, len(grid)-1)
+	for _, cells := range grid[1:] {
+		row := Row{}
+		for i, n := range names {
+			if i < len(cells) {
+				row[n] = cells[i]
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, cols, nil
+}
 
 // boxCells splits a line on its border, dropping what lies outside the
 // first and last one. nil when the line has no border.
@@ -712,26 +721,16 @@ func boxCells(line string) []string {
 	return cells
 }
 
+// noneExtractor produces no rows, for a view drawn from raw text only.
+type noneExtractor struct{}
+
+func newNoneExtractor(Parse) (Extractor, error) { return noneExtractor{}, nil }
+
+func (noneExtractor) Extract(string) ([]Row, error) { return nil, nil }
+
 func splitLines(s string) []string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
-}
-
-// lower makes each title a row key: lowercase, with a repeat suffixed
-// _2, _3 rather than overwriting the column it repeats.
-func lower(in []string) []string {
-	out := make([]string, len(in))
-	taken := make(map[string]bool, len(in))
-	for i, s := range in {
-		base := strings.ToLower(s)
-		key := base
-		for n := 2; taken[key]; n++ {
-			key = base + "_" + strconv.Itoa(n)
-		}
-		taken[key] = true
-		out[i] = key
-	}
-	return out
 }
 
 // headed is a headed table's lines, cut at the first blank line after
@@ -771,20 +770,21 @@ func isRule(line string) bool {
 	return dashes >= 3
 }
 
-// splitQuoted splits a line the way CSV does, so a quoted "Smith, John"
-// is one cell rather than two.
-func splitQuoted(line, sep string) []string {
-	r, size := utf8.DecodeRuneInString(sep)
-	if size != len(sep) || r == '"' {
-		return strings.Split(line, sep)
+// lower makes each title a row key: lowercase, with a repeat suffixed
+// _2, _3 rather than overwriting the column it repeats.
+func lower(in []string) []string {
+	out := make([]string, len(in))
+	taken := make(map[string]bool, len(in))
+	for i, s := range in {
+		base := strings.ToLower(s)
+		key := base
+		for n := 2; taken[key]; n++ {
+			key = base + "_" + strconv.Itoa(n)
+		}
+		taken[key] = true
+		out[i] = key
 	}
-	cr := csv.NewReader(strings.NewReader(line))
-	cr.Comma, cr.LazyQuotes, cr.FieldsPerRecord = r, true, -1
-	cells, err := cr.Read()
-	if err != nil {
-		return strings.Split(line, sep)
-	}
-	return cells
+	return out
 }
 
 func titledColumns(names, titles []string) []Column {
