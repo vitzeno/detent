@@ -96,7 +96,13 @@ MCP commands and URLs, never a value) and asks `Trust this directory?
 by the directory and a hash of the files, so any change asks again. A
 no runs on the user's own config only. Headless runs never ask:
 untrusted files are ignored with a warning unless `-trust` is passed,
-which trusts them for that run without recording it.
+which trusts them for that run without recording it. What is loaded is
+what was hashed: `trust.Decision.Files` carries the bytes `Decide` read,
+and `config.Load`, `.env` and `mcp.Load` take the repo-local files from it
+rather than the disk, so a file rewritten after the question changes
+nothing that run. The record, MCP tokens and logs must be owner-only on
+unix (`internal/private`). Windows has no mode bits, so the check passes
+there and the profile's ACL keeps them private.
 
 At startup `run()` pings the endpoint's `/models` and fails fast
 with a clear message. Don't remove it: it's the difference between a
@@ -222,7 +228,9 @@ containerd snapshots, and "undo call #23" is not a thought anyone has.
 Rolling back truncates the transcript to where that prompt landed,
 which is a whole number of Steps by construction. Reverting the
 human's own files is a separate yes/no question, offered only when the
-Turn's checkpoint holds a tree.
+Turn's checkpoint holds a tree. A Turn already compacted into the
+summary cannot be undone: the summary mixes it with what came before, so
+undo refuses before touching the sandbox or the files.
 
 ## Architecture
 
@@ -283,7 +291,7 @@ shape was worth the rework:
 
 ```
 cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless, trust, worktree
-ui          →  event, viewspec, views, version, logging + its own subpackages
+ui          →  event, viewspec, views, version, logging, termsafe + its own subpackages
 engine      →  event, tool, model, capture, classify (via an interface)
 mcp         →  event, tool, capture, the MCP SDK
 forget      →  event (the store and sandbox arrive as arguments)
@@ -292,6 +300,8 @@ tool        →  event
 model       →  event
 event       →  the standard library, plus viewspec and google/uuid
 viewspec    →  the standard library, nothing else
+termsafe    →  the standard library, nothing else
+private     →  the standard library, nothing else
 views       →  viewspec, event
 logging     →  the standard library, plus event
 config      →  engine, model, classify, sandbox, host (for defaults and names only)
@@ -488,8 +498,10 @@ adding a fat dependency fails with the transitive import named.
   the spec says must validate them anyway.
 
 - **`internal/trust`**: decides, before config, `.env` or MCP are read,
-  whether the working directory's own files may be. It parses them
-  itself, so its summary never sees an expanded secret.
+  whether the working directory's own files may be. It reads each file
+  once, summarises and hashes those bytes, and hands them on in
+  `Decision.Files`, which is all the loaders read. Its summary never sees
+  an expanded secret.
 
 - **`internal/instructions`**: the project's `AGENTS.md`, or `CLAUDE.md`
   where a directory has none, from the git root down, after the human's
@@ -536,6 +548,9 @@ adding a fat dependency fails with the transitive import named.
   subscriber like any front-end, which is what makes it a fair test of
   the engine's interface. `New` subscribes a `Printer` before the
   engine runs, so it misses nothing, and `Run` sends the prompt.
+  Everything it prints that a model or command could influence goes
+  through `termsafe.Printable`, as the approval box does, so an escape
+  sequence is shown rather than sent to the terminal.
 
 - **`internal/viewgen`**: writes a spec by asking the judge closed
   questions and assembling the answers, rather than asking a model to
