@@ -87,6 +87,14 @@ func TestComplete_TolerantOfEndpointQuirks(t *testing.T) {
 			body:  `{"choices":[{"message":{"tool_calls":[{"id":"c","type":"function","function":{"name":"list_dir","arguments":""}}]}}]}`,
 			check: func(t *testing.T, r Reply) { t.Helper(); assert.Equal(t, map[string]any{}, r.Requests[0].Args) },
 		},
+		{
+			name: "null arguments are an empty map",
+			body: `{"choices":[{"message":{"tool_calls":[{"id":"c","type":"function","function":{"name":"list_dir","arguments":"null"}}]}}]}`,
+			check: func(t *testing.T, r Reply) {
+				t.Helper()
+				assert.Equal(t, map[string]any{}, r.Requests[0].Args, "null must not go back to the endpoint as null")
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -96,13 +104,6 @@ func TestComplete_TolerantOfEndpointQuirks(t *testing.T) {
 			tt.check(t, reply)
 		})
 	}
-}
-
-func TestComplete_NullArgumentsAreAnEmptyMap(t *testing.T) {
-	c, _ := serve(t, `{"choices":[{"message":{"tool_calls":[{"id":"c","type":"function","function":{"name":"list_dir","arguments":"null"}}]}}]}`)
-	reply, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
-	require.NoError(t, err)
-	assert.Equal(t, map[string]any{}, reply.Requests[0].Args, "null must not go back to the endpoint as null")
 }
 
 func TestComplete_SurfacesFailures(t *testing.T) {
