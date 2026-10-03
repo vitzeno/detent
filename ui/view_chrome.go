@@ -208,9 +208,9 @@ func (m Model) statusHint() string {
 	switch m.owner() {
 	case ownerConfirm:
 		if !m.confirmReady() {
-			return "[↓/pgdn] read the rest · [n] skip this call"
+			return "[↓/pgdn] read the rest · [n] skip this tool call"
 		}
-		return "[y/enter] run · [n] skip this call"
+		return "[y/enter] run · [n] skip this tool call"
 	case ownerOutput:
 		// Must match onEscape's actual behavior (keys.go): it aborts a
 		// running command here instead of stepping back to history.

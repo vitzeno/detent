@@ -308,7 +308,7 @@ func anyRunning(b *turnBlock) bool {
 // words have a row of their own, so this is the outcome alone.
 func (m Model) turnBanner(b *turnBlock) []string {
 	w := m.blockWidth() - 2
-	ran := fmt.Sprintf("%d call(s)", len(b.rows))
+	ran := fmt.Sprintf("%d tool call(s)", len(b.rows))
 	switch b.end {
 	case event.EndDone:
 		return nil

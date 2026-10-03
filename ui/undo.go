@@ -91,7 +91,7 @@ func (m *Model) undoLines() []string {
 
 	out := []string{styleCaution.Render(fmt.Sprintf("undo request #%d", b.n)), "",
 		"  " + truncCell(b.prompt, width), "",
-		styleFaint.Render(fmt.Sprintf("  %d call(s) will be undone", len(reversible))), ""}
+		styleFaint.Render(fmt.Sprintf("  %d tool call(s) will be undone", len(reversible))), ""}
 	for _, r := range reversible {
 		out = append(out, "  "+styleMuted.Render(truncCell(r.command, width)))
 	}
@@ -100,7 +100,7 @@ func (m *Model) undoLines() []string {
 	// human expects is the worst thing this page could do.
 	if len(standing) > 0 {
 		out = append(out, "",
-			styleDanger.Render(fmt.Sprintf("  %d call(s) cannot be undone", len(standing))))
+			styleDanger.Render(fmt.Sprintf("  %d tool call(s) cannot be undone", len(standing))))
 		for _, r := range standing {
 			out = append(out, "  "+styleDanger.Render(truncCell(r.command, width)))
 		}

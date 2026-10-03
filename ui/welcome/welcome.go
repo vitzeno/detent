@@ -211,7 +211,7 @@ func session(f Facts) []string {
 	out := []string{
 		row("this session", sessionID(f)),
 		row("so far", primary.Render(fmt.Sprintf("%s · %s",
-			plural(f.Turns, "request"), plural(f.ToolCalls, "call")))),
+			plural(f.Turns, "request"), plural(f.ToolCalls, "tool call")))),
 	}
 	if f.Resumed > 0 {
 		out = append(out, row("resumed", primary.Render(plural(f.Resumed, "record"))+

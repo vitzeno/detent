@@ -116,7 +116,7 @@ func (m *Model) statusLines() []string {
 		{"", ""},
 		{"requests", strconv.Itoa(len(m.blocks))},
 		{"steps", strconv.Itoa(m.steps)},
-		{"calls", strconv.Itoa(m.calls)},
+		{"tool calls", strconv.Itoa(m.calls)},
 		{"errors", strconv.Itoa(m.errors)},
 		{"views drawn", strconv.Itoa(m.views)},
 		{"tokens", status.Tokens(m.tokens)},
@@ -156,7 +156,7 @@ func (m *Model) helpLines() []string {
 	return append(out, "", styleGoal.Render("keys"), "",
 		"  "+styleFaint.Render("tab       move between input, history and output"),
 		"  "+styleFaint.Render("↑ ↓       move the cursor, or scroll the output"),
-		"  "+styleFaint.Render("space     expand a call's output inline"),
+		"  "+styleFaint.Render("space     expand a tool call's output inline"),
 		"  "+styleFaint.Render("enter     seed the prompt from a view's selection"),
 		"  "+styleFaint.Render("esc       back out, or abort a running request"),
 		"  "+styleFaint.Render("ctrl+c    quit"))

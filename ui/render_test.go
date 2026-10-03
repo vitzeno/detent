@@ -715,7 +715,7 @@ func TestSessionBar_LeavesCountsToTheStatusPage(t *testing.T) {
 
 	status := stripANSI(strings.Join(m.statusLines(), "\n"))
 	assert.Contains(t, status, "requests")
-	assert.Contains(t, status, "calls")
+	assert.Contains(t, status, "tool calls")
 }
 
 // A share answers "how close am I", the raw pair answers "how much
@@ -828,8 +828,8 @@ func TestUndoPage_NamesWhatItCannotReverse(t *testing.T) {
 	got := next.(Model)
 	page := stripANSI(strings.Join(got.undoLines(), "\n"))
 
-	assert.Contains(t, page, "2 call(s) will be undone")
-	assert.Contains(t, page, "1 call(s) cannot be undone")
+	assert.Contains(t, page, "2 tool call(s) will be undone")
+	assert.Contains(t, page, "1 tool call(s) cannot be undone")
 	assert.Contains(t, page, "github__create_issue", "the standing call is not named")
 	assert.Contains(t, page, "go test ./...")
 }
@@ -852,7 +852,7 @@ func TestUndoPage_SaysNothingWhenEverythingReverses(t *testing.T) {
 	shown := next.(Model)
 	page := stripANSI(strings.Join(shown.undoLines(), "\n"))
 	assert.NotContains(t, page, "cannot be undone")
-	assert.Contains(t, page, "1 call(s) will be undone")
+	assert.Contains(t, page, "1 tool call(s) will be undone")
 }
 
 // Nothing brings a deleted session back, so the page names what goes

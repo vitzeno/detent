@@ -38,10 +38,10 @@ func (m Model) confirmBox() string {
 		b.WriteString("  " + styleFaint.Render(layout.Truncate(a.Rationale, m.layout.width-4)) + "\n")
 	}
 	if !m.confirmReady() {
-		b.WriteString(styleFaint.Render("  [↓/pgdn] read to the end before it can run   [n] skip this call"))
+		b.WriteString(styleFaint.Render("  [↓/pgdn] read to the end before it can run   [n] skip this tool call"))
 		return b.String()
 	}
-	b.WriteString(styleFaint.Render("  [y/enter] run   [n] skip this call"))
+	b.WriteString(styleFaint.Render("  [y/enter] run   [n] skip this tool call"))
 	return b.String()
 }
 
