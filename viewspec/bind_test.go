@@ -49,3 +49,28 @@ func TestBind_IsSafeOnOneCompiledAcrossGoroutines(t *testing.T) {
 		})
 	}
 }
+
+func TestCompile_NamesTheBlockThatFailed(t *testing.T) {
+	_, err := viewspec.Compile(viewspec.Spec{Parse: colsParse(), Blocks: []viewspec.Block{
+		{Kind: "list", Field: "a"}, {Kind: "list", Field: "b"}, {Kind: "nope"}}})
+	var be *viewspec.BindError
+	require.ErrorAs(t, err, &be)
+	assert.Equal(t, 2, be.Block)
+}
+
+// One cursor addresses one block, so only that block may light a row.
+func TestDraw_OnlyTheSelectedBlockHighlights(t *testing.T) {
+	spec := viewspec.Spec{Parse: colsParse(), Blocks: []viewspec.Block{
+		{Kind: "list", Field: "name"}, {Kind: "list", Field: "name", OnEnter: "x {name}"}}}
+	r, err := bind(t, spec, "Name\na\nb\n").Draw(viewspec.Frame{
+		Width: 40, Focused: true, Cursor: 0, Paint: rolePainter{viewspec.Plain()}})
+	require.NoError(t, err)
+	var lit []int
+	for i, l := range r.Lines {
+		if strings.HasPrefix(l, "accent:") {
+			lit = append(lit, i)
+		}
+	}
+	assert.Equal(t, []int{2}, lit)
+	assert.Equal(t, 2, r.CursorLine)
+}

@@ -37,6 +37,7 @@ func Compile(spec Spec, opts ...Option) (*Compiled, error) {
 		if err := checkBlock(b, o.reg, true); err != nil {
 			var be *BindError
 			if errors.As(err, &be) {
+				be.Block = i
 				return nil, be
 			}
 			return nil, &BindError{Block: i, Kind: b.Kind, Err: err}
