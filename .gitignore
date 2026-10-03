@@ -7,6 +7,7 @@
 # sandbox output-capture scratch dir (internal/sandbox); Close removes
 # it on a clean exit, this just covers a killed/crashed session too
 .detent-sandbox/
+# This repo's own MCP servers. A project elsewhere may well commit its .mcp.json.
 .mcp.json
 
 docs/
@@ -15,10 +16,12 @@ docs/
 __pycache__/
 *.pyc
 
-# OS
+# OS and editors
 .DS_Store
-
-# build output
-bin/
 .vscode/
+
+# build and test output
+bin/
+cover.out
+*.coverprofile
 ui/zz_snapshot_test.go

@@ -20,7 +20,7 @@ runs:
               RACE: ${{ inputs.race }}
           run: |
               set -euo pipefail
-              flags="-cover -json -v"
+              flags="-cover"
               if [ "$RACE" = "true" ]; then
                   flags="$flags -race"
               fi

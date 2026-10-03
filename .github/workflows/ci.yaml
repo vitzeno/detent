@@ -13,6 +13,9 @@ concurrency:
     group: ci-${{ github.ref }}
     cancel-in-progress: true
 
+permissions:
+    contents: read
+
 jobs:
     test:
         name: Test (${{ matrix.os }})
@@ -30,12 +33,14 @@ jobs:
         steps:
             - name: Checkout
               uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+              with:
+                  persist-credentials: false
 
             - name: Setup Go
               uses: ./.github/actions/go/setup
 
-            # sandbox and routing skip themselves without a containerd
-            # daemon, which is the case here. Rollback is covered locally.
+            # The sandbox tests skip themselves without a containerd daemon,
+            # which is the case here. Rollback is covered locally.
             - name: Run Go tests
               uses: ./.github/actions/go/tests
 
@@ -45,6 +50,8 @@ jobs:
         steps:
             - name: Checkout
               uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+              with:
+                  persist-credentials: false
 
             - name: Setup Go
               uses: ./.github/actions/go/setup
@@ -88,12 +95,14 @@ jobs:
         steps:
             - name: Checkout
               uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+              with:
+                  persist-credentials: false
 
             - name: Setup Go
               uses: ./.github/actions/go/setup
 
-            # CGO stays off so every target is one static binary. It is also
-            # what makes a pure-Go SQLite driver the only option later.
+            # CGO stays off so every target is one static binary, which is
+            # why the store uses modernc's pure-Go SQLite.
             - name: Build
               env:
                   GOOS: ${{ matrix.goos }}

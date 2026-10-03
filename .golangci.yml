@@ -1,0 +1,74 @@
+version: "2"
+
+run:
+  go: "1.26"
+
+# Only linters that found real defects here. The stylistic ones (wsl,
+# exhaustruct, varnamelen, nlreturn, lll, mnd, paralleltest) fight the
+# codebase's deliberate style and are left off.
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose
+    - copyloopvar
+    - errorlint
+    - exhaustive
+    - gocritic
+    - gosec
+    - intrange
+    - misspell
+    - modernize
+    - nilnil
+    - noctx
+    - perfsprint
+    - recvcheck
+    - revive
+    - testifylint
+    - thelper
+    - unparam
+    - usetesting
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    exhaustive:
+      default-signifies-exhaustive: true
+    gosec:
+      excludes:
+        - G204 # sh -c is the design: the Dangerous gate is the control
+        - G304 # reading a path the human or the config named is the point
+    perfsprint:
+      errorf: false # fmt.Errorf without args reads the same as errors.New
+    misspell:
+      ignore-rules:
+        - signins
+    revive:
+      rules:
+        - name: unused-parameter
+        - name: redefines-builtin-id
+        - name: context-as-argument
+        - name: error-strings
+    staticcheck:
+      checks: ["all", "-ST1000", "-ST1003"]
+  exclusions:
+    generated: lax
+    # Gitignored, so CI never sees it and nor should a local run.
+    paths:
+      - docs/
+    rules:
+      - path: _test\.go
+        linters: [gosec, unparam, noctx]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/vitzeno/detent
+  exclusions:
+    paths:
+      - docs/
