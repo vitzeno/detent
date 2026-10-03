@@ -267,6 +267,11 @@ func run() error {
 		// that budget.
 		engine.WithSummarizer(client),
 	}
+	if wt, err := openWorktree(*prompt == "", local.Dir); err != nil {
+		warnings = append(warnings, err.Error())
+	} else if wt != nil {
+		opts = append(opts, engine.WithWorktree(wt))
+	}
 	// No judge without a key: TYPESAFE_API_KEY env or jev_api_key file.
 	var judge *classify.JevJudge
 	if resolved.JevAPIKey != "" {
