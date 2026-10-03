@@ -1,10 +1,10 @@
 package worktree
 
 import (
-	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,134 +12,345 @@ import (
 )
 
 func TestAvailable(t *testing.T) {
-	ctx := context.Background()
-	assert.True(t, Available(ctx, repo(t)))
-	assert.False(t, Available(ctx, t.TempDir()), "a plain directory can't be checkpointed")
+	assert.True(t, Available(t.Context(), repo(t)))
+	assert.False(t, Available(t.Context(), t.TempDir()), "a plain directory can't be checkpointed")
 }
 
 // A modified file comes back, a deleted one comes back, and one created
 // since the checkpoint is removed.
 func TestRestore_UndoesWhatAGoalDid(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	dir := repo(t)
+	d := open(t, dir)
 
-	before, err := Capture(ctx, dir)
+	before, err := d.Capture(ctx)
 	require.NoError(t, err)
 
 	write(t, dir, "tracked.txt", "edited by the model\n")
 	write(t, dir, "created.py", "print(1)\n")
 	require.NoError(t, os.Remove(filepath.Join(dir, ".gitignore")))
 
-	changes, err := Diff(ctx, dir, before)
+	changes, err := d.Diff(ctx, before, "")
 	require.NoError(t, err)
-	got := map[string]Kind{}
-	for _, c := range changes {
-		got[c.Path] = c.Kind
-	}
-	assert.Equal(t, Restored, got["tracked.txt"], "an edit is reverted")
-	assert.Equal(t, Restored, got[".gitignore"], "a deletion is undone")
-	assert.Equal(t, Removed, got["created.py"], "a file created since is deleted")
+	assert.Equal(t, map[string]Kind{
+		"tracked.txt": Restored, ".gitignore": Restored, "created.py": Removed,
+	}, kinds(changes))
 
-	require.NoError(t, Restore(ctx, dir, before))
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
 	assert.Equal(t, "original\n", read(t, dir, "tracked.txt"))
 	assert.FileExists(t, filepath.Join(dir, ".gitignore"))
 	assert.NoFileExists(t, filepath.Join(dir, "created.py"))
+	assertClean(t, d, before)
+}
 
-	after, err := Diff(ctx, dir, before)
+// A rename is a deletion and an addition. Read as one record, it
+// misaligned every path after it.
+func TestRestore_UndoesARename(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	write(t, dir, "sub/a.txt", "same content, so git calls it a rename\n")
+	commit(t, dir)
+	d := open(t, dir)
+
+	before, err := d.Capture(ctx)
 	require.NoError(t, err)
-	assert.Empty(t, after, "nothing left to do once restored")
+	require.NoError(t, os.Rename(filepath.Join(dir, "sub/a.txt"), filepath.Join(dir, "sub/b.txt")))
+	write(t, dir, "tracked.txt", "edited\n")
+
+	changes, err := d.Diff(ctx, before, "")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]Kind{
+		"sub/a.txt": Restored, "sub/b.txt": Removed, "tracked.txt": Restored,
+	}, kinds(changes))
+
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
+	assert.FileExists(t, filepath.Join(dir, "sub/a.txt"))
+	assert.NoFileExists(t, filepath.Join(dir, "sub/b.txt"))
+	assert.Equal(t, "original\n", read(t, dir, "tracked.txt"))
+}
+
+// detent's workspace is wherever it started, often below the repo root.
+func TestRestore_FromASubdirectory(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	write(t, dir, "sub/a.txt", "a\n")
+	commit(t, dir)
+	sub := filepath.Join(dir, "sub")
+	d := open(t, sub)
+
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "sub/a.txt", "edited\n")
+	write(t, dir, "sub/new/deep.txt", "new\n")
+	write(t, dir, "tracked.txt", "outside the directory\n")
+
+	changes, err := d.Diff(ctx, before, "")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]Kind{"sub/a.txt": Restored, "sub/new/deep.txt": Removed}, kinds(changes),
+		"only the directory it was opened on")
+
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
+	assert.Equal(t, "a\n", read(t, dir, "sub/a.txt"))
+	assert.NoDirExists(t, filepath.Join(sub, "new"), "a directory the request made goes with its files")
+	assert.DirExists(t, sub, "but never the directory it was opened on")
+	assert.Equal(t, "outside the directory\n", read(t, dir, "tracked.txt"))
+}
+
+func TestRestore_OddPaths(t *testing.T) {
+	names := []string{"with space.txt", "dir with space/x.txt", "ünï.txt"}
+	if runtime.GOOS != "windows" {
+		names = append(names, "new\nline.txt", "tab\there.txt")
+	}
+	ctx := t.Context()
+	dir := repo(t)
+	for _, n := range names {
+		write(t, dir, n, "before\n")
+	}
+	d := open(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+
+	for _, n := range names {
+		write(t, dir, n, "after\n")
+		write(t, dir, n+".new", "created\n")
+	}
+	changes, err := d.Diff(ctx, before, "")
+	require.NoError(t, err)
+	got := kinds(changes)
+	for _, n := range names {
+		assert.Equal(t, Restored, got[n], n)
+		assert.Equal(t, Removed, got[n+".new"], n)
+	}
+
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
+	for _, n := range names {
+		assert.Equal(t, "before\n", read(t, dir, n), n)
+		assert.NoFileExists(t, filepath.Join(dir, n+".new"), n)
+	}
+}
+
+// A file that became a directory, and the other way round, both come back.
+func TestRestore_FileAndDirectorySwap(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	write(t, dir, "was-file", "file\n")
+	write(t, dir, "was-dir/inner.txt", "inner\n")
+	d := open(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "was-file")))
+	write(t, dir, "was-file/now.txt", "now a dir\n")
+	require.NoError(t, os.RemoveAll(filepath.Join(dir, "was-dir")))
+	write(t, dir, "was-dir", "now a file\n")
+
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
+	assert.Equal(t, "file\n", read(t, dir, "was-file"))
+	assert.Equal(t, "inner\n", read(t, dir, "was-dir/inner.txt"))
+	assertClean(t, d, before)
+}
+
+func TestRestore_Symlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on windows")
+	}
+	ctx := t.Context()
+	dir := repo(t)
+	require.NoError(t, os.Symlink("tracked.txt", filepath.Join(dir, "link")))
+	d := open(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "link")))
+	require.NoError(t, os.Symlink(".gitignore", filepath.Join(dir, "link")))
+	require.NoError(t, os.Symlink("tracked.txt", filepath.Join(dir, "made")))
+
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
+	target, err := os.Readlink(filepath.Join(dir, "link"))
+	require.NoError(t, err)
+	assert.Equal(t, "tracked.txt", target)
+	_, err = os.Lstat(filepath.Join(dir, "made"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// What changed after detent last looked is the human's, so a revert
+// leaves it and says so rather than throwing it away.
+func TestRestore_LeavesUnseenChanges(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	d := open(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+
+	write(t, dir, "tracked.txt", "the request's edit\n")
+	write(t, dir, "made.txt", "the request's file\n")
+	seen, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "mine.txt", "the human's file\n")
+	write(t, dir, "made.txt", "the human edited the request's file\n")
+
+	changes, err := d.Diff(ctx, before, seen)
+	require.NoError(t, err)
+	unseen := map[string]bool{}
+	for _, c := range changes {
+		unseen[c.Path] = c.Unseen
+	}
+	assert.Equal(t, map[string]bool{"tracked.txt": false, "made.txt": true, "mine.txt": true}, unseen)
+
+	err = d.RestoreTo(ctx, before, seen)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reverted 1 of 3")
+	assert.Contains(t, err.Error(), "made.txt")
+	assert.Equal(t, "original\n", read(t, dir, "tracked.txt"))
+	assert.Equal(t, "the human's file\n", read(t, dir, "mine.txt"))
+	assert.Equal(t, "the human edited the request's file\n", read(t, dir, "made.txt"))
+}
+
+func TestRestore_UnknownCheckpoint(t *testing.T) {
+	d := open(t, repo(t))
+	err := d.RestoreTo(t.Context(), "0123456789abcdef0123456789abcdef01234567", "")
+	assert.ErrorIs(t, err, ErrGone)
 }
 
 // Untracked files are the normal case for a goal that writes something
 // new, so a checkpoint must cover them.
 func TestCapture_IncludesUntrackedFiles(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	dir := repo(t)
 	write(t, dir, "notes.md", "# notes\n")
+	d := open(t, dir)
 
-	before, err := Capture(ctx, dir)
+	before, err := d.Capture(ctx)
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(filepath.Join(dir, "notes.md")))
 
-	require.NoError(t, Restore(ctx, dir, before))
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
 	assert.Equal(t, "# notes\n", read(t, dir, "notes.md"), "an untracked file is restorable")
 }
 
 // Build output is not state worth reverting, and walking it would make
-// every step slower. What git ignores, this ignores.
+// every step slower. What git ignores, this ignores, including the
+// sandbox's own output directory, which ignores itself.
 func TestCapture_SkipsIgnoredPaths(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	dir := repo(t)
 	write(t, dir, "ignored/artifact.bin", "built\n")
+	write(t, dir, ".detent-sandbox/.gitignore", "*\n")
+	write(t, dir, ".detent-sandbox/call.out", "running\n")
+	d := open(t, dir)
 
-	before, err := Capture(ctx, dir)
+	before, err := d.Capture(ctx)
 	require.NoError(t, err)
 	write(t, dir, "ignored/artifact.bin", "rebuilt\n")
+	write(t, dir, ".detent-sandbox/call.out", "done\n")
+	write(t, dir, ".detent-sandbox/next.out", "next\n")
 
-	changes, err := Diff(ctx, dir, before)
+	changes, err := d.Diff(ctx, before, "")
 	require.NoError(t, err)
 	assert.Empty(t, changes, "an ignored file is neither captured nor reverted")
 
-	require.NoError(t, Restore(ctx, dir, before))
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
 	assert.Equal(t, "rebuilt\n", read(t, dir, "ignored/artifact.bin"), "and is left alone")
+	assert.Equal(t, "next\n", read(t, dir, ".detent-sandbox/next.out"))
 }
 
 // The whole point of the plumbing: checkpointing must be invisible to
 // whatever the human has staged.
 func TestCapture_LeavesTheUsersIndexAlone(t *testing.T) {
-	ctx := context.Background()
 	dir := repo(t)
 	write(t, dir, "staged.txt", "mine\n")
-
-	add := exec.Command("git", "add", "staged.txt")
-	add.Dir = dir
-	require.NoError(t, add.Run())
-
-	staged := func() string {
-		cmd := exec.Command("git", "diff", "--cached", "--name-only")
-		cmd.Dir = dir
-		out, err := cmd.Output()
-		require.NoError(t, err)
-		return string(out)
-	}
-	was := staged()
+	git(t, dir, "add", "staged.txt")
+	was := git(t, dir, "diff", "--cached", "--name-only")
 	require.Contains(t, was, "staged.txt")
 
-	_, err := Capture(ctx, dir)
+	_, err := open(t, dir).Capture(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, was, staged(), "the user's index must be untouched")
+	assert.Equal(t, was, git(t, dir, "diff", "--cached", "--name-only"), "the user's index must be untouched")
+}
+
+// Started from a hook or a rebase, GIT_DIR names another repository.
+func TestCapture_IgnoresInheritedGitEnvironment(t *testing.T) {
+	dir := repo(t)
+	other := repo(t)
+	t.Setenv("GIT_DIR", filepath.Join(other, ".git"))
+	t.Setenv("GIT_WORK_TREE", other)
+
+	d := open(t, dir)
+	assert.Equal(t, dir, realpath(t, d.top))
+}
+
+// Mid-merge the human's index holds conflicts write-tree refuses, so the seed is dropped.
+func TestCapture_DuringAMergeConflict(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	git(t, dir, "checkout", "-q", "-b", "side")
+	write(t, dir, "tracked.txt", "side\n")
+	commit(t, dir)
+	git(t, dir, "checkout", "-q", "-")
+	write(t, dir, "tracked.txt", "main\n")
+	commit(t, dir)
+	cmd := exec.CommandContext(ctx, "git", "merge", "-q", "side")
+	cmd.Dir = dir
+	require.Error(t, cmd.Run(), "the merge conflicts")
+
+	d := open(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "tracked.txt", "resolved\n")
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
+	assert.Contains(t, read(t, dir, "tracked.txt"), "<<<<<<<")
 }
 
 // Nothing changed means nothing to confirm and nothing to write.
 func TestDiff_EmptyWhenUnchanged(t *testing.T) {
-	ctx := context.Background()
-	dir := repo(t)
-	c, err := Capture(ctx, dir)
+	ctx := t.Context()
+	d := open(t, repo(t))
+	c, err := d.Capture(ctx)
 	require.NoError(t, err)
+	assertClean(t, d, c)
+}
 
-	changes, err := Diff(ctx, dir, c)
+func kinds(changes []Change) map[string]Kind {
+	got := map[string]Kind{}
+	for _, c := range changes {
+		got[c.Path] = c.Kind
+	}
+	return got
+}
+
+func assertClean(t *testing.T, d *Dir, c Checkpoint) {
+	t.Helper()
+	after, err := d.Diff(t.Context(), c, "")
 	require.NoError(t, err)
-	assert.Empty(t, changes)
+	assert.Empty(t, after, "nothing left to do once restored")
+}
+
+func open(t *testing.T, dir string) *Dir {
+	t.Helper()
+	d, err := Open(t.Context(), dir)
+	require.NoError(t, err)
+	return d
 }
 
 // repo is a real git repository, because this package is a thin shell
 // over git plumbing and a fake would prove nothing about it.
 func repo(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-	for _, args := range [][]string{
-		{"init", "-q"},
-		{"config", "user.email", "t@example.com"},
-		{"config", "user.name", "t"},
-	} {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		require.NoError(t, cmd.Run(), "git %v", args)
-	}
+	dir := realpath(t, t.TempDir())
+	git(t, dir, "init", "-q")
+	git(t, dir, "config", "user.email", "t@example.com")
+	git(t, dir, "config", "user.name", "t")
 	write(t, dir, "tracked.txt", "original\n")
 	write(t, dir, ".gitignore", "ignored/\n")
 	commit(t, dir)
 	return dir
+}
+
+func realpath(t *testing.T, p string) string {
+	t.Helper()
+	r, err := filepath.EvalSymlinks(p)
+	require.NoError(t, err)
+	return r
 }
 
 func write(t *testing.T, dir, rel, body string) {
@@ -158,9 +369,16 @@ func read(t *testing.T, dir, rel string) string {
 
 func commit(t *testing.T, dir string) {
 	t.Helper()
-	for _, args := range [][]string{{"add", "-A"}, {"commit", "-qm", "x"}} {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		require.NoError(t, cmd.Run(), "git %v", args)
-	}
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-qm", "x")
+}
+
+func git(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", args...)
+	cmd.Dir = dir
+	cmd.Env = env("")
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %v: %s", args, out)
+	return string(out)
 }
