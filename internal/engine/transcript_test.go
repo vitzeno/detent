@@ -115,11 +115,11 @@ func TestCompact_NeverDropsTheOpenTurn(t *testing.T) {
 
 	tr.compact(context.Background(), 1, nil) // impossible budget
 
-	var text string
+	var text strings.Builder
 	for _, m := range tr.messages() {
-		text += m.Content + "\n"
+		text.WriteString(m.Content + "\n")
 	}
-	assert.Contains(t, text, "THE OPEN REQUEST")
+	assert.Contains(t, text.String(), "THE OPEN REQUEST")
 	wellFormed(t, tr.messages()[1:])
 }
 
@@ -200,11 +200,11 @@ func TestMark_SurvivesCompaction(t *testing.T) {
 	tr.truncate(target)
 	wellFormed(t, tr.messages())
 
-	var text string
+	var text strings.Builder
 	for _, m := range tr.messages() {
-		text += m.Content + "\n"
+		text.WriteString(m.Content + "\n")
 	}
-	assert.NotContains(t, text, "second request", "the undone Turn must be gone")
+	assert.NotContains(t, text.String(), "second request", "the undone Turn must be gone")
 }
 
 // A mark compaction has eaten is a no-op, not a truncation to the

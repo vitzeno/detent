@@ -28,8 +28,8 @@ func TestJudge_ReadsWhatTheJudgeSaid(t *testing.T) {
 	assert.True(t, got.FromJudge)
 	assert.Equal(t, StatusWarnings, got.Status)
 	assert.Equal(t, "file_listing", got.RenderKind)
-	assert.Equal(t, 0.7, got.Attention)
-	assert.Equal(t, 0.95, got.GoalAchieved)
+	assert.InDelta(t, 0.7, got.Attention, 1e-9)
+	assert.InDelta(t, 0.95, got.GoalAchieved, 1e-9)
 }
 
 // The heuristic must never claim to be a verdict: the UI tells the two

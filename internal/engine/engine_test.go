@@ -321,7 +321,7 @@ func TestEngine_ResetForgetsTheTranscript(t *testing.T) {
 // how to read its output has to travel on the fact.
 func TestCallProposed_CarriesTheToolsDeclaredShape(t *testing.T) {
 	reg := tool.Standard()
-	reg.Register(markdownTool{})
+	require.NoError(t, reg.Register(markdownTool{}))
 	call := event.ToolCall{ID: "m1", Name: "declares_markdown"}
 	r := rigWithTools(t, event.New(), &fakeModel{replies: []model.Reply{{Calls: []event.ToolCall{call}}}},
 		&fakeRunner{out: "ok\n"}, reg)
@@ -337,7 +337,7 @@ func TestCallProposed_CarriesTheToolsDeclaredShape(t *testing.T) {
 // told which Calls ran outside the sandbox.
 func TestCallProposed_CarriesTheExecutor(t *testing.T) {
 	reg := tool.Standard()
-	reg.Register(remoteTool{name: "srv__do"})
+	require.NoError(t, reg.Register(remoteTool{name: "srv__do"}))
 	r := rigWithTools(t, event.New(),
 		&fakeModel{replies: []model.Reply{{Calls: []event.ToolCall{remoteCall("r1")}}}},
 		&fakeRunner{out: "ok\n"}, reg, WithInvoker(&fakeInvoker{}))

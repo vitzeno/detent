@@ -97,7 +97,7 @@ func TestMeasure_FixedCostsAreGroupedByWhoOffersThem(t *testing.T) {
 // change to measure.
 func TestMeasure_ANewKindOfToolGetsItsOwnRow(t *testing.T) {
 	e := measured(t)
-	e.tools.Register(groupedTool{})
+	require.NoError(t, e.tools.Register(groupedTool{}))
 	for _, p := range e.measure(0).Fixed {
 		if p.Name == "plan" {
 			assert.Equal(t, "a checklist", p.Detail)
@@ -132,7 +132,7 @@ func TestMeasure_PublishedAfterEveryStep(t *testing.T) {
 func measured(t *testing.T) *Engine {
 	t.Helper()
 	reg := tool.Standard(tool.Skill{Entries: []tool.SkillEntry{{Name: "a", Description: "x"}, {Name: "b", Description: "y"}}})
-	reg.Register(mcpTool{})
+	require.NoError(t, reg.Register(mcpTool{}))
 	e := New(event.New(), &sizedModel{}, reg, nil,
 		WithInstructions([]string{"AGENTS.md"}),
 		WithSkills([]event.SkillSummary{{Name: "a"}, {Name: "b"}}))

@@ -151,7 +151,7 @@ func (r remoteTool) Lower(a tool.Args) (string, error) { return event.Command(r.
 func remoteRig(t *testing.T, in Invoker, replies []model.Reply, opts ...Option) *rig {
 	t.Helper()
 	reg := tool.Standard()
-	reg.Register(remoteTool{name: "srv__do"})
+	require.NoError(t, reg.Register(remoteTool{name: "srv__do"}))
 	if in != nil {
 		opts = append(opts, WithInvoker(in))
 	}

@@ -67,6 +67,7 @@ func TestComplete_TolerantOfEndpointQuirks(t *testing.T) {
 			name: "reasoning_content when content is empty",
 			body: `{"choices":[{"message":{"content":"","reasoning_content":"thought"}}]}`,
 			check: func(t *testing.T, r Reply) {
+				t.Helper()
 				assert.Equal(t, "thought", r.Text)
 				assert.True(t, r.Thinking, "reasoning is not an answer")
 			},
@@ -74,17 +75,17 @@ func TestComplete_TolerantOfEndpointQuirks(t *testing.T) {
 		{
 			name:  "openrouter reasoning field",
 			body:  `{"choices":[{"message":{"reasoning":"thought"}}]}`,
-			check: func(t *testing.T, r Reply) { assert.Equal(t, "thought", r.Text) },
+			check: func(t *testing.T, r Reply) { t.Helper(); assert.Equal(t, "thought", r.Text) },
 		},
 		{
 			name:  "a call with no id gets one",
 			body:  `{"choices":[{"message":{"tool_calls":[{"type":"function","function":{"name":"bash","arguments":"{}"}}]}}]}`,
-			check: func(t *testing.T, r Reply) { assert.Equal(t, "call_0", r.Calls[0].ID) },
+			check: func(t *testing.T, r Reply) { t.Helper(); assert.Equal(t, "call_0", r.Calls[0].ID) },
 		},
 		{
 			name:  "empty arguments are an empty map",
 			body:  `{"choices":[{"message":{"tool_calls":[{"id":"c","type":"function","function":{"name":"list_dir","arguments":""}}]}}]}`,
-			check: func(t *testing.T, r Reply) { assert.Equal(t, map[string]any{}, r.Calls[0].Args) },
+			check: func(t *testing.T, r Reply) { t.Helper(); assert.Equal(t, map[string]any{}, r.Calls[0].Args) },
 		},
 	}
 	for _, tt := range tests {

@@ -116,7 +116,7 @@ func TestCompose_ASilentJudgeIsAskedOnce(t *testing.T) {
 	g, judge := composer(t, nil)
 	judge.err = errors.New("jev unreachable")
 	_, err := g.Compose(context.Background(), request())
-	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
+	require.ErrorIs(t, err, viewgen.ErrNoneFit)
 	assert.Len(t, judge.asked, 1)
 }
 
@@ -161,7 +161,7 @@ func TestCompose_ShortOutputIsNotWorthAsking(t *testing.T) {
 	req := request()
 	req.Output = "two\nlines\n"
 	_, err := g.Compose(context.Background(), req)
-	assert.ErrorIs(t, err, viewgen.ErrNotWorth)
+	require.ErrorIs(t, err, viewgen.ErrNotWorth)
 	assert.Empty(t, judge.seen, "and it never asked")
 }
 
@@ -304,11 +304,11 @@ func TestCompose_RecordsAreWorthAViewSoonerThanText(t *testing.T) {
 	req := request()
 	req.Kind, req.Output = "table", "NAME STATUS\nnode-1 Ready\nnode-2 NotReady\n"
 	_, err := g.Compose(context.Background(), req)
-	assert.NoError(t, err, "three lines of a table")
+	require.NoError(t, err, "three lines of a table")
 
 	req.Kind = "plain_text"
 	_, err = g.Compose(context.Background(), req)
-	assert.ErrorIs(t, err, viewgen.ErrNotWorth, "three lines of text")
+	require.ErrorIs(t, err, viewgen.ErrNotWorth, "three lines of text")
 
 	g, _ = composer(t, map[string]string{
 		"header_line": "none", "parse_kind": "json", "body": "table", "summary": "none"})
@@ -468,15 +468,15 @@ func TestStore_WritesSomethingAHumanCanEdit(t *testing.T) {
 // Long enough to be worth a model call: a handful of lines is not,
 // whatever shape it is.
 var goTest = func() string {
-	out := ""
+	var out strings.Builder
 	for i := range 10 {
 		status := "ok  "
 		if i == 3 {
 			status = "FAIL"
 		}
-		out += fmt.Sprintf("%s\tgithub.com/x/p%02d\t%d.412s\n", status, i, i)
+		fmt.Fprintf(&out, "%s\tgithub.com/x/p%02d\t%d.412s\n", status, i, i)
 	}
-	return out
+	return out.String()
 }()
 
 // An unseeded command, so the generator actually runs: anything

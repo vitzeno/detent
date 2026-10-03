@@ -176,7 +176,7 @@ func TestJevJudge_Ask_Failures(t *testing.T) {
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				conn, _, err := w.(http.Hijacker).Hijack()
 				if err == nil {
-					conn.Close()
+					_ = conn.Close()
 				}
 			},
 		},
@@ -189,7 +189,7 @@ func TestJevJudge_Ask_Failures(t *testing.T) {
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte(strings.Repeat(" ", maxResponseBytes+10)))
 			},
-			check: func(t *testing.T, err error) { assert.ErrorContains(t, err, "over") },
+			check: func(t *testing.T, err error) { t.Helper(); assert.ErrorContains(t, err, "over") },
 		},
 		{
 			name: "a status says which one it was",
@@ -198,6 +198,7 @@ func TestJevJudge_Ask_Failures(t *testing.T) {
 				_, _ = w.Write([]byte(`{"error":"invalid api key"}`))
 			},
 			check: func(t *testing.T, err error) {
+				t.Helper()
 				var he *HTTPError
 				require.ErrorAs(t, err, &he)
 				assert.Equal(t, http.StatusUnauthorized, he.Status)
@@ -206,7 +207,7 @@ func TestJevJudge_Ask_Failures(t *testing.T) {
 		{
 			name:  "no model is refused before any request",
 			model: "-",
-			check: func(t *testing.T, err error) { assert.ErrorIs(t, err, ErrNoModel) },
+			check: func(t *testing.T, err error) { t.Helper(); assert.ErrorIs(t, err, ErrNoModel) },
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -254,7 +255,7 @@ func TestJevJudge_Ask_ANilJudgeIsAnError(t *testing.T) {
 	var j *JevJudge
 	var asker Asker = j
 	_, _, err := asker.Ask(context.Background(), State(nil), Questions{})
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	_, _, ok := AskOrFallback(context.Background(), nil, State(nil), Questions{})
 	assert.False(t, ok)

@@ -37,8 +37,9 @@ func TestEncode_AStepIsAnAssistantPlusItsAnswers(t *testing.T) {
 	fn := calls[0].(map[string]any)
 	assert.Equal(t, "c1", fn["id"])
 	assert.Equal(t, "function", fn["type"])
-	// Arguments is a JSON string, not an object.
-	assert.Equal(t, `{"path":"a.go"}`, fn["function"].(map[string]any)["arguments"])
+	args, ok := fn["function"].(map[string]any)["arguments"].(string)
+	require.True(t, ok, "arguments is a JSON string, not an object")
+	assert.JSONEq(t, `{"path":"a.go"}`, args)
 
 	answer := msgs[3].(map[string]any)
 	assert.Equal(t, "tool", answer["role"])

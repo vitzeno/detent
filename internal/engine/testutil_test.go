@@ -84,7 +84,7 @@ func (r *fakeRunner) Run(ctx context.Context, cmd string, lines chan<- capture.S
 		}
 	}
 	if lines != nil {
-		for _, l := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		for l := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 			lines <- capture.StreamEvent{Line: l}
 		}
 	}

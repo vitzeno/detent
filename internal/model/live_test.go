@@ -89,7 +89,7 @@ func liveConfig(t *testing.T) map[string]string {
 	require.NotNil(t, raw, "no .detent.yaml found above the test directory")
 
 	out := map[string]string{}
-	for _, line := range strings.Split(string(raw), "\n") {
+	for line := range strings.SplitSeq(string(raw), "\n") {
 		if line = strings.TrimSpace(line); line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -109,9 +109,9 @@ func liveConfig(t *testing.T) map[string]string {
 }
 
 func joinNames(calls []event.ToolCall) string {
-	var s string
+	var b strings.Builder
 	for _, c := range calls {
-		s += c.Name
+		b.WriteString(c.Name)
 	}
-	return s
+	return b.String()
 }
