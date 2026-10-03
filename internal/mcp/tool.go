@@ -11,15 +11,15 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// maxDescription bounds what one tool adds to every request.
-const maxDescription = 2048
-
-// maxToolName is what the endpoints accept. MCP allows 128 and a dot,
-// and neither survives a chat-completions request.
-const maxToolName = 64
-
-// maxServerPrefix leaves room for the tool's own name after the server's.
-const maxServerPrefix = 24
+const (
+	// maxDescription bounds what one tool adds to every request.
+	maxDescription = 2048
+	// maxToolName is what the endpoints accept. MCP allows 128 and a dot,
+	// and neither survives a chat-completions request.
+	maxToolName = 64
+	// maxServerPrefix leaves room for the tool's own name after the server's.
+	maxServerPrefix = 24
+)
 
 // Tool is one MCP tool, wearing the registry's interface. It lowers to
 // a description rather than a command: nothing about it runs in a shell.

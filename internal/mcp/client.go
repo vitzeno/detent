@@ -18,12 +18,13 @@ import (
 	"github.com/vitzeno/detent/version"
 )
 
-// maxPages bounds following a cursor, against a server that never ends its list.
-const maxPages = 100
-
-// stderrTail is how much of a server's stderr is kept: enough for the
-// line that says why it stopped.
-const stderrTail = 1024
+const (
+	// maxPages bounds following a cursor, against a server that never ends its list.
+	maxPages = 100
+	// stderrTail is how much of a server's stderr is kept: enough for the
+	// line that says why it stopped.
+	stderrTail = 1024
+)
 
 // Server is one connected MCP server. Name is detent's key for it, not
 // the server's own, which the spec says may collide.
