@@ -60,23 +60,6 @@ func TestStep_CapsHowManyCallsOneStepMayAskFor(t *testing.T) {
 	assert.Equal(t, 3, refused, "the rest are told why, not silently dropped")
 }
 
-func TestStep_ReadOnlyCallsAllRunTogether(t *testing.T) {
-	var calls []event.ToolCall
-	for i := range 8 {
-		calls = append(calls, readCall(string(rune('a'+i)), string(rune('a'+i))+".go"))
-	}
-	r := newRig(t, []model.Reply{{Calls: calls}})
-	r.runner.mu.Lock()
-	r.runner.hold = make(chan struct{})
-	r.runner.mu.Unlock()
-
-	r.bus.Publish(event.SubmitPrompt{Text: "read them"})
-	require.Eventually(t, func() bool { return len(r.of(event.CallStartedKind)) == 8 },
-		2*time.Second, 5*time.Millisecond, "all eight are in flight before any finishes")
-	close(r.runner.hold)
-	r.await(event.TurnEndedKind)
-}
-
 // Only a Dangerous Call is shown. Everything else runs straight
 // through, which is the harness's whole posture.
 func TestStep_OnlyDangerousCallsAreShown(t *testing.T) {

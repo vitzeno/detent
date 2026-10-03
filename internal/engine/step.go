@@ -25,67 +25,103 @@ type callPlan struct {
 	risk   event.Risk
 	answer string
 	done   bool
+	// ended is set once CallEnded is out, so every proposed row finishes.
+	ended bool
 	// prepared is the registry's lowering, and says which executor runs it.
 	prepared tool.Call
 }
 
 func (p *callPlan) finish(answer string) { p.answer, p.done = answer, true }
 
-// runStep answers every Call however it went, keyed by the model's own
-// id because that is what the transcript pairs on.
-func (e *Engine) runStep(ctx context.Context, t *turnState, step uuid.UUID, reply model.Reply) map[string]string {
-	plans := e.plan(step, reply)
+// readOnly is what the tool declares and nothing widened. A hook can
+// lower unknown to read-only, so the verdict alone cannot decide this.
+func (p *callPlan) readOnly() bool {
+	return p.prepared.Mutability == event.MutRead && p.risk.ReadOnly()
+}
 
-	var serial []*callPlan
-	var parallel []*callPlan
+// approval is how a confirm ended: an abort is not the human saying no.
+type approval int
+
+const (
+	declined approval = iota
+	approved
+	abandoned
+)
+
+// runStep answers every Call however it went, in the order asked.
+// Contiguous read-only Calls run together, never ahead of an earlier write.
+func (e *Engine) runStep(ctx context.Context, t *turnState, step uuid.UUID, reply model.Reply) []string {
+	plans := e.plan(ctx, step, reply)
+	stopping := func() bool { return t.aborted.Load() || ctx.Err() != nil }
+
+	var batch []*callPlan
+	flush := func() {
+		if len(batch) > 0 && !stopping() {
+			e.runParallel(ctx, batch)
+		}
+		batch = nil
+	}
+serial:
 	for _, p := range plans {
 		switch {
 		case p.done:
-		case p.risk.ReadOnly() && !p.risk.Dangerous:
-			parallel = append(parallel, p)
-		default:
-			serial = append(serial, p)
-		}
-	}
-
-	e.runParallel(ctx, parallel)
-	for _, p := range serial {
-		if t.aborted || ctx.Err() != nil {
-			break
-		}
-		if p.risk.Dangerous && !e.approve(ctx, t, p) {
-			p.finish("The human declined this call. Do not repeat it; try something else.")
+			continue
+		case p.readOnly() && !p.risk.Dangerous:
+			batch = append(batch, p)
 			continue
 		}
+		flush()
+		if stopping() {
+			break
+		}
+		if p.risk.Dangerous {
+			switch e.approve(ctx, t, p) {
+			case declined:
+				p.finish("The human declined this call. Do not repeat it; try something else.")
+				continue
+			case abandoned:
+				break serial
+			}
+		}
 		e.execute(ctx, p)
-		if !p.risk.ReadOnly() {
+		if !p.readOnly() {
 			t.changed = true
 		}
 	}
+	flush()
 
-	out := make(map[string]string, len(plans))
-	for _, p := range plans {
+	out := make([]string, len(plans))
+	for i, p := range plans {
 		if !p.done {
 			p.finish("This call was not run: the request was aborted.")
 		}
-		out[p.call.ID] = p.answer
+		if !p.ended {
+			e.bus.Publish(event.CallEnded{Call: p.id, Result: event.Result{Err: p.answer}})
+		}
+		out[i] = p.answer
 	}
 	return out
 }
 
 // plan validates and assesses, settling anything that cannot run.
 // Every failure here is an answer the model reads, never a Go error.
-func (e *Engine) plan(step uuid.UUID, reply model.Reply) []*callPlan {
+func (e *Engine) plan(ctx context.Context, step uuid.UUID, reply model.Reply) []*callPlan {
 	out := make([]*callPlan, 0, len(reply.Calls))
+	ids := make(map[string]bool, len(reply.Calls))
 	for i, c := range reply.Calls {
 		p := &callPlan{id: uuid.Must(uuid.NewV7()), call: c}
 		out = append(out, p)
 		e.bus.Publish(event.CallProposed{Call: p.id, Step: step, Tool: c.Name, Args: c.Args,
 			Renders: e.renders(c.Name), Executor: e.executor(c.Name)})
 
+		dup := ids[c.ID]
+		ids[c.ID] = true
 		switch {
 		case c.Err != "":
 			p.finish(c.Err + ". Send the arguments as valid JSON matching the schema.")
+			continue
+		case dup:
+			p.finish(fmt.Sprintf("Not run: another call in this step has the id %q. Give each call its own id.", c.ID))
 			continue
 		case i >= e.maxCalls:
 			p.finish(fmt.Sprintf("Not run: a step may ask for at most %d calls. Ask again in the next step.", e.maxCalls))
@@ -98,36 +134,29 @@ func (e *Engine) plan(step uuid.UUID, reply model.Reply) []*callPlan {
 			continue
 		}
 		p.prepared, p.cmd = prepared, prepared.Command
-		p.risk = e.assess(context.Background(), prepared)
-		if n := e.repeat.count(prepared.Command); n > DefaultRepeatLimit {
-			p.finish(fmt.Sprintf("Not run: this exact command has already run %d times and printed the same thing. Try something else.", n))
+		if n, refused := e.repeat.refuses(prepared.Command); refused {
+			p.finish(fmt.Sprintf("Not run: this exact command has already run %d times in this request and printed the same thing each time. Try something else.", n))
 			continue
 		}
+		p.risk = e.assess(ctx, prepared)
 		e.bus.Publish(event.CallAssessed{Call: p.id, Risk: p.risk})
 	}
 	return out
 }
 
-// runParallel runs the read-only Calls together, capped. They change
-// nothing, so nothing depends on their order.
+// runParallel runs read-only Calls together. They change nothing, so
+// nothing depends on their order.
 func (e *Engine) runParallel(ctx context.Context, plans []*callPlan) {
-	if len(plans) == 0 {
-		return
-	}
 	var wg sync.WaitGroup
 	for _, p := range plans {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			e.execute(ctx, p)
-		}()
+		wg.Go(func() { e.execute(ctx, p) })
 	}
 	wg.Wait()
 }
 
 // approve publishes the question and waits. Whoever answers is nobody
 // the engine knows about.
-func (e *Engine) approve(ctx context.Context, t *turnState, p *callPlan) bool {
+func (e *Engine) approve(ctx context.Context, t *turnState, p *callPlan) approval {
 	e.bus.Publish(event.ApprovalAsked{
 		Call: p.id, Tool: p.call.Name, Args: p.call.Args,
 		Rationale: describe(p.risk), Risk: p.risk,
@@ -135,14 +164,17 @@ func (e *Engine) approve(ctx context.Context, t *turnState, p *callPlan) bool {
 	for {
 		select {
 		case <-ctx.Done():
-			return false
+			return abandoned
 		case ev := <-t.inbox:
 			if r, ok := ev.(event.ResolveApproval); ok && r.Call == p.id {
-				return r.Approved
+				if r.Approved {
+					return approved
+				}
+				return declined
 			}
 			t.absorb(ev)
-			if t.aborted {
-				return false
+			if t.aborted.Load() {
+				return abandoned
 			}
 		}
 	}
@@ -158,6 +190,7 @@ func (e *Engine) execute(ctx context.Context, p *callPlan) {
 		p.finish("No runner is wired; nothing could be executed.")
 		return
 	}
+	p.ended = true
 	e.bus.Publish(event.CallStarted{Call: p.id, Runner: mode})
 
 	lines := make(chan capture.StreamEvent, 64)
@@ -185,6 +218,7 @@ func (e *Engine) execute(ctx context.Context, p *callPlan) {
 	}
 	e.bus.Publish(event.CallEnded{Call: p.id, Result: out, Took: took})
 	p.finish(formatResult(p.cmd, out))
+	e.repeat.ran(p.cmd, p.answer)
 }
 
 // invoke runs a Call with no command. Runner names the executor, so
@@ -194,6 +228,7 @@ func (e *Engine) invoke(ctx context.Context, p *callPlan) {
 		p.finish("No invoker is wired for " + p.prepared.Executor + "; nothing could be executed.")
 		return
 	}
+	p.ended = true
 	e.bus.Publish(event.CallStarted{Call: p.id, Runner: p.prepared.Executor})
 
 	start := time.Now()

@@ -26,6 +26,8 @@ func (e *Engine) rollback(ctx context.Context, req event.RequestRollback) {
 			e.notice("error", "could not undo: "+err.Error())
 			return
 		}
+	} else if _, has := e.snapshotter(); has {
+		e.notice("warn", "this request had no checkpoint, so the sandbox keeps what it did")
 	}
 	if req.RevertFiles && t.tree != "" {
 		if w, has := e.worktree(); has {
@@ -34,7 +36,11 @@ func (e *Engine) rollback(ctx context.Context, req event.RequestRollback) {
 			}
 		}
 	}
-	e.trLock(func() { e.tr.truncate(t.mark) })
+	var rewound bool
+	e.trLock(func() { rewound = e.tr.truncate(t.mark) })
+	if !rewound {
+		e.notice("warn", "that request was compacted away, so the model still remembers a summary of it")
+	}
 	e.forgetFrom(req.Turn)
 	e.bus.Publish(event.RolledBack{Turn: req.Turn, RevertFiles: req.RevertFiles})
 }

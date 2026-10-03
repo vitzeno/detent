@@ -20,12 +20,25 @@ type fakeModel struct {
 	mu      sync.Mutex
 	replies []model.Reply
 	seen    [][]event.Message
+	err     error
+	// stall, when set, blocks the next call until closed, ignoring ctx.
+	stall chan struct{}
 }
 
 func (f *fakeModel) Complete(_ context.Context, msgs []event.Message, _ []map[string]any) (model.Reply, event.Usage, error) {
 	f.mu.Lock()
+	stall := f.stall
+	f.stall = nil
+	f.mu.Unlock()
+	if stall != nil {
+		<-stall
+	}
+	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.seen = append(f.seen, append([]event.Message(nil), msgs...))
+	if f.err != nil {
+		return model.Reply{}, event.Usage{}, f.err
+	}
 	if len(f.replies) == 0 {
 		return model.Reply{Text: "finished", Stop: "stop"}, event.Usage{PromptTokens: 1}, nil
 	}
@@ -184,6 +197,16 @@ func (r *rig) await(k event.Kind) event.Event { return r.awaitNth(k, 1) }
 // second Turn's end must not be satisfied by the first one's.
 func (r *rig) awaitNth(k event.Kind, n int) event.Event {
 	r.t.Helper()
+	ev, ok := r.waitNth(k, n)
+	if !ok {
+		r.t.Fatalf("timed out waiting for %s #%d; saw %v", k, n, r.kinds())
+	}
+	return ev
+}
+
+// waitNth is awaitNth for a goroutine other than the test's, which may
+// not call Fatalf: it reports a timeout instead.
+func (r *rig) waitNth(k event.Kind, n int) (event.Event, bool) {
 	deadline := time.After(3 * time.Second)
 	for {
 		r.mu.Lock()
@@ -194,7 +217,7 @@ func (r *rig) awaitNth(k event.Kind, n int) event.Event {
 			}
 			if seen++; seen == n {
 				r.mu.Unlock()
-				return ev
+				return ev, true
 			}
 		}
 		ch := make(chan event.Event, 1)
@@ -204,10 +227,20 @@ func (r *rig) awaitNth(k event.Kind, n int) event.Event {
 		select {
 		case <-ch:
 		case <-deadline:
-			r.t.Fatalf("timed out waiting for %s #%d; saw %v", k, n, r.kinds())
-			return nil
+			return nil, false
 		}
 	}
+}
+
+// records is every fact so far as a store would hand them back.
+func (r *rig) records() []event.Record {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]event.Record, len(r.got))
+	for i, ev := range r.got {
+		out[i] = event.Record{Ordinal: uint64(i + 1), Event: ev}
+	}
+	return out
 }
 
 func (r *rig) kinds() []event.Kind {

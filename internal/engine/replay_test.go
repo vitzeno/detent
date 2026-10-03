@@ -48,7 +48,8 @@ func TestAppended_RebuildResolvesAMarkTakenAfterCompaction(t *testing.T) {
 	r.runner.mu.Unlock()
 
 	r.run("first")
-	mark := r.eng.trDo(func() int { return r.eng.tr.mark() })
+	var mark int
+	r.eng.trLock(func() { mark = r.eng.tr.mark() })
 	r.run("second")
 
 	require.NotEmpty(t, r.of(event.CompactedKind), "the budget must have forced a compaction")
@@ -76,6 +77,7 @@ func TestRestore_RebuildsTheTranscriptAndTheTurnCount(t *testing.T) {
 	records := asRecords(r.of(event.AppendedKind), r.of(event.TurnStartedKind))
 
 	fresh := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}})
+	defer fresh.unsub()
 	fresh.Restore(records)
 
 	assert.Equal(t, live, fresh.Transcript(), "the transcript comes back whole")

@@ -3,8 +3,10 @@ package engine
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/tool"
@@ -25,7 +27,9 @@ type toolFloor struct{}
 func (toolFloor) Name() string { return "tool" }
 
 func (toolFloor) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
-	return event.Risk{Mutability: event.Declared(c.Mutability)}, nil
+	r := event.UnknownRisk()
+	r.Mutability = event.Declared(c.Mutability)
+	return r, nil
 }
 
 // mcpFloor confirms every Call that runs outside the sandbox: no
@@ -35,10 +39,11 @@ type mcpFloor struct{}
 func (mcpFloor) Name() string { return "mcp" }
 
 func (mcpFloor) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
-	if c.Executor == "" {
-		return event.Risk{}, nil
+	r := event.UnknownRisk()
+	if c.Executor != "" {
+		r.Dangerous, r.Note = true, "mcp: "+c.Executor
 	}
-	return event.Risk{Dangerous: true, Note: "mcp: " + c.Executor}, nil
+	return r, nil
 }
 
 // regexHook is the backstop. It only ever adds emphasis, which Widen
@@ -53,7 +58,7 @@ func (regexHook) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Ris
 			return event.Risk{Dangerous: true, Mutability: p.mut, ScopeRisk: p.scope, Note: p.note}, nil
 		}
 	}
-	return event.Risk{}, nil
+	return event.UnknownRisk(), nil
 }
 
 var dangerPatterns = []struct {
@@ -62,44 +67,81 @@ var dangerPatterns = []struct {
 	scope float64
 	note  string
 }{
-	{regexp.MustCompile(`\brm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+)+`), event.MutIrreversible, 0.9, "recursive or forced delete"},
-	{regexp.MustCompile(`\b(mkfs|fdisk|dd)\b`), event.MutIrreversible, 0.95, "writes a device directly"},
+	{regexp.MustCompile(`\brm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+|--(recursive|force)\b)`), event.MutIrreversible, 0.9, "recursive or forced delete"},
+	{regexp.MustCompile(`\b(mkfs(\.\w+)?|fdisk|dd)(\s|$)`), event.MutIrreversible, 0.95, "writes a device directly"},
 	{regexp.MustCompile(`\bchmod\s+-R\b|\bchown\s+-R\b`), event.MutSystem, 0.7, "recursive permission change"},
 	{regexp.MustCompile(`\b(shutdown|reboot|halt|poweroff)\b`), event.MutSystem, 0.8, "stops the machine"},
 	{regexp.MustCompile(`\bkill(all)?\s+-9\b`), event.MutSystem, 0.6, "force kills processes"},
 	{regexp.MustCompile(`\bgit\s+(push\s+.*--force|reset\s+--hard|clean\s+-[a-z]*f)`), event.MutIrreversible, 0.8, "discards git history or work"},
-	{regexp.MustCompile(`(curl|wget)\b[^|]*\|\s*(ba)?sh`), event.MutSystem, 0.9, "pipes a download into a shell"},
+	{regexp.MustCompile(`(curl|wget)\b[^|]*\|\s*(sudo\s+)?((ba|z|da)?sh|python3?|perl|ruby|node)\b`), event.MutSystem, 0.9, "pipes a download into an interpreter"},
 	{regexp.MustCompile(`>\s*/dev/(sd|nvme|disk)`), event.MutIrreversible, 0.95, "writes to a raw disk"},
 	{regexp.MustCompile(`\bsudo\b`), event.MutSystem, 0.7, "runs as root"},
 }
 
-// repeatHook notices a command run again and again. It cannot stop
-// the call, only make it visible.
+// repeatHook notices a command run again and again in one Turn with the
+// same output. It only makes that visible, and the Step loop refuses.
 type repeatHook struct {
-	seen  map[string]int
+	mu    sync.Mutex
+	seen  map[string]repeat
 	limit int
 }
 
-func newRepeatHook(limit int) *repeatHook {
-	return &repeatHook{seen: map[string]int{}, limit: limit}
+// repeat is how many runs in a row printed the same thing.
+type repeat struct {
+	n   int
+	out uint64
 }
 
-func (repeatHook) Name() string { return "repeat" }
+func newRepeatHook(limit int) *repeatHook {
+	return &repeatHook{seen: map[string]repeat{}, limit: limit}
+}
+
+func (*repeatHook) Name() string { return "repeat" }
 
 func (h *repeatHook) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
-	h.seen[c.Command]++
-	n := h.seen[c.Command]
-	if n < h.limit {
-		return event.Risk{}, nil
+	r := event.UnknownRisk()
+	if n := h.count(c.Command); n > 0 && n >= h.limit-1 {
+		r.Note = fmt.Sprintf("ran %d times already this request, printing the same each time", n)
 	}
-	return event.Risk{Note: fmt.Sprintf("run %d times already this session", n)}, nil
+	return r, nil
 }
 
-func (h *repeatHook) forget() { clear(h.seen) }
+// ran records one run. Output that changed starts the count again,
+// since rerunning tests after an edit is the job, not a loop.
+func (h *repeatHook) ran(command, output string) {
+	f := fnv.New64a()
+	_, _ = f.Write([]byte(output))
+	sum := f.Sum64()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	r := h.seen[command]
+	if r.n > 0 && r.out == sum {
+		r.n++
+	} else {
+		r = repeat{n: 1, out: sum}
+	}
+	h.seen[command] = r
+}
 
-// count reports how many times a command has run, so the Step loop can
-// tell the model rather than only the human.
-func (h *repeatHook) count(command string) int { return h.seen[command] }
+func (h *repeatHook) forget() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	clear(h.seen)
+}
+
+// count reports how many runs in a row printed the same thing, so the
+// Step loop can tell the model rather than only the human.
+func (h *repeatHook) count(command string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.seen[command].n
+}
+
+// refuses reports whether a command has repeated itself enough to stop.
+func (h *repeatHook) refuses(command string) (int, bool) {
+	n := h.count(command)
+	return n, n >= h.limit
+}
 
 // jevHook asks the classifier what a command would change. The one
 // network hook, so it goes last.
@@ -112,7 +154,7 @@ func (jevHook) Name() string { return "jev" }
 
 func (h jevHook) Assess(ctx context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
 	if h.judge == nil {
-		return event.Risk{}, nil
+		return event.UnknownRisk(), nil
 	}
 	return h.judge.Assess(ctx, c.Command, h.threshold)
 }

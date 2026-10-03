@@ -20,27 +20,27 @@ func TestStep_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		answers map[string]string
+		answers []string
 		want    []string // what each call's result must contain
 	}{
 		{
 			name:    "all ran",
-			answers: map[string]string{"c1": "ok", "c2": "contents", "c3": "written"},
+			answers: []string{"ok", "contents", "written"},
 			want:    []string{"ok", "contents", "written"},
 		},
 		{
 			name:    "one declined, siblings unaffected",
-			answers: map[string]string{"c1": "ok", "c2": "the human declined this", "c3": "written"},
+			answers: []string{"ok", "the human declined this", "written"},
 			want:    []string{"ok", "declined", "written"},
 		},
 		{
 			name:    "aborted partway",
-			answers: map[string]string{"c1": "ok", "c2": "aborted", "c3": "aborted"},
+			answers: []string{"ok", "aborted", "aborted"},
 			want:    []string{"ok", "aborted", "aborted"},
 		},
 		{
 			name:    "a bad tool name never reached the runner",
-			answers: map[string]string{"c1": `no tool named "bash"`, "c2": "contents", "c3": "written"},
+			answers: []string{`no tool named "bash"`, "contents", "written"},
 			want:    []string{"no tool named", "contents", "written"},
 		},
 		{
@@ -70,7 +70,7 @@ func TestStep_BoundsAHugeResult(t *testing.T) {
 	var tr transcript
 	tr.user(0, "go")
 	tr.step(model.Reply{Calls: []event.ToolCall{call("c1", "bash")}},
-		map[string]string{"c1": strings.Repeat("x", MaxResultBytes*3)})
+		[]string{strings.Repeat("x", MaxResultBytes*3)})
 
 	got := tr.messages()[2].Content
 	assert.Less(t, len(got), MaxResultBytes+64, "one result cannot eat the whole budget")
@@ -87,7 +87,7 @@ func TestCompact_MovesWholeStepsOnly(t *testing.T) {
 		for step := range 3 {
 			c := call(string(rune('a'+turn))+string(rune('0'+step)), "bash")
 			tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}},
-				map[string]string{c.ID: big})
+				[]string{big})
 		}
 	}
 	before := tr.bytes()
@@ -107,11 +107,11 @@ func TestCompact_NeverDropsTheOpenTurn(t *testing.T) {
 	for range 5 {
 		tr.user(0, "old request")
 		c := call("old", "bash")
-		tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, map[string]string{c.ID: big})
+		tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, []string{big})
 	}
 	tr.user(0, "THE OPEN REQUEST")
 	c := call("live", "bash")
-	tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, map[string]string{c.ID: big})
+	tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, []string{big})
 
 	tr.compact(context.Background(), 1, nil) // impossible budget
 
@@ -129,7 +129,7 @@ func TestCompact_UsesASummarizerWhenWired(t *testing.T) {
 	for range 6 {
 		tr.user(0, "old")
 		c := call("c", "bash")
-		tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, map[string]string{c.ID: big})
+		tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, []string{big})
 	}
 	_, _ = tr.compact(context.Background(), 2, stubSummarizer{out: "cloned the repo, tests pass"})
 	assert.Contains(t, tr.messages()[0].Content, "cloned the repo, tests pass")
@@ -149,12 +149,12 @@ func TestTruncate_LeavesAWellFormedTranscript(t *testing.T) {
 	var tr transcript
 	tr.user(0, "first")
 	c1 := call("c1", "bash")
-	tr.step(model.Reply{Calls: []event.ToolCall{c1}}, map[string]string{c1.ID: "ok"})
+	tr.step(model.Reply{Calls: []event.ToolCall{c1}}, []string{"ok"})
 
 	at := tr.mark()
 	tr.user(0, "second")
 	c2 := call("c2", "bash")
-	tr.step(model.Reply{Calls: []event.ToolCall{c2}}, map[string]string{c2.ID: "ok"})
+	tr.step(model.Reply{Calls: []event.ToolCall{c2}}, []string{"ok"})
 
 	tr.truncate(at)
 	wellFormed(t, tr.messages())
@@ -184,13 +184,13 @@ func TestMark_SurvivesCompaction(t *testing.T) {
 
 	tr.user(0, "first request")
 	c1 := call("c1", "bash")
-	tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c1}}, map[string]string{c1.ID: big})
+	tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c1}}, []string{big})
 
 	// The Turn a human would undo.
 	target := tr.mark()
 	tr.user(0, "second request")
 	c2 := call("c2", "bash")
-	tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c2}}, map[string]string{c2.ID: big})
+	tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c2}}, []string{big})
 
 	before := len(tr.messages())
 	dropped, _ := tr.compact(context.Background(), 2, nil)
@@ -215,7 +215,7 @@ func TestTruncate_IgnoresAMarkCompactionAteAsWellAsOneTooLarge(t *testing.T) {
 	for range 6 {
 		tr.user(0, "old")
 		c := call("c", "bash")
-		tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, map[string]string{c.ID: big})
+		tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}}, []string{big})
 	}
 	stale := 1 // a mark from the very start
 	_, _ = tr.compact(context.Background(), 1, nil)
@@ -243,7 +243,7 @@ func TestReplay_UncompactedRebuildResolvesOldMarks(t *testing.T) {
 			tr.user(0, "request")
 			c := call(string(rune('a'+i)), "bash")
 			tr.step(model.Reply{Text: big, Calls: []event.ToolCall{c}},
-				map[string]string{c.ID: big})
+				[]string{big})
 		}
 		return tr, mark
 	}
@@ -272,7 +272,7 @@ func TestCompact_WillNotPayASummarizerForASliver(t *testing.T) {
 	var tr transcript
 	tr.user(0, strings.Repeat("o", budget/50)) // the droppable sliver
 	c := call("old", "bash")
-	tr.step(model.Reply{Calls: []event.ToolCall{c}}, map[string]string{c.ID: "x"})
+	tr.step(model.Reply{Calls: []event.ToolCall{c}}, []string{"x"})
 
 	tr.user(0, strings.Repeat("L", 2*budget)) // an open Turn over budget on its own
 

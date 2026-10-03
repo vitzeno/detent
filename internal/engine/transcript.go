@@ -56,15 +56,16 @@ type start struct {
 }
 
 // step appends one Step atomically, filling any missing answer, since
-// a call nothing answers breaks the next Step.
-func (t *transcript) step(reply model.Reply, answers map[string]string) []event.Message {
+// a call nothing answers breaks the next Step. Answers go by position,
+// so two calls a model gave one id still get one answer each.
+func (t *transcript) step(reply model.Reply, answers []string) []event.Message {
 	added := []event.Message{{
 		Role: event.RoleAssistant, Content: reply.Text, Calls: reply.Calls,
 	}}
-	for _, c := range reply.Calls {
-		body, ok := answers[c.ID]
-		if !ok {
-			body = "This call did not run."
+	for i, c := range reply.Calls {
+		body := "This call did not run."
+		if i < len(answers) && answers[i] != "" {
+			body = answers[i]
 		}
 		added = append(added, event.Answer(c, bound(body)))
 	}
@@ -111,11 +112,12 @@ func (t *transcript) messages() []event.Message { return t.msgs }
 func (t *transcript) mark() int { return len(t.msgs) + t.dropped }
 
 // truncate rewinds to a mark, taken at a Turn boundary so it cannot
-// land inside a Step. A mark compaction has eaten is a no-op.
-func (t *transcript) truncate(to int) {
+// land inside a Step. A mark compaction has eaten is a no-op, reported.
+func (t *transcript) truncate(to int) bool {
 	at := to - t.dropped
-	if at < 0 || at > len(t.msgs) {
-		return
+	// At 0 after a compaction the mark is inside what the note stands for.
+	if at < 0 || at > len(t.msgs) || (at == 0 && t.dropped > 0) {
+		return false
 	}
 	t.msgs = t.msgs[:at]
 	t.protect = min(t.protect, at)
@@ -125,6 +127,7 @@ func (t *transcript) truncate(to int) {
 			break
 		}
 	}
+	return true
 }
 
 func (t *transcript) reset() { t.msgs, t.protect, t.dropped, t.starts = nil, 0, 0, nil }
@@ -145,40 +148,52 @@ func msgBytes(msgs []event.Message) int {
 // compact drops whole Steps off the front until the transcript fits.
 // Whole, because half a Step is a transcript no endpoint accepts.
 func (t *transcript) compact(ctx context.Context, budgetTokens int, s Summarizer) (dropped int, note string) {
-	budget := budgetTokens * BytesPerToken
-	if budgetTokens <= 0 {
-		budget = DefaultContextTokens * BytesPerToken
-	}
-	if t.bytes() <= budget {
+	cut := t.cutFor(budgetTokens)
+	if cut == 0 {
 		return 0, ""
+	}
+	note = summarise(ctx, s, t.msgs[:cut])
+	t.fold(cut, note)
+	return cut, note
+}
+
+// cutFor is how many messages compaction would fold, zero for none.
+func (t *transcript) cutFor(budgetTokens int) int {
+	budget := budgetTokens * BytesPerToken
+	if t.bytes() <= budget {
+		return 0
 	}
 	cut := t.cutPoint(budget)
 	if cut == 0 {
-		return 0, ""
+		return 0
 	}
 	// A sliver that still misses the budget is asked for again next
 	// Step, so it only ever re-summarises its own note.
 	freed := msgBytes(t.msgs[:cut])
 	if freed < budget/minCompactShare && t.bytes()-freed > budget {
-		return 0, ""
+		return 0
 	}
-	gone := t.msgs[:cut]
-	note = fmt.Sprintf("[%d earlier messages"+droppedMarker, len(gone))
+	return cut
+}
+
+// summarise is the note that stands for what a compaction drops.
+func summarise(ctx context.Context, s Summarizer, gone []event.Message) string {
+	note := fmt.Sprintf("[%d earlier messages"+droppedMarker, len(gone))
 	if s != nil {
 		if sum, err := s.Summarize(ctx, gone); err == nil && sum != "" {
 			note = summaryMarker + "\n" + sum
 		}
 	}
-	rest := append([]event.Message{{Role: event.RoleUser, Content: note}}, t.msgs[cut:]...)
-	t.msgs = rest
+	return note
+}
+
+// fold replaces the first cut messages with note.
+func (t *transcript) fold(cut int, note string) {
+	t.msgs = append([]event.Message{{Role: event.RoleUser, Content: note}}, t.msgs[cut:]...)
 	// cut messages became one note, so everything after shifts by
 	// cut-1 and every outstanding mark must shift with it.
 	t.dropped += cut - 1
-	t.protect = t.protect - cut + 1
-	if t.protect < 1 {
-		t.protect = 1
-	}
-	return cut, note
+	t.protect = max(t.protect-cut+1, 1)
 }
 
 // cutPoint is the first unit boundary bringing the tail under budget,

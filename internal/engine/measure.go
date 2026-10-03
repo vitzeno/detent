@@ -104,7 +104,8 @@ func (e *Engine) fixedParts() []part {
 	groups := map[string]*group{}
 	for _, schema := range e.tools.Schemas() {
 		raw, _ := json.Marshal(schema)
-		name, _ := schema["function"].(map[string]any)["name"].(string)
+		fn, _ := schema["function"].(map[string]any)
+		name, _ := fn["name"].(string)
 		var spec tool.Spec
 		if t, ok := e.tools.Lookup(name); ok {
 			spec = t.Describe()

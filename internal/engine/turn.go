@@ -28,27 +28,22 @@ type turnState struct {
 	// seeing it is not mistaken for one sent while the Turn still ran.
 	ended atomic.Bool
 
+	// aborted is written by the dispatcher and read by the Turn goroutine.
+	aborted atomic.Bool
+
 	// changed is set once a Call that is not read-only has run.
 	changed bool
 
-	mu      sync.Mutex
-	notes   []string
-	stop    string
-	aborted bool
-}
-
-// post hands an intent to the Turn. Never blocks: a full inbox means
-// the Turn is mid-model-call and will drain at the next boundary.
-func (t *turnState) post(ev event.Event) {
-	select {
-	case t.inbox <- ev:
-	default:
-	}
+	mu    sync.Mutex
+	notes []string
+	stop  string
 }
 
 func (e *Engine) startTurn(ctx context.Context, prompt string, done chan struct{}) {
 	tctx, cancel := context.WithCancel(ctx)
 	e.turns++
+	// Repeats are counted per request: the same tests rerun in a later one are the job.
+	e.repeat.forget()
 	t := &turnState{
 		id: uuid.Must(uuid.NewV7()), n: e.turns, prompt: prompt,
 		inbox: make(chan event.Event, 64), cancel: cancel,
@@ -71,7 +66,7 @@ func (e *Engine) startTurn(ctx context.Context, prompt string, done chan struct{
 // runTurn is the loop, blocking and linear. Everything it needs to
 // hear about arrives on t.inbox.
 func (e *Engine) runTurn(ctx context.Context, t *turnState) {
-	t.mark = e.trDo(func() int { return e.tr.mark() })
+	e.trLock(func() { t.mark = e.tr.mark() })
 	e.bus.Publish(event.TurnStarted{Turn: t.id, N: t.n, Prompt: t.prompt})
 	e.checkpoint(ctx, t)
 	e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.user(t.n, t.prompt) })
@@ -81,7 +76,7 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 	for step := 1; ; step++ {
 		t.drain()
 
-		if t.aborted || ctx.Err() != nil {
+		if t.aborted.Load() || ctx.Err() != nil {
 			e.endTurn(t, event.EndAborted, "", total)
 			return
 		}
@@ -172,12 +167,15 @@ func (e *Engine) endTurn(t *turnState, why event.EndReason, summary string, used
 	e.bus.Publish(event.TurnEnded{Turn: t.id, Reason: why, Summary: summary, Usage: used})
 }
 
-// checkpoint takes the Turn's one snapshot, before any Call runs.
+// checkpoint takes the Turn's one snapshot, before any Call runs. One
+// that fails is said now, not discovered at undo.
 func (e *Engine) checkpoint(ctx context.Context, t *turnState) {
 	if s, ok := e.snapshotter(); ok {
-		if id, err := s.Snapshot(ctx); err == nil {
-			t.snap = id
+		id, err := s.Snapshot(ctx)
+		if err != nil && ctx.Err() == nil {
+			e.notice("warn", "no checkpoint for this request, so undo cannot restore the sandbox: "+err.Error())
 		}
+		t.snap = id
 	}
 	if w, ok := e.worktree(); ok {
 		t.tree = w.Checkpoint(ctx)
@@ -200,7 +198,7 @@ func (e *Engine) askContinue(ctx context.Context, t *turnState, steps int) bool 
 				return c.Approved
 			}
 			t.absorb(ev)
-			if t.aborted {
+			if t.aborted.Load() {
 				return false
 			}
 		}
@@ -224,19 +222,23 @@ func (t *turnState) drain() {
 func (t *turnState) absorb(ev event.Event) {
 	switch v := ev.(type) {
 	case event.Abort:
-		t.mu.Lock()
-		t.aborted = true
-		t.mu.Unlock()
+		t.aborted.Store(true)
 		t.cancel()
 	case event.RequestStop:
 		t.mu.Lock()
 		t.stop = v.Reason
 		t.mu.Unlock()
 	case event.NoteContext:
-		t.mu.Lock()
-		t.notes = append(t.notes, v.Text)
-		t.mu.Unlock()
+		t.addNote(v.Text)
+	case event.SubmitPrompt:
+		t.addNote(v.Text)
 	}
+}
+
+func (t *turnState) addNote(text string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.notes = append(t.notes, text)
 }
 
 func (t *turnState) takeNotes() []string {
@@ -271,30 +273,30 @@ func (e *Engine) appended(turn, step uuid.UUID, fn func() []event.Message) {
 	}
 }
 
-// compact announces itself first, since summarising stalls the Turn,
-// and publishes what it replaced so a replay rebuilds the same one.
+// compact summarises outside the transcript's lock, since that is a model
+// call. Only this goroutine mutates the transcript mid-Turn, so the cut holds.
 func (e *Engine) compact(ctx context.Context, t *turnState) {
 	if !e.wouldCompact() {
 		return
 	}
+	var cut int
+	var gone []event.Message
+	e.trLock(func() {
+		cut = e.tr.cutFor(e.budget())
+		gone = append(gone, e.tr.msgs[:cut]...)
+	})
+	if cut == 0 {
+		return
+	}
 	e.bus.Publish(event.Notice{Level: "info", Text: "compacting the transcript"})
-
-	var dropped int
-	var note string
-	e.trLock(func() { dropped, note = e.tr.compact(ctx, e.contextTokens, e.summarizer) })
-	if dropped > 0 {
-		e.bus.Publish(event.Compacted{Turn: t.id, Dropped: dropped, Note: note})
-	}
+	note := summarise(ctx, e.summarizer, gone)
+	e.trLock(func() { e.tr.fold(cut, note) })
+	e.bus.Publish(event.Compacted{Turn: t.id, Dropped: cut, Note: note})
 }
 
-// budget is the transcript ceiling, resolved the way compact resolves
-// it, so a front-end measures against what actually applies.
-func (e *Engine) budget() int {
-	if e.contextTokens <= 0 {
-		return DefaultContextTokens
-	}
-	return e.contextTokens
-}
+// budget is the transcript ceiling. New sets a default and the option
+// ignores anything below one, so it is always positive.
+func (e *Engine) budget() int { return e.contextTokens }
 
 // wouldCompact reports whether the transcript is over budget, so the
 // notice is not published for a compact that returns immediately.
@@ -310,10 +312,4 @@ func (e *Engine) trLock(fn func()) {
 	e.trMu.Lock()
 	defer e.trMu.Unlock()
 	fn()
-}
-
-func (e *Engine) trDo(fn func() int) int {
-	e.trMu.Lock()
-	defer e.trMu.Unlock()
-	return fn()
 }

@@ -42,11 +42,11 @@ func WithContextTokens(n int) Option {
 func WithSummarizer(s Summarizer) Option { return func(e *Engine) { e.summarizer = s } }
 
 // WithJudge adds the classifier as the last hook in the chain, after
-// the free ones.
+// every other, whatever order the options came in.
 func WithJudge(j Judge, threshold float64) Option {
 	return func(e *Engine) {
 		if j != nil {
-			e.assessors = append(e.assessors, jevHook{judge: j, threshold: threshold})
+			e.judge = &jevHook{judge: j, threshold: threshold}
 		}
 	}
 }

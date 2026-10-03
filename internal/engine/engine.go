@@ -41,6 +41,7 @@ type Engine struct {
 	runners RunnerSelector
 
 	assessors []Assessor
+	judge     *jevHook
 	invoker   Invoker
 	repeat    *repeatHook
 
@@ -84,13 +85,17 @@ type Engine struct {
 	// a caller may read at any moment.
 	trMu sync.Mutex
 
+	// resetting is a reset waiting on the Turn it aborted. Run goroutine only.
+	resetting bool
+
 	mu sync.Mutex
 	// cur is the Turn in flight, past is what can still be undone.
 	cur  *turnState
 	past map[uuid.UUID]*turnState
 }
 
-// New builds an Engine and subscribes it to intents. Run starts it.
+// New builds an Engine and subscribes it to intents. Run starts it, and
+// an Engine never run holds its subscription until the bus closes.
 func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelector, opts ...Option) *Engine {
 	e := &Engine{
 		bus: bus, model: m, tools: tools, runners: runners,
@@ -109,6 +114,9 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 	}
 	// Cheapest first, the network hook last.
 	e.assessors = append([]Assessor{toolFloor{}, mcpFloor{}, regexHook{}, e.repeat}, e.assessors...)
+	if e.judge != nil {
+		e.assessors = append(e.assessors, e.judge)
+	}
 	e.intents, e.unsub = bus.Subscribe(event.Intents())
 	return e
 }
@@ -134,15 +142,22 @@ func (e *Engine) Run(ctx context.Context) {
 			e.stopCurrent(done)
 			return
 		case <-done:
-			e.finishTurn()
+			e.turnDone(ctx, done)
 		case rec, ok := <-e.intents:
 			if !ok {
+				e.stopCurrent(done)
 				return
 			}
-			// A Turn that published its end is over, whatever its goroutine has left.
-			if t := e.current(); t != nil && t.ended.Load() {
-				<-done
-				e.finishTurn()
+			// A Turn that published its end is over, whatever its goroutine
+			// has left, and one a reset aborted must end before anything else.
+			if t := e.current(); t != nil && (t.ended.Load() || e.resetting) {
+				select {
+				case <-done:
+					e.turnDone(ctx, done)
+				case <-ctx.Done():
+					e.stopCurrent(done)
+					return
+				}
 			}
 			e.dispatch(ctx, rec.Event, done)
 		}
@@ -201,30 +216,32 @@ type Worktreer interface {
 // only an idle engine touches it here.
 func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{}) {
 	t := e.current()
+	if t != nil && stale(ev, t.id) {
+		return
+	}
 	switch v := ev.(type) {
 	case event.SubmitPrompt:
 		if t != nil {
 			// Typed mid-Turn, a prompt is steering, not a new request.
-			t.post(event.NoteContext{Text: v.Text})
+			e.post(t, v)
 			return
 		}
 		e.startTurn(ctx, v.Text, done)
 	case event.NoteContext:
 		// Idle, the note goes in now so the next Turn sees it.
 		if t != nil {
-			t.post(v)
+			e.post(t, v)
 			return
 		}
 		e.appended(uuid.Nil, uuid.Nil, func() []event.Message { return e.tr.note(v.Text) })
 	case event.ResetSession:
+		// Aborted now, not queued, and reset once the Turn has ended.
 		if t != nil {
-			t.post(event.Abort{Turn: t.id})
+			e.resetting = true
+			t.absorb(event.Abort{Turn: t.id})
 			return
 		}
-		e.trLock(func() { e.tr.reset() })
-		e.repeat.forget()
-		e.turns = 0
-		e.notice("info", "session reset")
+		e.reset()
 	case event.RequestRollback:
 		if t != nil {
 			e.notice("warn", "cannot roll back while a request is running")
@@ -240,11 +257,72 @@ func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{
 		if t != nil {
 			t.absorb(v)
 		}
-	default:
+	case event.RequestStop, event.Continue, event.ResolveApproval:
 		if t != nil {
-			t.post(ev)
+			e.post(t, ev)
 		}
 	}
+}
+
+// stale reports an intent meant for another Turn. The judge's stop
+// arrives late and asynchronously, and must not end the next request.
+func stale(ev event.Event, turn uuid.UUID) bool {
+	var named uuid.UUID
+	switch v := ev.(type) {
+	case event.Abort:
+		named = v.Turn
+	case event.RequestStop:
+		named = v.Turn
+	case event.Continue:
+		named = v.Turn
+	}
+	return named != uuid.Nil && named != turn
+}
+
+// post hands an intent to the Turn. Never blocks: a full inbox means
+// the Turn is mid-model-call and the intent is lost, so it says so.
+func (e *Engine) post(t *turnState, ev event.Event) {
+	select {
+	case t.inbox <- ev:
+	default:
+		e.notice("warn", "the request was too busy to take a "+string(ev.Kind())+", so it was dropped")
+	}
+}
+
+// turnDone retires the Turn whose goroutine finished. What reached it
+// after its last drain is dispatched again, now to an idle engine.
+func (e *Engine) turnDone(ctx context.Context, done chan struct{}) {
+	t := e.current()
+	e.finishTurn()
+	if e.resetting {
+		// Everything still queued was sent before the reset, so it goes too.
+		e.resetting = false
+		e.reset()
+		return
+	}
+	if t == nil {
+		return
+	}
+	for {
+		select {
+		case ev := <-t.inbox:
+			e.dispatch(ctx, ev, done)
+		default:
+			return
+		}
+	}
+}
+
+// reset forgets the transcript and says so, so a replay forgets it too.
+func (e *Engine) reset() {
+	e.trLock(func() { e.tr.reset() })
+	e.repeat.forget()
+	e.turns = 0
+	e.mu.Lock()
+	clear(e.past)
+	e.mu.Unlock()
+	e.bus.Publish(event.SessionReset{})
+	e.notice("info", "session reset")
 }
 
 func (e *Engine) current() *turnState {

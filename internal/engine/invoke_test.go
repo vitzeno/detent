@@ -103,8 +103,9 @@ func TestExecute_DecliningARemoteCallLeavesItsSiblings(t *testing.T) {
 	}}})
 
 	go func() {
-		asked := r.await(event.ApprovalAskedKind).(event.ApprovalAsked)
-		r.bus.Publish(event.ResolveApproval{Call: asked.Call, Approved: false})
+		if asked, ok := r.waitNth(event.ApprovalAskedKind, 1); ok {
+			r.bus.Publish(event.ResolveApproval{Call: asked.(event.ApprovalAsked).Call, Approved: false})
+		}
 	}()
 	end := r.run("go")
 
@@ -167,7 +168,8 @@ func remoteCall(id string) event.ToolCall {
 func (r *rig) approve(t *testing.T) {
 	t.Helper()
 	go func() {
-		asked := r.await(event.ApprovalAskedKind).(event.ApprovalAsked)
-		r.bus.Publish(event.ResolveApproval{Call: asked.Call, Approved: true})
+		if asked, ok := r.waitNth(event.ApprovalAskedKind, 1); ok {
+			r.bus.Publish(event.ResolveApproval{Call: asked.(event.ApprovalAsked).Call, Approved: true})
+		}
 	}()
 }
