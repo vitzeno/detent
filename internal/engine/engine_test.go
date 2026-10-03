@@ -214,11 +214,8 @@ func TestTurn_PromptMidTurnBecomesANote(t *testing.T) {
 	answered(t, r.eng)
 }
 
-func TestTurn_ModelErrorEndsTheTurnCleanly(t *testing.T) {
-	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
-	r.model.mu.Lock()
-	r.model.replies = nil
-	r.model.mu.Unlock()
+func TestTurn_AReplyWithNoCallsEndsTheTurnDone(t *testing.T) {
+	r := newRig(t, nil)
 	end := r.run("go")
 	assert.Equal(t, event.EndDone, end.Reason)
 	answered(t, r.eng)
