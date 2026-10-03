@@ -5,6 +5,7 @@ package skills
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -24,28 +25,33 @@ type Skill struct {
 	Root string
 	// Project is false for a skill from the human's home directory.
 	Project bool
-	// ModelInvocable is false when only the human may ask for it, UserInvocable when only the model may.
+	// ModelInvocable is false when only the human may ask for it, UserInvocable false when only the model may.
 	ModelInvocable bool
 	UserInvocable  bool
 }
 
 // Root is one folder of skills, Project false when it is the human's own.
+// Within, when set, is where every skill in it must resolve to.
 type Root struct {
 	Dir     string
 	Project bool
+	Within  string
 }
 
 // Roots are where skills are looked for, the first to name one winning: each
 // directory from dir up to its repository root, then the human's own.
 func Roots(dir, home string) []Root {
 	var out []Root
-	for _, d := range upToRoot(dir) {
-		out = append(out, Root{filepath.Join(d, ".agents", "skills"), true},
-			Root{filepath.Join(d, ".claude", "skills"), true})
+	dirs := upToRoot(dir)
+	// A repository's skill may link only within it, never out to the rest of this machine.
+	repo := dirs[len(dirs)-1]
+	for _, d := range dirs {
+		out = append(out, Root{Dir: filepath.Join(d, ".agents", "skills"), Project: true, Within: repo},
+			Root{Dir: filepath.Join(d, ".claude", "skills"), Project: true, Within: repo})
 	}
 	if home != "" {
-		out = append(out, Root{filepath.Join(home, ".agents", "skills"), false},
-			Root{filepath.Join(home, ".claude", "skills"), false})
+		out = append(out, Root{Dir: filepath.Join(home, ".agents", "skills")},
+			Root{Dir: filepath.Join(home, ".claude", "skills")})
 	}
 	return out
 }
@@ -55,7 +61,7 @@ func Roots(dir, home string) []Root {
 func Find(roots []Root) ([]Skill, []string) {
 	var found []Skill
 	var warnings []string
-	seen := map[string]bool{}
+	seen := map[string]string{}
 	for _, root := range roots {
 		entries, err := os.ReadDir(root.Dir)
 		if err != nil {
@@ -69,12 +75,20 @@ func Find(roots []Root) ([]Skill, []string) {
 			if !isDir(dir) {
 				continue
 			}
-			s, warn, ok := load(dir)
-			warnings = append(warnings, warn...)
-			if !ok || seen[s.Name] {
+			if root.Within != "" && !(inside(dir, root.Within) && inside(filepath.Join(dir, "SKILL.md"), root.Within)) {
+				warnings = append(warnings, fmt.Sprintf("skills: %s links outside the repository, so it was skipped", dir))
 				continue
 			}
-			seen[s.Name] = true
+			s, warn, ok := load(dir)
+			warnings = append(warnings, warn...)
+			if !ok {
+				continue
+			}
+			if winner, dup := seen[s.Name]; dup {
+				warnings = append(warnings, fmt.Sprintf("skills: %s is shadowed by %s, which has the same name", dir, winner))
+				continue
+			}
+			seen[s.Name] = dir
 			s.Root, s.Project = root.Dir, root.Project
 			found = append(found, s)
 		}
@@ -98,14 +112,14 @@ var validName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 // or a header that will not parse even leniently.
 func load(dir string) (Skill, []string, bool) {
 	path := filepath.Join(dir, "SKILL.md")
-	text, err := os.ReadFile(path)
+	text, err := readHead(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return Skill{}, nil, false
 	}
 	if err != nil {
 		return Skill{}, []string{fmt.Sprintf("skills: %s: %v", path, err)}, false
 	}
-	head, ok := header(string(text))
+	head, ok := header(text)
 	if !ok {
 		return Skill{}, []string{fmt.Sprintf("skills: %s has no frontmatter, so it was skipped", path)}, false
 	}
@@ -122,7 +136,8 @@ func load(dir string) (Skill, []string, bool) {
 
 	var warnings []string
 	base := filepath.Base(dir)
-	name := strings.TrimSpace(fm.Name)
+	// Folded like the description, since a newline in a name would split its catalog line.
+	name := strings.Join(strings.Fields(fm.Name), " ")
 	switch {
 	case name == "":
 		name = base
@@ -155,7 +170,22 @@ func header(text string) (string, bool) {
 	return "", false
 }
 
+// maxHead bounds what is read of a SKILL.md at startup, where only its header is wanted.
+const maxHead = 64 * 1024
+
+// readHead reads the start of a file, enough for any sane header.
+func readHead(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxHead))
+	return string(b), err
+}
+
 // quoteValues quotes each top-level "key: value" whose value is plain text.
+// Go's %q escapes are all valid in a YAML double-quoted scalar.
 func quoteValues(head string) string {
 	lines := strings.Split(head, "\n")
 	for i, l := range lines {
@@ -175,6 +205,9 @@ func quoteValues(head string) string {
 // upToRoot is dir and each parent up to the one holding .git, nearest
 // first, or dir alone outside a repository.
 func upToRoot(dir string) []string {
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
 	var dirs []string
 	for d := filepath.Clean(dir); ; d = filepath.Dir(d) {
 		dirs = append(dirs, d)
@@ -185,6 +218,20 @@ func upToRoot(dir string) []string {
 			return dirs[:1]
 		}
 	}
+}
+
+// inside reports whether p, links followed, is dir or under it.
+func inside(p, dir string) bool {
+	real, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		// Missing is load's to report, and nothing outside was reached.
+		return errors.Is(err, fs.ErrNotExist)
+	}
+	if d, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = d
+	}
+	rel, err := filepath.Rel(dir, real)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func isDir(p string) bool {

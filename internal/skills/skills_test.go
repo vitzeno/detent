@@ -19,7 +19,7 @@ func TestFind_ReadsNameAndDescription(t *testing.T) {
 		"loose.md":               "neither is a file",
 		"lint/SKILL.md":          skill("lint", "Run the linters"),
 	})
-	got, warnings := Find([]Root{{root, true}})
+	got, warnings := Find([]Root{{Dir: root, Project: true}})
 	assert.Empty(t, warnings)
 	require.Len(t, got, 2)
 	assert.Equal(t, "lint", got[0].Name, "sorted by name")
@@ -36,8 +36,10 @@ func TestFind_TheFirstRootToNameASkillWins(t *testing.T) {
 	project := tree(t, map[string]string{"deploy/SKILL.md": skill("deploy", "the project's")})
 	home := tree(t, map[string]string{"deploy/SKILL.md": skill("deploy", "mine"), "mine/SKILL.md": skill("mine", "only mine")})
 
-	got, _ := Find([]Root{{project, true}, {home, false}})
+	got, warnings := Find([]Root{{Dir: project, Project: true}, {Dir: home}})
 	require.Len(t, got, 2)
+	require.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0], "shadowed by "+filepath.Join(project, "deploy"), "the human is told why theirs does nothing")
 	assert.Equal(t, "the project's", got[0].Description)
 	assert.False(t, got[1].Project)
 }
@@ -71,7 +73,7 @@ func TestFind_IsLenient(t *testing.T) {
 			if dir == "" {
 				dir = cmp.Or(tc.name, strings.ReplaceAll(label, " ", "-"))
 			}
-			got, warnings := Find([]Root{{tree(t, map[string]string{dir + "/SKILL.md": tc.file}), true}})
+			got, warnings := Find([]Root{{Dir: tree(t, map[string]string{dir + "/SKILL.md": tc.file}), Project: true}})
 			if tc.loads {
 				require.Len(t, got, 1)
 				assert.Equal(t, tc.name, got[0].Name)
@@ -93,7 +95,7 @@ func TestFind_ReadsWhoMayAskForIt(t *testing.T) {
 		"by-hand/SKILL.md":  "---\nname: by-hand\ndescription: d\ndisable-model-invocation: true\n---\n",
 		"by-model/SKILL.md": "---\nname: by-model\ndescription: d\nuser-invocable: false\n---\n",
 	})
-	got, _ := Find([]Root{{root, true}})
+	got, _ := Find([]Root{{Dir: root, Project: true}})
 	require.Len(t, got, 2)
 	assert.False(t, got[0].ModelInvocable)
 	assert.True(t, got[0].UserInvocable)
@@ -129,4 +131,40 @@ func tree(t *testing.T, files map[string]string) string {
 		require.NoError(t, os.WriteFile(p, []byte(body), 0o644))
 	}
 	return dir
+}
+
+// A cloned repository must not be able to point a skill at the human's home and have it listed.
+func TestFind_SkipsAProjectSkillLinkedOutOfTheRepository(t *testing.T) {
+	repo := tree(t, map[string]string{"skills/inside/SKILL.md": skill("inside", "fine"), "elsewhere/linked/SKILL.md": skill("linked", "fine too")})
+	outside := tree(t, map[string]string{"away/SKILL.md": skill("away", "outside")})
+	require.NoError(t, os.Symlink(filepath.Join(outside, "away"), filepath.Join(repo, "skills", "away")))
+	require.NoError(t, os.Symlink(filepath.Join(repo, "elsewhere", "linked"), filepath.Join(repo, "skills", "linked")))
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, "skills", "file"), 0o755))
+	require.NoError(t, os.Symlink(filepath.Join(outside, "away", "SKILL.md"), filepath.Join(repo, "skills", "file", "SKILL.md")))
+
+	got, warnings := Find([]Root{{Dir: filepath.Join(repo, "skills"), Project: true, Within: repo}})
+	var names []string
+	for _, s := range got {
+		names = append(names, s.Name)
+	}
+	assert.Equal(t, []string{"inside", "linked"}, names)
+	assert.Len(t, warnings, 2)
+	for _, w := range warnings {
+		assert.Contains(t, w, "links outside the repository")
+	}
+
+	// The human's own skills are theirs to link wherever they like.
+	got, _ = Find([]Root{{Dir: filepath.Join(repo, "skills")}})
+	assert.Len(t, got, 3, "file links to away, so it is shadowed rather than skipped")
+}
+
+func TestRoots_FenceProjectSkillsToTheRepository(t *testing.T) {
+	repo := tree(t, map[string]string{".git/HEAD": "ref", "sub/x": ""})
+	for _, r := range Roots(filepath.Join(repo, "sub"), "/home/me") {
+		if r.Project {
+			assert.Equal(t, repo, r.Within)
+		} else {
+			assert.Empty(t, r.Within)
+		}
+	}
 }

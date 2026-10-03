@@ -97,7 +97,7 @@ func TestPrompt_NamesEachFileAndSaysWhatWasCut(t *testing.T) {
 	assert.Empty(t, Prompt(nil))
 	p := Prompt([]File{{Path: "../AGENTS.md", Text: "be brief\n"}, {Path: "CLAUDE.md", Text: "use go", Truncated: true}})
 	assert.Contains(t, p, "<instructions path=\"../AGENTS.md\">\nbe brief\n</instructions>")
-	assert.Contains(t, p, "use go\n[cut at 6 bytes, read the file for the rest]\n</instructions>")
+	assert.Contains(t, p, "use go\n[kept the first 6 bytes, read the file for the rest]\n</instructions>")
 	assert.Less(t, strings.Index(p, "be brief"), strings.Index(p, "use go"))
 }
 
@@ -112,4 +112,57 @@ func tree(t *testing.T, files map[string]string) string {
 		require.NoError(t, os.WriteFile(p, []byte(body), 0o644))
 	}
 	return dir
+}
+
+// A cloned repository must not be able to point AGENTS.md at a key and have it sent to the model.
+func TestFind_ReadsNoLinkOutOfTheRepository(t *testing.T) {
+	root := tree(t, map[string]string{".git/HEAD": "ref", "docs/rules.md": "linked rules", "sub/CLAUDE.md": "near"})
+	secret := filepath.Join(t.TempDir(), "credentials")
+	require.NoError(t, os.WriteFile(secret, []byte("aws_secret"), 0o600))
+	require.NoError(t, os.Symlink(secret, filepath.Join(root, "AGENTS.md")))
+
+	files, err := Find(filepath.Join(root, "sub"), "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "outside the repository")
+	assert.Equal(t, []string{"CLAUDE.md"}, Paths(files), "the rest still load")
+
+	require.NoError(t, os.Remove(filepath.Join(root, "AGENTS.md")))
+	require.NoError(t, os.Symlink(filepath.Join("docs", "rules.md"), filepath.Join(root, "AGENTS.md")))
+	files, err = Find(filepath.Join(root, "sub"), "")
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	assert.Equal(t, "linked rules", files[0].Text, "a link within the repository is fine")
+}
+
+func TestFind_OneUnreadableFileKeepsTheRest(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads anything")
+	}
+	root := tree(t, map[string]string{".git/HEAD": "ref", "AGENTS.md": "root", "sub/AGENTS.md": "near"})
+	require.NoError(t, os.Chmod(filepath.Join(root, "AGENTS.md"), 0))
+	files, err := Find(filepath.Join(root, "sub"), "")
+	require.Error(t, err)
+	assert.Equal(t, []string{"AGENTS.md"}, Paths(files))
+	assert.Equal(t, "near", files[0].Text)
+}
+
+func TestFind_SkipsADirectoryNamedLikeAFile(t *testing.T) {
+	dir := tree(t, map[string]string{"AGENTS.md/x": "", "CLAUDE.md": "claude"})
+	files, err := Find(dir, "")
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	assert.Equal(t, "claude", files[0].Text)
+}
+
+func TestFind_WalksUpFromARelativeDirectory(t *testing.T) {
+	root := tree(t, map[string]string{".git/HEAD": "ref", "AGENTS.md": "root", "sub/AGENTS.md": "near"})
+	t.Chdir(filepath.Join(root, "sub"))
+	files, err := Find(".", "")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"../AGENTS.md", "AGENTS.md"}, Paths(files))
+}
+
+func TestCut_NeverSplitsACharacter(t *testing.T) {
+	assert.Equal(t, "ab", cut("ab世界", 4))
+	assert.Equal(t, "a\n", cut("a\nb世", 4))
 }

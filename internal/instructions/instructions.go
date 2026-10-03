@@ -5,15 +5,17 @@ package instructions
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
-// Names are tried in order in each directory, and only the first found is read.
-var Names = []string{"AGENTS.md", "CLAUDE.md"}
+// names are tried in order in each directory, and only the first found is read.
+var names = []string{"AGENTS.md", "CLAUDE.md"}
 
 // MaxBytes caps what every file together may add to the prompt. 128KB is
 // about 32k tokens, a large share of a small local model's window.
@@ -36,23 +38,26 @@ func Global() string {
 }
 
 // Find reads global, then one file per directory from dir's repository root
-// down to dir, nearest last. Outside a repository only dir is read.
+// down to dir, nearest last. Outside a repository only dir is read. A file
+// that cannot be read is left out and named in the error, beside the rest.
 func Find(dir, global string) ([]File, error) {
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
 	var found []*File
+	var errs []error
 	dirs := upToRoot(dir)
+	// A project file may link only within its own repository, never to a key elsewhere on this machine.
+	within := dirs[len(dirs)-1]
 	// Nearest first, so the file that matters most is the last to be cut.
 	for _, d := range dirs {
-		f, err := firstOf(d, dir)
-		if err != nil {
-			return nil, err
-		}
+		f, err := firstOf(d, dir, within)
+		errs = append(errs, err)
 		found = append(found, f)
 	}
 	if global != "" && !slices.Contains(dirs, filepath.Dir(global)) {
-		f, err := read(global, tilde(global))
-		if err != nil {
-			return nil, err
-		}
+		f, err := read(global, tilde(global), "")
+		errs = append(errs, err)
 		found = append(found, f)
 	}
 
@@ -69,9 +74,10 @@ func Find(dir, global string) ([]File, error) {
 			f.Text, f.Truncated = cut(f.Text, budget), true
 		}
 		budget -= len(f.Text)
-		out = append([]File{*f}, out...)
+		out = append(out, *f)
 	}
-	return out, nil
+	slices.Reverse(out)
+	return out, errors.Join(errs...)
 }
 
 // Prompt is the section the system prompt carries, or "" for no files.
@@ -85,7 +91,7 @@ func Prompt(files []File) string {
 	for _, f := range files {
 		fmt.Fprintf(&b, "\n<instructions path=%q>\n%s\n", f.Path, strings.TrimRight(f.Text, "\n"))
 		if f.Truncated {
-			fmt.Fprintf(&b, "[cut at %d bytes, read the file for the rest]\n", len(f.Text))
+			fmt.Fprintf(&b, "[kept the first %d bytes, read the file for the rest]\n", len(f.Text))
 		}
 		b.WriteString("</instructions>\n")
 	}
@@ -101,15 +107,15 @@ func Paths(files []File) []string {
 	return out
 }
 
-// firstOf reads the first of Names in dir, named relative to from.
-func firstOf(dir, from string) (*File, error) {
-	for _, name := range Names {
+// firstOf reads the first of names in dir, named relative to from.
+func firstOf(dir, from, within string) (*File, error) {
+	for _, name := range names {
 		p := filepath.Join(dir, name)
 		rel, err := filepath.Rel(from, p)
 		if err != nil {
 			rel = p
 		}
-		f, err := read(p, rel)
+		f, err := read(p, rel, within)
 		if f != nil || err != nil {
 			return f, err
 		}
@@ -119,7 +125,8 @@ func firstOf(dir, from string) (*File, error) {
 
 // read returns the file at p, or nil when it is missing, not a regular
 // file, or empty. An empty AGENTS.md still hides a CLAUDE.md beside it.
-func read(p, name string) (*File, error) {
+// Unless within is empty, a p that resolves outside it is an error.
+func read(p, name, within string) (*File, error) {
 	info, err := os.Stat(p)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -130,11 +137,33 @@ func read(p, name string) (*File, error) {
 	if !info.Mode().IsRegular() {
 		return nil, nil
 	}
-	text, err := os.ReadFile(p)
+	if within != "" && !inside(p, within) {
+		return nil, fmt.Errorf("%s links outside the repository, so it was not read", p)
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	// One byte over the cap is enough for Find to know it cut something.
+	text, err := io.ReadAll(io.LimitReader(f, MaxBytes+1))
 	if err != nil {
 		return nil, err
 	}
 	return &File{Path: name, Text: string(text)}, nil
+}
+
+// inside reports whether p, links followed, is dir or under it.
+func inside(p, dir string) bool {
+	real, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return false
+	}
+	if d, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = d
+	}
+	rel, err := filepath.Rel(dir, real)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // tilde shortens a path under the home directory, for the prompt and /status.
@@ -159,8 +188,12 @@ func upToRoot(dir string) []string {
 	}
 }
 
-// cut keeps at most n bytes, ending on a whole line where there is one.
+// cut keeps at most n bytes, ending on a whole line where there is one
+// and on a whole character where there is not.
 func cut(s string, n int) string {
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
 	s = s[:n]
 	if i := strings.LastIndexByte(s, '\n'); i > 0 {
 		return s[:i+1]
