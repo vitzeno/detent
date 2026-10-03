@@ -16,9 +16,6 @@ import (
 	"github.com/vitzeno/detent/termsafe"
 )
 
-// Approver answers one dangerous call.
-type Approver func(event.ApprovalAsked) bool
-
 // Printer is one headless Turn, subscribed from New so nothing published
 // before Run is missed.
 type Printer struct {
@@ -58,6 +55,9 @@ func (p *Printer) Run(ctx context.Context, prompt string) event.EndReason {
 		}
 	}
 }
+
+// Approver answers one dangerous call.
+type Approver func(event.ApprovalAsked) bool
 
 // Ask reads y/n, and treats anything else as no. Unreadable or closed
 // stdin is a decline that says so: this is the gate for dangerous commands.

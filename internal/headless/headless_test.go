@@ -16,58 +16,6 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-type brokenReader struct{}
-
-func (brokenReader) Read([]byte) (int, error) { return 0, errors.New("tty gone") }
-
-func TestAsk(t *testing.T) {
-	cases := []struct {
-		name string
-		in   io.Reader
-		want bool
-		says string
-	}{
-		{"y", strings.NewReader("y\n"), true, ""},
-		{"capital Y", strings.NewReader("Y\n"), true, ""},
-		{"padded", strings.NewReader(" y \n"), true, ""},
-		{"no", strings.NewReader("n\n"), false, ""},
-		{"yes is not y", strings.NewReader("yes\n"), false, ""},
-		{"empty line", strings.NewReader("\n"), false, ""},
-		{"y at EOF", strings.NewReader("y"), true, ""},
-		{"closed stdin", strings.NewReader(""), false, "stdin is closed"},
-		{"unreadable", brokenReader{}, false, "could not read a decision"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			var out bytes.Buffer
-			got := Ask(c.in, &out)(event.ApprovalAsked{Tool: "bash", Args: map[string]any{"command": "rm -rf x"}})
-			assert.Equal(t, c.want, got)
-			assert.Contains(t, out.String(), "rm -rf x", "the human sees the literal command")
-			assert.Contains(t, out.String(), c.says)
-			assert.NotContains(t, out.String(), "flagged:", "no rationale, no line for one")
-		})
-	}
-}
-
-func TestAsk_ShowsWhyItWasFlagged(t *testing.T) {
-	var out bytes.Buffer
-	Ask(strings.NewReader("n\n"), &out)(event.ApprovalAsked{Tool: "bash",
-		Args: map[string]any{"command": "sudo x"}, Rationale: "runs as root"})
-	assert.Contains(t, out.String(), "flagged: runs as root")
-}
-
-// fakeEngine answers intents the way the engine would, enough for one Turn.
-func fakeEngine(t *testing.T, bus *event.Bus, script func(ev event.Event)) {
-	t.Helper()
-	intents, unsub := bus.Subscribe(event.Intents())
-	t.Cleanup(unsub)
-	go func() {
-		for rec := range intents {
-			script(rec.Event)
-		}
-	}()
-}
-
 func TestRun(t *testing.T) {
 	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	for _, c := range []struct {
@@ -133,23 +81,40 @@ func TestRun_AClosedBusIsAnError(t *testing.T) {
 	}
 }
 
-func TestClip(t *testing.T) {
-	assert.Equal(t, "ls", clip("ls", 10))
-	assert.Equal(t, "éééé…", clip(strings.Repeat("é", 8), 4), "cut by rune, never mid-character")
-	assert.Equal(t, "cat <<EOF …", clip("cat <<EOF\nbody\nEOF", 40))
+func TestAsk(t *testing.T) {
+	cases := []struct {
+		name string
+		in   io.Reader
+		want bool
+		says string
+	}{
+		{"y", strings.NewReader("y\n"), true, ""},
+		{"capital Y", strings.NewReader("Y\n"), true, ""},
+		{"padded", strings.NewReader(" y \n"), true, ""},
+		{"no", strings.NewReader("n\n"), false, ""},
+		{"yes is not y", strings.NewReader("yes\n"), false, ""},
+		{"empty line", strings.NewReader("\n"), false, ""},
+		{"y at EOF", strings.NewReader("y"), true, ""},
+		{"closed stdin", strings.NewReader(""), false, "stdin is closed"},
+		{"unreadable", brokenReader{}, false, "could not read a decision"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var out bytes.Buffer
+			got := Ask(c.in, &out)(event.ApprovalAsked{Tool: "bash", Args: map[string]any{"command": "rm -rf x"}})
+			assert.Equal(t, c.want, got)
+			assert.Contains(t, out.String(), "rm -rf x", "the human sees the literal command")
+			assert.Contains(t, out.String(), c.says)
+			assert.NotContains(t, out.String(), "flagged:", "no rationale, no line for one")
+		})
+	}
 }
 
-// What the model wrote is shown escaped, never sent to the terminal it is asking on.
-const hostile = "echo hi\x1b[2J\x1b]52;c;cm0gLXJmIH4=\x07\rrm -rf ~ \u202etxt.exe"
-
-func assertDefused(t *testing.T, got string) {
-	t.Helper()
-	for _, raw := range []string{"\x1b", "\x07", "\r", "\u202e"} {
-		assert.NotContains(t, got, raw)
-	}
-	for _, shown := range []string{"^[[2J", "^[]52;c;cm0gLXJmIH4=^G", "^Mrm -rf ~", `\u202etxt.exe`} {
-		assert.Contains(t, got, shown)
-	}
+func TestAsk_ShowsWhyItWasFlagged(t *testing.T) {
+	var out bytes.Buffer
+	Ask(strings.NewReader("n\n"), &out)(event.ApprovalAsked{Tool: "bash",
+		Args: map[string]any{"command": "sudo x"}, Rationale: "runs as root"})
+	assert.Contains(t, out.String(), "flagged: runs as root")
 }
 
 func TestAsk_ShowsControlsInTheCommandEscaped(t *testing.T) {
@@ -185,3 +150,38 @@ func TestHandle_DefusesWhatAModelOrCommandWrote(t *testing.T) {
 		})
 	}
 }
+
+func TestClip(t *testing.T) {
+	assert.Equal(t, "ls", clip("ls", 10))
+	assert.Equal(t, "éééé…", clip(strings.Repeat("é", 8), 4), "cut by rune, never mid-character")
+	assert.Equal(t, "cat <<EOF …", clip("cat <<EOF\nbody\nEOF", 40))
+}
+
+// fakeEngine answers intents the way the engine would, enough for one Turn.
+func fakeEngine(t *testing.T, bus *event.Bus, script func(ev event.Event)) {
+	t.Helper()
+	intents, unsub := bus.Subscribe(event.Intents())
+	t.Cleanup(unsub)
+	go func() {
+		for rec := range intents {
+			script(rec.Event)
+		}
+	}()
+}
+
+// What the model wrote is shown escaped, never sent to the terminal it is asking on.
+const hostile = "echo hi\x1b[2J\x1b]52;c;cm0gLXJmIH4=\x07\rrm -rf ~ \u202etxt.exe"
+
+func assertDefused(t *testing.T, got string) {
+	t.Helper()
+	for _, raw := range []string{"\x1b", "\x07", "\r", "\u202e"} {
+		assert.NotContains(t, got, raw)
+	}
+	for _, shown := range []string{"^[[2J", "^[]52;c;cm0gLXJmIH4=^G", "^Mrm -rf ~", `\u202etxt.exe`} {
+		assert.Contains(t, got, shown)
+	}
+}
+
+type brokenReader struct{}
+
+func (brokenReader) Read([]byte) (int, error) { return 0, errors.New("tty gone") }
