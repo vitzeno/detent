@@ -5,6 +5,7 @@ package config
 
 import (
 	"bytes"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
@@ -151,13 +152,7 @@ func Load(path string, local map[string][]byte) (Config, error) {
 			return decode(name, raw)
 		}
 	}
-	var candidates []string
-	if home, err := os.UserHomeDir(); err == nil {
-		candidates = append(candidates,
-			filepath.Join(home, ".config", "detent", "config.yaml"),
-			filepath.Join(home, ".config", "detent", "config.yml"))
-	}
-	for _, c := range candidates {
+	for _, c := range userPaths() {
 		_, err := os.Stat(c)
 		switch {
 		case err == nil:
@@ -167,6 +162,64 @@ func Load(path string, local map[string][]byte) (Config, error) {
 		}
 	}
 	return Default(), nil
+}
+
+// example is the commented config detent ships, every value at its built-in.
+//
+//go:embed detent.example.yaml
+var example []byte
+
+// Example is the shipped config, which changes nothing until a value is set.
+func Example() []byte { return slices.Clone(example) }
+
+// UserPath is where the human's own config lives, ~/.config/detent/config.yaml.
+func UserPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("config: no home directory: %w", err)
+	}
+	return filepath.Join(home, ".config", "detent", "config.yaml"), nil
+}
+
+// UserExists says whether the human has a config of their own, either spelling.
+func UserExists() bool {
+	for _, p := range userPaths() {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// WriteExample puts Example at path, owner-only since it will hold a key, and
+// never over a file already there, whichever spelling it uses.
+func WriteExample(path string) error {
+	for _, p := range []string{path, strings.TrimSuffix(path, ".yaml") + ".yml"} {
+		if _, err := os.Stat(p); err == nil {
+			return fmt.Errorf("%s already exists, so it was left as it is", p)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+	if _, err := f.Write(example); err != nil {
+		return errors.Join(fmt.Errorf("config: %w", err), f.Close())
+	}
+	return f.Close()
+}
+
+// userPaths are the human's config files, in the order Load tries them.
+func userPaths() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	dir := filepath.Join(home, ".config", "detent")
+	return []string{filepath.Join(dir, "config.yaml"), filepath.Join(dir, "config.yml")}
 }
 
 // Validate reports every value no part of detent can act on. Theme is

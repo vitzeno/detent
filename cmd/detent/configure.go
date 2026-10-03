@@ -27,6 +27,7 @@ type options struct {
 	sandboxMode, sandboxSocket             string
 	resume                                 string
 	sessions, prune, listMCP, version      bool
+	initConfig                             bool
 	trust                                  bool
 }
 
@@ -48,6 +49,7 @@ func parseFlags() options {
 	flag.BoolVar(&o.prune, "prune", false, "remove what abandoned sessions left in containerd, and exit")
 	flag.BoolVar(&o.listMCP, "mcp", false, "list the configured MCP servers and their tools, and exit")
 	flag.BoolVar(&o.version, "version", false, "print the version and exit")
+	flag.BoolVar(&o.initConfig, "init", false, "write a commented config to ~/.config/detent/config.yaml, never over one already there, and exit")
 	flag.BoolVar(&o.trust, "trust", false, "read this directory's .detent.yaml, .env and .mcp.json for this run without asking or recording it")
 	flag.Parse()
 	return o

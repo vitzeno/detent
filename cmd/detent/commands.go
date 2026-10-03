@@ -5,10 +5,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/vitzeno/detent/internal/config"
 	mcppkg "github.com/vitzeno/detent/internal/mcp"
 	"github.com/vitzeno/detent/internal/sandbox"
 	"github.com/vitzeno/detent/internal/store"
@@ -111,4 +113,25 @@ func pruneSandbox(socket string) error {
 		fmt.Println("nothing to prune")
 	}
 	return err
+}
+
+// initConfig writes the shipped config for the human to fill in, and says where.
+func initConfig(out io.Writer) error {
+	path, err := config.UserPath()
+	if err != nil {
+		return err
+	}
+	if err := config.WriteExample(path); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "wrote %s\nset api_key in it (or DETENT_API_KEY), then run detent\n", path)
+	return nil
+}
+
+// noConfigHint points a human with no key and no config at -init.
+func noConfigHint(cfg config.Config) string {
+	if cfg.APIKey != "" || config.UserExists() {
+		return ""
+	}
+	return "\n\nNo API key is set and you have no config file: detent -init writes one to fill in"
 }

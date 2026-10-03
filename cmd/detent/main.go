@@ -44,6 +44,8 @@ func run() error {
 		return nil
 	case o.sessions:
 		return listSessions()
+	case o.initConfig:
+		return initConfig(os.Stdout)
 	}
 	if err := o.check(); err != nil {
 		return err
@@ -91,8 +93,8 @@ func run() error {
 		return err
 	}
 	if err := <-pinged; err != nil {
-		return fmt.Errorf("%w\n\nis the model endpoint up? Wanted %s with model %s. Check the key, or point -url/-model (or a config file) somewhere else. For a local LM Studio, load the model and Start Server",
-			err, cfg.BaseURL, cfg.Model)
+		return fmt.Errorf("%w\n\nis the model endpoint up? Wanted %s with model %s. Check the key, or point -url/-model (or a config file) somewhere else. For a local LM Studio, load the model and Start Server%s",
+			err, cfg.BaseURL, cfg.Model, noConfigHint(cfg))
 	}
 	if err := s.buildEngine(); err != nil {
 		return err

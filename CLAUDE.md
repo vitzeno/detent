@@ -45,7 +45,7 @@ benchmark's. Both need `-prompt`. A headless run exits 0 when the request
 is done, 1 on an error, 3 at the step bound, 4 when stopped and 130 when
 aborted. Headless runs do not load MCP configuration or connect to MCP
 servers. MCP is available in the TUI.
-`-sessions` lists what can be resumed and `-resume <id>` (or
+`-init` writes a starting config. `-sessions` lists what can be resumed and `-resume <id>` (or
 `-resume last`) continues one.
 
 Run a single package's tests: `go test ./internal/engine/...`
@@ -70,8 +70,10 @@ three containerd 1.7 advisories have no fix short of containerd v2.
 
 Precedence: flags > environment > config file > built-ins. Config file
 is `./.detent.yaml` (repo-local, gitignored) or
-`~/.config/detent/config.yaml`. See `detent.example.yaml` for every
-key. Relevant env vars: `DETENT_BASE_URL`, `DETENT_MODEL`,
+`~/.config/detent/config.yaml`. `internal/config/detent.example.yaml` names
+every key, and is embedded so `detent -init` can write it to the user's
+path, 0600 and never over a file already there. As written it sets nothing, so
+a config made from it does not pin today's defaults. Relevant env vars: `DETENT_BASE_URL`, `DETENT_MODEL`,
 `DETENT_API_KEY` (falls back to `OPENROUTER_API_KEY` then
 `OPENAI_API_KEY`), `TYPESAFE_API_KEY` (enables the Jev hook),
 `DETENT_CONTEXT_TOKENS`, `DETENT_THEME` (one of `ui/theme.Themes`'

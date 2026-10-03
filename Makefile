@@ -39,10 +39,15 @@ build:
 
 # go install, not cp: it adds .exe, makes the directory and needs no shell, so it
 # works from cmd and PowerShell too. Exported per target, since VAR=x cmd is sh only.
+# Your own config, under HOME or Windows' USERPROFILE. make's wildcard rather
+# than a shell test, so the hint works from cmd too.
+USERCONFIG := $(wildcard $(HOME)/.config/detent/config.y*ml $(USERPROFILE)/.config/detent/config.y*ml)
+
 install: export GOBIN := $(PREFIX)
 install:
 	go install ./cmd/detent
 	@echo "installed detent$(EXE) in $(PREFIX)"
+	$(if $(USERCONFIG),,@echo "no config yet: detent -init writes one to fill in")
 
 uninstall: export GOBIN := $(PREFIX)
 uninstall:
