@@ -75,6 +75,9 @@ func merge(c *Config, o Config) {
 	if o.LogBodies != nil {
 		c.LogBodies = o.LogBodies
 	}
+	if o.HostShell != "" {
+		c.HostShell = o.HostShell
+	}
 	if o.SandboxMode != "" {
 		c.SandboxMode = o.SandboxMode
 	}
@@ -128,7 +131,7 @@ var envKeys = []string{
 	"DETENT_BASE_URL", "DETENT_MODEL", "DETENT_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY",
 	"DETENT_CONTEXT_TOKENS", "DETENT_COMMAND_TIMEOUT", "DETENT_FINISH_CHECK", "TYPESAFE_API_KEY",
 	"DETENT_THEME", "DETENT_VIEWS", "DETENT_LOG_LEVEL", "DETENT_LOG_DIR", "DETENT_LOG_BODIES",
-	"DETENT_SANDBOX_MODE", "DETENT_SANDBOX_SOCKET", "DETENT_SANDBOX_RUNTIME", "DETENT_SANDBOX_NETWORK",
+	"DETENT_HOST_SHELL", "DETENT_SANDBOX_MODE", "DETENT_SANDBOX_SOCKET", "DETENT_SANDBOX_RUNTIME", "DETENT_SANDBOX_NETWORK",
 }
 
 // envConfig reads the environment as one layer. For aliased keys the
@@ -152,6 +155,7 @@ func envConfig(getenv func(string) string) Config {
 		LogDir:         getenv("DETENT_LOG_DIR"),
 		LogBodies:      envBool(getenv("DETENT_LOG_BODIES")),
 
+		HostShell:      getenv("DETENT_HOST_SHELL"),
 		SandboxMode:    getenv("DETENT_SANDBOX_MODE"),
 		SandboxSocket:  getenv("DETENT_SANDBOX_SOCKET"),
 		SandboxRuntime: getenv("DETENT_SANDBOX_RUNTIME"),

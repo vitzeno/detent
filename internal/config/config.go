@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/engine"
+	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/model"
 	"github.com/vitzeno/detent/internal/sandbox"
 )
@@ -59,6 +61,9 @@ type Config struct {
 	// Views is ViewsSaved or ViewsGenerate.
 	Views string `yaml:"views"`
 
+	// HostShell is what host commands run in, one of host.Dialects, or empty to pick per OS.
+	HostShell string `yaml:"host_shell"`
+
 	// SandboxMode is SandboxAuto or SandboxHost.
 	SandboxMode string `yaml:"sandbox_mode"`
 	// SandboxSocket overrides the OS-conventional containerd socket.
@@ -97,11 +102,19 @@ func mask(key string) string {
 
 // Validate reports every value no part of detent can act on. Theme is
 // checked by main, which can import ui.
-func (c Config) Validate() error {
+func (c Config) Validate() error { return c.validate(runtime.GOOS) }
+
+func (c Config) validate(goos string) error {
 	var errs []error
 	bad := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
-	if c.SandboxMode != SandboxAuto && c.SandboxMode != SandboxHost {
+	switch {
+	case c.SandboxMode != SandboxAuto && c.SandboxMode != SandboxHost:
 		bad("unknown sandbox mode %q, choose one of: %s, %s", c.SandboxMode, SandboxAuto, SandboxHost)
+	case c.SandboxMode == SandboxAuto && goos == "windows":
+		bad("sandbox_mode auto needs containerd on a unix socket, which Windows has not got: use sandbox_mode host")
+	}
+	if c.HostShell != "" && !slices.Contains(host.Dialects, c.HostShell) {
+		bad("unknown host_shell %q, choose one of: %s, or leave it empty to pick per OS", c.HostShell, strings.Join(host.Dialects, ", "))
 	}
 	if c.SandboxNetwork != sandbox.NetworkHost && c.SandboxNetwork != sandbox.NetworkNone {
 		bad("unknown sandbox_network %q, choose one of: %s, %s", c.SandboxNetwork, sandbox.NetworkHost, sandbox.NetworkNone)

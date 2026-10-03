@@ -71,7 +71,7 @@ func detentYAML(raw []byte) []string {
 		switch {
 		case k == "base_url" || k == "jev_endpoint":
 			out = append(out, fmt.Sprintf("%s: %s", k, cleanURL(fmt.Sprint(v))))
-		case k == "model", strings.HasPrefix(k, "sandbox_"), strings.HasPrefix(k, "log_"):
+		case k == "model", k == "host_shell", strings.HasPrefix(k, "sandbox_"), strings.HasPrefix(k, "log_"):
 			out = append(out, fmt.Sprintf("%s: %v", k, v))
 		case k == "api_key" || k == "jev_api_key":
 			out = append(out, k+": set")

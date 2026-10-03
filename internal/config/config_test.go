@@ -109,9 +109,10 @@ func TestValidate_ReportsEveryBadValue(t *testing.T) {
 	bad.Steps = -1
 	bad.ContextTokens = -1
 	bad.CommandTimeout = "soon"
+	bad.HostShell = "cmd"
 	err := bad.Validate()
 	require.Error(t, err)
-	for _, want := range []string{"docker", "bridge", "generte", "verbose", "1.5", "steps", "context_tokens", "soon"} {
+	for _, want := range []string{"docker", "bridge", "generte", "verbose", "1.5", "steps", "context_tokens", "soon", `host_shell "cmd"`} {
 		assert.Contains(t, err.Error(), want)
 	}
 
@@ -120,6 +121,22 @@ func TestValidate_ReportsEveryBadValue(t *testing.T) {
 	require.ErrorContains(t, gen.Validate(), "jev_api_key")
 	gen.JevAPIKey = "k"
 	assert.NoError(t, gen.Validate())
+}
+
+func TestValidate_TheSandboxIsRefusedOnWindows(t *testing.T) {
+	auto := Default()
+	auto.SandboxMode = SandboxAuto
+	require.ErrorContains(t, auto.validate("windows"), "use sandbox_mode host")
+	require.NoError(t, auto.validate("linux"))
+	require.NoError(t, Default().validate("windows"), "host mode is fine")
+}
+
+func TestValidate_TakesEveryHostShell(t *testing.T) {
+	for _, name := range []string{"", "sh", "pwsh", "gitbash"} {
+		c := Default()
+		c.HostShell = name
+		assert.NoError(t, c.Validate(), name)
+	}
 }
 
 func TestLogValue_MasksTheKeys(t *testing.T) {

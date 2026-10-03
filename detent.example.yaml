@@ -1,7 +1,7 @@
 # Copy to ./.detent.yaml or ~/.config/detent/config.yaml.
 # Precedence: flags > environment > this file > built-ins.
 # Empty or 0 means the built-in, so this file as-is changes nothing.
-# base_url, model, context_tokens, theme, views and the log_* and sandbox_*
+# base_url, model, context_tokens, theme, views, host_shell and the log_* and sandbox_*
 # keys (bar image and workspace) also read DETENT_ plus the key in capitals.
 # A key not listed here is an error, so a typo cannot silently do nothing.
 
@@ -43,6 +43,12 @@ risk_threshold: 0      # scope risk that needs your approval (0.5)
 # --- Look ---
 
 theme: ""              # dark, light, solarized, dracula (dark)
+
+# --- Host shell ---
+
+# What host commands run in: sh, pwsh (PowerShell 7) or gitbash. Empty picks
+# sh, or on Windows pwsh and then Git Bash. Also DETENT_HOST_SHELL.
+host_shell: ""
 
 # --- Sandbox ---
 

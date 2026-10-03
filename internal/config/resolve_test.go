@@ -160,6 +160,16 @@ func TestResolve_SandboxPrecedence(t *testing.T) {
 	assert.Equal(t, "auto", got.SandboxMode, "flag beats env beats file")
 }
 
+func TestResolve_HostShellPrecedence(t *testing.T) {
+	clearEnv(t)
+	file := Config{HostShell: "gitbash"}
+	assert.Empty(t, Resolve(Config{}, Config{}, -1).HostShell, "empty picks per OS")
+	assert.Equal(t, "gitbash", Resolve(file, Config{}, -1).HostShell)
+
+	t.Setenv("DETENT_HOST_SHELL", "pwsh")
+	assert.Equal(t, "pwsh", Resolve(file, Config{}, -1).HostShell, "env beats file")
+}
+
 func TestResolve_ContextTokensPrecedence(t *testing.T) {
 	t.Setenv("DETENT_CONTEXT_TOKENS", "64000")
 	file := Config{ContextTokens: 8_000}
