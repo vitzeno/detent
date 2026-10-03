@@ -121,8 +121,32 @@ func TestApply_BoundPausesForAnAnswer(t *testing.T) {
 	m := feed(t, append(evs, event.BoundReached{Turn: turn, Steps: 50})...)
 	require.NotNil(t, m.bound)
 	assert.False(t, m.waiting)
-	m.mode = modeBound
+	assert.Equal(t, modeBound, m.mode, "nothing but the fact may be needed to ask")
 	assert.Contains(t, m.questionBox(), "50 steps")
+
+	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndBound})
+	assert.Nil(t, m.bound)
+	assert.Equal(t, modeInput, m.mode)
+}
+
+// A question the engine asks waits behind one the human is answering,
+// rather than pulling it out from under them.
+func TestApply_EngineQuestionWaitsForTheHumansOwn(t *testing.T) {
+	for _, own := range []mode{modeUndo, modeForget} {
+		turn, evs := aTurn("clean up")
+		call := uuid.Must(uuid.NewV7())
+		m := feed(t, evs...)
+		m.mode = own
+		m.apply(event.ApprovalAsked{Call: call, Tool: "bash", Args: map[string]any{"command": "rm -rf build"}})
+		assert.Equal(t, own, m.mode, "the page they are reading stays")
+
+		m.backToInput()
+		assert.Equal(t, modeConfirm, m.mode, "and the approval comes up once it is answered")
+
+		m.mode = own
+		m.apply(event.TurnEnded{Turn: turn, Reason: event.EndAborted})
+		assert.Equal(t, own, m.mode, "a Turn ending does not dismiss it either")
+	}
 }
 
 func TestApply_RollbackDropsTheTurnAndEverythingAfter(t *testing.T) {

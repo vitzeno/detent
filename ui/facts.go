@@ -23,6 +23,8 @@ func (m Model) Restore(records []event.Record) Model {
 	m.replaying = false
 	m.staleSignIns()
 	m.trackNewest()
+	// Nothing waits on a question the old process asked.
+	m.asking, m.bound = nil, nil
 	m.backToInput()
 	return m
 }
@@ -66,6 +68,7 @@ func (m *Model) apply(ev event.Event) {
 	case event.BoundReached:
 		m.bound = &v
 		m.waiting = false
+		m.raise(modeBound)
 
 	case event.ModelText:
 		m.addProse(v.Text)
@@ -80,8 +83,9 @@ func (m *Model) apply(ev event.Event) {
 
 	case event.ApprovalAsked:
 		m.asking = &v
-		m.mode = modeConfirm
+		m.confirm = confirmState{}
 		m.waiting = false
+		m.raise(modeConfirm)
 
 	case event.CallStarted:
 		if r := m.row(v.Call); r != nil {
@@ -167,7 +171,9 @@ func (m *Model) endTurn(v event.TurnEnded) {
 	m.cur, m.asking, m.bound = nil, nil, nil
 	m.waiting = false
 	m.tokens += v.Usage.Tokens()
-	m.backToInput()
+	if !m.askingOwn() {
+		m.backToInput()
+	}
 }
 
 // addProse gives the model's words a row of their own: it is the

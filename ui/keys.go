@@ -128,12 +128,27 @@ func (m Model) boundKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// confirmKey answers an approval. y waits until the whole command has
+// been on screen, since approving a tail nobody saw is no approval.
 func (m Model) confirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	_, room := m.confirmLines()
 	switch msg.String() {
 	case "y", "Y", "enter":
+		if !m.confirmReady() {
+			m.noteErr("read to the end of the command first: ↓ scrolls it")
+			return m, nil
+		}
 		return m.approve()
 	case "n", "N":
 		return m.decline()
+	case "down":
+		m.scrollConfirm(1)
+	case "up":
+		m.scrollConfirm(-1)
+	case "pgdown":
+		m.scrollConfirm(room)
+	case "pgup":
+		m.scrollConfirm(-room)
 	}
 	return m, nil
 }

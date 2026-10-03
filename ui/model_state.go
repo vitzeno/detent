@@ -77,6 +77,13 @@ type forgetState struct {
 	target *event.SessionSummary
 }
 
+// confirmState is how far the human has read a command too tall for
+// its box. seenEnd sticks, so scrolling back up does not unread it.
+type confirmState struct {
+	top     int
+	seenEnd bool
+}
+
 // undoState is an undo waiting on the human to say whether their own
 // files go back with the container.
 type undoState struct {

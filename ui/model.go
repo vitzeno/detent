@@ -43,8 +43,9 @@ type Model struct {
 
 	// asking and bound are the two questions the engine can put to a
 	// human. Both are answered by publishing, never by calling.
-	asking *event.ApprovalAsked
-	bound  *event.BoundReached
+	asking  *event.ApprovalAsked
+	bound   *event.BoundReached
+	confirm confirmState
 
 	nav    navState
 	panel  panelState
@@ -313,11 +314,31 @@ func (m Model) runMode() string {
 	return "host"
 }
 
+// backToInput returns to the prompt, or to an engine question that
+// arrived while the human was answering one of their own.
 func (m *Model) backToInput() {
 	m.mode = modeInput
+	switch {
+	case m.asking != nil:
+		m.mode = modeConfirm
+	case m.bound != nil:
+		m.mode = modeBound
+	}
 	m.nav.focus = focusInput
 	m.prompt.Focus()
 }
+
+// raise puts an engine question up, unless undo or delete is mid-answer:
+// backToInput raises it once that is done.
+func (m *Model) raise(q mode) {
+	if !m.askingOwn() {
+		m.mode = q
+	}
+}
+
+// askingOwn is whether the bottom zone holds a question the human
+// asked for, which a fact must not pull out from under them.
+func (m Model) askingOwn() bool { return m.mode == modeUndo || m.mode == modeForget }
 
 // trackNewest scrolls history whatever the human was doing, but moves
 // the cursor only when nobody is reading the output pane.

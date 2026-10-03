@@ -22,10 +22,12 @@ func (m *Model) sizeViewport() {
 	case modeBound, modeUndo, modeForget:
 		bottom = len(strings.Split(m.questionBox(), "\n"))
 	}
-	avail := m.layout.height - 2 - islandOverhead - bottom
-	if avail < 6 {
-		avail = 6
+	// A command being approved outranks the panes on a short screen.
+	floor := minBodyRows
+	if m.mode == modeConfirm {
+		floor = 1
 	}
+	avail := max(floor, m.layout.height-2-islandOverhead-bottom)
 	m.nav.histHeight = avail
 	m.output.SetHeight(avail)
 
@@ -44,6 +46,8 @@ const (
 	// islandOverhead is a titled zone island's non-content lines:
 	// header plus top and bottom border.
 	islandOverhead = 3
+	// minBodyRows is the fewest rows the panes shrink to for a question.
+	minBodyRows = 6
 )
 
 // paneInner matches island.Render's own inner := width-4.

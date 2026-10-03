@@ -2,10 +2,13 @@ package ui
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,12 +47,70 @@ func TestKeys_ApprovalIsAnswered(t *testing.T) {
 	assert.Equal(t, modeInput, k.m.mode)
 }
 
+// A command taller than the screen must not be approvable from its
+// head: the tail is where the damage would be.
+func TestKeys_TallApprovalRunsOnlyOnceReadToTheEnd(t *testing.T) {
+	k := newKeyed(t)
+	call := uuid.Must(uuid.NewV7())
+	var script strings.Builder
+	script.WriteString("cat > setup.sh <<'EOF'\n")
+	for i := range 60 {
+		fmt.Fprintf(&script, "echo step %d\n", i)
+	}
+	script.WriteString("EOF\nrm -rf ~/important")
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "set up"})
+	k.m.apply(event.ApprovalAsked{Call: call, Tool: "bash",
+		Args: map[string]any{"command": script.String()}, Rationale: "writes a file"})
+	k.m.sizeViewport()
+
+	screen := func() string { return ansi.Strip(k.m.baseView()) }
+	assert.LessOrEqual(t, strings.Count(screen(), "\n")+1, k.m.layout.height, "the frame fits the screen")
+	assert.NotContains(t, screen(), "rm -rf ~/important", "the tail is off screen")
+	assert.NotContains(t, screen(), "[y/enter] run", "so running it is not offered")
+	assert.Contains(t, screen(), "more below")
+
+	k.press(t, "y")
+	assert.Equal(t, modeConfirm, k.m.mode, "y is refused until the end is read")
+	require.NotNil(t, k.m.asking)
+
+	for range 20 {
+		k.press(t, "pgdown")
+	}
+	assert.LessOrEqual(t, strings.Count(screen(), "\n")+1, k.m.layout.height)
+	assert.Contains(t, screen(), "rm -rf ~/important")
+	assert.Contains(t, screen(), "[y/enter] run")
+
+	k.press(t, "y")
+	got, ok := k.intent(t).(event.ResolveApproval)
+	require.True(t, ok)
+	assert.Equal(t, call, got.Call)
+	assert.True(t, got.Approved)
+}
+
+// What the model proposes is drawn, never obeyed: an escape in it must
+// not reach the terminal on the rows a human reads to approve it.
+func TestKeys_ProposedTextCannotDriveTheTerminal(t *testing.T) {
+	k := newKeyed(t)
+	call := uuid.Must(uuid.NewV7())
+	const sneaky = "ls\x1b]52;c;cm0gLXJmIH4=\x07\x1b[2K\rrm -rf ~"
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "look"})
+	k.m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": sneaky}})
+	k.m.apply(event.ApprovalAsked{Call: call, Tool: "bash", Args: map[string]any{"command": sneaky}})
+	k.m.sizeViewport()
+
+	view := k.m.baseView()
+	assert.NotContains(t, view, "\x1b]52", "no OSC from the command")
+	assert.NotContains(t, view, "\x1b[2K")
+	assert.NotContains(t, view, "\r")
+	assert.Contains(t, ansi.Strip(view), "^[]52;c;", "it is shown instead")
+}
+
 func TestKeys_BoundIsAnswered(t *testing.T) {
 	k := newKeyed(t)
 	turn := uuid.Must(uuid.NewV7())
 	k.m.apply(event.TurnStarted{Turn: turn, N: 1, Prompt: "big"})
 	k.m.apply(event.BoundReached{Turn: turn, Steps: 50})
-	k.m.mode = modeBound
+	require.Equal(t, modeBound, k.m.mode, "the fact alone puts the question up")
 
 	k.press(t, "n")
 	got, ok := k.intent(t).(event.Continue)
@@ -219,6 +280,10 @@ func keyCode(key string) rune {
 		return tea.KeyEscape
 	case "tab", "shift+tab":
 		return tea.KeyTab
+	case "down":
+		return tea.KeyDown
+	case "pgdown":
+		return tea.KeyPgDown
 	}
 	return rune(key[0])
 }
