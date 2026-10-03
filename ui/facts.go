@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/status"
 )
 
@@ -184,7 +185,8 @@ func (m *Model) addProse(text string) {
 		return
 	}
 	m.cur.rev++
-	m.cur.rows = append(m.cur.rows, &callRow{prose: text})
+	// Defused once here, since the pane draws it whole through glamour.
+	m.cur.rows = append(m.cur.rows, &callRow{prose: layout.Printable(text)})
 	m.trackNewest()
 }
 
