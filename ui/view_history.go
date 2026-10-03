@@ -274,16 +274,13 @@ func (m Model) rowLines(r, focused *callRow) []string {
 	// Where there is no room for both, the command beats the detail.
 	head := lipgloss.Width(stripStyle(mark)) + lipgloss.Width(icon) + 1
 	tail := "· " + detail
-	if m.blockWidth()-head-1-lipgloss.Width(tail) < minCommandCells {
+	if m.blockWidth()-head-1-lipgloss.Width(tail) < layout.MinTruncate {
 		cmd := layout.Truncate(r.command, m.blockWidth()-head)
 		return []string{fmt.Sprintf("%s%s %s", mark, icon, cmd)}
 	}
 	cmd := layout.Truncate(r.command, m.blockWidth()-head-1-lipgloss.Width(tail))
 	return []string{fmt.Sprintf("%s%s %s %s", mark, icon, cmd, styleMuted.Render(tail))}
 }
-
-// minCommandCells is what layout.Truncate will not go below.
-const minCommandCells = 4
 
 // stripStyle measures what a styled string occupies, since a row's
 // budget is cells and ANSI is bytes.
