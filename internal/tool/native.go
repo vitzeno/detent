@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -102,4 +103,20 @@ func (c ctxReader) Read(p []byte) (int, error) {
 		return 0, err
 	}
 	return c.r.Read(p)
+}
+
+// writeAsShell writes as a shell redirect does: truncating in place, or
+// creating with 0666 less the umask.
+func writeAsShell(p, s string) error {
+	return os.WriteFile(p, []byte(s), 0o666) //nolint:gosec // the mode a command's own redirect would give it
+}
+
+// osReason is err without the operation Go puts in front of it, so a
+// failure reads "nope: no such file or directory" as a command's does.
+func osReason(p string, err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return p + ": " + pe.Err.Error()
+	}
+	return p + ": " + err.Error()
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"io/fs"
 	"os"
 	"strings"
 	"unicode"
@@ -53,16 +52,6 @@ func walkFiles(ctx context.Context, dir string, skip func(name string) bool, vis
 			return nil
 		}
 	}
-}
-
-// osReason is err without the operation Go puts in front of it, so a
-// failure reads "nope: no such file or directory" as a command's does.
-func osReason(p string, err error) string {
-	var pe *fs.PathError
-	if errors.As(err, &pe) {
-		return p + ": " + pe.Err.Error()
-	}
-	return p + ": " + err.Error()
 }
 
 // fnmatch is fnmatch(3) with no flags, as find and grep --include read a

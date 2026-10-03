@@ -81,9 +81,3 @@ func writeArgs(a Args) (string, error) {
 	}
 	return p, nil
 }
-
-// writeAsShell writes as a shell redirect does: truncating in place, or
-// creating with 0666 less the umask.
-func writeAsShell(p, s string) error {
-	return os.WriteFile(p, []byte(s), 0o666) //nolint:gosec // the mode a command's own redirect would give it
-}
