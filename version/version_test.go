@@ -20,6 +20,5 @@ func TestString_StartsWithTheNumber(t *testing.T) {
 // The number is what a human reads first, so it stays short and
 // parseable rather than growing a v or a build into itself.
 func TestNumber_IsBareSemver(t *testing.T) {
-	assert.NotContains(t, version.Number, "v")
-	assert.Len(t, strings.Split(version.Number, "."), 3)
+	assert.Regexp(t, `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`, version.Number)
 }
