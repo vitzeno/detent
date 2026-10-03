@@ -77,6 +77,7 @@ const (
 // tells ours from anything else in the namespace.
 const containerPrefix = "detent-"
 
+// leaseSuffix names the lease that roots a session's checkpoints.
 const leaseSuffix = "-checkpoints"
 
 // holderLabel names the process holding a session's container, as pid@host.
@@ -230,9 +231,8 @@ func (c *Container) Start(ctx context.Context, sessionID string) error {
 	return nil
 }
 
-// Run runs one command at a time as a task on the current snapshot, so
-// state carries over. Output goes to files, since cio's FIFOs need one
-// kernel. Run sends nothing after it returns, and the caller closes events.
+// Run runs one command as a task on the current snapshot, so state carries over, with
+// output in files since cio's FIFOs need one kernel. It sends nothing after it returns.
 func (c *Container) Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error) {
 	if c.container == nil {
 		return capture.Result{}, errNotStarted
