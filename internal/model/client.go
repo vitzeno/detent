@@ -22,21 +22,22 @@ const (
 	DefaultModel   = "openai/gpt-6-luna"
 )
 
-// retryWaits is the pause before each retry of a transient failure, a
-// var so a test need not wait.
-var retryWaits = []time.Duration{2 * time.Second, 8 * time.Second}
+const (
+	// maxRetryWait caps a Retry-After, so an endpoint cannot park a Turn.
+	maxRetryWait = 30 * time.Second
+	// maxResponseBytes bounds a reply. A Step's answer is kilobytes.
+	maxResponseBytes = 32 << 20
+	// instructionsSep sits between the built-in prompt and the project's own.
+	instructionsSep = "\n\n"
+)
 
-// maxRetryWait caps a Retry-After, so an endpoint cannot park a Turn.
-const maxRetryWait = 30 * time.Second
-
-// maxResponseBytes bounds a reply. A Step's answer is kilobytes.
-const maxResponseBytes = 32 << 20
-
-// instructionsSep sits between the built-in prompt and the project's own.
-const instructionsSep = "\n\n"
-
-// defaultHTTPClient bounds a Step that never answers.
-var defaultHTTPClient = &http.Client{Timeout: 5 * time.Minute}
+var (
+	// retryWaits is the pause before each retry of a transient failure, a
+	// var so a test need not wait.
+	retryWaits = []time.Duration{2 * time.Second, 8 * time.Second}
+	// defaultHTTPClient bounds a Step that never answers.
+	defaultHTTPClient = &http.Client{Timeout: 5 * time.Minute}
+)
 
 // Client is one OpenAI-compatible endpoint. Covers OpenRouter and a
 // local LM Studio alike.
