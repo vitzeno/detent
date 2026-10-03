@@ -219,7 +219,7 @@ func TestJevJudge_Ask_Failures(t *testing.T) {
 			defer srv.Close()
 			j := NewJevJudge("k", WithEndpoint(srv.URL))
 			if tc.model == "-" {
-				j.Model = ""
+				j.model = ""
 			}
 			_, _, err := j.Ask(context.Background(), State(nil), Questions{"x": {Noul: &NoulQuestion{}}})
 			require.Error(t, err)

@@ -17,25 +17,26 @@ const DefaultModel = "jev-1.13.0"
 
 var (
 	// ErrNoModel is a JevJudge with no model to ask.
-	ErrNoModel = errors.New("classify: JevJudge.Model is empty")
+	ErrNoModel = errors.New("classify: JevJudge has no model")
 	// ErrNoKind is a Question with none of Choice, Noul or Score set.
 	ErrNoKind = errors.New("has none of Choice/Noul/Score set")
 )
 
-const jevEndpoint = "https://api.typesafe.ai/v1/systemone"
-
-// maxResponseBytes bounds a reply. A real one is a few KB.
-const maxResponseBytes = 1 << 20
+const (
+	jevEndpoint = "https://api.typesafe.ai/v1/systemone"
+	// maxResponseBytes bounds a reply. A real one is a few KB.
+	maxResponseBytes = 1 << 20
+)
 
 // defaultClient is what a JevJudge with no client of its own uses.
 var defaultClient = &http.Client{Timeout: 60 * time.Second}
 
 // JevJudge asks TypeSafe's Jev over HTTP.
 type JevJudge struct {
-	Model      string
-	APIKey     string
-	Endpoint   string
-	HTTPClient *http.Client
+	model    string
+	apiKey   string
+	endpoint string
+	client   *http.Client
 }
 
 // Option overrides a NewJevJudge default.
@@ -44,8 +45,8 @@ type Option func(*JevJudge)
 // NewJevJudge returns a judge on DefaultModel and the public endpoint.
 func NewJevJudge(apiKey string, opts ...Option) *JevJudge {
 	j := &JevJudge{
-		Model:  DefaultModel,
-		APIKey: apiKey,
+		model:  DefaultModel,
+		apiKey: apiKey,
 	}
 	for _, opt := range opts {
 		opt(j)
@@ -55,17 +56,17 @@ func NewJevJudge(apiKey string, opts ...Option) *JevJudge {
 
 // WithModel pins a model id other than DefaultModel.
 func WithModel(model string) Option {
-	return func(j *JevJudge) { j.Model = model }
+	return func(j *JevJudge) { j.model = model }
 }
 
 // WithEndpoint points the judge somewhere other than the public API.
 func WithEndpoint(endpoint string) Option {
-	return func(j *JevJudge) { j.Endpoint = endpoint }
+	return func(j *JevJudge) { j.endpoint = endpoint }
 }
 
 // WithHTTPClient replaces the default client and its 60s timeout.
 func WithHTTPClient(client *http.Client) Option {
-	return func(j *JevJudge) { j.HTTPClient = client }
+	return func(j *JevJudge) { j.client = client }
 }
 
 // Ask sends every question in one request. An answer missing its value,
@@ -74,7 +75,7 @@ func (j *JevJudge) Ask(ctx context.Context, state State, qs Questions) (Answers,
 	if j == nil {
 		return nil, Usage{}, errors.New("classify: nil JevJudge")
 	}
-	if j.Model == "" {
+	if j.model == "" {
 		return nil, Usage{}, ErrNoModel
 	}
 
@@ -87,16 +88,16 @@ func (j *JevJudge) Ask(ctx context.Context, state State, qs Questions) (Answers,
 		wireQs[id] = wq
 	}
 
-	body, err := json.Marshal(wireRequest{Model: j.Model, State: state, Questions: wireQs})
+	body, err := json.Marshal(wireRequest{Model: j.model, State: state, Questions: wireQs})
 	if err != nil {
 		return nil, Usage{}, fmt.Errorf("classify: encoding request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, j.endpoint(), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, j.url(), bytes.NewReader(body))
 	if err != nil {
 		return nil, Usage{}, fmt.Errorf("classify: building request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+j.APIKey)
+	req.Header.Set("Authorization", "Bearer "+j.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	t0 := time.Now()
@@ -148,16 +149,16 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string { return fmt.Sprintf("classify: HTTP %d: %s", e.Status, e.Body) }
 
-func (j *JevJudge) endpoint() string {
-	if j.Endpoint != "" {
-		return j.Endpoint
+func (j *JevJudge) url() string {
+	if j.endpoint != "" {
+		return j.endpoint
 	}
 	return jevEndpoint
 }
 
 func (j *JevJudge) httpClient() *http.Client {
-	if j.HTTPClient != nil {
-		return j.HTTPClient
+	if j.client != nil {
+		return j.client
 	}
 	return defaultClient
 }
