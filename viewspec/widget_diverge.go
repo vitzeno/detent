@@ -32,15 +32,7 @@ func (divergeWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 3 {
 		return errors.New("diverge needs a label column and two value columns")
 	}
-	if len(fields) == 0 {
-		return ErrNoRows
-	}
-	for _, c := range b.Columns {
-		if err := needField(c.Field, fields); err != nil {
-			return err
-		}
-	}
-	return checkShared(b, fields)
+	return checkColumns(b, fields)
 }
 
 func (divergeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {

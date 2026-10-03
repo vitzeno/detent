@@ -32,15 +32,7 @@ func (gaugeWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
 		return errors.New("gauge needs a label column and a percentage column")
 	}
-	if len(fields) == 0 {
-		return ErrNoRows
-	}
-	for _, c := range b.Columns {
-		if err := needField(c.Field, fields); err != nil {
-			return err
-		}
-	}
-	return checkShared(b, fields)
+	return checkColumns(b, fields)
 }
 
 func (gaugeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {

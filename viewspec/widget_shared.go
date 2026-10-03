@@ -32,7 +32,7 @@ func checkShared(b Block, fields []string) error {
 	return nil
 }
 
-// checkColumns is the validation every multi-column chart shares: rows
+// checkColumns is the validation every multi-column widget shares: rows
 // exist, each named column was parsed, and the shared keys resolve.
 func checkColumns(b Block, fields []string) error {
 	if len(fields) == 0 {
