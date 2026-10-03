@@ -137,6 +137,21 @@ func gitExecPath() string {
 	return strings.TrimSpace(string(out))
 }
 
+// argv is the program and arguments that run command in this dialect.
+func (s *Shell) argv(command string) ([]string, error) {
+	switch s.Dialect() {
+	case Pwsh:
+		args, err := pwshArgs(command)
+		if err != nil {
+			return nil, err
+		}
+		return append([]string{s.path}, args...), nil
+	case GitBash:
+		return []string{s.path, "-c", command}, nil
+	}
+	return []string{cmp.Or(s.path, "sh"), "-c", command}, nil
+}
+
 // pwshPrelude makes output UTF-8 rather than the console's code page,
 // and keeps progress bars out of the capture.
 const pwshPrelude = "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n" +
@@ -171,19 +186,4 @@ func encodeUTF16(s string) string {
 		binary.LittleEndian.PutUint16(b[2*i:], u)
 	}
 	return base64.StdEncoding.EncodeToString(b)
-}
-
-// argv is the program and arguments that run command in this dialect.
-func (s *Shell) argv(command string) ([]string, error) {
-	switch s.Dialect() {
-	case Pwsh:
-		args, err := pwshArgs(command)
-		if err != nil {
-			return nil, err
-		}
-		return append([]string{s.path}, args...), nil
-	case GitBash:
-		return []string{s.path, "-c", command}, nil
-	}
-	return []string{cmp.Or(s.path, "sh"), "-c", command}, nil
 }
