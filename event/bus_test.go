@@ -171,33 +171,146 @@ func TestBus_ConcurrentPublishersAndSubscribers(t *testing.T) {
 	for i := range counts {
 		ch, stop := b.Subscribe(Only(NoticeKind))
 		stops[i] = stop
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range ch {
 				counts[i]++
 			}
-		}()
+		})
 	}
 
 	var pw sync.WaitGroup
 	for range pubs {
-		pw.Add(1)
-		go func() {
-			defer pw.Done()
+		pw.Go(func() {
 			for range each {
 				b.Publish(Notice{Text: "x"})
 			}
-		}()
+		})
 	}
 	pw.Wait()
+	b.Settle(5 * time.Second)
 	for _, s := range stops {
 		s()
 	}
 	wg.Wait()
-	// Nothing lossy was published, but a stop can land mid-backlog, so
-	// the assertion is that delivery happened and nothing raced.
 	assert.Zero(t, b.Dropped())
+	for i, n := range counts {
+		assert.Equal(t, pubs*each, n, "subscriber %d missed records", i)
+	}
+}
+
+// Ordinals are minted in one order, so every subscriber must see that
+// order, or replay and the live view disagree about what came first.
+func TestBus_ConcurrentPublishersDeliverInOrdinalOrder(t *testing.T) {
+	b := New()
+	const pubs, each = 8, 200
+	subs := make([]<-chan Record, 3)
+	for i := range subs {
+		ch, stop := b.Subscribe(nil)
+		defer stop()
+		subs[i] = ch
+	}
+
+	var pw sync.WaitGroup
+	for range pubs {
+		pw.Go(func() {
+			for range each {
+				b.Publish(Notice{Text: "x"})
+			}
+		})
+	}
+	for i, ch := range subs {
+		got := drainN(t, ch, pubs*each)
+		for j := 1; j < len(got); j++ {
+			require.Less(t, got[j-1].Ordinal, got[j].Ordinal, "subscriber %d saw ordinals out of order", i)
+		}
+	}
+	pw.Wait()
+}
+
+// A filter that panics must cost only its own subscriber, not leave the
+// bus locked for everyone.
+func TestBus_APanickingFilterIsNotInterested(t *testing.T) {
+	b := New()
+	defer b.Close()
+	_, stopBad := b.Subscribe(func(Event) bool { panic("filter") })
+	defer stopBad()
+	ch, stop := b.Subscribe(nil)
+	defer stop()
+
+	assert.NotPanics(t, func() { b.Publish(Notice{Text: "x"}) })
+	assert.NotPanics(t, func() { b.Publish(Notice{Text: "y"}) })
+	assert.Len(t, drainN(t, ch, 2), 2, "the bus still delivers to everyone else")
+}
+
+// Settle on a Handle subscriber means handled, which is what a test
+// ordering one thing after a subscriber's reaction needs.
+func TestBus_SettleWaitsForAHandlerToReturn(t *testing.T) {
+	b := New()
+	defer b.Close()
+	var handled atomic.Int64
+	stop := b.Handle(nil, func(Record) {
+		time.Sleep(time.Millisecond)
+		handled.Add(1)
+	})
+	defer stop()
+
+	for range 20 {
+		b.Publish(Notice{Text: "x"})
+	}
+	b.Settle(3 * time.Second)
+	assert.EqualValues(t, 20, handled.Load())
+}
+
+// Stop must not return while a handler is still running, or it acts on
+// things its owner has already closed.
+func TestBus_HandleStopWaitsForTheRunningHandler(t *testing.T) {
+	b := New()
+	defer b.Close()
+	entered, release := make(chan struct{}), make(chan struct{})
+	var finished atomic.Bool
+	stop := b.Handle(nil, func(Record) {
+		close(entered)
+		<-release
+		finished.Store(true)
+	})
+	b.Publish(Notice{Text: "x"})
+	<-entered
+
+	stopped := make(chan struct{})
+	go func() { stop(); close(stopped) }()
+	select {
+	case <-stopped:
+		t.Fatal("stop returned while the handler was running")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(release)
+	<-stopped
+	assert.True(t, finished.Load())
+}
+
+// A subscriber stopped with a backlog owes nothing, so Settle does not
+// wait out its whole timeout on it.
+func TestBus_SettleSkipsAStoppedBacklog(t *testing.T) {
+	b := New()
+	defer b.Close()
+	_, stop := b.Subscribe(nil)
+	for range 50 {
+		b.Publish(Notice{Text: "x"})
+	}
+	stop()
+	start := time.Now()
+	b.Settle(2 * time.Second)
+	assert.Less(t, time.Since(start), time.Second)
+}
+
+func TestBus_SubscribeAfterDrainIsClosed(t *testing.T) {
+	b := New()
+	b.Drain(time.Second)
+	ch, stop := b.Subscribe(nil)
+	defer stop()
+	_, open := <-ch
+	assert.False(t, open)
+	assert.NotPanics(t, b.Handle(nil, func(Record) {}))
 }
 
 // Shutdown is the one time a backlog must not be abandoned: the

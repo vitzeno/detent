@@ -34,57 +34,111 @@ func (b *Bus) Resume(from uint64) {
 	}
 }
 
-// Publish stamps e and hands it to every interested subscriber.
+// Publish stamps e and hands it to every interested subscriber. The
+// pushes happen under the lock, so every subscriber sees ordinal order.
 func (b *Bus) Publish(e Event) {
 	if e == nil {
 		return
 	}
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	if b.shut {
-		b.mu.Unlock()
 		return
 	}
 	b.ordinal++
 	r := Record{Ordinal: b.ordinal, At: time.Now(), Event: e}
-	targets := make([]*sub, 0, len(b.subs))
 	for _, s := range b.subs {
-		if s.filter == nil || s.filter(e) {
-			targets = append(targets, s)
+		if wants(s.filter, e) {
+			s.push(r)
 		}
 	}
-	b.mu.Unlock()
+}
 
-	for _, s := range targets {
-		s.push(r)
+// wants runs a filter, and treats one that panics as not interested
+// rather than letting it unwind through Publish.
+func wants(f Filter, e Event) (ok bool) {
+	if f == nil {
+		return true
 	}
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	return f(e)
 }
 
 // Subscribe returns matching Records and a func that stops them. The
 // channel closes on either, so a range over it terminates.
 func (b *Bus) Subscribe(f Filter) (<-chan Record, func()) {
-	s := newSub(f, &b.dropped)
-	b.mu.Lock()
-	if b.shut {
-		b.mu.Unlock()
-		close(s.out)
-		return s.out, func() {}
+	out := make(chan Record)
+	s := newSub(f, &b.dropped, func(r Record, done <-chan struct{}) bool {
+		select {
+		case out <- r:
+			return true
+		case <-done:
+			return false
+		}
+	})
+	if !b.add(s) {
+		close(out)
+		return out, func() {}
 	}
-	id := b.next
-	b.next++
-	b.subs[id] = s
-	b.mu.Unlock()
-
-	go s.drain()
-	return s.out, func() {
-		b.mu.Lock()
-		delete(b.subs, id)
-		b.mu.Unlock()
+	go func() {
+		defer close(out)
+		s.drain()
+	}()
+	return out, func() {
+		b.remove(s)
 		s.stop()
 	}
 }
 
+// Handle calls h with each matching Record, one at a time on a
+// goroutine of its own. Unlike Subscribe, Settle then waits for h to
+// return, not just for the Record to be received. The returned func
+// stops delivery and waits for a running h, so h must never call it.
+func (b *Bus) Handle(f Filter, h func(Record)) func() {
+	s := newSub(f, &b.dropped, func(r Record, _ <-chan struct{}) bool {
+		h(r)
+		return true
+	})
+	if !b.add(s) {
+		return func() {}
+	}
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		s.drain()
+	}()
+	return func() {
+		b.remove(s)
+		s.stop()
+		<-finished
+	}
+}
+
+// add registers s, or reports that the bus no longer takes subscribers.
+func (b *Bus) add(s *sub) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.shut {
+		return false
+	}
+	s.id = b.next
+	b.next++
+	b.subs[s.id] = s
+	return true
+}
+
+func (b *Bus) remove(s *sub) {
+	b.mu.Lock()
+	delete(b.subs, s.id)
+	b.mu.Unlock()
+}
+
 // Drain stops accepting publishes, then waits up to timeout for every
-// subscriber to receive what is already queued, then closes.
+// subscriber to finish with what is already queued, then closes.
 func (b *Bus) Drain(timeout time.Duration) {
 	b.mu.Lock()
 	b.shut = true
@@ -93,8 +147,9 @@ func (b *Bus) Drain(timeout time.Duration) {
 	b.Close()
 }
 
-// Settle waits up to timeout for every subscriber to receive what is
-// queued, without shutting anything.
+// Settle waits up to timeout for every subscriber to finish with what is
+// queued, without shutting anything. A Subscribe channel has finished
+// with a Record once it is received, a Handle func once it has returned.
 func (b *Bus) Settle(timeout time.Duration) {
 	b.mu.Lock()
 	subs := make([]*sub, 0, len(b.subs))
@@ -131,11 +186,12 @@ func (b *Bus) Close() {
 	}
 }
 
-// Dropped counts lossy Records nobody received. Survives Close,
-// because the number is only useful afterwards.
+// Dropped counts lossy deliveries dropped, summed over subscribers.
+// Survives Close, because the number is only useful afterwards.
 func (b *Bus) Dropped() uint64 { return b.dropped.Load() }
 
-// Filter reports whether a subscriber wants an Event. nil takes all.
+// Filter reports whether a subscriber wants an Event. nil takes all. It
+// runs under the bus lock, so it must be fast and never publish.
 type Filter func(Event) bool
 
 // Only takes the named kinds.
@@ -157,8 +213,9 @@ func Facts() Filter { return func(e Event) bool { return !e.Kind().IsIntent() } 
 const queueDepth = 512
 
 type sub struct {
+	id      int
 	filter  Filter
-	out     chan Record
+	deliver func(r Record, done <-chan struct{}) bool
 	done    chan struct{}
 	dropped *atomic.Uint64
 
@@ -166,13 +223,13 @@ type sub struct {
 	cond  *sync.Cond
 	queue []Record
 	// pushed and taken bracket delivery: a Record off the queue but
-	// not yet received is still owed, which is what Drain waits on.
+	// not yet delivered is still owed, which is what Drain waits on.
 	pushed, taken uint64
 	closed        bool
 }
 
-func newSub(f Filter, dropped *atomic.Uint64) *sub {
-	s := &sub{filter: f, out: make(chan Record, 1), done: make(chan struct{}), dropped: dropped}
+func newSub(f Filter, dropped *atomic.Uint64, deliver func(Record, <-chan struct{}) bool) *sub {
+	s := &sub{filter: f, deliver: deliver, done: make(chan struct{}), dropped: dropped}
 	s.cond = sync.NewCond(&s.mu)
 	return s
 }
@@ -196,7 +253,6 @@ func (s *sub) push(r Record) {
 // drain is the only thing that waits on the consumer. It abandons the
 // backlog on stop, which is what stops the goroutine leaking.
 func (s *sub) drain() {
-	defer close(s.out)
 	for {
 		s.mu.Lock()
 		for len(s.queue) == 0 && !s.closed {
@@ -207,24 +263,31 @@ func (s *sub) drain() {
 			return
 		}
 		r := s.queue[0]
+		// Cleared so a delivered burst is not kept alive by the backing array.
+		s.queue[0] = Record{}
 		s.queue = s.queue[1:]
+		if len(s.queue) == 0 {
+			s.queue = nil
+		}
 		s.mu.Unlock()
 
-		select {
-		case s.out <- r:
-			s.mu.Lock()
-			s.taken++
-			s.mu.Unlock()
-		case <-s.done:
+		if !s.deliver(r, s.done) {
 			return
 		}
+		s.mu.Lock()
+		s.taken++
+		s.mu.Unlock()
 	}
 }
 
-// owed is how much has been pushed but not yet received.
+// owed is how much has been pushed but not yet delivered. A stopped
+// subscriber owes nothing, since nobody will take its backlog.
 func (s *sub) owed() uint64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return 0
+	}
 	return s.pushed - s.taken
 }
 
@@ -235,6 +298,7 @@ func (s *sub) stop() {
 		return
 	}
 	s.closed = true
+	s.queue = nil
 	s.mu.Unlock()
 	close(s.done)
 	s.cond.Broadcast()
