@@ -6,8 +6,22 @@ import (
 	"fmt"
 )
 
-// Sessions saved before the tool call and user command names still
-// resume: their kinds and keys are renamed as they are read.
+// TODO(remove): delete this file once a store migration has rewritten
+// every record saved under the old names, so nothing on disk still needs it.
+//
+// What it does: the "Call" to "ToolCall" and "Shell" to "UserCommand" rename
+// changed event kinds and JSON keys, and events.db stores both verbatim
+// (no struct tags). Decode passes every stored record through upgrade,
+// which renames an old kind and the keys that kind carried, before the
+// codec sees it. Three shapes need it:
+//   - the ten renamed kinds ("call.ended" and so on): top-level "Call"
+//     becomes "ToolCall" and "Shell" becomes "UserCommand"
+//   - step.ended and turn.bound kept their kind, but "Calls" became "ToolCalls"
+//   - transcript.appended kept its kind, but each message's "Calls" became
+//     "Requests" and "CallID" became "RequestID"
+// Only those keys at those levels move, so a tool argument or output that
+// happens to contain "Call" is never touched. New records are written in
+// the new shape, and a current record passes through unchanged.
 
 // legacyKinds maps a kind as it was once stored to what it is now.
 var legacyKinds = map[Kind]Kind{
