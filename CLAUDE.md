@@ -373,7 +373,11 @@ adding a fat dependency fails with the transitive import named.
   require the same output and exit code, since the model reads
   whichever ran. The deliberate gaps: the host's grep is RE2 (no
   backreferences), and `list_dir` has its own format because `ls -l`
-  differs by OS. When the host shell is pwsh the shell tool is
+  differs by OS. A native tool honours its ctx, so the command timeout
+  and Abort stop it, holds a bounded amount of any one file (a line is
+  kept to the output budget and the rest skipped, edits refuse files over
+  50MB), and refuses a pipe, socket or device rather than block on it.
+  When the host shell is pwsh the shell tool is
   `powershell` rather than `bash` (`tool.StandardFor`), so a model
   asked for PowerShell does not write bash, and it is shown literally
   like bash. The shell tool is not privileged: same registry, same schema, same
