@@ -24,7 +24,16 @@ func TestCommand(t *testing.T) {
 		{"absent optionals are left out", "read_file",
 			map[string]any{"path": "main.go", "limit": nil}, "read_file path=main.go"},
 		{"bash without its argument still names itself", "bash",
-			map[string]any{}, "bash "},
+			map[string]any{}, "bash"},
+		{"a value with a space cannot pass for a second argument", "srv__send",
+			map[string]any{"to": "me other=x"}, `srv__send to="me other=x"`},
+		{"quotes and escapes are escaped", "srv__send",
+			map[string]any{"body": "say \"hi\"\x1b[2J"}, `srv__send body="say \"hi\"\x1b[2J"`},
+		{"an empty string is visible", "srv__send",
+			map[string]any{"to": ""}, `srv__send to=""`},
+		{"structured values are JSON", "srv__send",
+			map[string]any{"tags": []any{"a b", "c"}, "n": 2.5, "ok": true},
+			`srv__send n=2.5 ok=true tags=["a b","c"]`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

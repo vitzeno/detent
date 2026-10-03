@@ -170,7 +170,7 @@ func TestPrepare_CommandDescribesTheCall(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, call.Command, "github__create_issue")
 	assert.Contains(t, call.Command, "repo=detent")
-	assert.Contains(t, call.Command, "title=it broke")
+	assert.Contains(t, call.Command, `title="it broke"`)
 }
 
 // A shell tool must not pick up an executor, or every Call would take

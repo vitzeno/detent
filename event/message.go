@@ -1,10 +1,13 @@
 package event
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
+	"unicode"
 )
 
 // The transcript's vocabulary. Here rather than in the model client
@@ -57,19 +60,50 @@ func CallIDs(calls []ToolCall) []string {
 }
 
 // Command renders a call the way a human is shown it: bash as its own
-// command, anything else as tool(k=v), which truncates better than JSON.
+// command, anything else as tool k=v, which truncates better than JSON.
+// A value that could be misread is quoted, so k=v pairs never run together.
 func Command(tool string, args map[string]any) string {
 	if tool == "bash" {
 		if c, ok := args["command"].(string); ok {
 			return c
 		}
 	}
-	parts := make([]string, 0, len(args))
+	parts := []string{tool}
 	for _, k := range slices.Sorted(maps.Keys(args)) {
 		if args[k] == nil {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s=%v", k, args[k]))
+		parts = append(parts, k+"="+value(args[k]))
 	}
-	return tool + " " + strings.Join(parts, " ")
+	return strings.Join(parts, " ")
+}
+
+// value prints a string bare when nothing in it could be misread, and
+// anything else as JSON, whose strings are quoted and escaped.
+func value(v any) string {
+	if s, ok := v.(string); ok {
+		if plain(s) {
+			return s
+		}
+		return strconv.Quote(s)
+	}
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return strconv.Quote(fmt.Sprint(v))
+	}
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
+func plain(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !unicode.IsPrint(r) || unicode.IsSpace(r) || strings.ContainsRune(`"'\=`, r) {
+			return false
+		}
+	}
+	return true
 }
