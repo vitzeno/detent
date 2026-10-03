@@ -28,9 +28,8 @@ func Dirs(dir string) []string {
 	}
 }
 
-// Contains reports whether p, links followed, is dir or under it. A link to
-// nothing is not inside, since where it points cannot be checked, and a path
-// with nothing there at all is fs.ErrNotExist, for the caller to decide.
+// Contains reports whether p, links followed, is dir or under it. A link to nothing
+// is not inside, and nothing there at all is fs.ErrNotExist, for the caller to decide.
 func Contains(dir, p string) (bool, error) {
 	resolved, err := filepath.EvalSymlinks(p)
 	if err != nil {
