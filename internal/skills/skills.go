@@ -19,6 +19,7 @@ import (
 // maxHead bounds what is read of a SKILL.md at startup, where only its header is wanted.
 const maxHead = 64 * 1024
 
+// validName is the standard's rule for a name, which is warned about rather than enforced.
 var validName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 // Skill is one SKILL.md and what its frontmatter says about it.
