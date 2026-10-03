@@ -112,7 +112,7 @@ func signInPageLines(s *signInState, width int) []string {
 	case stageWaiting:
 		// Drawn below, the one stage that asks for something.
 	}
-	link := lipgloss.NewStyle().Foreground(accent).Bold(true).Hyperlink(s.url).Render("Sign in to " + s.server + " ↗")
+	link := lipgloss.NewStyle().Foreground(palette.Accent).Bold(true).Hyperlink(s.url).Render("Sign in to " + s.server + " ↗")
 	out := []string{styleGoal.Render(s.server + " wants you to sign in"), "", "  " + link, "",
 		styleMuted.Render("  enter or o  open it in your browser"),
 		styleMuted.Render("  c           copy the link"), "",

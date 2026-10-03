@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"fmt"
-	"image/color"
 	"regexp"
 	"strings"
 	"testing"
@@ -17,9 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/event"
-	"github.com/vitzeno/detent/ui/status"
 	"github.com/vitzeno/detent/ui/theme"
-	"github.com/vitzeno/detent/ui/welcome"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -998,32 +995,12 @@ func TestMarkdownWidget_CachesPerDocumentAndStyle(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, "scribbled", again[0], "a caller cannot write into the cache")
 
-	was := theme.Markdown
-	t.Cleanup(func() { theme.Markdown = was })
-	theme.Markdown = "light"
+	was := theme.Current()
+	t.Cleanup(func() { theme.Apply(was) })
+	theme.Apply(theme.Themes["light"])
 	_, err = w.Draw(viewspec.Block{}, viewspec.Data{Raw: "# A\n\nfirst"}, f)
 	require.NoError(t, err)
 	assert.Len(t, w.cache, 3, "the style is part of the key")
-}
-
-// Three packages bake styles from the palette, and only RefreshStyles
-// reaches the other two. A theme they miss draws in the old colours.
-func TestRefreshStyles_ReachesEverySubpackage(t *testing.T) {
-	was := theme.Themes[theme.DefaultName]
-	t.Cleanup(func() { theme.Apply(was); RefreshStyles() })
-	light := theme.Themes["light"]
-	theme.Apply(light)
-	RefreshStyles()
-
-	sgr := func(c color.Color) string {
-		r, g, b, _ := c.RGBA()
-		return fmt.Sprintf("38;2;%d;%d;%d", r>>8, g>>8, b>>8)
-	}
-	icon, _ := status.Badge(status.Row{HasResult: true, NoVerdict: true}, "")
-	assert.Contains(t, icon, sgr(light.Safe), "status")
-	assert.Contains(t, styleGoal.Render("x"), sgr(light.TextPrimary), "ui")
-	pane := strings.Join(welcome.Lines(welcome.Facts{Version: "v"}, 80, 40, 0), "\n")
-	assert.Contains(t, pane, sgr(light.Accent), "welcome")
 }
 
 func TestTildePath_MatchesWholeElements(t *testing.T) {

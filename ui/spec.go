@@ -138,7 +138,7 @@ const maxMarkdownRenders = 16
 var _ viewspec.Described = (*markdownWidget)(nil)
 
 func (w *markdownWidget) Draw(_ viewspec.Block, d viewspec.Data, f viewspec.Frame) ([]string, error) {
-	key := markdownKey{raw: d.Raw, style: theme.Markdown, width: f.Width}
+	key := markdownKey{raw: d.Raw, style: theme.Current().Markdown, width: f.Width}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if out, ok := w.cache[key]; ok {

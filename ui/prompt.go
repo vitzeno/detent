@@ -234,7 +234,7 @@ func applyInputTheme(ta *textarea.Model) {
 	}
 	s.Focused.Prompt = styleRowCursor
 	s.Blurred.Prompt = styleFaint
-	s.Cursor.Color = accent
+	s.Cursor.Color = palette.Accent
 	ta.SetStyles(s)
 }
 

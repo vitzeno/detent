@@ -16,28 +16,21 @@ import (
 // AttentionThreshold auto-expands a row at or above this attention score.
 const AttentionThreshold = 0.7
 
-var (
-	muted   lipgloss.Style
-	faint   lipgloss.Style
-	safe    lipgloss.Style
-	caution lipgloss.Style
-	danger  lipgloss.Style
-	hint    lipgloss.Style
-)
+var muted, faint, safe, caution, danger, hint = bake(theme.Current())
 
-func init() {
-	RefreshStyles()
-}
-
-// RefreshStyles rebuilds status's styles from the current theme. Tool call
+// RefreshStyles rebuilds status's styles from the current theme. Call
 // it after theme.Apply.
 func RefreshStyles() {
-	muted = lipgloss.NewStyle().Foreground(theme.TextMuted)
-	faint = lipgloss.NewStyle().Foreground(theme.TextFaint)
-	safe = lipgloss.NewStyle().Foreground(theme.Safe)
-	caution = lipgloss.NewStyle().Foreground(theme.Caution).Bold(true)
-	danger = lipgloss.NewStyle().Foreground(theme.Danger).Bold(true)
-	hint = lipgloss.NewStyle().Foreground(theme.TextFaint).Italic(true)
+	muted, faint, safe, caution, danger, hint = bake(theme.Current())
+}
+
+func bake(p theme.Theme) (muted, faint, safe, caution, danger, hint lipgloss.Style) {
+	return lipgloss.NewStyle().Foreground(p.TextMuted),
+		lipgloss.NewStyle().Foreground(p.TextFaint),
+		lipgloss.NewStyle().Foreground(p.Safe),
+		lipgloss.NewStyle().Foreground(p.Caution).Bold(true),
+		lipgloss.NewStyle().Foreground(p.Danger).Bold(true),
+		lipgloss.NewStyle().Foreground(p.TextFaint).Italic(true)
 }
 
 // Row is one history row's render inputs.

@@ -22,29 +22,10 @@ type Theme struct {
 	Markdown string
 }
 
-func init() {
-	Apply(Themes[DefaultName])
-}
+// active is the palette Apply last set, the default until it is called.
+var active = Themes[DefaultName]
 
-// The active palette. Apply reassigns these directly.
-var (
-	Accent color.Color
-
-	Safe    color.Color
-	Caution color.Color
-	Danger  color.Color
-
-	TextPrimary color.Color
-	TextMuted   color.Color
-	TextFaint   color.Color
-	Border      color.Color
-	Background  color.Color
-
-	// Markdown is the active theme's glamour style name.
-	Markdown string
-)
-
-// DefaultName is the theme applied at init and used when unset.
+// DefaultName is the theme active until Apply, and used when unset.
 // Duplicated as config.DefaultTheme rather than imported.
 const DefaultName = "dark"
 
@@ -113,23 +94,10 @@ func Names() []string {
 	return slices.Sorted(maps.Keys(Themes))
 }
 
+// Current is the active theme.
+func Current() Theme { return active }
+
 // Apply makes t the active theme. Callers must also refresh any style
 // already baked from the old colors, as ui.RefreshStyles does. Not safe
 // for concurrent use: call it once, before the TUI starts.
-func Apply(t Theme) {
-	Accent = t.Accent
-	Safe, Caution, Danger = t.Safe, t.Caution, t.Danger
-	TextPrimary, TextMuted, TextFaint, Border = t.TextPrimary, t.TextMuted, t.TextFaint, t.Border
-	Background = t.Background
-	Markdown = t.Markdown
-}
-
-// active is the palette Apply left, read back so a test can prove no
-// field was missed.
-func active() Theme {
-	return Theme{
-		Accent: Accent, Safe: Safe, Caution: Caution, Danger: Danger,
-		TextPrimary: TextPrimary, TextMuted: TextMuted, TextFaint: TextFaint, Border: Border,
-		Background: Background, Markdown: Markdown,
-	}
-}
+func Apply(t Theme) { active = t }

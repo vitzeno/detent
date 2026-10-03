@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"image/color"
-
 	"charm.land/lipgloss/v2"
 
 	"github.com/vitzeno/detent/ui/status"
@@ -10,54 +8,30 @@ import (
 	"github.com/vitzeno/detent/ui/welcome"
 )
 
-var (
-	accent color.Color
+// palette is the theme the styles below were baked from.
+var palette = theme.Current()
 
-	safe    color.Color
-	caution color.Color
-	danger  color.Color
+var styleBrand, styleGoal, styleMuted, styleFaint,
+	styleSafe, styleCaution, styleDanger, styleRowCursor = bake(palette)
 
-	textPrimary color.Color
-	textMuted   color.Color
-	textFaint   color.Color
-	border      color.Color
-)
-
-var (
-	styleBrand lipgloss.Style
-	styleGoal  lipgloss.Style
-	styleMuted lipgloss.Style
-	styleFaint lipgloss.Style
-
-	styleSafe    lipgloss.Style
-	styleCaution lipgloss.Style
-	styleDanger  lipgloss.Style
-
-	styleRowCursor lipgloss.Style
-)
-
-func init() {
-	RefreshStyles()
-}
-
-// RefreshStyles rebuilds every style baked from a theme color. Call it
-// after theme.Apply and before the program runs, since View reads them unlocked.
+// RefreshStyles rebuilds every style baked from a theme color, here and in each
+// subpackage. Call it after theme.Apply and before the program runs.
 func RefreshStyles() {
-	accent = theme.Accent
-	safe, caution, danger = theme.Safe, theme.Caution, theme.Danger
-	textPrimary, textMuted, textFaint, border = theme.TextPrimary, theme.TextMuted, theme.TextFaint, theme.Border
-
-	styleBrand = lipgloss.NewStyle().Foreground(accent).Bold(true)
-	styleGoal = lipgloss.NewStyle().Foreground(textPrimary)
-	styleMuted = lipgloss.NewStyle().Foreground(textMuted)
-	styleFaint = lipgloss.NewStyle().Foreground(textFaint)
-
-	styleSafe = lipgloss.NewStyle().Foreground(safe)
-	styleCaution = lipgloss.NewStyle().Foreground(caution).Bold(true)
-	styleDanger = lipgloss.NewStyle().Foreground(danger).Bold(true)
-
-	styleRowCursor = lipgloss.NewStyle().Foreground(accent).Bold(true)
+	palette = theme.Current()
+	styleBrand, styleGoal, styleMuted, styleFaint,
+		styleSafe, styleCaution, styleDanger, styleRowCursor = bake(palette)
 
 	status.RefreshStyles()
 	welcome.RefreshStyles()
+}
+
+func bake(p theme.Theme) (brand, goal, muted, faint, safe, caution, danger, rowCursor lipgloss.Style) {
+	return lipgloss.NewStyle().Foreground(p.Accent).Bold(true),
+		lipgloss.NewStyle().Foreground(p.TextPrimary),
+		lipgloss.NewStyle().Foreground(p.TextMuted),
+		lipgloss.NewStyle().Foreground(p.TextFaint),
+		lipgloss.NewStyle().Foreground(p.Safe),
+		lipgloss.NewStyle().Foreground(p.Caution).Bold(true),
+		lipgloss.NewStyle().Foreground(p.Danger).Bold(true),
+		lipgloss.NewStyle().Foreground(p.Accent).Bold(true)
 }

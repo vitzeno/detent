@@ -97,28 +97,22 @@ func Track(frame int) []string {
 	return []string{t.String(), pawl}
 }
 
-var (
-	brand   lipgloss.Style
-	primary lipgloss.Style
-	muted   lipgloss.Style
-	faint   lipgloss.Style
-	safe    lipgloss.Style
-	caution lipgloss.Style
-	hint    lipgloss.Style
-)
-
-func init() { RefreshStyles() }
+var brand, primary, muted, faint, safe, caution, hint = bake(theme.Current())
 
 // RefreshStyles rebuilds this package's styles from the current
 // theme. Call it after theme.Apply.
 func RefreshStyles() {
-	brand = lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
-	primary = lipgloss.NewStyle().Foreground(theme.TextPrimary)
-	muted = lipgloss.NewStyle().Foreground(theme.TextMuted)
-	faint = lipgloss.NewStyle().Foreground(theme.TextFaint)
-	safe = lipgloss.NewStyle().Foreground(theme.Safe)
-	caution = lipgloss.NewStyle().Foreground(theme.Caution).Bold(true)
-	hint = lipgloss.NewStyle().Foreground(theme.TextFaint).Italic(true)
+	brand, primary, muted, faint, safe, caution, hint = bake(theme.Current())
+}
+
+func bake(p theme.Theme) (brand, primary, muted, faint, safe, caution, hint lipgloss.Style) {
+	return lipgloss.NewStyle().Foreground(p.Accent).Bold(true),
+		lipgloss.NewStyle().Foreground(p.TextPrimary),
+		lipgloss.NewStyle().Foreground(p.TextMuted),
+		lipgloss.NewStyle().Foreground(p.TextFaint),
+		lipgloss.NewStyle().Foreground(p.Safe),
+		lipgloss.NewStyle().Foreground(p.Caution).Bold(true),
+		lipgloss.NewStyle().Foreground(p.TextFaint).Italic(true)
 }
 
 // banner is the namesake mechanism, the name, and one line on what the

@@ -16,18 +16,24 @@ func TestNames_SortedAndCoversDefault(t *testing.T) {
 	assert.Contains(t, names, DefaultName)
 }
 
-// Every field, so one added to Theme but not to Apply fails here.
-func TestApply_SwitchesActiveColors(t *testing.T) {
-	was := active()
+func TestApply_SwitchesTheActiveTheme(t *testing.T) {
+	was := Current()
 	t.Cleanup(func() { Apply(was) })
 
+	assert.Equal(t, Themes[DefaultName], was, "the default is active before any Apply")
 	for _, name := range Names() {
 		Apply(Themes[name])
-		assert.Equal(t, Themes[name], active(), "theme %s", name)
+		assert.Equal(t, Themes[name], Current(), "theme %s", name)
 	}
-	v := reflect.ValueOf(active())
-	for i := range v.NumField() {
-		assert.False(t, v.Field(i).IsZero(), "%s is never set", v.Type().Field(i).Name)
+}
+
+// A field one theme forgets draws in the terminal's own colour.
+func TestThemes_SetEveryField(t *testing.T) {
+	for _, name := range Names() {
+		v := reflect.ValueOf(Themes[name])
+		for i := range v.NumField() {
+			assert.False(t, v.Field(i).IsZero(), "%s leaves %s unset", name, v.Type().Field(i).Name)
+		}
 	}
 }
 

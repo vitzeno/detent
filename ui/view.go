@@ -8,7 +8,6 @@ import (
 
 	"github.com/vitzeno/detent/ui/island"
 	"github.com/vitzeno/detent/ui/layout"
-	"github.com/vitzeno/detent/ui/theme"
 )
 
 // View returns the screen plus the terminal state that goes with it:
@@ -19,7 +18,7 @@ func (m Model) View() tea.View {
 	v.KeyboardEnhancements = tea.KeyboardEnhancements{}
 	// The palette only works against the ground it was picked for, so
 	// the theme decides both.
-	v.BackgroundColor = theme.Background
+	v.BackgroundColor = palette.Background
 	return v
 }
 
@@ -52,21 +51,21 @@ func (m Model) baseView() string {
 // has focus, the neutral border when it does not.
 func paneBorder(active bool) color.Color {
 	if active {
-		return accent
+		return palette.Accent
 	}
-	return border
+	return palette.Border
 }
 
 // inputBorder says which language the bar is in. Amber for a command,
 // which runs with neither the approval gate nor a checkpoint.
 func (m Model) inputBorder() color.Color {
 	if m.nav.focus != focusInput {
-		return border
+		return palette.Border
 	}
 	if m.entry == entryShell {
-		return caution
+		return palette.Caution
 	}
-	return accent
+	return palette.Accent
 }
 
 // histWindow is what sizeViewport laid out. The fallback is the first

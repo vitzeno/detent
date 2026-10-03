@@ -220,13 +220,13 @@ func TestShell_TheSpinnerTurnsForTheirCommandToo(t *testing.T) {
 func TestShell_TheInputBorderSaysWhichModeItIsIn(t *testing.T) {
 	m := feed(t)
 	require.Equal(t, focusInput, m.nav.focus)
-	assert.Equal(t, accent, m.inputBorder(), "a request gets the ordinary accent")
+	assert.Equal(t, palette.Accent, m.inputBorder(), "a request gets the ordinary accent")
 
 	m.entry = entryShell
-	assert.Equal(t, caution, m.inputBorder(), "a command is marked as one")
+	assert.Equal(t, palette.Caution, m.inputBorder(), "a command is marked as one")
 
 	m.nav.focus = focusHistory
-	assert.Equal(t, border, m.inputBorder(), "an unfocused bar is neutral in either mode")
+	assert.Equal(t, palette.Border, m.inputBorder(), "an unfocused bar is neutral in either mode")
 }
 
 // Marking it amber is pointless if the palette draws the two the
@@ -242,8 +242,8 @@ func TestShell_TheTwoBordersDifferInEveryTheme(t *testing.T) {
 // The other two panes keep the rule they always had: the mode belongs
 // to the input bar and nothing else.
 func TestShell_OnlyTheInputBarChangesColour(t *testing.T) {
-	assert.Equal(t, accent, paneBorder(true))
-	assert.Equal(t, border, paneBorder(false))
+	assert.Equal(t, palette.Accent, paneBorder(true))
+	assert.Equal(t, palette.Border, paneBorder(false))
 }
 
 // The helper is only worth having if View asks it. Rendered rather

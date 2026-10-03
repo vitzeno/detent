@@ -104,7 +104,7 @@ type SessionInfo struct {
 func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	sp.Style = lipgloss.NewStyle().Foreground(accent)
+	sp.Style = lipgloss.NewStyle().Foreground(palette.Accent)
 
 	facts, stop := bus.Subscribe(event.Facts())
 	context.AfterFunc(ctx, stop)
