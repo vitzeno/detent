@@ -163,6 +163,7 @@ func TestPwsh_ExitStatusMatchesSh(t *testing.T) {
 		{name: "a cmdlet that fails", script: "Get-Item ./definitely-not-here", code: 1},
 		{name: "a native program's code", script: "pwsh -NoProfile -Command 'exit 3'", code: 3},
 		{name: "a failure then a success", script: "Get-Item ./nope 2>$null; Write-Output ok", code: 0, stdout: "ok\n"},
+		{name: "a native success then a failure", script: "pwsh -NoProfile -Command 'exit 0'; Get-Item ./nope", code: 1},
 		{name: "a trailing comment", script: "Write-Output hi # done", code: 0, stdout: "hi\n"},
 		{name: "unicode", script: "Write-Output 'naïve ✓'", code: 0, stdout: "naïve ✓\n"},
 	}
