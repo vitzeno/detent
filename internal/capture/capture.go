@@ -11,12 +11,13 @@ import (
 	"unicode/utf8"
 )
 
-// MaxOutputBytes caps each captured stream.
-const MaxOutputBytes = 8 * 1024
-
-// MaxResultBytes bounds what one command puts in the transcript, so one
-// loud command cannot crowd out the rest.
-const MaxResultBytes = 4 * 1024
+const (
+	// MaxOutputBytes caps each captured stream.
+	MaxOutputBytes = 8 * 1024
+	// MaxResultBytes bounds what one command puts in the transcript, so one
+	// loud command cannot crowd out the rest.
+	MaxResultBytes = 4 * 1024
+)
 
 const (
 	// readSize is the reader's buffer: a longer line arrives in pieces.
@@ -40,8 +41,8 @@ type StreamEvent struct {
 	Line   string
 }
 
-// ScanCapped reads r by line, capping buf at limit bytes and sending each
-// line on events if non-nil, which the caller must drain. An overlong line is cut, not the scan.
+// ScanCapped reads r by line, capping buf at limit bytes and sending each line on
+// events if non-nil, which the caller must drain. An overlong line is cut, not the scan.
 func ScanCapped(r io.Reader, isStderr bool, buf *bytes.Buffer, limit int, events chan<- StreamEvent) (truncated bool, err error) {
 	lw := &limitedWriter{buf: buf, limit: limit}
 	br := bufio.NewReaderSize(r, readSize)
@@ -60,6 +61,7 @@ func ScanCapped(r io.Reader, isStderr bool, buf *bytes.Buffer, limit int, events
 	}
 	for {
 		chunk, rerr := br.ReadSlice('\n')
+		// A line cut to fit a StreamEvent marks the result truncated too.
 		if room := maxLineBytes - len(line); len(chunk) > room {
 			chunk, lw.dropped = chunk[:room], true
 		}
@@ -117,6 +119,7 @@ func (w *limitedWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// runeFloor moves i back to the start of the rune it is in.
 func runeFloor(s string, i int) int {
 	for i > 0 && i < len(s) && !utf8.RuneStart(s[i]) {
 		i--
@@ -124,6 +127,7 @@ func runeFloor(s string, i int) int {
 	return i
 }
 
+// runeCeil moves i on to the start of the next rune.
 func runeCeil(s string, i int) int {
 	for i < len(s) && !utf8.RuneStart(s[i]) {
 		i++
