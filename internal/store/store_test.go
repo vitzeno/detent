@@ -237,6 +237,11 @@ func TestStore_TwoProcessesWriteOneFile(t *testing.T) {
 	}
 }
 
+func TestOpen_RefusesNoPath(t *testing.T) {
+	_, err := store.Open("")
+	assert.Error(t, err, "an empty path would record into a temporary database nobody can resume")
+}
+
 // -resume resolves an id, then "last", then a name, so a name colliding
 // with either could never be typed and is refused when set.
 func TestRename_RefusesANameNobodyCouldUse(t *testing.T) {
@@ -291,6 +296,11 @@ func TestRename_ManySessionsMayBeUnnamed(t *testing.T) {
 	}
 }
 
+func TestRename_SaysWhenThereIsNoSuchSession(t *testing.T) {
+	s := open(t)
+	assert.ErrorContains(t, s.Rename(uuid.Must(uuid.NewV7()), "a name"), "no session")
+}
+
 // The foreign key cascades: a session that lists as gone leaves
 // nothing behind.
 func TestDelete_TakesTheEventsWithIt(t *testing.T) {
@@ -343,16 +353,6 @@ func TestDelete_CascadesThroughAnyConnection(t *testing.T) {
 	var left int
 	require.NoError(t, raw.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&left))
 	assert.Zero(t, left, "no event outlives its session")
-}
-
-func TestRename_SaysWhenThereIsNoSuchSession(t *testing.T) {
-	s := open(t)
-	assert.ErrorContains(t, s.Rename(uuid.Must(uuid.NewV7()), "a name"), "no session")
-}
-
-func TestOpen_RefusesNoPath(t *testing.T) {
-	_, err := store.Open("")
-	assert.Error(t, err, "an empty path would record into a temporary database nobody can resume")
 }
 
 // Not an error, but worth saying: a typo should not read as success.

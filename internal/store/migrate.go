@@ -30,6 +30,77 @@ var goSteps = map[int]step{
 	3: {name: "0003_tool_call_names", run: toolCallNames},
 }
 
+// migrate applies what a database has not seen, counted by SQLite's own
+// user_version rather than a table or a library.
+func migrate(db *sql.DB) error {
+	all, err := steps()
+	if err != nil {
+		return err
+	}
+	at, err := schemaVersion(db)
+	if err != nil {
+		return err
+	}
+	if at > len(all) {
+		return fmt.Errorf("store: database is at schema %d, this build only knows %d, so it was written by a newer detent", at, len(all))
+	}
+	for i := at; i < len(all); i++ {
+		if err := apply(db, all[i], i+1); err != nil {
+			return fmt.Errorf("store: %s: %w", all[i].name, err)
+		}
+	}
+	return nil
+}
+
+// backup copies a database that is about to migrate to path.bak-v<at>,
+// once: a copy already there is from an earlier attempt and is kept.
+func backup(db *sql.DB, file string) error {
+	at, err := schemaVersion(db)
+	if err != nil || at == 0 || at >= latest() {
+		return err // new, or nothing to do
+	}
+	to := fmt.Sprintf("%s.bak-v%d", file, at)
+	if _, err := os.Stat(to); err == nil {
+		return nil
+	}
+	// VACUUM INTO is a consistent copy, WAL included, which copying the file is not.
+	if _, err := db.ExecContext(context.Background(), `VACUUM INTO ?`, to); err != nil {
+		return fmt.Errorf("store: back up before migrating: %w", err)
+	}
+	return nil
+}
+
+func apply(db *sql.DB, s step, version int) error {
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck // a committed tx rolls back to nothing
+	if s.run != nil {
+		err = s.run(ctx, tx)
+	} else {
+		_, err = tx.ExecContext(ctx, s.sql)
+	}
+	if err != nil {
+		return err
+	}
+	// PRAGMA takes a literal, and version is an int we counted.
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// latest is the schema version this build writes.
+func latest() int {
+	all, err := steps()
+	if err != nil {
+		return 0
+	}
+	return len(all)
+}
+
 // steps is every migration in order: the embedded SQL files and goSteps.
 func steps() ([]step, error) {
 	files, err := fs.Glob(migrations, "migrations/*.sql")
@@ -75,81 +146,10 @@ func assemble(sqlFiles map[string]string, gos map[int]step) ([]step, error) {
 	return out, nil
 }
 
-// latest is the schema version this build writes.
-func latest() int {
-	all, err := steps()
-	if err != nil {
-		return 0
-	}
-	return len(all)
-}
-
-// migrate applies what a database has not seen, counted by SQLite's own
-// user_version rather than a table or a library.
-func migrate(db *sql.DB) error {
-	all, err := steps()
-	if err != nil {
-		return err
-	}
-	at, err := schemaVersion(db)
-	if err != nil {
-		return err
-	}
-	if at > len(all) {
-		return fmt.Errorf("store: database is at schema %d, this build only knows %d, so it was written by a newer detent", at, len(all))
-	}
-	for i := at; i < len(all); i++ {
-		if err := apply(db, all[i], i+1); err != nil {
-			return fmt.Errorf("store: %s: %w", all[i].name, err)
-		}
-	}
-	return nil
-}
-
 func schemaVersion(db *sql.DB) (int, error) {
 	var at int
 	if err := db.QueryRowContext(context.Background(), `PRAGMA user_version`).Scan(&at); err != nil {
 		return 0, fmt.Errorf("store: read schema version: %w", err)
 	}
 	return at, nil
-}
-
-// backup copies a database that is about to migrate to path.bak-v<at>,
-// once: a copy already there is from an earlier attempt and is kept.
-func backup(db *sql.DB, file string) error {
-	at, err := schemaVersion(db)
-	if err != nil || at == 0 || at >= latest() {
-		return err // new, or nothing to do
-	}
-	to := fmt.Sprintf("%s.bak-v%d", file, at)
-	if _, err := os.Stat(to); err == nil {
-		return nil
-	}
-	// VACUUM INTO is a consistent copy, WAL included, which copying the file is not.
-	if _, err := db.ExecContext(context.Background(), `VACUUM INTO ?`, to); err != nil {
-		return fmt.Errorf("store: back up before migrating: %w", err)
-	}
-	return nil
-}
-
-func apply(db *sql.DB, s step, version int) error {
-	ctx := context.Background()
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() //nolint:errcheck // a committed tx rolls back to nothing
-	if s.run != nil {
-		err = s.run(ctx, tx)
-	} else {
-		_, err = tx.ExecContext(ctx, s.sql)
-	}
-	if err != nil {
-		return err
-	}
-	// PRAGMA takes a literal, and version is an int we counted.
-	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
-		return err
-	}
-	return tx.Commit()
 }

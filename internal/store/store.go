@@ -23,12 +23,12 @@ import (
 // ReservedName is the one word -resume reads as an instruction.
 const ReservedName = "last"
 
-// Store is one database, safe for concurrent use.
-type Store struct{ db *sql.DB }
-
 // pragmas are per connection, so the DSN carries them. The busy wait and
 // WAL make a second writer wait, and immediate transactions let it.
 const pragmas = "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_txlock=immediate"
+
+// Store is one database, safe for concurrent use.
+type Store struct{ db *sql.DB }
 
 // Open creates the database if it is not there. ":memory:" works, for
 // a test that wants no file.
@@ -60,6 +60,15 @@ func Open(path string) (*Store, error) {
 		return nil, errors.Join(err, db.Close())
 	}
 	return &Store{db: db}, nil
+}
+
+// DefaultPath is where a session's events go, beside the logs.
+func DefaultPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".local", "state", "detent", "events.db")
 }
 
 // Close closes the database.
@@ -188,15 +197,6 @@ func (s *Store) Delete(session uuid.UUID) (bool, error) {
 		return false, fmt.Errorf("store: delete: %w", err)
 	}
 	return n > 0, nil
-}
-
-// DefaultPath is where a session's events go, beside the logs.
-func DefaultPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".local", "state", "detent", "events.db")
 }
 
 func usableName(name string) error {
