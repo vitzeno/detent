@@ -24,6 +24,13 @@ import (
 	"syscall"
 )
 
+// ErrGone is a checkpoint git no longer has, usually pruned by gc.
+var ErrGone = errors.New("worktree: checkpoint no longer exists")
+
+// keepEnv is the git environment that says how git is installed rather
+// than which repository to act on.
+var keepEnv = []string{"GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_EXEC_PATH"}
+
 // Checkpoint is a git tree object naming one captured state.
 type Checkpoint string
 
@@ -38,9 +45,6 @@ const (
 	// reverting deletes it.
 	Removed Kind = "removed"
 )
-
-// ErrGone is a checkpoint git no longer has, usually pruned by gc.
-var ErrGone = errors.New("worktree: checkpoint no longer exists")
 
 // Change is one path a restore would touch, for showing a human before
 // anything is written.
@@ -96,18 +100,6 @@ func Open(ctx context.Context, dir string) (*Dir, error) {
 	return d, nil
 }
 
-// Checkpoint captures the directory for the engine, which keeps only the id.
-func (d *Dir) Checkpoint(ctx context.Context) (string, error) {
-	c, err := d.Capture(ctx)
-	return string(c), err
-}
-
-// Restore reverts to id for the engine, leaving alone whatever changed
-// since seen, which is how the directory stood when detent last looked.
-func (d *Dir) Restore(ctx context.Context, id, seen string) error {
-	return d.RestoreTo(ctx, Checkpoint(id), Checkpoint(seen))
-}
-
 // Capture records the directory's current contents, tracked and
 // untracked alike, and returns the tree naming them.
 func (d *Dir) Capture(ctx context.Context) (Checkpoint, error) {
@@ -117,28 +109,6 @@ func (d *Dir) Capture(ctx context.Context) (Checkpoint, error) {
 		c, err = d.capture(ctx, false)
 	}
 	return c, err
-}
-
-func (d *Dir) capture(ctx context.Context, seed bool) (Checkpoint, error) {
-	index, cleanup, err := scratchIndex()
-	if err != nil {
-		return "", err
-	}
-	defer cleanup()
-	if seed {
-		// Starting from the human's index reuses its stat cache, so only changed files are hashed.
-		if err := copyFile(d.index, index); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("worktree: seed index: %w", err)
-		}
-	}
-	if _, err := d.git(ctx, index, nil, "add", "-A", "--", d.pathspec()); err != nil {
-		return "", fmt.Errorf("worktree: stage: %w", err)
-	}
-	tree, err := d.git(ctx, index, nil, "write-tree")
-	if err != nil {
-		return "", fmt.Errorf("worktree: write-tree: %w", err)
-	}
-	return Checkpoint(strings.TrimSpace(tree)), nil
 }
 
 // Diff is what restoring to would change, empty when nothing would. A path
@@ -174,33 +144,6 @@ func (d *Dir) Diff(ctx context.Context, to, seen Checkpoint) ([]Change, error) {
 	}
 	for i := range changes {
 		changes[i].Unseen = touched[changes[i].Path]
-	}
-	return changes, nil
-}
-
-// changes reads from→to: an "A" is a path that arrived after from, so
-// reverting deletes it, and everything else comes back.
-func (d *Dir) changes(ctx context.Context, from, to Checkpoint) ([]Change, error) {
-	// Plumbing ignores diff.renames, and --no-renames keeps every record a pair.
-	out, err := d.git(ctx, "", nil, "diff-tree", "-r", "-z", "--no-renames", "--name-status",
-		string(from), string(to), "--", d.pathspec())
-	if err != nil {
-		return nil, fmt.Errorf("worktree: diff: %w", err)
-	}
-	if out == "" {
-		return nil, nil
-	}
-	fields := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
-	if len(fields)%2 != 0 {
-		return nil, fmt.Errorf("worktree: diff: unexpected output %q", out)
-	}
-	var changes []Change
-	for i := 0; i < len(fields); i += 2 {
-		kind := Restored
-		if fields[i] == "A" {
-			kind = Removed
-		}
-		changes = append(changes, Change{Path: fields[i+1], Kind: kind})
 	}
 	return changes, nil
 }
@@ -244,6 +187,67 @@ func (d *Dir) RestoreTo(ctx context.Context, to, seen Checkpoint) error {
 		return fmt.Errorf("worktree: reverted %d of %d file(s): %w", done, len(changes), errors.Join(errs...))
 	}
 	return nil
+}
+
+// Checkpoint captures the directory for the engine, which keeps only the id.
+func (d *Dir) Checkpoint(ctx context.Context) (string, error) {
+	c, err := d.Capture(ctx)
+	return string(c), err
+}
+
+// Restore reverts to id for the engine, leaving alone whatever changed
+// since seen, which is how the directory stood when detent last looked.
+func (d *Dir) Restore(ctx context.Context, id, seen string) error {
+	return d.RestoreTo(ctx, Checkpoint(id), Checkpoint(seen))
+}
+
+func (d *Dir) capture(ctx context.Context, seed bool) (Checkpoint, error) {
+	index, cleanup, err := scratchIndex()
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+	if seed {
+		// Starting from the human's index reuses its stat cache, so only changed files are hashed.
+		if err := copyFile(d.index, index); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("worktree: seed index: %w", err)
+		}
+	}
+	if _, err := d.git(ctx, index, nil, "add", "-A", "--", d.pathspec()); err != nil {
+		return "", fmt.Errorf("worktree: stage: %w", err)
+	}
+	tree, err := d.git(ctx, index, nil, "write-tree")
+	if err != nil {
+		return "", fmt.Errorf("worktree: write-tree: %w", err)
+	}
+	return Checkpoint(strings.TrimSpace(tree)), nil
+}
+
+// changes reads from→to: an "A" is a path that arrived after from, so
+// reverting deletes it, and everything else comes back.
+func (d *Dir) changes(ctx context.Context, from, to Checkpoint) ([]Change, error) {
+	// Plumbing ignores diff.renames, and --no-renames keeps every record a pair.
+	out, err := d.git(ctx, "", nil, "diff-tree", "-r", "-z", "--no-renames", "--name-status",
+		string(from), string(to), "--", d.pathspec())
+	if err != nil {
+		return nil, fmt.Errorf("worktree: diff: %w", err)
+	}
+	if out == "" {
+		return nil, nil
+	}
+	fields := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
+	if len(fields)%2 != 0 {
+		return nil, fmt.Errorf("worktree: diff: unexpected output %q", out)
+	}
+	var changes []Change
+	for i := 0; i < len(fields); i += 2 {
+		kind := Restored
+		if fields[i] == "A" {
+			kind = Removed
+		}
+		changes = append(changes, Change{Path: fields[i+1], Kind: kind})
+	}
+	return changes, nil
 }
 
 // checkout writes paths from the tree, over whatever stands there now.
@@ -323,9 +327,37 @@ func (d *Dir) git(ctx context.Context, index string, stdin io.Reader, args ...st
 	return run(ctx, d.top, index, stdin, args...)
 }
 
-// gone is a path already absent, or one whose parent is now a file.
-func gone(err error) bool {
-	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+func run(ctx context.Context, dir, index string, stdin io.Reader, args ...string) (string, error) {
+	// Hooks off: plumbing runs none today, and this keeps it so.
+	full := append([]string{"-c", "core.hooksPath=" + os.DevNull}, args...)
+	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd.Dir = dir
+	cmd.Env = env(index)
+	cmd.Stdin = stdin
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(errb.String()))
+	}
+	return out.String(), nil
+}
+
+// env drops inherited GIT_* variables, so a detent started from a hook or
+// a rebase still checkpoints the directory it was asked to.
+func env(index string) []string {
+	var out []string
+	for _, kv := range os.Environ() {
+		name, _, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(name, "GIT_") && !slices.Contains(keepEnv, name) {
+			continue
+		}
+		out = append(out, kv)
+	}
+	out = append(out, "GIT_OPTIONAL_LOCKS=0")
+	if index != "" {
+		out = append(out, "GIT_INDEX_FILE="+index)
+	}
+	return out
 }
 
 // scratchIndex is a throwaway index in its own directory, so staging
@@ -346,39 +378,7 @@ func copyFile(from, to string) error {
 	return os.WriteFile(to, b, 0o600) //nolint:gosec // both paths are git's index and our own temp dir
 }
 
-// keepEnv is the git environment that says how git is installed rather
-// than which repository to act on.
-var keepEnv = []string{"GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_EXEC_PATH"}
-
-// env drops inherited GIT_* variables, so a detent started from a hook or
-// a rebase still checkpoints the directory it was asked to.
-func env(index string) []string {
-	var out []string
-	for _, kv := range os.Environ() {
-		name, _, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(name, "GIT_") && !slices.Contains(keepEnv, name) {
-			continue
-		}
-		out = append(out, kv)
-	}
-	out = append(out, "GIT_OPTIONAL_LOCKS=0")
-	if index != "" {
-		out = append(out, "GIT_INDEX_FILE="+index)
-	}
-	return out
-}
-
-func run(ctx context.Context, dir, index string, stdin io.Reader, args ...string) (string, error) {
-	// Hooks off: plumbing runs none today, and this keeps it so.
-	full := append([]string{"-c", "core.hooksPath=" + os.DevNull}, args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
-	cmd.Dir = dir
-	cmd.Env = env(index)
-	cmd.Stdin = stdin
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(errb.String()))
-	}
-	return out.String(), nil
+// gone is a path already absent, or one whose parent is now a file.
+func gone(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 }
