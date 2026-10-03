@@ -2,6 +2,7 @@ package humanshell
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -243,11 +244,9 @@ func (f *fakeRunner) Run(ctx context.Context, cmd string, ev chan<- capture.Stre
 		select {
 		case <-hold:
 		case <-ctx.Done():
-			close(ev)
 			return capture.Result{}, ctx.Err()
 		}
 	}
-	close(ev)
 	return capture.Result{Stdout: out, ExitCode: exit}, nil
 }
 
@@ -255,6 +254,28 @@ func (f *fakeRunner) commands() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.ran...)
+}
+
+// failingRunner returns at once with an error, having sent nothing.
+type failingRunner struct{}
+
+func (failingRunner) Run(context.Context, string, chan<- capture.StreamEvent) (capture.Result, error) {
+	return capture.Result{}, errors.New("create task: already exists")
+}
+
+// The caller closes the output channel, so a Runner's early error costs
+// nothing: no grace to wait out, no relay left behind.
+func TestWatch_ARunnerErrorEndsTheCommandAtOnce(t *testing.T) {
+	bus := event.New()
+	c := collect(t, bus)
+	stop := Watch(bus, failingRunner{}, "sandbox")
+	t.Cleanup(stop)
+
+	start := time.Now()
+	bus.Publish(event.RunCommand{Text: "ls"})
+	ended := c.await(t, event.ShellEndedKind).(event.ShellEnded)
+	assert.Less(t, time.Since(start), time.Second)
+	assert.Equal(t, "create task: already exists", ended.Result.Err)
 }
 
 // collector keeps Records, so a test can assert on order as well as

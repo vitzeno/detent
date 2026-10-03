@@ -174,12 +174,8 @@ func (e *Engine) execute(ctx context.Context, p *callPlan) {
 	defer cancel()
 	res, err := runSafely(cctx, runner, p.cmd, lines)
 	took := time.Since(start)
-	// A Runner closes the channel when output ends. One that forgets
-	// would wedge the Turn, which is worse than a leaked goroutine.
-	select {
-	case <-relayed:
-	case <-time.After(relayGrace):
-	}
+	close(lines)
+	<-relayed
 
 	out := event.Result{
 		ExitCode: res.ExitCode, Stdout: res.Stdout, Stderr: res.Stderr, Truncated: res.Truncated,
@@ -214,17 +210,12 @@ func (e *Engine) invoke(ctx context.Context, p *callPlan) {
 	p.finish(formatResult(p.cmd, out))
 }
 
-// relayGrace is how long to wait on a Runner that did not close its
-// output channel before giving up on it.
-const relayGrace = 2 * time.Second
-
 // runSafely turns a panicking Runner into a failed Call. Taking the
 // session down would lose every checkpoint still rollable.
-func runSafely(ctx context.Context, r Runner, cmd string, lines chan capture.StreamEvent) (res capture.Result, err error) {
+func runSafely(ctx context.Context, r Runner, cmd string, lines chan<- capture.StreamEvent) (res capture.Result, err error) {
 	defer func() {
 		if v := recover(); v != nil {
 			err = fmt.Errorf("runner panicked: %v", v)
-			close(lines)
 		}
 	}()
 	return r.Run(ctx, cmd, lines)

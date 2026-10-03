@@ -109,10 +109,7 @@ func (s *stubModel) Complete(context.Context, []event.Message, []map[string]any)
 
 type stubRunner struct{}
 
-func (stubRunner) Run(_ context.Context, cmd string, lines chan<- capture.StreamEvent) (capture.Result, error) {
-	if lines != nil {
-		close(lines)
-	}
+func (stubRunner) Run(_ context.Context, cmd string, _ chan<- capture.StreamEvent) (capture.Result, error) {
 	return capture.Result{Stdout: "ran " + cmd + "\n"}, nil
 }
 

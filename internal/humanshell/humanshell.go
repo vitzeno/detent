@@ -20,10 +20,7 @@ import (
 const (
 	// shellMax is a backstop for a human who walked away, not a bound
 	// on their work: esc stops it and they are the one watching.
-	shellMax = 30 * time.Minute
-	// relayGrace is how long to wait on a Runner that did not close
-	// its output channel before giving up on it.
-	relayGrace     = 2 * time.Second
+	shellMax       = 30 * time.Minute
 	stoppedByHuman = "stopped by the human"
 )
 
@@ -54,7 +51,8 @@ func Watch(bus *event.Bus, runner Runner, where string) func() {
 }
 
 // Runner executes one command. Declared here rather than imported, so
-// this package depends on event and capture alone.
+// this package depends on event and capture alone. It sends nothing on
+// events after it returns, and the caller closes events.
 type Runner interface {
 	Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error)
 }
@@ -123,12 +121,8 @@ func (s *shell) run(ctx context.Context, id uuid.UUID, command string) {
 	began := time.Now()
 	res, err := runSafely(ctx, s.runner, command, lines)
 	took := time.Since(began)
-	// A Runner closes the channel when output ends. One that forgets
-	// would wedge this goroutine, which is worse than leaking it.
-	select {
-	case <-relayed:
-	case <-time.After(relayGrace):
-	}
+	close(lines)
+	<-relayed
 
 	out := event.Result{
 		ExitCode: res.ExitCode, Stdout: res.Stdout, Stderr: res.Stderr, Truncated: res.Truncated,
@@ -166,11 +160,10 @@ func (s *shell) done(id uuid.UUID) {
 
 // runSafely turns a panicking Runner into a failed command rather
 // than a dead session.
-func runSafely(ctx context.Context, r Runner, cmd string, lines chan capture.StreamEvent) (res capture.Result, err error) {
+func runSafely(ctx context.Context, r Runner, cmd string, lines chan<- capture.StreamEvent) (res capture.Result, err error) {
 	defer func() {
 		if v := recover(); v != nil {
 			err = fmt.Errorf("runner panicked: %v", v)
-			close(lines)
 		}
 	}()
 	return r.Run(ctx, cmd, lines)

@@ -166,7 +166,8 @@ type Completer interface {
 }
 
 // Runner executes one command. host.Shell and sandbox.Container both
-// satisfy it structurally, so neither imports this package.
+// satisfy it structurally, so neither imports this package. It sends
+// nothing on events after it returns, and the caller closes events.
 type Runner interface {
 	Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error)
 }

@@ -67,9 +67,6 @@ func (r *fakeRunner) Run(ctx context.Context, cmd string, lines chan<- capture.S
 		select {
 		case <-hold:
 		case <-ctx.Done():
-			if lines != nil {
-				close(lines)
-			}
 			return capture.Result{Stdout: partial}, ctx.Err()
 		}
 	}
@@ -77,7 +74,6 @@ func (r *fakeRunner) Run(ctx context.Context, cmd string, lines chan<- capture.S
 		for _, l := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
 			lines <- capture.StreamEvent{Line: l}
 		}
-		close(lines)
 	}
 	return capture.Result{Stdout: out}, nil
 }
