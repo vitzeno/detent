@@ -35,13 +35,19 @@ type SignIns struct {
 	mu    sync.Mutex
 	live  map[string]string // server to the link waiting now
 	asked map[string]bool   // server to whether this sign-in showed one
+	busy  map[string]bool   // server to whether a dial of it is under way
+
+	// saving orders a token's save against forgetting it, and gen counts
+	// the sign-ins a server has had, so a retired one never saves.
+	saving sync.Mutex
+	gen    map[string]int
 }
 
 // NewSignIns takes how to open a link rather than doing it itself, so
 // ui runs no process and a test needs no browser. in may be nil.
 func NewSignIns(bus *event.Bus, in *Invokers, tokens Tokens, open func(string) error) *SignIns {
 	return &SignIns{bus: bus, in: in, tokens: tokens, open: open, wait: signInMax,
-		live: map[string]string{}, asked: map[string]bool{}}
+		live: map[string]string{}, asked: map[string]bool{}, busy: map[string]bool{}, gen: map[string]int{}}
 }
 
 // Open opens a waiting link in a browser, for OpenAuthorization.
@@ -65,11 +71,46 @@ func (s *SignIns) wasAsked(server string) bool {
 	return s.asked[server]
 }
 
-// waitingFor reports whether a link for server is out now.
-func (s *SignIns) waitingFor(server string) bool {
+// claim reserves a server for one dial, so a redial cannot race the
+// startup dial or another redial. False means one is under way.
+func (s *SignIns) claim(server string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.live[server] != ""
+	if s.busy[server] {
+		return false
+	}
+	s.busy[server] = true
+	return true
+}
+
+func (s *SignIns) release(server string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.busy, server)
+}
+
+func (s *SignIns) generation(server string) int {
+	s.saving.Lock()
+	defer s.saving.Unlock()
+	return s.gen[server]
+}
+
+// save writes a token unless a later sign-in has retired gen.
+func (s *SignIns) save(server, resource string, gen int, saved *Saved) error {
+	s.saving.Lock()
+	defer s.saving.Unlock()
+	if s.gen[server] != gen {
+		return fmt.Errorf("mcp: %s: a newer sign-in replaced this one", server)
+	}
+	return s.tokens.Save(server, resource, saved)
+}
+
+// retire forgets a server's token, and stops every earlier session saving one.
+func (s *SignIns) retire(server, resource string) error {
+	s.saving.Lock()
+	defer s.saving.Unlock()
+	s.gen[server]++
+	return s.tokens.Forget(server, resource)
 }
 
 // publish is a no-op with no bus, as for the -mcp listing.
@@ -99,7 +140,7 @@ func openable(link string) error {
 
 // fetcher is the SDK's browser leg: publish the link, then wait for
 // the redirect on loopback, the context, or the bound.
-func (s *SignIns) fetcher(server string, port int) auth.AuthorizationCodeFetcher {
+func (s *SignIns) fetcher(server string, port int, fixed bool) auth.AuthorizationCodeFetcher {
 	return func(ctx context.Context, args *auth.AuthorizationArgs) (*auth.AuthorizationResult, error) {
 		// Nothing to show a link on: the -mcp listing, or a test.
 		if s.bus == nil {
@@ -116,8 +157,16 @@ func (s *SignIns) fetcher(server string, port int) auth.AuthorizationCodeFetcher
 		// the code to the network.
 		addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 		ln, err := net.Listen("tcp", addr)
-		if err != nil {
+		switch {
+		case err != nil && fixed:
+			return nil, fmt.Errorf("listening for the sign-in: %w; free port %d or change callbackPort", err, port)
+		case err != nil:
 			return nil, fmt.Errorf("listening for the sign-in: %w; /mcp auth %s tries another port", err, server)
+		}
+		// A human is not held to how long a server may take to answer.
+		if p := patienceFrom(ctx); p != nil {
+			p.pause()
+			defer p.resume()
 		}
 		back := make(chan callback, 1)
 		srv := &http.Server{Handler: s.callback(server, addr, want, back), ReadHeaderTimeout: 5 * time.Second}
@@ -182,7 +231,7 @@ func (s *SignIns) waiting(server, link string) {
 	s.live[server], s.asked[server] = link, true
 	s.mu.Unlock()
 	s.status(server, event.AuthWaiting)
-	s.bus.Publish(event.AuthorizationWaiting{Server: server, URL: link, Until: time.Now().Add(s.wait)})
+	s.publish(event.AuthorizationWaiting{Server: server, URL: link, Until: time.Now().Add(s.wait)})
 }
 
 // begin and end bracket one Authorize, so a sign-in that showed a link
@@ -202,11 +251,11 @@ func (s *SignIns) end(server string, err error) {
 	}
 	if err != nil {
 		s.status(server, event.AuthSignedOut)
-		s.bus.Publish(event.AuthorizationFailed{Server: server, Reason: reason(err)})
+		s.publish(event.AuthorizationFailed{Server: server, Reason: reason(err)})
 		return
 	}
 	s.status(server, event.AuthSignedIn)
-	s.bus.Publish(event.ServerAuthorized{Server: server})
+	s.publish(event.ServerAuthorized{Server: server})
 }
 
 func (s *SignIns) status(server, auth string) {

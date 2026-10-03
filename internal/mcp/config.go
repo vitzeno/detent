@@ -4,10 +4,29 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// Config is one server, launched or reached, as the config file describes it.
+type Config struct {
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env"`
+	// URL reaches a server rather than launching one: this or Command, never both.
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers"`
+	// Type names a remote transport. Absent means stdio, as in every other client.
+	Type string `json:"type"`
+	// Disabled keeps a server configured but unconnected.
+	Disabled bool `json:"disabled"`
+	// OAuth tunes a remote server's sign-in. Nil still signs in on a 401.
+	OAuth *OAuth `json:"oauth"`
+	// Auth is another client's field, read for what it can give OAuth.
+	Auth foreignAuth `json:"auth"`
+}
 
 // Files are where servers are configured, nearest last. The name and
 // shape are what every MCP client reads, so one file serves both.
@@ -26,7 +45,7 @@ func Load(paths ...string) (map[string]Config, error) {
 	for _, path := range paths {
 		raw, err := os.ReadFile(path)
 		switch {
-		case os.IsNotExist(err):
+		case errors.Is(err, fs.ErrNotExist):
 			continue
 		case err != nil:
 			return nil, fmt.Errorf("mcp: read %s: %w", path, err)
@@ -118,14 +137,18 @@ func expand(s string) string {
 	var b strings.Builder
 	for {
 		i := strings.Index(s, "${")
-		j := strings.Index(s, "}")
-		if i < 0 || j < i {
+		if i < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		j := strings.IndexByte(s[i+2:], '}')
+		if j < 0 {
 			b.WriteString(s)
 			return b.String()
 		}
 		b.WriteString(s[:i])
-		b.WriteString(lookup(s[i+2 : j]))
-		s = s[j+1:]
+		b.WriteString(lookup(s[i+2 : i+2+j]))
+		s = s[i+3+j:]
 	}
 }
 

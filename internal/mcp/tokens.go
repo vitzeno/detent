@@ -6,20 +6,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"golang.org/x/oauth2"
 )
 
-// Tokens keeps each server's sign-in on disk, one 0600 file a server.
+// Tokens keeps each sign-in on disk, one 0600 file per server name and
+// URL, so a config reusing a name elsewhere never receives the token.
 // Not the keychain: that costs cgo or a shell-out per platform.
 type Tokens struct{ Dir string }
 
 // Saved is what a sign-in leaves: the client registered for it and the
 // endpoints a refresh needs, since the SDK writes none of it down.
 type Saved struct {
+	// Resource is the server the token was issued for, checked on load.
+	Resource     string `json:"resource"`
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret,omitempty"`
 	AuthURL      string `json:"auth_url"`
@@ -40,15 +46,15 @@ func TokensDir() string {
 	return filepath.Join(home, ".local", "state", "detent", "mcp")
 }
 
-// Load returns the server's sign-in, or nil when it has none.
-func (t Tokens) Load(server string) (*Saved, error) {
-	path, err := t.path(server)
+// Load returns the sign-in for server at resource, or nil when it has none.
+func (t Tokens) Load(server, resource string) (*Saved, error) {
+	path, err := t.path(server, resource)
 	if err != nil {
 		return nil, err
 	}
 	info, err := os.Stat(path)
 	switch {
-	case errors.Is(err, os.ErrNotExist):
+	case errors.Is(err, fs.ErrNotExist):
 		return nil, nil
 	case err != nil:
 		return nil, fmt.Errorf("mcp: %s token: %w", server, err)
@@ -65,20 +71,25 @@ func (t Tokens) Load(server string) (*Saved, error) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return nil, fmt.Errorf("mcp: %s token: %w", server, err)
 	}
+	if s.Resource != canonical(resource) {
+		return nil, nil
+	}
 	return &s, nil
 }
 
 // Save writes aside and renames: a refresh and a sign-in can race, and
 // half a file must not read back as a token.
-func (t Tokens) Save(server string, s *Saved) error {
-	path, err := t.path(server)
+func (t Tokens) Save(server, resource string, s *Saved) error {
+	path, err := t.path(server, resource)
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(t.Dir, 0o700); err != nil {
 		return fmt.Errorf("mcp: token dir: %w", err)
 	}
-	raw, err := json.MarshalIndent(s, "", "  ")
+	next := *s
+	next.Resource = canonical(resource)
+	raw, err := json.MarshalIndent(next, "", "  ")
 	if err != nil {
 		return fmt.Errorf("mcp: %s token: %w", server, err)
 	}
@@ -95,16 +106,33 @@ func (t Tokens) Save(server string, s *Saved) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("mcp: %s token: %w", server, err)
 	}
-	return os.Rename(tmp.Name(), path)
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return fmt.Errorf("mcp: %s token: %w", server, err)
+	}
+	return nil
 }
 
 // Forget removes a sign-in, so the next dial asks for a new one.
-func (t Tokens) Forget(server string) error {
-	path, err := t.path(server)
+func (t Tokens) Forget(server, resource string) error {
+	path, err := t.path(server, resource)
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("mcp: %s token: %w", server, err)
+	}
+	return t.dropLegacy(server)
+}
+
+// dropLegacy removes a token an older detent saved under the name alone.
+// Nothing says which server it was issued by, so it is never read.
+func (t Tokens) dropLegacy(server string) error {
+	if t.Dir == "" {
+		return nil
+	}
+	sum := sha256.Sum256([]byte(server))
+	path := filepath.Join(t.Dir, safeName(server)+"-"+hex.EncodeToString(sum[:4])+".json")
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("mcp: %s token: %w", server, err)
 	}
 	return nil
@@ -112,13 +140,24 @@ func (t Tokens) Forget(server string) error {
 
 var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
 
-// path names a server's file by its name made safe, then a hash of the
-// real one: "../x" cannot leave the directory, and "a/b" is not "a_b".
-func (t Tokens) path(server string) (string, error) {
+func safeName(server string) string { return unsafeChars.ReplaceAllString(server, "_") }
+
+// path names a file by the server's name made safe, then a hash of the
+// name and URL: "../x" cannot leave the directory, and "a/b" is not "a_b".
+func (t Tokens) path(server, resource string) (string, error) {
 	if t.Dir == "" {
 		return "", errors.New("mcp: no directory for tokens")
 	}
-	sum := sha256.Sum256([]byte(server))
-	name := unsafeChars.ReplaceAllString(server, "_") + "-" + hex.EncodeToString(sum[:4])
-	return filepath.Join(t.Dir, name+".json"), nil
+	sum := sha256.Sum256([]byte(server + "\x00" + canonical(resource)))
+	return filepath.Join(t.Dir, safeName(server)+"-"+hex.EncodeToString(sum[:8])+".json"), nil
+}
+
+// canonical is the server a token belongs to: scheme, host and path. The
+// query is left out, since it may carry a key that rotates.
+func canonical(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return raw
+	}
+	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host) + strings.TrimSuffix(u.EscapedPath(), "/")
 }

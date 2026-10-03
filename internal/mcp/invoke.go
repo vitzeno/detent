@@ -2,8 +2,13 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sync"
+
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/capture"
@@ -13,14 +18,21 @@ import (
 // Invokers answers Calls with no command, routing each to the server
 // that offered it. Safe for concurrent use: servers connect late.
 type Invokers struct {
+	// registering makes choosing a free name and taking it one step.
+	registering sync.Mutex
+
 	mu    sync.RWMutex
 	tools map[string]Tool
+	// servers is every connected session, including one offering no tools.
+	servers map[string]*Server
 	// status holds every configured server from the start, so /mcp lists unanswered ones.
 	status []event.ServerSummary
 }
 
 // NewInvokers returns an Invokers with no tools.
-func NewInvokers() *Invokers { return &Invokers{tools: map[string]Tool{}} }
+func NewInvokers() *Invokers {
+	return &Invokers{tools: map[string]Tool{}, servers: map[string]*Server{}}
+}
 
 // Add records what Register returned, which carries its own routing.
 func (i *Invokers) Add(tools ...Tool) {
@@ -28,7 +40,40 @@ func (i *Invokers) Add(tools ...Tool) {
 	defer i.mu.Unlock()
 	for _, t := range tools {
 		i.tools[t.name] = t
+		i.servers[t.server.Name] = t.server
 	}
+}
+
+// register adds a server and its tools, so a server with none is still closed.
+func (i *Invokers) register(reg *tool.Registry, s *Server, tools []*sdk.Tool) {
+	i.registering.Lock()
+	defer i.registering.Unlock()
+	i.keep(s)
+	i.Add(Register(reg, s, tools)...)
+}
+
+// swap replaces a server's session and tools, handing back the old session to close.
+func (i *Invokers) swap(reg *tool.Registry, s *Server, tools []*sdk.Tool) *Server {
+	i.registering.Lock()
+	defer i.registering.Unlock()
+	old, names := i.drop(s.Name)
+	reg.Unregister(names...)
+	i.keep(s)
+	i.Add(Register(reg, s, tools)...)
+	return old
+}
+
+func (i *Invokers) keep(s *Server) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.servers[s.Name] = s
+}
+
+// connected reports whether a session for server is open.
+func (i *Invokers) connected(server string) bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.servers[server] != nil
 }
 
 // Invoke answers one Call. A tool nothing owns comes back as a result
@@ -50,30 +95,28 @@ func (i *Invokers) Status() []event.ServerSummary {
 	return append([]event.ServerSummary(nil), i.status...)
 }
 
-// Servers is every server behind these tools, deduplicated.
+// Servers is every connected server, by name.
 func (i *Invokers) Servers() []*Server {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
-	seen := map[string]bool{}
-	var out []*Server
-	for _, t := range i.tools {
-		if !seen[t.server.Name] {
-			seen[t.server.Name] = true
-			out = append(out, t.server)
-		}
+	out := make([]*Server, 0, len(i.servers))
+	for _, name := range slices.Sorted(maps.Keys(i.servers)) {
+		out = append(out, i.servers[name])
 	}
 	return out
 }
 
 // Close ends every session, and each stdio server's process with it.
+// Concurrently, since one stuck server can take ten seconds to give up.
 func (i *Invokers) Close() error {
-	var err error
-	for _, s := range i.Servers() {
-		if e := s.Close(); e != nil && err == nil {
-			err = e
-		}
+	servers := i.Servers()
+	errs := make([]error, len(servers))
+	var wg sync.WaitGroup
+	for n, s := range servers {
+		wg.Go(func() { errs[n] = s.Close() })
 	}
-	return err
+	wg.Wait()
+	return errors.Join(errs...)
 }
 
 // seed lists every server before any of them is dialled.
@@ -101,11 +144,11 @@ func (i *Invokers) settle(s event.ServerSummary) {
 func (i *Invokers) drop(server string) (*Server, []string) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	var old *Server
+	old := i.servers[server]
+	delete(i.servers, server)
 	var names []string
 	for name, t := range i.tools {
 		if t.server.Name == server {
-			old = t.server
 			names = append(names, name)
 			delete(i.tools, name)
 		}

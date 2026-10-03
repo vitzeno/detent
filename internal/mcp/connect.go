@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"net/url"
 	"os"
-	"sort"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -14,24 +17,6 @@ import (
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/tool"
 )
-
-// Config is one server, launched or reached, as the config file describes it.
-type Config struct {
-	Command string            `json:"command"`
-	Args    []string          `json:"args"`
-	Env     map[string]string `json:"env"`
-	// URL reaches a server rather than launching one: this or Command, never both.
-	URL     string            `json:"url"`
-	Headers map[string]string `json:"headers"`
-	// Type names a remote transport. Absent means stdio, as in every other client.
-	Type string `json:"type"`
-	// Disabled keeps a server configured but unconnected.
-	Disabled bool `json:"disabled"`
-	// OAuth tunes a remote server's sign-in. Nil still signs in on a 401.
-	OAuth *OAuth `json:"oauth"`
-	// Auth is another client's field, read for what it can give OAuth.
-	Auth foreignAuth `json:"auth"`
-}
 
 // ConnectOption adds to how ConnectAll dials.
 type ConnectOption func(*connecting)
@@ -50,7 +35,7 @@ func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers m
 	for _, o := range opts {
 		o(&how)
 	}
-	names := sorted(servers)
+	names := slices.Sorted(maps.Keys(servers))
 	seeded := make([]event.ServerSummary, len(names))
 	for i, name := range names {
 		c := servers[name]
@@ -67,25 +52,30 @@ func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers m
 		if servers[name].Disabled {
 			continue
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		// Claimed before any goroutine runs: a redial asked for meanwhile owns its status.
+		if how.signins != nil && !how.signins.claim(name) {
+			continue
+		}
+		wg.Go(func() {
+			if how.signins != nil {
+				defer how.signins.release(name)
+			}
 			c := servers[name]
 			got := dial(ctx, name, c, how.signins)
-			st := summarise(seeded[i], c, got)
+			st := summarise(seeded[i], got)
 			reporting.Lock()
 			defer reporting.Unlock()
 			switch {
 			case got.err != nil:
 				failed[i] = got.err
 			case got.server != nil:
-				in.Add(Register(reg, got.server, got.tools)...)
+				in.register(reg, got.server, got.tools)
 			}
 			in.settle(st)
 			if report != nil {
 				report(st)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	var errs []error
@@ -104,31 +94,34 @@ func Redialer(ctx context.Context, reg *tool.Registry, in *Invokers, servers map
 	return func(name string) error {
 		c, ok := servers[name]
 		switch {
+		case signins == nil:
+			return errors.New("signing in is not available here")
 		case !ok:
 			return fmt.Errorf("no MCP server is called %s", name)
 		case c.URL == "":
 			return fmt.Errorf("%s is launched, not reached: it holds its own credentials", name)
 		case c.Disabled:
 			return fmt.Errorf("%s is disabled in the config", name)
-		case signins.waitingFor(name):
-			return fmt.Errorf("a sign-in for %s is already waiting", name)
+		case !signins.claim(name):
+			return fmt.Errorf("%s is already being connected or signed in to", name)
 		}
-		if err := signins.tokens.Forget(name); err != nil {
+		defer signins.release(name)
+		if err := signins.retire(name, c.URL); err != nil {
 			return err
 		}
 		got := dial(ctx, name, c, signins)
-		st := summarise(event.ServerSummary{Name: name, Command: describeConfig(c)}, c, got)
-		if got.err == nil {
+		switch {
+		case got.err == nil:
 			// Swapped, not added: the old session's tools go with it, or
 			// a re-registered tool would rename itself beside the stale one.
-			old, names := in.drop(name)
-			reg.Unregister(names...)
-			in.Add(Register(reg, got.server, got.tools)...)
-			if old != nil {
+			if old := in.swap(reg, got.server, got.tools); old != nil {
 				_ = old.Close()
 			}
+			in.settle(summarise(event.ServerSummary{Name: name, Command: describeConfig(c)}, got))
+		case !in.connected(name):
+			in.settle(summarise(event.ServerSummary{Name: name, Command: describeConfig(c)}, got))
 		}
-		in.settle(st)
+		// A failure leaves a session that still answers as it was, tools and status alike.
 		signins.publish(event.ServersListed{Servers: in.Status()})
 		return got.err
 	}
@@ -160,7 +153,7 @@ func (c Config) transport(oauth auth.OAuthHandler) (sdk.Transport, error) {
 }
 
 // summarise is what /mcp shows of a server once dialling it settled.
-func summarise(st event.ServerSummary, c Config, got result) event.ServerSummary {
+func summarise(st event.ServerSummary, got result) event.ServerSummary {
 	st.Connected, st.Tools = got.err == nil, len(got.tools)
 	if got.err != nil {
 		st.Err = got.err.Error()
@@ -183,8 +176,11 @@ type result struct {
 	oauth bool
 }
 
-// dial connects one server and asks what it offers.
-func dial(ctx context.Context, name string, c Config, signins *SignIns) result {
+// dial connects one server and asks what it offers. Its error names no
+// secret, since it goes on the bus and into the store.
+func dial(parent context.Context, name string, c Config, signins *SignIns) result {
+	ctx, cancel := withPatience(parent, connectTimeout)
+	defer cancel()
 	// Every remote server can sign in: a 401 says it must, as Claude Code,
 	// Gemini CLI and Codex all read it. One that never sends one never does.
 	var oauth auth.OAuthHandler
@@ -194,14 +190,20 @@ func dial(ctx context.Context, name string, c Config, signins *SignIns) result {
 			signins = NewSignIns(nil, nil, Tokens{Dir: TokensDir()}, nil)
 		}
 		var err error
-		if h, err = oauthHandler(name, c.OAuth, HTTP{Headers: c.Headers}.client(), signins); err != nil {
-			return result{err: err}
+		if h, err = oauthHandler(name, c.URL, c.OAuth, authClient(), signins); err != nil {
+			return result{err: redact(c, err)}
 		}
 		oauth = h
 	}
 	got := connect(ctx, name, c, oauth)
+	if got.err != nil && ctx.Err() != nil && parent.Err() == nil {
+		got.err = fmt.Errorf("mcp: %s: %w", name, context.Cause(ctx))
+	}
 	if h != nil {
 		got.oauth = h.used(ctx)
+	}
+	if got.err != nil {
+		got.err = redact(c, got.err)
 	}
 	return got
 }
@@ -235,35 +237,74 @@ func environ(env map[string]string) []string {
 			out = append(out, k+"="+v)
 		}
 	}
-	for _, k := range sortedKeys(env) {
+	for _, k := range slices.Sorted(maps.Keys(env)) {
 		out = append(out, k+"="+env[k])
 	}
 	return out
 }
 
-func sorted(m map[string]Config) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func sortedKeys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
 // describeConfig is what /mcp shows under a server's name: the thing
-// it launches, or the thing it reaches.
+// it launches, or the thing it reaches without what may hold a key.
 func describeConfig(c Config) string {
 	if c.URL != "" {
-		return c.URL
+		return redactURL(c.URL)
 	}
 	return c.Command
 }
+
+// redactURL drops the parts of a URL a key travels in: a user and a query.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "(a url that does not parse)"
+	}
+	u.User = nil
+	u.Fragment, u.RawFragment = "", ""
+	if u.RawQuery != "" {
+		u.RawQuery = "…"
+	}
+	return u.String()
+}
+
+// redact takes out of err what the config may have filled from the
+// environment: the URL's query and password, and every header value.
+func redact(c Config, err error) error {
+	msg := err.Error()
+	var secrets []string
+	if c.URL != "" {
+		if u, perr := url.Parse(c.URL); perr == nil {
+			if pw, ok := u.User.Password(); ok {
+				secrets = append(secrets, pw)
+			}
+			for _, vs := range u.Query() {
+				secrets = append(secrets, vs...)
+			}
+			secrets = append(secrets, u.RawQuery)
+		}
+	}
+	for _, v := range c.Headers {
+		secrets = append(secrets, v)
+	}
+	out := msg
+	if c.URL != "" {
+		out = strings.ReplaceAll(out, c.URL, redactURL(c.URL))
+	}
+	for _, s := range secrets {
+		if s != "" {
+			out = strings.ReplaceAll(out, s, "***")
+		}
+	}
+	if out == msg {
+		return err
+	}
+	return redacted{msg: out, err: err}
+}
+
+// redacted says what err says, less its secrets, and still unwraps to it.
+type redacted struct {
+	msg string
+	err error
+}
+
+func (r redacted) Error() string { return r.msg }
+func (r redacted) Unwrap() error { return r.err }

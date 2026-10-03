@@ -45,7 +45,9 @@ func TestWatch_OpenAuthorizationOpensOnlyAWaitingLink(t *testing.T) {
 		t.Fatal("opening nothing said nothing")
 	}
 
+	signins.mu.Lock()
 	signins.live["notion"] = "https://as.example/authorize?state=s"
+	signins.mu.Unlock()
 	bus.Publish(event.OpenAuthorization{Server: "notion"})
 	select {
 	case link := <-opened:
@@ -63,12 +65,12 @@ func TestRedialer_SignsInAfresh(t *testing.T) {
 	browse(t, r.bus)
 	servers := map[string]Config{"notion": {URL: f.url() + "/mcp"}, "local": {Command: "true"}}
 	_ = r.connect(context.Background(), servers)
-	before, err := r.tokens.Load("notion")
+	before, err := r.tokens.Load("notion", f.url()+"/mcp")
 	require.NoError(t, err)
 
 	redial := Redialer(context.Background(), r.reg, r.in, servers, r.signins)
 	require.NoError(t, redial("notion"))
-	after, err := r.tokens.Load("notion")
+	after, err := r.tokens.Load("notion", f.url()+"/mcp")
 	require.NoError(t, err)
 	assert.NotEqual(t, before.Token.AccessToken, after.Token.AccessToken)
 	_, ok := r.reg.Lookup("notion__ping")
@@ -83,6 +85,31 @@ func TestRedialer_SignsInAfresh(t *testing.T) {
 
 	assert.ErrorContains(t, redial("nobody"), "no MCP server is called nobody")
 	assert.ErrorContains(t, redial("local"), "launched, not reached")
+
+	require.True(t, r.signins.claim("notion"))
+	assert.ErrorContains(t, redial("notion"), "already", "two dials of one server raced")
+	r.signins.release("notion")
+}
+
+// A redial that fails leaves the session that still answers alone: its
+// tools stay offered and /mcp still says it is connected.
+func TestRedialer_AFailureKeepsTheWorkingSession(t *testing.T) {
+	f := newFakeAuth(t)
+	r := rig(t, Tokens{Dir: t.TempDir()})
+	browse(t, r.bus)
+	servers := map[string]Config{"notion": {URL: f.url() + "/mcp"}}
+	require.Empty(t, r.connect(context.Background(), servers))
+
+	f.mu.Lock()
+	f.deny = true
+	f.mu.Unlock()
+	redial := Redialer(context.Background(), r.reg, r.in, servers, r.signins)
+	require.Error(t, redial("notion"))
+
+	_, ok := r.reg.Lookup("notion__ping")
+	assert.True(t, ok, "a failed redial took a working server's tools")
+	assert.True(t, r.in.Status()[0].Connected)
+	assert.Len(t, r.in.Servers(), 1)
 }
 
 // The sign-in address comes from the server's own metadata, so only a

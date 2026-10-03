@@ -39,7 +39,7 @@ func TestSignIn_EndToEnd(t *testing.T) {
 	_, ok := r.reg.Lookup("notion__ping")
 	assert.True(t, ok, "the server's tools are offered once signed in")
 
-	saved, err := r.tokens.Load("notion")
+	saved, err := r.tokens.Load("notion", f.url()+"/mcp")
 	require.NoError(t, err)
 	require.NotNil(t, saved)
 	assert.Equal(t, f.url()+"/token", saved.TokenURL)
@@ -101,6 +101,62 @@ func TestSignIn_ASecondLaunchSignsInFromTheSavedToken(t *testing.T) {
 	assert.Equal(t, event.AuthSignedIn, second.in.Status()[0].Auth)
 }
 
+// A project config that reuses a signed-in server's name with its own
+// URL must not receive that server's token, on any request at all.
+func TestSignIn_ATokenNeverFollowsItsNameToAnotherServer(t *testing.T) {
+	f := newFakeAuth(t)
+	var mu sync.Mutex
+	var auths []string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auths = append(auths, r.Header.Get("Authorization"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(other.Close)
+
+	tokens := Tokens{Dir: t.TempDir()}
+	first := rig(t, tokens)
+	browse(t, first.bus)
+	require.Empty(t, first.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp"}}))
+
+	second := rig(t, tokens)
+	_ = second.connect(context.Background(), map[string]Config{"notion": {URL: other.URL + "/mcp"}})
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotEmpty(t, auths, "the other server was never asked")
+	for _, a := range auths {
+		assert.Empty(t, a, "the token went to a server it was not issued by")
+	}
+}
+
+// After a fresh sign-in is asked for, the old session refreshing its
+// token must not write back the file the human asked to forget.
+func TestPersisting_ARetiredSessionNeverSavesAgain(t *testing.T) {
+	for _, retired := range []bool{false, true} {
+		tokens := Tokens{Dir: t.TempDir()}
+		signins := NewSignIns(nil, nil, tokens, nil)
+		p := &persisting{server: "notion", resource: notionURL, signins: signins,
+			gen: signins.generation("notion"), saved: saved(),
+			src: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "refreshed"})}
+		if retired {
+			require.NoError(t, signins.retire("notion", notionURL))
+		}
+		tok, err := p.Token()
+		require.NoError(t, err)
+		assert.Equal(t, "refreshed", tok.AccessToken, "a retired session still works")
+
+		got, err := tokens.Load("notion", notionURL)
+		require.NoError(t, err)
+		if retired {
+			assert.Nil(t, got, "a forgotten token came back")
+		} else {
+			require.NotNil(t, got)
+			assert.Equal(t, "refreshed", got.Token.AccessToken)
+		}
+	}
+}
+
 // A token past its expiry is refreshed, and the new one is what is on
 // disk afterwards, so the launch after that does not refresh again.
 func TestSignIn_RefreshesAnExpiredTokenAndSavesIt(t *testing.T) {
@@ -111,13 +167,13 @@ func TestSignIn_RefreshesAnExpiredTokenAndSavesIt(t *testing.T) {
 	browse(t, first.bus)
 	servers := map[string]Config{"notion": {URL: f.url() + "/mcp"}}
 	require.Empty(t, first.connect(context.Background(), servers))
-	before, err := tokens.Load("notion")
+	before, err := tokens.Load("notion", f.url()+"/mcp")
 	require.NoError(t, err)
 
 	second := rig(t, tokens)
 	seen := record(t, second.bus)
 	require.Empty(t, second.connect(context.Background(), servers))
-	after, err := tokens.Load("notion")
+	after, err := tokens.Load("notion", f.url()+"/mcp")
 	require.NoError(t, err)
 	assert.NotEqual(t, before.Token.AccessToken, after.Token.AccessToken)
 	assert.NotContains(t, kinds(seen()), event.AuthorizationWaitingKind, "a refresh asks nobody")
@@ -135,7 +191,7 @@ func TestSignIn_ExpiresWhenNobodySignsIn(t *testing.T) {
 	_, ok := r.reg.Lookup("notion__ping")
 	assert.False(t, ok)
 	assert.Equal(t, event.AuthSignedOut, r.in.Status()[0].Auth)
-	assert.Contains(t, seen(), event.AuthorizationFailed{Server: "notion", Reason: "the link expired"})
+	assert.Eventually(t, func() bool { return failedWith(seen(), "the link expired") }, 2*time.Second, 10*time.Millisecond)
 }
 
 // esc on a waiting Call, or quitting: the wait ends at once.
@@ -159,7 +215,7 @@ func TestSignIn_StopsWithItsContext(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("a cancelled sign-in kept waiting")
 	}
-	assert.Contains(t, seen(), event.AuthorizationFailed{Server: "notion", Reason: "stopped"})
+	assert.Eventually(t, func() bool { return failedWith(seen(), "stopped") }, 2*time.Second, 10*time.Millisecond)
 }
 
 func TestSignIn_SaysWhenTheServerRefuses(t *testing.T) {
@@ -201,7 +257,12 @@ func TestSignIn_RefusesAStrayRedirect(t *testing.T) {
 		}
 	}()
 	require.Empty(t, r.connect(context.Background(), map[string]Config{"notion": {URL: f.url() + "/mcp"}}))
-	assert.Equal(t, http.StatusBadRequest, <-stray)
+	select {
+	case code := <-stray:
+		assert.Equal(t, http.StatusBadRequest, code)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stray redirect was never answered")
+	}
 }
 
 // A provider that whitelists one redirect needs the port fixed, and one
@@ -230,7 +291,7 @@ func TestSignIn_AServerThatNeverAsksIsNeverSignedIn(t *testing.T) {
 	seen := record(t, r.bus)
 	require.Empty(t, r.connect(context.Background(), map[string]Config{"plain": {URL: plain}}))
 	assert.NotContains(t, kinds(seen()), event.AuthorizationWaitingKind)
-	assert.Equal(t, "", r.in.Status()[0].Auth)
+	assert.Empty(t, r.in.Status()[0].Auth)
 	entries, err := os.ReadDir(r.tokens.Dir)
 	require.NoError(t, err)
 	assert.Empty(t, entries, "and nothing is registered or saved for it")
@@ -247,10 +308,13 @@ func TestSignIns_OpensOnlyAWaitingLink(t *testing.T) {
 	waiting, stop := r.bus.Subscribe(event.Only(event.AuthorizationWaitingKind))
 	defer stop()
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		_ = r.connect(ctx, map[string]Config{"notion": {URL: f.url() + "/mcp"}})
 	}()
+	// Awaited, so nothing registers after the rig has closed.
+	defer func() { cancel(); <-done }()
 	link := (<-waiting).Event.(event.AuthorizationWaiting).URL
 	require.NoError(t, r.signins.Open("notion"))
 	assert.Equal(t, link, <-opened)
@@ -264,17 +328,21 @@ func TestConnectAll_AWaitingSignInHoldsUpNoOtherServer(t *testing.T) {
 	plain := httpServer(t, nil)
 	r := rig(t, Tokens{Dir: t.TempDir()})
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	plainReady := make(chan bool, 1)
-	go ConnectAll(ctx, r.reg, r.in, map[string]Config{
-		"notion": {URL: f.url() + "/mcp"},
-		"plain":  {URL: plain},
-	}, func(s event.ServerSummary) {
-		if s.Name == "plain" {
-			_, ok := r.reg.Lookup("plain__ping")
-			plainReady <- ok
-		}
-	}, WithSignIns(r.signins))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ConnectAll(ctx, r.reg, r.in, map[string]Config{
+			"notion": {URL: f.url() + "/mcp"},
+			"plain":  {URL: plain},
+		}, func(s event.ServerSummary) {
+			if s.Name == "plain" {
+				_, ok := r.reg.Lookup("plain__ping")
+				plainReady <- ok
+			}
+		}, WithSignIns(r.signins))
+	}()
+	defer func() { cancel(); <-done }()
 	select {
 	case ok := <-plainReady:
 		assert.True(t, ok, "plain's tools are registered by the time it reports")
@@ -290,14 +358,12 @@ func TestSerial_SignsInOnceForRequestsRefusedTogether(t *testing.T) {
 	s := &serial{server: "notion", inner: inner, signins: NewSignIns(nil, nil, Tokens{}, nil)}
 	var wg sync.WaitGroup
 	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			req := httptest.NewRequest("POST", "/mcp", nil)
 			req.Header.Set("Authorization", "Bearer old")
 			resp := &http.Response{Body: io.NopCloser(strings.NewReader(""))}
 			assert.NoError(t, s.Authorize(context.Background(), req, resp))
-		}()
+		})
 	}
 	require.Eventually(t, func() bool { return inner.calls.Load() == 1 }, time.Second, 5*time.Millisecond)
 	close(inner.release)
@@ -474,6 +540,16 @@ func record(t *testing.T, bus *event.Bus) func() []event.Event {
 		defer mu.Unlock()
 		return append([]event.Event(nil), got...)
 	}
+}
+
+// failedWith reports whether notion's sign-in was said to fail for reason.
+func failedWith(events []event.Event, reason string) bool {
+	for _, e := range events {
+		if f, ok := e.(event.AuthorizationFailed); ok && f.Server == "notion" && f.Reason == reason {
+			return true
+		}
+	}
+	return false
 }
 
 func kinds(events []event.Event) []event.Kind {

@@ -3,6 +3,7 @@ package mcp
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -86,6 +87,31 @@ func TestExpand_LeavesABareDollarAlone(t *testing.T) {
 	assert.Equal(t, "pa$$word", expand("pa$$word"))
 	assert.Equal(t, "$HOME_DIR", expand("$HOME_DIR"))
 	assert.Equal(t, "/home/x", expand("${HOME_DIR}"))
+}
+
+// A } before the reference is text, not the end of it: JSON in an
+// argument is where that happens.
+func TestExpand_ABraceBeforeAReferenceIsText(t *testing.T) {
+	t.Setenv("DETENT_TEST_TOKEN", "secret")
+	for in, want := range map[string]string{
+		`{"a":1}${DETENT_TEST_TOKEN}`: `{"a":1}secret`,
+		`a}b${DETENT_TEST_TOKEN}c`:    `a}bsecretc`,
+		`${DETENT_TEST_TOKEN`:         `${DETENT_TEST_TOKEN`,
+		`x${DETENT_TEST_TOKEN}y}`:     `xsecrety}`,
+	} {
+		assert.Equal(t, want, expand(in), in)
+	}
+}
+
+func FuzzExpand(f *testing.F) {
+	f.Add("a}b${DETENT_FUZZ}c")
+	f.Add("${DETENT_FUZZ:-x}${")
+	f.Fuzz(func(t *testing.T, s string) {
+		got := expand(s)
+		if !strings.Contains(s, "${") {
+			assert.Equal(t, s, got, "text with no reference changed")
+		}
+	})
 }
 
 func TestLoad_MissingFilesAreNotAnError(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -43,6 +44,45 @@ func TestHTTP_CarriesTheConfiguredHeaders(t *testing.T) {
 	assert.Equal(t, "Bearer hunter2", seen.Get("Authorization"))
 }
 
+// Configured headers are for the configured server: a redirect to
+// another host does not carry them, and a signed-in token is not overwritten.
+func TestHTTP_HeadersStayWithTheirOrigin(t *testing.T) {
+	var elsewhere http.Header
+	other := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		elsewhere = r.Header.Clone()
+	}))
+	t.Cleanup(other.Close)
+	var home http.Header
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		home = r.Header.Clone()
+		http.Redirect(w, r, other.URL+"/away", http.StatusFound)
+	}))
+	t.Cleanup(server.Close)
+
+	client := HTTP{URL: server.URL + "/mcp", Headers: map[string]string{
+		"X-Api-Key": "hunter2", "Authorization": "Bearer static"}}.client()
+	get := func(auth string) {
+		req, err := http.NewRequest(http.MethodGet, server.URL+"/mcp", nil)
+		require.NoError(t, err)
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		resp.Body.Close()
+	}
+
+	get("")
+	assert.Equal(t, "hunter2", home.Get("X-Api-Key"))
+	assert.Equal(t, "Bearer static", home.Get("Authorization"))
+	require.NotNil(t, elsewhere, "the redirect was not followed")
+	assert.Empty(t, elsewhere.Get("X-Api-Key"))
+	assert.Empty(t, elsewhere.Get("Authorization"))
+
+	get("Bearer signed-in")
+	assert.Equal(t, "Bearer signed-in", home.Get("Authorization"))
+}
+
 // A server reached over HTTP registers like any other.
 func TestConnectAll_ReachesAnHTTPServer(t *testing.T) {
 	reg := tool.Standard()
@@ -68,6 +108,31 @@ func TestConnectAll_StatusShowsTheURL(t *testing.T) {
 
 	require.Len(t, in.Status(), 1)
 	assert.Equal(t, url, in.Status()[0].Command)
+}
+
+// A key in the URL or a header goes nowhere that is published: not the
+// status /mcp draws, and not the error a failed dial reports.
+func TestConnectAll_PublishesNoSecretAConfigCarries(t *testing.T) {
+	refused := httptest.NewServer(http.NotFoundHandler())
+	refused.Close()
+	u, err := url.Parse(refused.URL)
+	require.NoError(t, err)
+	u.User = url.UserPassword("me", "pa55word")
+	u.Path, u.RawQuery = "/mcp", "api_key=s3cret"
+
+	in := NewInvokers()
+	errs := ConnectAll(context.Background(), tool.Standard(), in, map[string]Config{
+		"keyed": {URL: u.String(), Headers: map[string]string{"X-Api-Key": "hunter2"}},
+	}, nil, WithSignIns(NewSignIns(nil, nil, Tokens{Dir: t.TempDir()}, nil)))
+	require.Len(t, errs, 1)
+
+	st := in.Status()[0]
+	published := st.Command + " " + st.Err + " " + errs[0].Error()
+	assert.NotEmpty(t, st.Err)
+	for _, secret := range []string{"s3cret", "pa55word", "hunter2"} {
+		assert.NotContains(t, published, secret)
+	}
+	assert.Contains(t, st.Command, refused.Listener.Addr().String(), "the host is still shown")
 }
 
 // httpServer runs a real MCP server over real HTTP, so these exercise

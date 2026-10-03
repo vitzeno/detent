@@ -13,23 +13,27 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// oauthHandler signs in to one server. The SDK does the protocol, and this
-// supplies the browser leg, through signins, and the token file.
-func oauthHandler(server string, o *OAuth, client *http.Client, signins *SignIns) (*serial, error) {
+// oauthHandler signs in to one server at resource. The SDK does the protocol,
+// and this supplies the browser leg, through signins, and the token file.
+func oauthHandler(server, resource string, o *OAuth, client *http.Client, signins *SignIns) (*serial, error) {
 	if o == nil {
 		o = &OAuth{}
 	}
-	port := o.CallbackPort
-	if port == 0 {
+	port, fixed := o.CallbackPort, o.CallbackPort != 0
+	switch {
+	case port < 0 || port > 65535:
+		return nil, fmt.Errorf("mcp: %s: callbackPort %d is not a port", server, port)
+	case !fixed:
 		var err error
 		if port, err = freePort(); err != nil {
 			return nil, fmt.Errorf("mcp: %s: a port for the sign-in: %w", server, err)
 		}
 	}
+	gen := signins.generation(server)
 	redirect := fmt.Sprintf("http://127.0.0.1:%d/callback", port)
 	cfg := &auth.AuthorizationCodeHandlerConfig{
 		RedirectURL:              redirect,
-		AuthorizationCodeFetcher: signins.fetcher(server, port),
+		AuthorizationCodeFetcher: signins.fetcher(server, port, fixed),
 		// Without it a token lasts an hour, and the link comes back with it.
 		RequestRefreshToken: true,
 		Client:              client,
@@ -37,10 +41,11 @@ func oauthHandler(server string, o *OAuth, client *http.Client, signins *SignIns
 		// the client it registered, which a refresh needs next launch.
 		NewTokenSource: func(ctx context.Context, c *oauth2.Config, tok *oauth2.Token) (oauth2.TokenSource, error) {
 			saved := savedFrom(c, tok)
-			if err := signins.tokens.Save(server, saved); err != nil {
+			if err := signins.save(server, resource, gen, saved); err != nil {
 				return nil, err
 			}
-			return &persisting{server: server, tokens: signins.tokens, saved: saved, src: c.TokenSource(ctx, tok)}, nil
+			return &persisting{server: server, resource: resource, signins: signins, gen: gen,
+				saved: saved, src: c.TokenSource(ctx, tok)}, nil
 		},
 		DynamicClientRegistrationConfig: &auth.DynamicClientRegistrationConfig{
 			Metadata: &oauthex.ClientRegistrationMetadata{
@@ -62,14 +67,19 @@ func oauthHandler(server string, o *OAuth, client *http.Client, signins *SignIns
 	if len(o.Scopes) > 0 {
 		cfg.ScopeFilter = func([]string) []string { return o.Scopes }
 	}
-	saved, err := signins.tokens.Load(server)
+	// A token saved by name alone could be for any server: never sent.
+	if err := signins.tokens.dropLegacy(server); err != nil {
+		return nil, err
+	}
+	saved, err := signins.tokens.Load(server, resource)
 	if err != nil {
 		return nil, err
 	}
 	if saved != nil {
 		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, client)
 		src := saved.config(redirect).TokenSource(ctx, saved.Token)
-		cfg.InitialTokenSource = &persisting{server: server, tokens: signins.tokens, saved: saved, src: src}
+		cfg.InitialTokenSource = &persisting{server: server, resource: resource, signins: signins, gen: gen,
+			saved: saved, src: src}
 	}
 	inner, err := auth.NewAuthorizationCodeHandler(cfg)
 	if err != nil {
@@ -86,8 +96,6 @@ type serial struct {
 	signins *SignIns
 	mu      sync.Mutex
 }
-
-var _ auth.OAuthHandler = (*serial)(nil)
 
 func (s *serial) TokenSource(ctx context.Context) (oauth2.TokenSource, error) {
 	return s.inner.TokenSource(ctx)
@@ -133,11 +141,17 @@ func (s *serial) renewed(ctx context.Context, req *http.Request) bool {
 // persisting saves a token whenever it changes. Errors pass through
 // untouched: the transport reads invalid_grant to start a new sign-in.
 type persisting struct {
-	server string
-	tokens Tokens
-	src    oauth2.TokenSource
-	mu     sync.Mutex
-	saved  *Saved
+	server, resource string
+	signins          *SignIns
+	// gen is the sign-in this belongs to. A later one retires it, so it
+	// cannot bring back a token the human asked to forget.
+	gen int
+	src oauth2.TokenSource
+
+	mu    sync.Mutex
+	saved *Saved
+	// unsaved is a token whose save failed, not tried again on every request.
+	unsaved string
 }
 
 func (p *persisting) Token() (*oauth2.Token, error) {
@@ -147,12 +161,14 @@ func (p *persisting) Token() (*oauth2.Token, error) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.saved.Token == nil || tok.AccessToken != p.saved.Token.AccessToken {
+	if (p.saved.Token == nil || tok.AccessToken != p.saved.Token.AccessToken) && tok.AccessToken != p.unsaved {
 		next := *p.saved
 		next.Token = tok
 		// Unsaved is still a token: this session works, the next signs in.
-		if p.tokens.Save(p.server, &next) == nil {
+		if p.signins.save(p.server, p.resource, p.gen, &next) == nil {
 			p.saved = &next
+		} else {
+			p.unsaved = tok.AccessToken
 		}
 	}
 	return tok, nil
@@ -172,7 +188,7 @@ func (s *Saved) config(redirect string) *oauth2.Config {
 }
 
 // freePort picks the redirect's port now, since the SDK takes the URI up
-// front. It is listened on only if a sign-in happens.
+// front. Another process may take it first, and PKCE makes a code it steals useless.
 func freePort() (int, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
