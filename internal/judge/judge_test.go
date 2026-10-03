@@ -3,8 +3,10 @@ package judge
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -77,7 +79,8 @@ func TestWatch_AHighScoreAsksTheTurnToStop(t *testing.T) {
 
 	select {
 	case rec := <-intents:
-		got := rec.Event.(event.RequestStop)
+		got, ok := rec.Event.(event.RequestStop)
+		require.True(t, ok)
 		assert.Equal(t, turn, got.Turn)
 		assert.NotEmpty(t, got.Reason, "a stop must say why")
 	case <-time.After(3 * time.Second):
@@ -102,16 +105,12 @@ func TestWatch_ALowScoreLetsItCarryOn(t *testing.T) {
 	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
 	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "partial\n"}})
 
-	rec := <-facts
-	judged, ok := rec.Event.(event.CallJudged)
+	judged, ok := next(t, facts).(event.CallJudged)
 	require.True(t, ok, "the judgement comes first")
 	assert.Equal(t, call, judged.Call)
 
-	select {
-	case rec := <-facts:
-		t.Fatalf("nothing else should follow, got %s", rec.Event.Kind())
-	case <-time.After(300 * time.Millisecond):
-	}
+	stop()
+	assert.Empty(t, rest(facts), "nothing else should follow")
 }
 
 // A heuristic must not be able to end a request: only a real verdict
@@ -122,7 +121,7 @@ func TestWatch_AGuessNeverStopsATurn(t *testing.T) {
 	stop := Watch(bus, nil) // no judge at all
 	defer stop()
 
-	intents, unsub := bus.Subscribe(event.Only(event.RequestStopKind))
+	facts, unsub := bus.Subscribe(event.Only(event.CallJudgedKind, event.RequestStopKind))
 	defer unsub()
 
 	call := uuid.Must(uuid.NewV7())
@@ -130,10 +129,131 @@ func TestWatch_AGuessNeverStopsATurn(t *testing.T) {
 	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
 	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "done\n"}})
 
+	assert.Equal(t, event.CallJudgedKind, next(t, facts).Kind())
+	stop()
+	assert.Empty(t, rest(facts), "a heuristic asked a request to stop")
+}
+
+// A verdict that lands after its Turn ended must not stop the next one:
+// the request it read as answered is not the one now running.
+func TestWatch_ALateVerdictStopsOnlyItsOwnTurn(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	asker := &gatedAsker{gate: make(chan struct{}), asked: make(chan struct{}, 2)}
+	stop := Watch(bus, asker)
+	defer stop()
+
+	facts, unsub := bus.Subscribe(event.Only(event.CallJudgedKind, event.RequestStopKind))
+	defer unsub()
+
+	first, second := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	bus.Publish(event.TurnStarted{Turn: first, N: 1, Prompt: "count the files"})
+	bus.Publish(event.CallEnded{Call: uuid.Must(uuid.NewV7()), Result: event.Result{Stdout: "12\n"}})
+	waitFor(t, asker.asked)
+	bus.Publish(event.TurnEnded{Turn: first})
+	bus.Publish(event.TurnStarted{Turn: second, N: 2, Prompt: "now delete them"})
+	// Asked only once the loop has moved past the end of the first Turn.
+	bus.Publish(event.CallEnded{Call: uuid.Must(uuid.NewV7()), Result: event.Result{Stdout: "ok\n"}})
+	waitFor(t, asker.asked)
+	close(asker.gate)
+
+	var stops []uuid.UUID
+	for judged := 0; judged < 2; {
+		switch v := next(t, facts).(type) {
+		case event.CallJudged:
+			judged++
+		case event.RequestStop:
+			stops = append(stops, v.Turn)
+		}
+	}
+	stop()
+	for _, e := range rest(facts) {
+		if v, ok := e.(event.RequestStop); ok {
+			stops = append(stops, v.Turn)
+		}
+	}
+	assert.Equal(t, []uuid.UUID{second}, stops, "only the running Turn may be asked to stop")
+}
+
+// Stopping cancels a judgement in flight rather than waiting out the
+// client's timeout, and publishes nothing for it.
+func TestWatch_StopCancelsWhatIsInFlight(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	asker := &gatedAsker{gate: make(chan struct{}), asked: make(chan struct{}, 1)}
+	stop := Watch(bus, asker)
+
+	facts, unsub := bus.Subscribe(event.Only(event.CallJudgedKind))
+	defer unsub()
+
+	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
+	bus.Publish(event.CallEnded{Call: uuid.Must(uuid.NewV7()), Result: event.Result{Stdout: "x\n"}})
+	waitFor(t, asker.asked)
+
+	stopped := make(chan struct{})
+	go func() { stop(); close(stopped) }()
 	select {
-	case <-intents:
-		t.Fatal("a heuristic asked a request to stop")
-	case <-time.After(300 * time.Millisecond):
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("stop waited on a judgement nobody wants any more")
+	}
+	assert.Empty(t, rest(facts))
+}
+
+func TestOutput_KeepsTheTailOfStderr(t *testing.T) {
+	res := event.Result{Stdout: strings.Repeat("ok\n", 4000), Stderr: strings.Repeat("é", 2000) + "the error"}
+	got := output(res)
+	assert.Contains(t, got, "the error", "a long stdout must not hide why it failed")
+	assert.True(t, utf8.ValidString(got))
+	assert.Less(t, len(got), 4200)
+}
+
+func next(t *testing.T, ch <-chan event.Record) event.Event {
+	t.Helper()
+	select {
+	case rec := <-ch:
+		return rec.Event
+	case <-time.After(3 * time.Second):
+		t.Fatal("nothing arrived")
+	}
+	return nil
+}
+
+// rest is whatever else reaches ch once it goes quiet.
+func rest(ch <-chan event.Record) []event.Event {
+	var out []event.Event
+	for {
+		select {
+		case rec := <-ch:
+			out = append(out, rec.Event)
+		case <-time.After(200 * time.Millisecond):
+			return out
+		}
+	}
+}
+
+func waitFor(t *testing.T, ch <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the judge was never asked")
+	}
+}
+
+// gatedAsker reads every request as answered once gate opens, or gives up with ctx.
+type gatedAsker struct {
+	gate  chan struct{}
+	asked chan struct{}
+}
+
+func (g *gatedAsker) Ask(ctx context.Context, _ classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
+	g.asked <- struct{}{}
+	select {
+	case <-g.gate:
+		return classify.Answers{"goal_achieved": {Noul: 0.97}}, classify.Usage{}, nil
+	case <-ctx.Done():
+		return nil, classify.Usage{}, ctx.Err()
 	}
 }
 
@@ -152,7 +272,9 @@ func TestWatch_TheJudgeSeesTheCommand(t *testing.T) {
 
 	select {
 	case s := <-asker.states:
-		assert.Equal(t, "ls -la", s.(map[string]any)["command"])
+		m, ok := s.(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "ls -la", m["command"])
 	case <-time.After(3 * time.Second):
 		t.Fatal("the judge was never asked")
 	}
