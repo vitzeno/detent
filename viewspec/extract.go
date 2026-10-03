@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"regexp"
 	"slices"
@@ -165,11 +166,11 @@ func (jsonExtractor) Extract(output string) ([]Row, error) {
 		return nil, nil
 	}
 	var arr []map[string]any
-	if err := json.Unmarshal([]byte(trimmed), &arr); err == nil {
+	if err := decodeJSON(trimmed, &arr); err == nil {
 		return jsonRows(arr), nil
 	}
 	var one map[string]any
-	if err := json.Unmarshal([]byte(trimmed), &one); err == nil {
+	if err := decodeJSON(trimmed, &one); err == nil {
 		return jsonRows([]map[string]any{one}), nil
 	}
 	// One object per line, as jq -c and most structured logs print.
@@ -483,15 +484,29 @@ func jsonLines(s string) ([]map[string]any, error) {
 			continue
 		}
 		var row map[string]any
-		if err := json.Unmarshal([]byte(line), &row); err != nil {
+		if err := decodeJSON(line, &row); err != nil {
 			return nil, err
 		}
 		out = append(out, row)
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no objects")
+		return nil, errors.New("no objects")
 	}
 	return out, nil
+}
+
+// decodeJSON is json.Unmarshal keeping each number as it was printed,
+// since a float64 rounds an id past 2^53 and drops digits off a fraction.
+func decodeJSON(s string, v any) error {
+	dec := json.NewDecoder(strings.NewReader(s))
+	dec.UseNumber()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return errors.New("trailing data after the JSON value")
+	}
+	return nil
 }
 
 func jsonRows(in []map[string]any) []Row {
@@ -512,13 +527,10 @@ func scalar(v any) string {
 		return ""
 	case string:
 		return t
-	case float64:
-		if t == float64(int64(t)) {
-			return fmt.Sprintf("%d", int64(t))
-		}
-		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", t), "0"), ".")
+	case json.Number:
+		return t.String()
 	case bool:
-		return fmt.Sprintf("%t", t)
+		return strconv.FormatBool(t)
 	default:
 		b, err := json.Marshal(t)
 		if err != nil {

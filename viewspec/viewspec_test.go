@@ -419,6 +419,21 @@ func TestJSON_IndentsWhatItCanAndPassesTheRestThrough(t *testing.T) {
 		draw(t, spec, `{"b":2}`, 40))
 	assert.Equal(t, []string{"not json at all"},
 		draw(t, spec, "not json at all\n", 40), "invalid JSON is still shown")
+	assert.Equal(t, []string{`{`, `  "z": 12345678901234567890,`, `  "a": 1e-7`, `}`},
+		draw(t, spec, `{"z":12345678901234567890,"a":1e-7}`, 40), "keys and numbers stay as printed")
+}
+
+// A float64 would round an id past 2^53 and drop a fraction's digits.
+func TestJSON_RowsKeepNumbersAsPrinted(t *testing.T) {
+	spec := viewspec.Spec{Parse: viewspec.Parse{Kind: "json"}, Blocks: []viewspec.Block{{Kind: "table"}}}
+	for _, output := range []string{
+		`[{"id":12345678901234567890,"f":0.1234567,"tiny":1e-7,"ok":true}]`,
+		`{"id":12345678901234567890,"f":0.1234567,"tiny":1e-7,"ok":true}`,
+		"{\"id\":12345678901234567890,\"f\":0.1234567,\"tiny\":1e-7,\"ok\":true}\n",
+	} {
+		assert.Equal(t, []viewspec.Row{{"id": "12345678901234567890", "f": "0.1234567", "tiny": "1e-7", "ok": "true"}},
+			bind(t, spec, output).Sample(1), output)
+	}
 }
 
 // A table naming no columns draws every parsed field, which is what

@@ -1,6 +1,7 @@
 package viewspec
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -11,12 +12,7 @@ import (
 // a line gutter. It reads no fields, so it works under any parse.
 type rawWidget struct{ mode string }
 
-var (
-	_ Validator = rawWidget{}
-	_ Described = rawWidget{}
-)
-
-func (rawWidget) Validate(Block, []string) error { return nil }
+var _ Described = rawWidget{}
 
 func (w rawWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	body := d.Raw
@@ -121,19 +117,16 @@ func severityRole(l string) Role {
 	return RoleDefault
 }
 
-// indentJSON pretty-prints valid JSON and reports false for anything else.
+// indentJSON pretty-prints valid JSON and reports false for anything
+// else. Indent rather than a decode, so keys and numbers stay as printed.
 func indentJSON(s string) (string, bool) {
 	trimmed := strings.TrimSpace(s)
 	if trimmed == "" {
 		return "", false
 	}
-	var v any
-	if err := json.Unmarshal([]byte(trimmed), &v); err != nil {
+	var out bytes.Buffer
+	if err := json.Indent(&out, []byte(trimmed), "", "  "); err != nil {
 		return "", false
 	}
-	out, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return "", false
-	}
-	return string(out), true
+	return out.String(), true
 }
