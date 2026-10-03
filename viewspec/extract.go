@@ -66,7 +66,7 @@ func (e linesExtractor) Extract(output string) ([]Row, error) {
 		}
 		row := Row{}
 		for i, n := range names {
-			if n != "" && i < len(m) {
+			if n != "" {
 				row[n] = m[i]
 			}
 		}
@@ -183,6 +183,7 @@ func (jsonExtractor) Extract(output string) ([]Row, error) {
 
 // fixedExtractor slices rows between the values they line up, which
 // reads "CONTAINER ID" as one column where whitespace fields see two.
+// Offsets count runes, so a wide CJK or emoji header can misplace a cut.
 type fixedExtractor struct{}
 
 func newFixedExtractor(p Parse) (Extractor, error) {
@@ -209,15 +210,17 @@ func (fixedExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
 	if len(spans) < 2 {
 		return nil, nil, errors.New("header has fewer than two columns")
 	}
-	cols := make([]Column, len(spans))
+	titles := make([]string, len(spans))
 	for i, s := range spans {
-		cols[i] = Column{Field: strings.ToLower(s.title), Title: s.title}
+		titles[i] = s.title
 	}
+	names := lower(titles)
+	cols := titledColumns(names, titles)
 	rows := make([]Row, 0, len(body))
 	for _, runes := range body {
 		row := Row{}
-		for _, s := range spans {
-			row[strings.ToLower(s.title)] = strings.TrimSpace(slice(runes, s.start, s.end))
+		for i, s := range spans {
+			row[names[i]] = strings.TrimSpace(slice(runes, s.start, s.end))
 		}
 		rows = append(rows, row)
 	}
@@ -314,6 +317,9 @@ func (e delimitedExtractor) ExtractColumns(output string) ([]Row, []Column, erro
 	return rows, cols, nil
 }
 
+// tabWidth is how many spaces of indent a leading tab counts as.
+const tabWidth = 4
+
 // indentExtractor turns leading whitespace into a depth. Levels come
 // from the distinct indents present, so any indent width works.
 type indentExtractor struct{}
@@ -333,19 +339,8 @@ func (indentExtractor) Extract(output string) ([]Row, error) {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		n := 0
-		for _, r := range line {
-			switch r {
-			case ' ':
-				n++
-			case '\t':
-				n += 4
-			default:
-			}
-			if r != ' ' && r != '\t' {
-				break
-			}
-		}
+		lead := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		n := len(lead) + (tabWidth-1)*strings.Count(lead, "\t")
 		entries = append(entries, entry{indent: n, text: strings.TrimSpace(line)})
 		seen[n] = true
 	}
@@ -512,9 +507,11 @@ func decodeJSON(s string, v any) error {
 func jsonRows(in []map[string]any) []Row {
 	rows := make([]Row, 0, len(in))
 	for _, m := range in {
+		// Sorted, so keys differing only by case suffix the same way every run.
+		keys := slices.Sorted(maps.Keys(m))
 		row := Row{}
-		for k, v := range m {
-			row[strings.ToLower(k)] = scalar(v)
+		for i, name := range lower(keys) {
+			row[name] = scalar(m[keys[i]])
 		}
 		rows = append(rows, row)
 	}
@@ -720,10 +717,19 @@ func splitLines(s string) []string {
 	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 }
 
+// lower makes each title a row key: lowercase, with a repeat suffixed
+// _2, _3 rather than overwriting the column it repeats.
 func lower(in []string) []string {
 	out := make([]string, len(in))
+	taken := make(map[string]bool, len(in))
 	for i, s := range in {
-		out[i] = strings.ToLower(s)
+		base := strings.ToLower(s)
+		key := base
+		for n := 2; taken[key]; n++ {
+			key = base + "_" + strconv.Itoa(n)
+		}
+		taken[key] = true
+		out[i] = key
 	}
 	return out
 }

@@ -59,6 +59,28 @@ func TestSample_IsTheParseNotABlocksSlice(t *testing.T) {
 	assert.Equal(t, "github.com/x/a", b.Sample(1)[0]["pkg"], "a caller's edit stays its own")
 }
 
+func TestHeader_RepeatedTitlesKeepEveryColumn(t *testing.T) {
+	tests := []struct {
+		parse  viewspec.Parse
+		output string
+	}{
+		{viewspec.Parse{Kind: "columns", Header: true}, "NAME name Name\na b c\n"},
+		{viewspec.Parse{Kind: "delimited", Sep: ",", Header: true}, "NAME,name,Name\na,b,c\n"},
+		{viewspec.Parse{Kind: "box"}, "| NAME | name | Name |\n| a | b | c |\n"},
+		{viewspec.Parse{Kind: "json"}, `{"NAME":"a","name":"b","Name":"c"}`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.parse.Kind, func(t *testing.T) {
+			b := bind(t, viewspec.Spec{Parse: tc.parse, Blocks: []viewspec.Block{{Kind: "table"}}}, tc.output)
+			assert.Equal(t, []string{"name", "name_2", "name_3"}, b.Fields())
+			for range 5 {
+				assert.Equal(t, b.Sample(1), bind(t, viewspec.Spec{Parse: tc.parse,
+					Blocks: []viewspec.Block{{Kind: "table"}}}, tc.output).Sample(1), "the same every run")
+			}
+		})
+	}
+}
+
 func TestCompile_NamesTheBlockThatFailed(t *testing.T) {
 	_, err := viewspec.Compile(viewspec.Spec{Parse: colsParse(), Blocks: []viewspec.Block{
 		{Kind: "list", Field: "a"}, {Kind: "list", Field: "b"}, {Kind: "nope"}}})
