@@ -2,6 +2,8 @@ package logging_test
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -167,7 +169,7 @@ func TestEvents_NoNameSaysGoal(t *testing.T) {
 }
 
 // names is every record name events.go declares, one list so the two
-// tests below cannot disagree about what exists.
+// tests above cannot disagree about what exists.
 var names = []string{
 	logging.SessionOpen,
 	logging.LLMRequest, logging.LLMReply, logging.LLMError,
@@ -180,7 +182,7 @@ var names = []string{
 func records(t *testing.T, dir, session string) []map[string]any {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(dir, session+".jsonl"))
-	if os.IsNotExist(err) {
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	require.NoError(t, err)
@@ -190,6 +192,18 @@ func records(t *testing.T, dir, session string) []map[string]any {
 		if json.Unmarshal([]byte(line), &m) == nil {
 			out = append(out, m)
 		}
+	}
+	return out
+}
+
+// byEvent indexes records by their event name.
+func byEvent(t *testing.T, recs []map[string]any) map[string]map[string]any {
+	t.Helper()
+	out := map[string]map[string]any{}
+	for _, r := range recs {
+		name, ok := r[logging.KeyEvent].(string)
+		require.True(t, ok, "a record with no event name: %v", r)
+		out[name] = r
 	}
 	return out
 }

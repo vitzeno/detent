@@ -39,10 +39,7 @@ func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 	require.NoError(t, closer())
 
 	got := records(t, dir, "w1")
-	by := map[string]map[string]any{}
-	for _, r := range got {
-		by[r[logging.KeyEvent].(string)] = r
-	}
+	by := byEvent(t, got)
 
 	assert.Equal(t, turn.String(), by["turn.started"][logging.KeyTurn])
 	assert.Equal(t, step.String(), by["step.started"][logging.KeyStep])
@@ -56,7 +53,7 @@ func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 
 	for _, r := range got {
 		assert.Equal(t, "w1", r[logging.KeySession])
-		assert.NotZero(t, r[logging.KeyOrdinal], "an ordinal makes a gap visible")
+		assert.NotZero(t, r[logging.KeyOrdinal], "an ordinal places the record in the bus's order")
 	}
 }
 
@@ -81,10 +78,7 @@ func TestWatch_LogsAHumanCommand(t *testing.T) {
 	stop()
 	require.NoError(t, closer())
 
-	by := map[string]map[string]any{}
-	for _, r := range records(t, dir, "w5") {
-		by[r[logging.KeyEvent].(string)] = r
-	}
+	by := byEvent(t, records(t, dir, "w5"))
 
 	started := by["user_command.started"]
 	assert.Equal(t, shell.String(), started[logging.KeyUserCommand])
@@ -98,7 +92,7 @@ func TestWatch_LogsAHumanCommand(t *testing.T) {
 	assert.Equal(t, "WARN", ended["level"], "a failed command is worth finding")
 }
 
-// Live output is the one thing too noisy to keep, and CallEnded
+// Live output is the one thing too noisy to keep, and ToolCallEnded
 // carries the whole of it anyway.
 func TestWatch_SkipsLiveOutput(t *testing.T) {
 	dir := t.TempDir()
@@ -167,10 +161,7 @@ func TestWatch_RecordsTheCommand(t *testing.T) {
 	stop()
 	require.NoError(t, closer())
 
-	by := map[string]map[string]any{}
-	for _, r := range records(t, dir, "c") {
-		by[r[logging.KeyEvent].(string)] = r
-	}
+	by := byEvent(t, records(t, dir, "c"))
 	assert.Equal(t, "rm -rf build", by["tool_call.proposed"]["command"])
 	assert.Equal(t, "rm -rf build", by["tool_call.approval"]["command"],
 		"this record exists because a human read that string")

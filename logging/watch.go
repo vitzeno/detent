@@ -24,7 +24,7 @@ func Watch(bus *event.Bus) func() {
 }
 
 // worthKeeping takes every fact but live output, which is too noisy and
-// arrives whole in CallEnded anyway.
+// arrives whole in ToolCallEnded or UserCommandEnded anyway.
 func worthKeeping(e event.Event) bool {
 	return !e.Kind().IsIntent() && e.Kind() != event.OutputChunkKind
 }
@@ -112,9 +112,8 @@ func describe(e event.Event) (slog.Level, []any) {
 			"stdout", Body(v.Result.Stdout), "stderr", Body(v.Result.Stderr),
 			KeyReason, Snippet(v.Result.Err)}
 	case event.Notice:
-		// severity, not level: slog writes its own "level" key, and two
-		// in one object means the last one silently wins.
-		// Snippet: a notice can carry an endpoint's error body, which may echo the request.
+		// severity, not level: slog writes its own "level" and the last one wins.
+		// Snippet, since an endpoint's error body may echo the request.
 		return level(v.Level == "error" || v.Level == "warn"), []any{"severity", v.Level, "text", Snippet(v.Text)}
 	case event.ContextMeasured:
 		return slog.LevelDebug, []any{"total", v.Total, "budget", v.Budget, "exact", v.Exact}
