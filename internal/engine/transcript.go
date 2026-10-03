@@ -105,9 +105,8 @@ func (e *Engine) trLock(fn func()) {
 	fn()
 }
 
-// step appends one Step atomically, filling any missing answer, since
-// a call nothing answers breaks the next Step. Answers go by position,
-// so two calls a model gave one id still get one answer each.
+// step appends one Step whole, answering every call, since one left unanswered breaks
+// the next Step. Answers go by position, so calls sharing an id still get one each.
 func (t *transcript) step(reply model.Reply, answers []string) []event.Message {
 	added := []event.Message{{
 		Role: event.RoleAssistant, Content: reply.Text, Requests: reply.Requests,

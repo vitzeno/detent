@@ -95,11 +95,13 @@ type Engine struct {
 
 	// resetting is a reset waiting on the Turn it aborted. Run goroutine only.
 	resetting bool
-
-	mu sync.Mutex
-	// cur is the Turn in flight, past is what can still be undone.
-	cur  *turnState
+	// past is what can still be undone. Run goroutine only.
 	past map[uuid.UUID]*turnState
+
+	// mu guards cur and warned, which the Turn goroutine reads as well.
+	mu sync.Mutex
+	// cur is the Turn in flight.
+	cur *turnState
 	// warned names the hooks that already failed this Turn, so an outage warns once.
 	warned map[string]bool
 }
@@ -179,9 +181,8 @@ type Completer interface {
 	Complete(ctx context.Context, msgs []event.Message, tools []map[string]any) (model.Reply, event.Usage, error)
 }
 
-// Runner executes one command. host.Shell and sandbox.Container both
-// satisfy it structurally, so neither imports this package. It sends
-// nothing on events after it returns, and the caller closes events.
+// Runner executes one command, satisfied structurally by host.Shell and sandbox.Container.
+// It sends nothing on events after it returns, and the caller closes events.
 type Runner interface {
 	Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error)
 }
