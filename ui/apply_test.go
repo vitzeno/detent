@@ -262,6 +262,38 @@ func TestRestore_HonoursAReset(t *testing.T) {
 	assert.Equal(t, "kept", m.blocks[0].prompt)
 }
 
+// A process that died mid-request never ended it, and its live output was
+// never stored, so resume must close it rather than spin on nothing.
+func TestRestore_ClosesWhatACrashLeftRunning(t *testing.T) {
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	cmd, later := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	facts := []event.Event{
+		event.UserCommandStarted{UserCommand: cmd, Command: "tail -f log"},
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "build it"},
+		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "make"}},
+		event.ToolCallStarted{ToolCall: call},
+	}
+	m := New(t.Context(), event.New(), SessionInfo{}).Restore(asRecords(facts))
+
+	assert.True(t, m.Idle(), "nothing is waiting on a Turn the old process owned")
+	assert.False(t, m.spinning())
+	for _, id := range []uuid.UUID{cmd, call} {
+		r := m.row(id)
+		require.NotNil(t, r)
+		assert.False(t, r.running)
+		require.NotNil(t, r.result)
+		assert.Contains(t, r.result.Err, "detent exited")
+	}
+	b := m.block(turn)
+	assert.True(t, b.ended)
+	assert.Contains(t, b.err, "detent exited")
+
+	m.apply(event.SessionResumed{})
+	m.apply(event.UserCommandStarted{UserCommand: later, Command: "ls"})
+	assert.Len(t, b.rows, 1, "a command run after the resume does not join the dead Turn")
+	assert.Same(t, m.row(later), m.blocks[len(m.blocks)-1].rows[0], "it lands below the seam")
+}
+
 // /sessions asks over the bus rather than reaching into a store, so
 // ui keeps importing nothing under internal/.
 func TestSessions_AreAskedForAndFolded(t *testing.T) {
