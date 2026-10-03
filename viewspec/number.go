@@ -6,9 +6,8 @@ import (
 	"strings"
 )
 
-// number reads a quantity the way a shell prints one: 45%, 1,024, 1.2G
-// or 1e5. A comma separates thousands, so 1,5 is 15. Unreadable or
-// infinite is 0, never a failed view.
+// number reads a quantity the way a shell prints one: 45%, 1,024, 1.2G or
+// 1e5, with 1,5 read as 15. Unreadable or infinite is 0, never a failed view.
 func number(s string) float64 {
 	digits, unit := splitNumber(strings.TrimSpace(s))
 	if digits == "" {
