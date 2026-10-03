@@ -1,4 +1,4 @@
-package humanshell
+package usercommand
 
 import (
 	"context"
@@ -28,12 +28,12 @@ func TestWatch_RunsACommandAndTellsTheModel(t *testing.T) {
 
 	bus.Publish(event.RunCommand{Text: "  git status --short  "})
 
-	started := c.await(t, event.ShellStartedKind).(event.ShellStarted)
+	started := c.await(t, event.UserCommandStartedKind).(event.UserCommandStarted)
 	assert.Equal(t, "git status --short", started.Command, "trimmed, since a stray space is not the command")
 	assert.Equal(t, "sandbox", started.Runner)
 
-	ended := c.await(t, event.ShellEndedKind).(event.ShellEnded)
-	assert.Equal(t, started.Shell, ended.Shell, "one Shell, correlated by id")
+	ended := c.await(t, event.UserCommandEndedKind).(event.UserCommandEnded)
+	assert.Equal(t, started.UserCommand, ended.UserCommand, "one Shell, correlated by id")
 	assert.Equal(t, "M ui/keys.go\n", ended.Result.Stdout)
 
 	note := c.await(t, event.NoteContextKind).(event.NoteContext)
@@ -43,8 +43,8 @@ func TestWatch_RunsACommandAndTellsTheModel(t *testing.T) {
 	require.Len(t, chunks, 1, "live output rides on OutputChunk, keyed by the Shell's id")
 	chunk, ok := chunks[0].(event.OutputChunk)
 	require.True(t, ok)
-	assert.Equal(t, started.Shell, chunk.Shell)
-	assert.Equal(t, uuid.Nil, chunk.Call, "a Shell is not a Call, so nothing keyed by Call counts it")
+	assert.Equal(t, started.UserCommand, chunk.UserCommand)
+	assert.Equal(t, uuid.Nil, chunk.ToolCall, "a Shell is not a Call, so nothing keyed by Call counts it")
 	assert.Equal(t, []string{"git status --short"}, r.commands())
 }
 
@@ -72,10 +72,10 @@ func TestWatch_CancelStopsTheRunningCommand(t *testing.T) {
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "sleep 45"})
-	started := c.await(t, event.ShellStartedKind).(event.ShellStarted)
+	started := c.await(t, event.UserCommandStartedKind).(event.UserCommandStarted)
 
-	bus.Publish(event.CancelCommand{Shell: started.Shell})
-	ended := c.await(t, event.ShellEndedKind).(event.ShellEnded)
+	bus.Publish(event.CancelCommand{UserCommand: started.UserCommand})
+	ended := c.await(t, event.UserCommandEndedKind).(event.UserCommandEnded)
 	assert.Equal(t, stoppedByHuman, ended.Result.Err,
 		"the model reads why it stopped, not a context error")
 
@@ -92,10 +92,10 @@ func TestWatch_CancelWithNoIdStopsWhateverRuns(t *testing.T) {
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "sleep 45"})
-	c.await(t, event.ShellStartedKind)
+	c.await(t, event.UserCommandStartedKind)
 
 	bus.Publish(event.CancelCommand{})
-	assert.Equal(t, stoppedByHuman, c.await(t, event.ShellEndedKind).(event.ShellEnded).Result.Err)
+	assert.Equal(t, stoppedByHuman, c.await(t, event.UserCommandEndedKind).(event.UserCommandEnded).Result.Err)
 }
 
 // Refused rather than queued: the human can see the first one running
@@ -108,13 +108,13 @@ func TestWatch_RefusesASecondCommandWhileOneRuns(t *testing.T) {
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "sleep 45"})
-	c.await(t, event.ShellStartedKind)
+	c.await(t, event.UserCommandStartedKind)
 	bus.Publish(event.RunCommand{Text: "ls"})
 
 	notice := c.await(t, event.NoticeKind).(event.Notice)
 	assert.Equal(t, "warn", notice.Level)
 	assert.Contains(t, notice.Text, "already running")
-	assert.Len(t, c.of(event.ShellStartedKind), 1, "and nothing second started")
+	assert.Len(t, c.of(event.UserCommandStartedKind), 1, "and nothing second started")
 	assert.Equal(t, []string{"sleep 45"}, r.commands())
 }
 
@@ -126,13 +126,13 @@ func TestWatch_StopPublishesTheEndBeforeItReturns(t *testing.T) {
 	stop := Watch(t.Context(), bus, &fakeRunner{hold: make(chan struct{})}, "host")
 
 	bus.Publish(event.RunCommand{Text: "sleep 45"})
-	c.await(t, event.ShellStartedKind)
+	c.await(t, event.UserCommandStartedKind)
 
 	stop()
 	bus.Publish(event.Notice{Level: "info", Text: "after the stop"})
 	bus.Settle(2 * time.Second)
 
-	ended := c.recordOf(t, event.ShellEndedKind)
+	ended := c.recordOf(t, event.UserCommandEndedKind)
 	after := c.recordOf(t, event.NoticeKind)
 	assert.Less(t, ended.Ordinal, after.Ordinal,
 		"the end was published while stop was still running")
@@ -146,9 +146,9 @@ func TestWatch_ItsContextEndingStopsTheCommand(t *testing.T) {
 	defer Watch(ctx, bus, &fakeRunner{hold: make(chan struct{})}, "host")()
 
 	bus.Publish(event.RunCommand{Text: "sleep 45"})
-	c.await(t, event.ShellStartedKind)
+	c.await(t, event.UserCommandStartedKind)
 	cancel()
-	c.await(t, event.ShellEndedKind)
+	c.await(t, event.UserCommandEndedKind)
 }
 
 func TestWatch_EmptyCommandDoesNothing(t *testing.T) {
@@ -160,8 +160,8 @@ func TestWatch_EmptyCommandDoesNothing(t *testing.T) {
 	bus.Publish(event.RunCommand{Text: "   "})
 	stop()
 	// The intent itself is on the bus, but no fact saying a command ran.
-	assert.Empty(t, c.of(event.ShellStartedKind))
-	assert.Empty(t, c.of(event.ShellEndedKind))
+	assert.Empty(t, c.of(event.UserCommandStartedKind))
+	assert.Empty(t, c.of(event.UserCommandEndedKind))
 	assert.Empty(t, c.of(event.NoteContextKind))
 	assert.Empty(t, r.commands())
 }
@@ -174,11 +174,11 @@ func TestWatch_APanickingRunnerEndsTheCommandOnly(t *testing.T) {
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "boom"})
-	ended := c.await(t, event.ShellEndedKind).(event.ShellEnded)
+	ended := c.await(t, event.UserCommandEndedKind).(event.UserCommandEnded)
 	assert.Contains(t, ended.Result.Err, "runner panicked")
 
 	bus.Publish(event.RunCommand{Text: "after"})
-	assert.Eventually(t, func() bool { return len(c.of(event.ShellStartedKind)) == 2 },
+	assert.Eventually(t, func() bool { return len(c.of(event.UserCommandStartedKind)) == 2 },
 		3*time.Second, time.Millisecond, "the subscriber is still listening")
 }
 
@@ -192,13 +192,13 @@ func TestWatch_DoesNotInheritTheTimeoutMeantForTheModel(t *testing.T) {
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "go test ./..."})
-	c.await(t, event.ShellEndedKind)
+	c.await(t, event.UserCommandEndedKind)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	assert.Greater(t, r.left, host.DefaultTimeout,
 		"a deadline is set here precisely so host.Shell does not apply its own")
-	assert.LessOrEqual(t, r.left, shellMax, "but it is still bounded")
+	assert.LessOrEqual(t, r.left, commandMax, "but it is still bounded")
 }
 
 // Against the real runner, because a fake that closes its output
@@ -211,7 +211,7 @@ func TestWatch_AgainstTheRealHostShell(t *testing.T) {
 
 	bus.Publish(event.RunCommand{Text: "printf 'one\\ntwo\\n'; printf 'oops\\n' >&2; exit 3"})
 
-	ended := c.await(t, event.ShellEndedKind).(event.ShellEnded)
+	ended := c.await(t, event.UserCommandEndedKind).(event.UserCommandEnded)
 	assert.Equal(t, 3, ended.Result.ExitCode)
 	assert.Equal(t, "one\ntwo\n", ended.Result.Stdout)
 	assert.Equal(t, "oops\n", ended.Result.Stderr)
@@ -290,7 +290,7 @@ func TestWatch_ARunnerErrorEndsTheCommandAtOnce(t *testing.T) {
 
 	start := time.Now()
 	bus.Publish(event.RunCommand{Text: "ls"})
-	ended := c.await(t, event.ShellEndedKind).(event.ShellEnded)
+	ended := c.await(t, event.UserCommandEndedKind).(event.UserCommandEnded)
 	assert.Less(t, time.Since(start), time.Second)
 	assert.Equal(t, "create task: already exists", ended.Result.Err)
 }

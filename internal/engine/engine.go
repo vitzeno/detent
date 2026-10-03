@@ -20,8 +20,8 @@ import (
 const (
 	DefaultMaxSteps = 100
 	// A Step is never split by compaction, so its results must fit the budget whole.
-	DefaultCallsPerStep = 10
-	DefaultRepeatLimit  = 3
+	DefaultToolCallsPerStep = 10
+	DefaultRepeatLimit      = 3
 	// How many Unfinished replies in a row are nudged before one is taken as the end.
 	DefaultNudges = 2
 	// A human can stop a command sooner. This bounds the one nobody watches.
@@ -49,8 +49,8 @@ type Engine struct {
 	tr      transcript
 	turns   int
 
-	maxSteps int
-	maxCalls int
+	maxSteps     int
+	maxToolCalls int
 	// commandTimeout bounds every Call, host or sandbox alike.
 	commandTimeout time.Duration
 	// finishCheck asks once for a check before a Turn that changed something ends.
@@ -106,7 +106,7 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 		bus: bus, model: m, tools: tools, runners: runners,
 		session:        uuid.Must(uuid.NewV7()),
 		maxSteps:       DefaultMaxSteps,
-		maxCalls:       DefaultCallsPerStep,
+		maxToolCalls:   DefaultToolCallsPerStep,
 		commandTimeout: DefaultCommandTimeout,
 		finishCheck:    true,
 		contextTokens:  DefaultContextTokens,

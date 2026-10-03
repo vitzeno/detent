@@ -75,11 +75,11 @@ func (m *Model) apply(ev event.Event) {
 	case event.ModelText:
 		m.addProse(v.Text)
 
-	case event.CallProposed:
-		m.addCall(v)
+	case event.ToolCallProposed:
+		m.addToolCall(v)
 
-	case event.CallAssessed:
-		if r := m.row(v.Call); r != nil {
+	case event.ToolCallAssessed:
+		if r := m.row(v.ToolCall); r != nil {
 			r.risk = v.Risk
 		}
 
@@ -89,16 +89,16 @@ func (m *Model) apply(ev event.Event) {
 		m.waiting = false
 		m.raise(modeConfirm)
 
-	case event.CallStarted:
-		if r := m.row(v.Call); r != nil {
+	case event.ToolCallStarted:
+		if r := m.row(v.ToolCall); r != nil {
 			r.running = true
 		}
 
 	case event.OutputChunk:
 		m.addLine(v)
 
-	case event.CallEnded:
-		if r := m.row(v.Call); r != nil {
+	case event.ToolCallEnded:
+		if r := m.row(v.ToolCall); r != nil {
 			r.running = false
 			result := v.Result
 			r.result = &result
@@ -111,17 +111,17 @@ func (m *Model) apply(ev event.Event) {
 	case event.SessionResumed:
 		m.blocks = append(m.blocks, &turnBlock{seam: &v})
 
-	case event.ShellStarted:
-		m.addShell(v)
+	case event.UserCommandStarted:
+		m.addUserCommand(v)
 
-	case event.ShellEnded:
-		if r := m.row(v.Shell); r != nil {
+	case event.UserCommandEnded:
+		if r := m.row(v.UserCommand); r != nil {
 			r.running = false
 			result := v.Result
 			r.result = &result
 		}
 
-	case event.CallJudged:
+	case event.ToolCallJudged:
 		m.judged(v)
 
 	case event.ViewReady:
@@ -190,39 +190,39 @@ func (m *Model) addProse(text string) {
 	}
 	m.cur.rev++
 	// Defused once here, since the pane draws it whole through glamour.
-	m.cur.rows = append(m.cur.rows, &callRow{prose: layout.Printable(text)})
+	m.cur.rows = append(m.cur.rows, &historyRow{prose: layout.Printable(text)})
 	m.trackNewest()
 }
 
-func (m *Model) addCall(v event.CallProposed) {
+func (m *Model) addToolCall(v event.ToolCallProposed) {
 	if m.cur == nil {
 		return
 	}
 	m.cur.rev++
-	m.cur.rows = append(m.cur.rows, &callRow{
-		id: v.Call, command: event.Command(v.Tool, v.Args),
+	m.cur.rows = append(m.cur.rows, &historyRow{
+		id: v.ToolCall, command: event.Command(v.Tool, v.Args),
 		renders: v.Renders, executor: v.Executor,
 	})
 	m.trackNewest()
 }
 
-// addShell puts a command in the Turn it interrupted, or its own
+// addUserCommand puts a command in the Turn it interrupted, or its own
 // block between Turns: anywhere else draws it out of order.
-func (m *Model) addShell(v event.ShellStarted) {
+func (m *Model) addUserCommand(v event.UserCommandStarted) {
 	b := m.cur
 	if b == nil {
-		b = m.shellBlock()
+		b = m.commandBlock()
 	}
 	b.rev++
-	b.rows = append(b.rows, &callRow{
-		id: v.Shell, command: v.Command, human: true, running: true,
+	b.rows = append(b.rows, &historyRow{
+		id: v.UserCommand, command: v.Command, human: true, running: true,
 	})
 	m.trackNewest()
 }
 
-// shellBlock is where commands land between Turns. Reused while it is
+// commandBlock is where commands land between Turns. Reused while it is
 // the newest, so a burst of them reads as one sitting.
-func (m *Model) shellBlock() *turnBlock {
+func (m *Model) commandBlock() *turnBlock {
 	if n := len(m.blocks); n > 0 && m.blocks[n-1].shell {
 		return m.blocks[n-1]
 	}
@@ -236,7 +236,7 @@ func (m *Model) shellBlock() *turnBlock {
 const maxLiveLines = 200
 
 func (m *Model) addLine(v event.OutputChunk) {
-	r := m.row(v.Source())
+	r := m.row(v.Owner())
 	if r == nil {
 		return
 	}
@@ -247,8 +247,8 @@ func (m *Model) addLine(v event.OutputChunk) {
 	r.live = append(r.live, v.Line)
 }
 
-func (m *Model) judged(v event.CallJudged) {
-	r := m.row(v.Call)
+func (m *Model) judged(v event.ToolCallJudged) {
+	r := m.row(v.ToolCall)
 	if r == nil {
 		return
 	}
@@ -260,7 +260,7 @@ func (m *Model) judged(v event.CallJudged) {
 }
 
 func (m *Model) viewReady(v event.ViewReady) {
-	r := m.row(v.Call)
+	r := m.row(v.Owner())
 	if r == nil || v.Spec == nil {
 		return
 	}
@@ -304,7 +304,7 @@ func (m *Model) block(id uuid.UUID) *turnBlock {
 	return nil
 }
 
-func (m *Model) row(id uuid.UUID) *callRow {
+func (m *Model) row(id uuid.UUID) *historyRow {
 	if id == uuid.Nil {
 		return nil
 	}

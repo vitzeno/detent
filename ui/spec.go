@@ -28,7 +28,7 @@ var viewRegistry = func() *viewspec.Registry {
 
 // seedFromView puts a row's on_enter command in the prompt as
 // editable text. It does not run: from there it is an ordinary prompt.
-func (m Model) seedFromView(r *callRow) (Model, bool) {
+func (m Model) seedFromView(r *historyRow) (Model, bool) {
 	b, ok := boundView(r)
 	if !ok {
 		return m, false
@@ -44,7 +44,7 @@ func (m Model) seedFromView(r *callRow) (Model, bool) {
 
 // boundView resolves a row's view, binding once and caching on the
 // row. Draw runs per frame, Bind must not.
-func boundView(r *callRow) (*viewspec.Bound, bool) {
+func boundView(r *historyRow) (*viewspec.Bound, bool) {
 	if !r.drawable() {
 		return nil, false
 	}
@@ -92,7 +92,7 @@ func bindSpec(spec viewspec.Spec, output string) (*viewspec.Bound, bool) {
 
 // fallbackChain is what a row draws with no judge involved: the spec for
 // its judged shape, then raw bytes. A composed spec replaces it later.
-func fallbackChain(r *callRow, output string) []*viewspec.Compiled {
+func fallbackChain(r *historyRow, output string) []*viewspec.Compiled {
 	// The model's own words are a document, not bytes a command printed.
 	if r.prose != "" {
 		return []*viewspec.Compiled{compiledMarkdown, compiledPlain}

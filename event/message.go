@@ -18,15 +18,15 @@ import (
 type Message struct {
 	Role    Role
 	Content string
-	// Calls belong to an assistant message.
-	Calls []ToolCall
-	// CallID answers one call, and is set on RoleTool alone.
-	CallID string
+	// Requests belong to an assistant message.
+	Requests []ToolRequest
+	// RequestID answers one call, and is set on RoleTool alone.
+	RequestID string
 }
 
-// ToolCall is one thing the model wants run. ID is what the answering
+// ToolRequest is one thing the model wants run. ID is what the answering
 // message must carry back.
-type ToolCall struct {
+type ToolRequest struct {
 	ID   string
 	Name string
 	Args map[string]any
@@ -46,12 +46,12 @@ const (
 )
 
 // Answer builds the tool message that closes one call.
-func Answer(call ToolCall, content string) Message {
-	return Message{Role: RoleTool, CallID: call.ID, Content: content}
+func Answer(call ToolRequest, content string) Message {
+	return Message{Role: RoleTool, RequestID: call.ID, Content: content}
 }
 
-// CallIDs are what a Step's results must answer, in order.
-func CallIDs(calls []ToolCall) []string {
+// RequestIDs are what a Step's results must answer, in order.
+func RequestIDs(calls []ToolRequest) []string {
 	out := make([]string, len(calls))
 	for i, c := range calls {
 		out[i] = c.ID

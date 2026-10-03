@@ -147,9 +147,9 @@ func TestHistory_FlaggedCallsAreMarked(t *testing.T) {
 	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := sized(t, 120, 40,
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "clean"},
-		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "rm -rf build"}},
-		event.CallAssessed{Call: call, Risk: event.Risk{Dangerous: true, Note: "recursive delete"}},
-		event.CallEnded{Call: call, Result: event.Result{}},
+		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "rm -rf build"}},
+		event.ToolCallAssessed{ToolCall: call, Risk: event.Risk{Dangerous: true, Note: "recursive delete"}},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{}},
 		event.TurnEnded{Turn: turn, Reason: event.EndDone})
 
 	line := stripANSI(strings.Join(m.rowLines(m.rows()[0], m.focusedRow()), ""))
@@ -159,8 +159,8 @@ func TestHistory_FlaggedCallsAreMarked(t *testing.T) {
 	turn2, call2 := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m = sized(t, 120, 40,
 		event.TurnStarted{Turn: turn2, N: 1, Prompt: "look"},
-		event.CallProposed{Call: call2, Tool: "bash", Args: map[string]any{"command": "ls"}},
-		event.CallEnded{Call: call2, Result: event.Result{}},
+		event.ToolCallProposed{ToolCall: call2, Tool: "bash", Args: map[string]any{"command": "ls"}},
+		event.ToolCallEnded{ToolCall: call2, Result: event.Result{}},
 		event.TurnEnded{Turn: turn2, Reason: event.EndDone})
 	assert.NotContains(t, stripANSI(strings.Join(m.rowLines(m.rows()[0], m.focusedRow()), "")), "!")
 }
@@ -283,10 +283,10 @@ func TestBlockCache_NeverGoesStale(t *testing.T) {
 		{"a row expands", func(m *Model) { m.toggleExpand(rows[4]) }},
 		{"the same row shuts", func(m *Model) { m.toggleExpand(rows[4]) }},
 		{"output arrives", func(m *Model) {
-			m.apply(event.OutputChunk{Call: call, Line: "a new line of output"})
+			m.apply(event.OutputChunk{ToolCall: call, Line: "a new line of output"})
 		}},
 		{"a verdict lands", func(m *Model) {
-			m.apply(event.CallJudged{Call: call, Status: "failed", Attention: 0.95, FromJudge: true})
+			m.apply(event.ToolCallJudged{ToolCall: call, Status: "failed", Attention: 0.95, FromJudge: true})
 		}},
 		{"a turn ends", func(m *Model) {
 			m.apply(event.TurnEnded{Turn: turn, Reason: event.EndError, Summary: "it broke"})
@@ -300,14 +300,14 @@ func TestBlockCache_NeverGoesStale(t *testing.T) {
 			m.apply(event.ModelText{Turn: m.cur.id, Text: "looking into it"})
 		}},
 		{"a call is flagged", func(m *Model) {
-			m.apply(event.CallAssessed{Call: call, Risk: event.Risk{Dangerous: true}})
+			m.apply(event.ToolCallAssessed{ToolCall: call, Risk: event.Risk{Dangerous: true}})
 		}},
 		{"a sign-in is asked for", func(m *Model) {
 			m.apply(event.AuthorizationWaiting{Server: "notion", URL: "https://x", Until: time.Now()})
 		}},
 		{"the sign-in lands", func(m *Model) { m.apply(event.ServerAuthorized{Server: "notion"}) }},
 		{"the human runs a command", func(m *Model) {
-			m.apply(event.ShellStarted{Shell: uuid.Must(uuid.NewV7()), Command: "ls"})
+			m.apply(event.UserCommandStarted{UserCommand: uuid.Must(uuid.NewV7()), Command: "ls"})
 		}},
 		{"the live turn ends", func(m *Model) {
 			m.apply(event.TurnEnded{Turn: m.cur.id, Reason: event.EndAborted})
@@ -365,8 +365,8 @@ func TestBlockCache_ALiveLineRedrawsOnlyItsBlock(t *testing.T) {
 	m := session(40, 3, 0)
 	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m.apply(event.TurnStarted{Turn: turn, N: 41, Prompt: "run something"})
-	m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
-	m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
+	m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
+	m.apply(event.ToolCallStarted{ToolCall: call, Runner: "sandbox"})
 	m.nav.follow, m.nav.cursor = false, 5
 	_, _ = m.historyAll()
 
@@ -374,7 +374,7 @@ func TestBlockCache_ALiveLineRedrawsOnlyItsBlock(t *testing.T) {
 	for i, b := range m.blocks {
 		before[i] = b.cache
 	}
-	m.apply(event.OutputChunk{Call: call, Line: "ok"})
+	m.apply(event.OutputChunk{ToolCall: call, Line: "ok"})
 	m.apply(event.StepEnded{Turn: turn})
 	_, _ = m.historyAll()
 
@@ -391,7 +391,7 @@ func TestBlockKey_CoversEverythingABlockDrawsFrom(t *testing.T) {
 		do   func(m *Model, b *turnBlock)
 	}{
 		{"its content", func(m *Model, b *turnBlock) {
-			m.apply(event.CallJudged{Call: b.rows[0].id, Status: "failed"})
+			m.apply(event.ToolCallJudged{ToolCall: b.rows[0].id, Status: "failed"})
 		}},
 		{"the pane width", func(m *Model, _ *turnBlock) { m.layout.histColW = 44 }},
 		{"the cursor entering it", func(m *Model, _ *turnBlock) { m.nav.cursor = len(m.rows()) - 1 }},
@@ -405,8 +405,8 @@ func TestBlockKey_CoversEverythingABlockDrawsFrom(t *testing.T) {
 			m.layout.histColW = 60
 			turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 			m.apply(event.TurnStarted{Turn: turn, N: 4, Prompt: "live"})
-			m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make"}})
-			m.apply(event.CallStarted{Call: call})
+			m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "make"}})
+			m.apply(event.ToolCallStarted{ToolCall: call})
 			m.nav.cursor = 0
 			b := m.cur
 			before := m.blockKey(b, m.focusedRow())
@@ -491,12 +491,12 @@ func TestDetailCache_NeverGoesStale(t *testing.T) {
 	m := session(4, 3, 6)
 	rows := m.rows()
 	// Rows must draw differently, or a cursor move proves nothing.
-	m.apply(event.CallEnded{Call: rows[2].id, Result: event.Result{Stdout: "row two is its own thing\n"}})
+	m.apply(event.ToolCallEnded{ToolCall: rows[2].id, Result: event.Result{Stdout: "row two is its own thing\n"}})
 
 	// A fresh Call: a row binds its view once, so a second result on
 	// an existing row would leave it drawing the first.
 	shown := uuid.Must(uuid.NewV7())
-	m.apply(event.CallProposed{Call: shown, Tool: "bash", Args: map[string]any{"command": "df -h"}})
+	m.apply(event.ToolCallProposed{ToolCall: shown, Tool: "bash", Args: map[string]any{"command": "df -h"}})
 	m.nav.cursor = len(m.rows()) - 1
 	m.layout.width, m.layout.height = 150, 45
 	m.sizeViewport()
@@ -513,11 +513,11 @@ func TestDetailCache_NeverGoesStale(t *testing.T) {
 	}{
 		{"first render", func(*Model) {}},
 		{"the shown row streams output", func(m *Model) {
-			m.apply(event.CallStarted{Call: shown, Runner: "sandbox"})
-			m.apply(event.OutputChunk{Call: shown, Line: "a fresh line nobody has drawn yet"})
+			m.apply(event.ToolCallStarted{ToolCall: shown, Runner: "sandbox"})
+			m.apply(event.OutputChunk{ToolCall: shown, Line: "a fresh line nobody has drawn yet"})
 		}},
 		{"the shown row finishes", func(m *Model) {
-			m.apply(event.CallEnded{Call: shown, Result: event.Result{Stdout: table.String()}})
+			m.apply(event.ToolCallEnded{ToolCall: shown, Result: event.Result{Stdout: table.String()}})
 		}},
 		{"the focused row changes", func(m *Model) { m.nav.cursor = 2 }},
 		{"and changes back", func(m *Model) { m.nav.cursor = len(m.rows()) - 1 }},
@@ -599,8 +599,8 @@ func TestBlockCache_ARunningCallKeepsSpinning(t *testing.T) {
 	turn := uuid.Must(uuid.NewV7())
 	call := uuid.Must(uuid.NewV7())
 	m.apply(event.TurnStarted{Turn: turn, N: 4, Prompt: "run something"})
-	m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
-	m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
+	m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
+	m.apply(event.ToolCallStarted{ToolCall: call, Runner: "sandbox"})
 	require.True(t, anyRunning(m.cur), "the test needs a running row")
 
 	before, _ := m.historyAll()
@@ -617,14 +617,14 @@ func TestFallbackChain_AToolThatDeclaresMarkdownGetsIt(t *testing.T) {
 		"1.[containerd docs](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fcontainerd.io)\n" +
 		"An open and reliable **container** runtime.\n"
 
-	declared := &callRow{command: "web_search query=containerd", renders: event.RendersMarkdown,
+	declared := &historyRow{command: "web_search query=containerd", renders: event.RendersMarkdown,
 		result: &event.Result{Stdout: searchOutput}}
 	assert.Same(t, compiledMarkdown, fallbackChain(declared, searchOutput)[0],
 		"a declared markdown shape did not reach the markdown view")
 
 	// The same bytes with nothing declared stay on the plain path,
 	// since the body does not open like markdown.
-	plain := &callRow{command: "bash", result: &event.Result{Stdout: searchOutput}}
+	plain := &historyRow{command: "bash", result: &event.Result{Stdout: searchOutput}}
 	assert.NotSame(t, compiledMarkdown, fallbackChain(plain, searchOutput)[0])
 }
 
@@ -632,13 +632,13 @@ func TestFallbackChain_AToolThatDeclaresMarkdownGetsIt(t *testing.T) {
 // the judge has not looked.
 func TestFallbackChain_AnEditIsDrawnAsADiff(t *testing.T) {
 	const out = "--- f.go\n+++ f.go\n@@ -1 +1 @@\n-a\n+b\n"
-	r := &callRow{command: "edit_file path=f.go", renders: event.RendersDiff, result: &event.Result{Stdout: out}}
+	r := &historyRow{command: "edit_file path=f.go", renders: event.RendersDiff, result: &event.Result{Stdout: out}}
 	assert.Same(t, compiledFallback["diff"], fallbackChain(r, out)[0])
 }
 
 // A judged kind must not override what the tool actually knows.
 func TestFallbackChain_ADeclaredShapeBeatsAJudgedGuess(t *testing.T) {
-	r := &callRow{
+	r := &historyRow{
 		command: "web_search query=containerd", renders: event.RendersMarkdown,
 		result: &event.Result{Stdout: "Title: x\n"},
 		post:   &verdict{renderKind: "plain_text", fromJudge: true},
@@ -706,7 +706,7 @@ func TestSessionBar_LeavesCountsToTheStatusPage(t *testing.T) {
 		m.apply(e)
 	}
 	call := uuid.Must(uuid.NewV7())
-	m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "ls"}})
+	m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "ls"}})
 	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
 
 	bar := stripANSI(m.sessionBar())
@@ -841,8 +841,8 @@ func TestUndoPage_SaysNothingWhenEverythingReverses(t *testing.T) {
 	m := feed(t, event.SessionStarted{Model: "m"},
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "just a command"})
 	call := uuid.Must(uuid.NewV7())
-	m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "ls"}})
-	m.apply(event.CallEnded{Call: call, Result: event.Result{}})
+	m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "ls"}})
+	m.apply(event.ToolCallEnded{ToolCall: call, Result: event.Result{}})
 	m.apply(event.CheckpointTaken{Turn: turn})
 	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
 	m.layout.width, m.layout.height = 150, 45
@@ -965,7 +965,7 @@ func TestForgetPage_YPublishesTheIntent(t *testing.T) {
 // view's pattern skips indented lines: it drew one branch of four.
 func TestBoundView_SkipsAViewThatHidesMostOfTheOutput(t *testing.T) {
 	const branches = "  agentic\n  dynamic-tui\n* main\n  mouse-scroll\n"
-	r := &callRow{command: "git branch", result: &event.Result{Stdout: branches},
+	r := &historyRow{command: "git branch", result: &event.Result{Stdout: branches},
 		post: &verdict{renderKind: "file_listing", fromJudge: true}}
 	b, ok := boundView(r)
 	require.True(t, ok)
@@ -1104,9 +1104,9 @@ func oneTurn(prompt, command, out string) (uuid.UUID, []event.Event) {
 	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	return turn, []event.Event{
 		event.TurnStarted{Turn: turn, N: 1, Prompt: prompt},
-		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": command}},
-		event.CallStarted{Call: call, Runner: "host"},
-		event.CallEnded{Call: call, Result: event.Result{Stdout: out}},
+		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": command}},
+		event.ToolCallStarted{ToolCall: call, Runner: "host"},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: out}},
 		event.TurnEnded{Turn: turn, Reason: event.EndDone},
 	}
 }
@@ -1152,8 +1152,8 @@ func undoTurn(t *testing.T) Model {
 		{"write_file", "", map[string]any{"path": "notes.md"}},
 	} {
 		call := uuid.Must(uuid.NewV7())
-		m.apply(event.CallProposed{Call: call, Tool: c.tool, Args: c.args, Executor: c.exec})
-		m.apply(event.CallEnded{Call: call, Result: event.Result{Stdout: "ok"}})
+		m.apply(event.ToolCallProposed{ToolCall: call, Tool: c.tool, Args: c.args, Executor: c.exec})
+		m.apply(event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: "ok"}})
 	}
 	m.apply(event.CheckpointTaken{Turn: turn})
 	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})

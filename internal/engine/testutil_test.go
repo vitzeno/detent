@@ -274,12 +274,12 @@ func (r *rig) run(prompt string) event.TurnEnded {
 	return r.awaitNth(event.TurnEndedKind, n).(event.TurnEnded)
 }
 
-func bashCall(id, cmd string) event.ToolCall {
-	return event.ToolCall{ID: id, Name: "bash", Args: map[string]any{"command": cmd}}
+func bashCall(id, cmd string) event.ToolRequest {
+	return event.ToolRequest{ID: id, Name: "bash", Args: map[string]any{"command": cmd}}
 }
 
-func readCall(id, path string) event.ToolCall {
-	return event.ToolCall{ID: id, Name: "read_file", Args: map[string]any{"path": path}}
+func readCall(id, path string) event.ToolRequest {
+	return event.ToolRequest{ID: id, Name: "read_file", Args: map[string]any{"path": path}}
 }
 
 // answered checks every Call of a finished engine was answered.

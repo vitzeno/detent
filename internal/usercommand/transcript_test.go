@@ -1,4 +1,4 @@
-package humanshell
+package usercommand
 
 import (
 	"strings"

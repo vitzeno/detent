@@ -20,11 +20,11 @@ func WithMaxSteps(n int) Option {
 	}
 }
 
-// WithCallsPerStep caps how many Calls one Step may ask for.
-func WithCallsPerStep(n int) Option {
+// WithToolCallsPerStep caps how many Calls one Step may ask for.
+func WithToolCallsPerStep(n int) Option {
 	return func(e *Engine) {
 		if n > 0 {
-			e.maxCalls = n
+			e.maxToolCalls = n
 		}
 	}
 }

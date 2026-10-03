@@ -23,7 +23,7 @@ func TestNextFact_DrainsWhatIsAlreadyQueued(t *testing.T) {
 
 	call := uuid.Must(uuid.NewV7())
 	for i := range 40 {
-		bus.Publish(event.OutputChunk{Call: call, Line: string(rune('a' + i%26))})
+		bus.Publish(event.OutputChunk{ToolCall: call, Line: string(rune('a' + i%26))})
 	}
 
 	msg, ok := nextFact(facts)().(factMsg)
@@ -40,7 +40,7 @@ func TestNextFact_BatchIsBounded(t *testing.T) {
 
 	call := uuid.Must(uuid.NewV7())
 	for range maxFactBatch + 50 {
-		bus.Publish(event.OutputChunk{Call: call, Line: "x"})
+		bus.Publish(event.OutputChunk{ToolCall: call, Line: "x"})
 	}
 
 	msg := nextFact(facts)().(factMsg)
@@ -66,7 +66,7 @@ func TestFacts_TickTheSpinnerOnlyWhenWaitingBegins(t *testing.T) {
 	require.NotNil(t, cmd, "waiting just began, the spinner has to start")
 
 	m.waiting = true
-	_, cmd = m.route(factMsg{[]event.Event{event.OutputChunk{Call: uuid.Nil, Line: "x"}}})
+	_, cmd = m.route(factMsg{[]event.Event{event.OutputChunk{ToolCall: uuid.Nil, Line: "x"}}})
 	require.NotNil(t, cmd, "the pump always re-arms")
 }
 

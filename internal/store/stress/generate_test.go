@@ -107,7 +107,7 @@ func (w *writer) turn(n int) {
 		w.emit(event.Compacted{Turn: turn, Dropped: 10 + w.rng.IntN(40), Note: "earlier steps summarised"})
 	}
 	if steps > 8 {
-		w.emit(event.BoundReached{Turn: turn, Steps: steps, Calls: steps * 2})
+		w.emit(event.BoundReached{Turn: turn, Steps: steps, ToolCalls: steps * 2})
 	}
 	w.emit(event.TurnEnded{Turn: turn, Reason: w.reason(), Summary: pick(w.rng, summaries), Usage: total})
 	// The third Turn always rolls back, so a short session still holds one.
@@ -133,7 +133,7 @@ func (w *writer) step(turn uuid.UUID, n int, last bool) event.Usage {
 		w.emit(event.ModelText{Turn: turn, Step: step, Text: pick(w.rng, prose)})
 	}
 
-	asked := make([]event.ToolCall, 0, calls)
+	asked := make([]event.ToolRequest, 0, calls)
 	answers := make([]event.Message, 0, calls)
 	for range calls {
 		c, answer := w.call(step)
@@ -147,7 +147,7 @@ func (w *writer) step(turn uuid.UUID, n int, last bool) event.Usage {
 		w.emit(event.ModelText{Turn: turn, Step: step, Text: text})
 	}
 	w.emit(event.Appended{Turn: turn, Step: step, Messages: append(
-		[]event.Message{{Role: event.RoleAssistant, Content: text, Calls: asked}}, answers...)})
+		[]event.Message{{Role: event.RoleAssistant, Content: text, Requests: asked}}, answers...)})
 
 	used := event.Usage{
 		PromptTokens:     2000 + w.rng.IntN(60000),
@@ -155,12 +155,12 @@ func (w *writer) step(turn uuid.UUID, n int, last bool) event.Usage {
 		Latency:          time.Duration(300+w.rng.IntN(4000)) * time.Millisecond,
 		Model:            "openai/gpt-6-luna",
 	}
-	w.emit(event.StepEnded{Turn: turn, Step: step, Usage: used, Calls: calls})
+	w.emit(event.StepEnded{Turn: turn, Step: step, Usage: used, ToolCalls: calls})
 	return used
 }
 
 // call is proposed, assessed, maybe approved, run and judged.
-func (w *writer) call(step uuid.UUID) (event.ToolCall, event.Message) {
+func (w *writer) call(step uuid.UUID) (event.ToolRequest, event.Message) {
 	call := uuid.Must(uuid.NewV7())
 	// The Call's own id, so no two Turns share one and mask a missing answer.
 	id := call.String()
@@ -168,24 +168,24 @@ func (w *writer) call(step uuid.UUID) (event.ToolCall, event.Message) {
 	args := t.args(w.rng)
 	risk := t.risk(w.rng)
 
-	w.emit(event.CallProposed{
-		Call: call, Step: step, Tool: t.name, Args: args,
+	w.emit(event.ToolCallProposed{
+		ToolCall: call, Step: step, Tool: t.name, Args: args,
 		Rationale: risk.Note, Renders: t.renders, Executor: t.executor,
 	})
-	w.emit(event.CallAssessed{Call: call, Risk: risk})
+	w.emit(event.ToolCallAssessed{ToolCall: call, Risk: risk})
 	// Only a Dangerous verdict asks: the gate is conditional.
 	if risk.Dangerous {
-		w.emit(event.ApprovalAsked{Call: call, Tool: t.name, Args: args, Rationale: risk.Note, Risk: risk})
+		w.emit(event.ApprovalAsked{ToolCall: call, Tool: t.name, Args: args, Rationale: risk.Note, Risk: risk})
 	}
-	w.emit(event.CallStarted{Call: call, Runner: t.runner})
+	w.emit(event.ToolCallStarted{ToolCall: call, Runner: t.runner})
 
 	res := t.result(w.rng)
-	w.emit(event.CallEnded{
-		Call: call, Result: res,
+	w.emit(event.ToolCallEnded{
+		ToolCall: call, Result: res,
 		Took: time.Duration(50+w.rng.IntN(9000)) * time.Millisecond,
 	})
-	w.emit(event.CallJudged{
-		Call: call, Status: status(res), RenderKind: t.render,
+	w.emit(event.ToolCallJudged{
+		ToolCall: call, Status: status(res), RenderKind: t.render,
 		Attention: w.rng.Float64(), GoalAchieved: w.rng.Float64(), FromJudge: true,
 	})
 
@@ -193,8 +193,8 @@ func (w *writer) call(step uuid.UUID) (event.ToolCall, event.Message) {
 	if res.Err != "" {
 		content = res.Err
 	}
-	return event.ToolCall{ID: id, Name: t.name, Args: args},
-		event.Message{Role: event.RoleTool, CallID: id, Content: content}
+	return event.ToolRequest{ID: id, Name: t.name, Args: args},
+		event.Message{Role: event.RoleTool, RequestID: id, Content: content}
 }
 
 func (w *writer) reason() event.EndReason {

@@ -23,16 +23,16 @@ const (
 
 // Field names records carry. Spelled once so queries can rely on them.
 const (
-	KeyComponent = "component"
-	KeySession   = "session"
-	KeyTurn      = "turn"
-	KeyStep      = "step"
-	KeyCall      = "call"
-	KeyShell     = "shell"
-	KeyEvent     = "event"
-	KeyReason    = "reason"
-	KeyMS        = "ms"
-	KeyOrdinal   = "ordinal"
+	KeyComponent   = "component"
+	KeySession     = "session"
+	KeyTurn        = "turn"
+	KeyStep        = "step"
+	KeyToolCall    = "tool_call"
+	KeyUserCommand = "user_command"
+	KeyEvent       = "event"
+	KeyReason      = "reason"
+	KeyMS          = "ms"
+	KeyOrdinal     = "ordinal"
 )
 
 // Components worth filtering to on their own.

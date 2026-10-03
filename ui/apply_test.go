@@ -18,9 +18,9 @@ func TestApply_BuildsABlockPerRequest(t *testing.T) {
 	call := uuid.Must(uuid.NewV7())
 	m := feed(t, append(evs,
 		event.CheckpointTaken{Turn: turn, Snapshot: "snap-a"},
-		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "ls"}},
-		event.CallStarted{Call: call, Runner: "host"},
-		event.CallEnded{Call: call, Result: event.Result{Stdout: "a.go\nb.go\n"}},
+		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "ls"}},
+		event.ToolCallStarted{ToolCall: call, Runner: "host"},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: "a.go\nb.go\n"}},
 		event.ModelText{Turn: turn, Text: "there are two"},
 		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: "there are two",
 			Usage: event.Usage{PromptTokens: 10, CompletionTokens: 5}},
@@ -50,10 +50,10 @@ func TestApply_CountsWhatStatusReports(t *testing.T) {
 	bad, good := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := feed(t, append(evs,
 		event.StepEnded{Turn: turn},
-		event.CallProposed{Call: bad, Tool: "bash", Args: map[string]any{"command": "false"}},
-		event.CallEnded{Call: bad, Result: event.Result{ExitCode: 1}},
-		event.CallProposed{Call: good, Tool: "bash", Args: map[string]any{"command": "true"}},
-		event.CallEnded{Call: good, Result: event.Result{}},
+		event.ToolCallProposed{ToolCall: bad, Tool: "bash", Args: map[string]any{"command": "false"}},
+		event.ToolCallEnded{ToolCall: bad, Result: event.Result{ExitCode: 1}},
+		event.ToolCallProposed{ToolCall: good, Tool: "bash", Args: map[string]any{"command": "true"}},
+		event.ToolCallEnded{ToolCall: good, Result: event.Result{}},
 		event.StepEnded{Turn: turn},
 	)...)
 
@@ -67,8 +67,8 @@ func TestApply_CountsWhatStatusReports(t *testing.T) {
 func TestApply_AShellsLiveOutputReachesItsRow(t *testing.T) {
 	shell := uuid.Must(uuid.NewV7())
 	m := feed(t,
-		event.ShellStarted{Shell: shell, Command: "go test ./...", Runner: "host"},
-		event.OutputChunk{Shell: shell, Line: "ok  ./ui"},
+		event.UserCommandStarted{UserCommand: shell, Command: "go test ./...", Runner: "host"},
+		event.OutputChunk{UserCommand: shell, Line: "ok  ./ui"},
 	)
 	rows := m.rows()
 	require.Len(t, rows, 1)
@@ -79,12 +79,12 @@ func TestApply_DemultiplexesLiveOutput(t *testing.T) {
 	_, evs := aTurn("read two files")
 	a, b := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := feed(t, append(evs,
-		event.CallProposed{Call: a, Tool: "read_file", Args: map[string]any{"path": "a.go"}},
-		event.CallProposed{Call: b, Tool: "read_file", Args: map[string]any{"path": "b.go"}},
-		event.CallStarted{Call: a}, event.CallStarted{Call: b},
-		event.OutputChunk{Call: a, Line: "from a"},
-		event.OutputChunk{Call: b, Line: "from b"},
-		event.OutputChunk{Call: a, Line: "also a"},
+		event.ToolCallProposed{ToolCall: a, Tool: "read_file", Args: map[string]any{"path": "a.go"}},
+		event.ToolCallProposed{ToolCall: b, Tool: "read_file", Args: map[string]any{"path": "b.go"}},
+		event.ToolCallStarted{ToolCall: a}, event.ToolCallStarted{ToolCall: b},
+		event.OutputChunk{ToolCall: a, Line: "from a"},
+		event.OutputChunk{ToolCall: b, Line: "from b"},
+		event.OutputChunk{ToolCall: a, Line: "also a"},
 	)...)
 
 	rows := m.rows()
@@ -97,9 +97,9 @@ func TestApply_DemultiplexesLiveOutput(t *testing.T) {
 func TestApply_LiveOutputIsBounded(t *testing.T) {
 	_, evs := aTurn("noisy")
 	call := uuid.Must(uuid.NewV7())
-	evs = append(evs, event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "yes"}})
+	evs = append(evs, event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "yes"}})
 	for range maxLiveLines * 2 {
-		evs = append(evs, event.OutputChunk{Call: call, Line: "noise"})
+		evs = append(evs, event.OutputChunk{ToolCall: call, Line: "noise"})
 	}
 	m := feed(t, evs...)
 	r := m.rows()[0]
@@ -111,9 +111,9 @@ func TestApply_ApprovalOpensAndClosesTheQuestion(t *testing.T) {
 	turn, evs := aTurn("clean up")
 	call := uuid.Must(uuid.NewV7())
 	m := feed(t, append(evs,
-		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "rm -rf build"}},
-		event.CallAssessed{Call: call, Risk: event.Risk{Dangerous: true, Note: "recursive delete"}},
-		event.ApprovalAsked{Call: call, Tool: "bash",
+		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "rm -rf build"}},
+		event.ToolCallAssessed{ToolCall: call, Risk: event.Risk{Dangerous: true, Note: "recursive delete"}},
+		event.ApprovalAsked{ToolCall: call, Tool: "bash",
 			Args: map[string]any{"command": "rm -rf build"}, Rationale: "recursive delete"},
 	)...)
 
@@ -149,7 +149,7 @@ func TestApply_EngineQuestionWaitsForTheHumansOwn(t *testing.T) {
 		call := uuid.Must(uuid.NewV7())
 		m := feed(t, evs...)
 		m.mode = own
-		m.apply(event.ApprovalAsked{Call: call, Tool: "bash", Args: map[string]any{"command": "rm -rf build"}})
+		m.apply(event.ApprovalAsked{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "rm -rf build"}})
 		assert.Equal(t, own, m.mode, "the page they are reading stays")
 
 		m.backToInput()
@@ -188,9 +188,9 @@ func TestApply_JudgementExpandsWhatNeedsAttention(t *testing.T) {
 	_, evs := aTurn("go")
 	call := uuid.Must(uuid.NewV7())
 	m := feed(t, append(evs,
-		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make"}},
-		event.CallEnded{Call: call, Result: event.Result{ExitCode: 2, Stderr: "boom"}},
-		event.CallJudged{Call: call, Status: "hard_failure", RenderKind: "errors",
+		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "make"}},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{ExitCode: 2, Stderr: "boom"}},
+		event.ToolCallJudged{ToolCall: call, Status: "hard_failure", RenderKind: "errors",
 			Attention: 0.95, FromJudge: true},
 	)...)
 	r := m.rows()[0]
@@ -203,9 +203,9 @@ func TestApply_JudgementExpandsWhatNeedsAttention(t *testing.T) {
 // deliver out of order after a reset.
 func TestApply_UnknownIdsAreIgnored(t *testing.T) {
 	m := feed(t,
-		event.CallEnded{Call: uuid.Must(uuid.NewV7())},
-		event.CallJudged{Call: uuid.Must(uuid.NewV7())},
-		event.OutputChunk{Call: uuid.Must(uuid.NewV7()), Line: "x"},
+		event.ToolCallEnded{ToolCall: uuid.Must(uuid.NewV7())},
+		event.ToolCallJudged{ToolCall: uuid.Must(uuid.NewV7())},
+		event.OutputChunk{ToolCall: uuid.Must(uuid.NewV7()), Line: "x"},
 		event.CheckpointTaken{Turn: uuid.Must(uuid.NewV7())},
 		event.TurnEnded{Turn: uuid.Must(uuid.NewV7())},
 	)
@@ -220,9 +220,9 @@ func TestRestore_RebuildsHistoryFromTheStream(t *testing.T) {
 		event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Model: "m", MaxSteps: 50},
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "count the files"},
 		event.CheckpointTaken{Turn: turn, Snapshot: "gone-with-the-container"},
-		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "ls"}},
-		event.CallEnded{Call: call, Result: event.Result{Stdout: "a.go\n"}},
-		event.CallJudged{Call: call, Status: "clean_success", RenderKind: "file_listing", FromJudge: true},
+		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "ls"}},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: "a.go\n"}},
+		event.ToolCallJudged{ToolCall: call, Status: "clean_success", RenderKind: "file_listing", FromJudge: true},
 		event.ModelText{Turn: turn, Text: "one file"},
 		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: "one file",
 			Usage: event.Usage{PromptTokens: 20, CompletionTokens: 5}},

@@ -18,7 +18,7 @@ import (
 // sees it: there is no command for a shell to run.
 func TestExecute_ARemoteCallGoesToTheInvoker(t *testing.T) {
 	in := &fakeInvoker{out: capture.Result{Stdout: "from the server\n"}}
-	r := remoteRig(t, in, []model.Reply{{Calls: []event.ToolCall{remoteCall("r1")}}})
+	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{remoteCall("r1")}}})
 	r.approve(t)
 	r.run("go")
 
@@ -26,27 +26,27 @@ func TestExecute_ARemoteCallGoesToTheInvoker(t *testing.T) {
 	assert.Equal(t, "srv", in.calls()[0].Executor)
 	assert.Empty(t, r.runner.commands(), "the Runner ran a Call with no command")
 
-	ended := r.of(event.CallEndedKind)
+	ended := r.of(event.ToolCallEndedKind)
 	require.Len(t, ended, 1)
-	assert.Equal(t, "from the server\n", ended[0].(event.CallEnded).Result.Stdout)
+	assert.Equal(t, "from the server\n", ended[0].(event.ToolCallEnded).Result.Stdout)
 }
 
 // The row and the log say where it ran, or the sandbox badge is a lie.
 func TestExecute_CallStartedNamesTheServer(t *testing.T) {
 	in := &fakeInvoker{out: capture.Result{Stdout: "ok\n"}}
-	r := remoteRig(t, in, []model.Reply{{Calls: []event.ToolCall{remoteCall("r1")}}})
+	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{remoteCall("r1")}}})
 	r.approve(t)
 	r.run("go")
 
-	started := r.of(event.CallStartedKind)
+	started := r.of(event.ToolCallStartedKind)
 	require.Len(t, started, 1)
-	assert.Equal(t, "srv", started[0].(event.CallStarted).Runner)
+	assert.Equal(t, "srv", started[0].(event.ToolCallStarted).Runner)
 }
 
 // A shell Call must keep going to the Runner untouched.
 func TestExecute_AShellCallStillGoesToTheRunner(t *testing.T) {
 	in := &fakeInvoker{}
-	r := remoteRig(t, in, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "ls")}}})
+	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
 	r.run("go")
 
 	assert.Empty(t, in.calls(), "a shell Call reached the Invoker")
@@ -55,7 +55,7 @@ func TestExecute_AShellCallStillGoesToTheRunner(t *testing.T) {
 
 // Without an Invoker the Call says so rather than running or hanging.
 func TestExecute_NoInvokerIsAnAnswerNotAFailure(t *testing.T) {
-	r := remoteRig(t, nil, []model.Reply{{Calls: []event.ToolCall{remoteCall("r1")}}})
+	r := remoteRig(t, nil, []model.Reply{{Requests: []event.ToolRequest{remoteCall("r1")}}})
 	r.approve(t)
 	end := r.run("go")
 
@@ -67,7 +67,7 @@ func TestExecute_NoInvokerIsAnAnswerNotAFailure(t *testing.T) {
 // A panicking Invoker must not take the session and its checkpoints.
 func TestExecute_APanickingInvokerIsAFailedCall(t *testing.T) {
 	in := &fakeInvoker{panic: true}
-	r := remoteRig(t, in, []model.Reply{{Calls: []event.ToolCall{remoteCall("r1")}}})
+	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{remoteCall("r1")}}})
 	r.approve(t)
 	end := r.run("go")
 
@@ -80,7 +80,7 @@ func TestExecute_APanickingInvokerIsAFailedCall(t *testing.T) {
 // answers never runs. This is why the tests above have to approve.
 func TestExecute_ARemoteCallWaitsForAHuman(t *testing.T) {
 	in := &fakeInvoker{out: capture.Result{Stdout: "ok\n"}}
-	r := remoteRig(t, in, []model.Reply{{Calls: []event.ToolCall{remoteCall("r1")}}})
+	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{remoteCall("r1")}}})
 
 	// Submitted here rather than through run, which waits for the Turn
 	// to end and would deadlock against the confirm.
@@ -90,7 +90,7 @@ func TestExecute_ARemoteCallWaitsForAHuman(t *testing.T) {
 	assert.True(t, asked.Risk.Dangerous)
 	assert.Empty(t, in.calls(), "it ran before anyone answered")
 
-	r.bus.Publish(event.ResolveApproval{Call: asked.Call, Approved: false})
+	r.bus.Publish(event.ResolveApproval{ToolCall: asked.ToolCall, Approved: false})
 	r.awaitNth(event.TurnEndedKind, 1)
 	assert.Empty(t, in.calls(), "a declined Call still reached the server")
 }
@@ -98,13 +98,13 @@ func TestExecute_ARemoteCallWaitsForAHuman(t *testing.T) {
 // Declining stops a Call, not a Turn: its siblings still run.
 func TestExecute_DecliningARemoteCallLeavesItsSiblings(t *testing.T) {
 	in := &fakeInvoker{out: capture.Result{Stdout: "ok\n"}}
-	r := remoteRig(t, in, []model.Reply{{Calls: []event.ToolCall{
+	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{
 		remoteCall("r1"), bashCall("c1", "echo still here"),
 	}}})
 
 	go func() {
 		if asked, ok := r.waitNth(event.ApprovalAskedKind, 1); ok {
-			r.bus.Publish(event.ResolveApproval{Call: asked.(event.ApprovalAsked).Call, Approved: false})
+			r.bus.Publish(event.ResolveApproval{ToolCall: asked.(event.ApprovalAsked).ToolCall, Approved: false})
 		}
 	}()
 	end := r.run("go")
@@ -159,8 +159,8 @@ func remoteRig(t *testing.T, in Invoker, replies []model.Reply, opts ...Option) 
 		&fakeRunner{out: "shell ran\n"}, reg, opts...)
 }
 
-func remoteCall(id string) event.ToolCall {
-	return event.ToolCall{ID: id, Name: "srv__do", Args: map[string]any{"x": "1"}}
+func remoteCall(id string) event.ToolRequest {
+	return event.ToolRequest{ID: id, Name: "srv__do", Args: map[string]any{"x": "1"}}
 }
 
 // approve answers the confirm the mcp floor forces. No assessor can
@@ -169,7 +169,7 @@ func (r *rig) approve(t *testing.T) {
 	t.Helper()
 	go func() {
 		if asked, ok := r.waitNth(event.ApprovalAskedKind, 1); ok {
-			r.bus.Publish(event.ResolveApproval{Call: asked.(event.ApprovalAsked).Call, Approved: true})
+			r.bus.Publish(event.ResolveApproval{ToolCall: asked.(event.ApprovalAsked).ToolCall, Approved: true})
 		}
 	}()
 }

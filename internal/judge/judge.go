@@ -46,7 +46,7 @@ type ResultJudge struct {
 
 // Judge asks, and falls back to a heuristic when nothing answers. FromJudge
 // tells the two apart, so the UI never presents a guess as a verdict.
-func (j ResultJudge) Judge(ctx context.Context, command string, res event.Result) event.CallJudged {
+func (j ResultJudge) Judge(ctx context.Context, command string, res event.Result) event.ToolCallJudged {
 	out := heuristic(res)
 	state := map[string]any{"request": j.Prompt, "command": command, "output": output(res),
 		"exit_code": res.ExitCode}
@@ -78,8 +78,8 @@ func (j ResultJudge) Judge(ctx context.Context, command string, res event.Result
 // Cancelling ctx abandons judgements in flight, as the stop does.
 func Watch(ctx context.Context, bus *event.Bus, asker classify.Asker) func() {
 	facts, unsub := bus.Subscribe(event.Only(
-		event.TurnStartedKind, event.TurnEndedKind, event.CallProposedKind, event.CallStartedKind,
-		event.CallEndedKind))
+		event.TurnStartedKind, event.TurnEndedKind, event.ToolCallProposedKind, event.ToolCallStartedKind,
+		event.ToolCallEndedKind))
 	ctx, cancel := context.WithCancel(ctx)
 	w := &watcher{bus: bus, ctx: ctx, slots: make(chan struct{}, maxJudging)}
 	looped := make(chan struct{})
@@ -97,21 +97,21 @@ func Watch(ctx context.Context, bus *event.Bus, asker classify.Asker) func() {
 				w.setTurn(v.Turn)
 			case event.TurnEnded:
 				w.setTurn(uuid.Nil)
-			case event.CallProposed:
-				cmds[v.Call] = event.Command(v.Tool, v.Args)
-			case event.CallStarted:
-				started[v.Call] = true
-			case event.CallEnded:
+			case event.ToolCallProposed:
+				cmds[v.ToolCall] = event.Command(v.Tool, v.Args)
+			case event.ToolCallStarted:
+				started[v.ToolCall] = true
+			case event.ToolCallEnded:
 				// A declined or abandoned Call never ran, so there is nothing to judge.
-				if !started[v.Call] {
-					delete(cmds, v.Call)
+				if !started[v.ToolCall] {
+					delete(cmds, v.ToolCall)
 					continue
 				}
-				delete(started, v.Call)
+				delete(started, v.ToolCall)
 				j := ResultJudge{Asker: asker, Prompt: prompt}
 				w.wg.Add(1)
-				go w.publish(j, turn, v, cmds[v.Call])
-				delete(cmds, v.Call)
+				go w.publish(j, turn, v, cmds[v.ToolCall])
+				delete(cmds, v.ToolCall)
 			}
 		}
 	}()
@@ -158,11 +158,11 @@ func (w *watcher) shouldStop(turn uuid.UUID) bool {
 
 // publish judges one Call on its own goroutine, so one slow judgement
 // cannot hold up the others or the events behind them.
-func (w *watcher) publish(j ResultJudge, turn uuid.UUID, done event.CallEnded, command string) {
+func (w *watcher) publish(j ResultJudge, turn uuid.UUID, done event.ToolCallEnded, command string) {
 	defer w.wg.Done()
 	ctx, cancel := context.WithTimeout(w.ctx, judgeTimeout)
 	defer cancel()
-	var got event.CallJudged
+	var got event.ToolCallJudged
 	select {
 	case w.slots <- struct{}{}:
 		got = j.Judge(ctx, command, done.Result)
@@ -173,7 +173,7 @@ func (w *watcher) publish(j ResultJudge, turn uuid.UUID, done event.CallEnded, c
 	if w.ctx.Err() != nil {
 		return // stopped: nothing is listening for this any more
 	}
-	got.Call = done.Call
+	got.ToolCall = done.ToolCall
 	w.bus.Publish(got)
 	if got.FromJudge && got.GoalAchieved >= GoalMet && w.shouldStop(turn) {
 		w.bus.Publish(event.RequestStop{Turn: turn,
@@ -183,8 +183,8 @@ func (w *watcher) publish(j ResultJudge, turn uuid.UUID, done event.CallEnded, c
 
 // heuristic is what a row reads as with no judge wired. It never claims
 // a shape, only that something failed or was silent.
-func heuristic(res event.Result) event.CallJudged {
-	out := event.CallJudged{RenderKind: viewgen.KindText, GoalAchieved: -1}
+func heuristic(res event.Result) event.ToolCallJudged {
+	out := event.ToolCallJudged{RenderKind: viewgen.KindText, GoalAchieved: -1}
 	switch {
 	case res.Err != "" || res.ExitCode != 0:
 		out.Status, out.RenderKind, out.Attention = StatusFailed, viewgen.KindError, 0.9

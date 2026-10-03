@@ -70,36 +70,36 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		TurnEnded{Turn: turn, Reason: EndDone, Summary: "did it",
 			Usage: Usage{PromptTokens: 7, CompletionTokens: 2, Latency: 90 * time.Millisecond, Model: "m"}},
 		CheckpointTaken{Turn: turn, Snapshot: "snap", Tree: "tree"},
-		BoundReached{Turn: turn, Steps: 50, Calls: 9},
+		BoundReached{Turn: turn, Steps: 50, ToolCalls: 9},
 		RolledBack{Turn: turn, RevertFiles: true},
 		SessionReset{},
 		StepStarted{Turn: turn, Step: step, N: 2},
-		StepEnded{Turn: turn, Step: step, Calls: 3, Usage: Usage{PromptTokens: 1}},
+		StepEnded{Turn: turn, Step: step, ToolCalls: 3, Usage: Usage{PromptTokens: 1}},
 		ModelText{Turn: turn, Step: step, Text: "prose"},
 		Appended{Turn: turn, Step: step, Messages: []Message{
-			{Role: RoleAssistant, Content: "looking", Calls: []ToolCall{
+			{Role: RoleAssistant, Content: "looking", Requests: []ToolRequest{
 				{ID: "c1", Name: "bash", Args: map[string]any{"command": "ls"}, Err: "boom"}}},
-			{Role: RoleTool, CallID: "c1", Content: "out"},
+			{Role: RoleTool, RequestID: "c1", Content: "out"},
 		}},
 		Compacted{Turn: turn, Dropped: 12, Note: "summary"},
 		ContextMeasured{Budget: 200, Total: 41, Exact: true, Growth: 2,
 			Fixed:   []ContextPart{{Name: "tools", Detail: "9 built-in", Tokens: 3}},
 			History: []ContextPart{{Name: "fix it", Tokens: 9, N: 4, Open: true}}},
-		CallProposed{Call: call, Step: step, Tool: "bash", Args: map[string]any{"command": "ls"},
+		ToolCallProposed{ToolCall: call, Step: step, Tool: "bash", Args: map[string]any{"command": "ls"},
 			Rationale: "why", Renders: RendersMarkdown, Executor: "github"},
-		CallAssessed{Call: call, Risk: Risk{Dangerous: true, Mutability: MutSystem,
+		ToolCallAssessed{ToolCall: call, Risk: Risk{Dangerous: true, Mutability: MutSystem,
 			ScopeRisk: 0.8, Note: "n", FromJudge: true}},
-		ApprovalAsked{Call: call, Tool: "bash", Args: map[string]any{"command": "rm"},
+		ApprovalAsked{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "rm"},
 			Rationale: "r", Risk: Risk{Dangerous: true}},
-		CallStarted{Call: call, Runner: "sandbox"},
-		OutputChunk{Call: call, Line: "a line", Stderr: true},
-		CallEnded{Call: call, Took: 21 * time.Millisecond, Result: Result{
+		ToolCallStarted{ToolCall: call, Runner: "sandbox"},
+		OutputChunk{ToolCall: call, Line: "a line", Stderr: true},
+		ToolCallEnded{ToolCall: call, Took: 21 * time.Millisecond, Result: Result{
 			ExitCode: 2, Stdout: "o", Stderr: "e", Truncated: true, Err: "x"}},
-		CallJudged{Call: call, Status: "failed", RenderKind: "errors",
+		ToolCallJudged{ToolCall: call, Status: "failed", RenderKind: "errors",
 			Attention: 0.9, GoalAchieved: 0.1, FromJudge: true},
-		ViewReady{Call: call, Spec: spec, Source: "composed"},
-		ShellStarted{Shell: shell, Command: "git status", Runner: "sandbox"},
-		ShellEnded{Shell: shell, Took: 8 * time.Millisecond, Result: Result{
+		ViewReady{ToolCall: call, Spec: spec, Source: "composed"},
+		UserCommandStarted{UserCommand: shell, Command: "git status", Runner: "sandbox"},
+		UserCommandEnded{UserCommand: shell, Took: 8 * time.Millisecond, Result: Result{
 			ExitCode: 1, Stdout: "o", Stderr: "e", Truncated: true, Err: "x"}},
 		Notice{Level: "warn", Text: "careful"},
 		SessionsListed{Sessions: []SessionSummary{{ID: turn, Name: "named", Started: time.UnixMilli(1_700_000_000_000).UTC(), Model: "m", Events: 12}}},
@@ -114,7 +114,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		AuthorizationFailed{Server: "notion", Reason: "the link expired"},
 
 		SubmitPrompt{Text: "go"},
-		ResolveApproval{Call: call, Approved: true},
+		ResolveApproval{ToolCall: call, Approved: true},
 		NoteContext{Text: "use ripgrep"},
 		Abort{Turn: turn},
 		RequestStop{Turn: turn, Reason: "met"},
@@ -127,7 +127,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		RenameSession{Session: turn, Name: "the sandbox bug"},
 		ResetSession{},
 		RunCommand{Text: "git status"},
-		CancelCommand{Shell: shell},
+		CancelCommand{UserCommand: shell},
 		AuthorizeServer{Server: "notion"},
 		OpenAuthorization{Server: "notion"},
 	}
@@ -160,7 +160,7 @@ func TestSubject_ReadsTurnAndCall(t *testing.T) {
 	assert.Equal(t, turn, gotTurn)
 	assert.Equal(t, uuid.Nil, gotCall)
 
-	gotTurn, gotCall = Subject(CallEnded{Call: call})
+	gotTurn, gotCall = Subject(ToolCallEnded{ToolCall: call})
 	assert.Equal(t, uuid.Nil, gotTurn)
 	assert.Equal(t, call, gotCall)
 

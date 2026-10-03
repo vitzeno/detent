@@ -30,8 +30,8 @@ func BenchmarkStressPerEvent(b *testing.B) {
 	for _, s := range stressSizes {
 		m := session(s.turns, s.calls, 20)
 		call := uuid.Must(uuid.NewV7())
-		m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
-		m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
+		m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
+		m.apply(event.ToolCallStarted{ToolCall: call, Runner: "sandbox"})
 		msg := oneChunk(call)
 		b.Run(s.name, func(b *testing.B) {
 			b.ReportAllocs()
@@ -53,8 +53,8 @@ func BenchmarkStressPerEventScrolledUp(b *testing.B) {
 			m := session(s.turns, s.calls, 20)
 			call := uuid.Must(uuid.NewV7())
 			m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: s.turns + 1, Prompt: "live"})
-			m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
-			m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
+			m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
+			m.apply(event.ToolCallStarted{ToolCall: call, Runner: "sandbox"})
 			m.nav.focus, m.nav.follow, m.nav.cursor = focusHistory, false, 3
 			m.sizeViewport()
 			msg := oneChunk(call)
@@ -74,8 +74,8 @@ func BenchmarkStressBurst(b *testing.B) {
 	for _, s := range stressSizes {
 		m := session(s.turns, s.calls, 20)
 		call := uuid.Must(uuid.NewV7())
-		m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
-		m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
+		m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
+		m.apply(event.ToolCallStarted{ToolCall: call, Runner: "sandbox"})
 		b.Run(s.name, func(b *testing.B) {
 			b.ReportAllocs()
 			cur := m
@@ -109,11 +109,11 @@ func BenchmarkView(b *testing.B) {
 func BenchmarkApplyOutputChunk(b *testing.B) {
 	m := session(21, 4, 20)
 	call := uuid.Must(uuid.NewV7())
-	m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
-	m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
+	m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
+	m.apply(event.ToolCallStarted{ToolCall: call, Runner: "sandbox"})
 	b.ReportAllocs()
 	for b.Loop() {
-		m.apply(event.OutputChunk{Call: call, Line: "ok  github.com/vitzeno/detent/ui  0.42s"})
+		m.apply(event.OutputChunk{ToolCall: call, Line: "ok  github.com/vitzeno/detent/ui  0.42s"})
 	}
 }
 
@@ -128,9 +128,9 @@ func BenchmarkUpdateAndView(b *testing.B) {
 	} {
 		m := session(c.turns, c.calls, c.out)
 		call := uuid.Must(uuid.NewV7())
-		m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
-		m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
-		msg := factMsg{[]event.Event{event.OutputChunk{Call: call, Line: "ok  detent/ui  0.42s"}}}
+		m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
+		m.apply(event.ToolCallStarted{ToolCall: call, Runner: "sandbox"})
+		msg := factMsg{[]event.Event{event.OutputChunk{ToolCall: call, Line: "ok  detent/ui  0.42s"}}}
 
 		b.Run(c.name, func(b *testing.B) {
 			b.ReportAllocs()
@@ -239,13 +239,13 @@ func session(turns, callsPerTurn, outLines int) Model {
 		m.apply(event.TurnStarted{Turn: turn, N: i + 1, Prompt: fmt.Sprintf("request %d about the codebase", i)})
 		for range callsPerTurn {
 			call, step := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-			m.apply(event.CallProposed{Call: call, Step: step, Tool: "bash",
+			m.apply(event.ToolCallProposed{ToolCall: call, Step: step, Tool: "bash",
 				Args: map[string]any{"command": "go test ./... -run TestSomething -v"}})
-			m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
+			m.apply(event.ToolCallStarted{ToolCall: call, Runner: "sandbox"})
 			for l := range outLines {
-				m.apply(event.OutputChunk{Call: call, Line: fmt.Sprintf("  ok   detent/internal/pkg%d  0.42s", l)})
+				m.apply(event.OutputChunk{ToolCall: call, Line: fmt.Sprintf("  ok   detent/internal/pkg%d  0.42s", l)})
 			}
-			m.apply(event.CallEnded{Call: call, Result: event.Result{Stdout: "ok\n"}})
+			m.apply(event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: "ok\n"}})
 		}
 		m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
 	}
@@ -271,7 +271,7 @@ func burst(m Model, call uuid.UUID, n int) Model {
 }
 
 func chunk(call uuid.UUID) event.Event {
-	return event.OutputChunk{Call: call, Line: "ok   detent/ui   0.42s"}
+	return event.OutputChunk{ToolCall: call, Line: "ok   detent/ui   0.42s"}
 }
 
 // withBigOutput gives the newest row a result worth scrolling.

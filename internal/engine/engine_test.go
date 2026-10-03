@@ -16,15 +16,15 @@ import (
 // the model stops asking.
 func TestTurn_MultiCallStep(t *testing.T) {
 	r := newRig(t, []model.Reply{{
-		Text:  "reading three things",
-		Calls: []event.ToolCall{readCall("c1", "a.go"), readCall("c2", "b.go"), bashCall("c3", "git status")},
+		Text:     "reading three things",
+		Requests: []event.ToolRequest{readCall("c1", "a.go"), readCall("c2", "b.go"), bashCall("c3", "git status")},
 	}})
 	end := r.run("look around")
 
 	assert.Equal(t, event.EndDone, end.Reason)
 	assert.Equal(t, "finished", end.Summary)
 	assert.Len(t, r.runner.commands(), 3, "every call ran")
-	assert.Len(t, r.of(event.CallEndedKind), 3)
+	assert.Len(t, r.of(event.ToolCallEndedKind), 3)
 	answered(t, r.eng)
 }
 
@@ -33,17 +33,17 @@ func TestTurn_MultiCallStep(t *testing.T) {
 func TestTurn_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
 	tests := []struct {
 		name  string
-		calls []event.ToolCall
+		calls []event.ToolRequest
 		want  []string
 	}{
 		{
 			name:  "a tool that does not exist",
-			calls: []event.ToolCall{{ID: "c1", Name: "delete_file", Args: map[string]any{}}, bashCall("c2", "ls")},
+			calls: []event.ToolRequest{{ID: "c1", Name: "delete_file", Args: map[string]any{}}, bashCall("c2", "ls")},
 			want:  []string{"no tool named", "Exit code"},
 		},
 		{
 			name: "arguments that are not valid JSON",
-			calls: []event.ToolCall{
+			calls: []event.ToolRequest{
 				{ID: "c1", Name: "bash", Args: map[string]any{}, Err: "arguments were not valid JSON: boom"},
 				bashCall("c2", "ls"),
 			},
@@ -51,18 +51,18 @@ func TestTurn_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
 		},
 		{
 			name:  "arguments that fail the schema",
-			calls: []event.ToolCall{{ID: "c1", Name: "read_file", Args: map[string]any{"nope": "x"}}},
+			calls: []event.ToolRequest{{ID: "c1", Name: "read_file", Args: map[string]any{"nope": "x"}}},
 			want:  []string{"unknown parameter"},
 		},
 		{
 			name:  "a required argument left out",
-			calls: []event.ToolCall{{ID: "c1", Name: "read_file", Args: map[string]any{}}},
+			calls: []event.ToolRequest{{ID: "c1", Name: "read_file", Args: map[string]any{}}},
 			want:  []string{"missing required"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := newRig(t, []model.Reply{{Calls: tt.calls}})
+			r := newRig(t, []model.Reply{{Requests: tt.calls}})
 			r.run("go")
 			answered(t, r.eng)
 
@@ -84,7 +84,7 @@ func TestTurn_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
 // Declining stops a Call, not a Turn. Its siblings still
 // run and the model gets to react.
 func TestTurn_DeclineStopsOneCallOnly(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		bashCall("c1", "rm -rf /tmp/x"), // the regex hook flags this
 		bashCall("c2", "ls"),
 	}}})
@@ -93,7 +93,7 @@ func TestTurn_DeclineStopsOneCallOnly(t *testing.T) {
 	asked := r.await(event.ApprovalAskedKind).(event.ApprovalAsked)
 	assert.True(t, asked.Risk.Dangerous)
 	assert.Contains(t, asked.Rationale, "delete")
-	r.bus.Publish(event.ResolveApproval{Call: asked.Call, Approved: false})
+	r.bus.Publish(event.ResolveApproval{ToolCall: asked.ToolCall, Approved: false})
 
 	end := r.await(event.TurnEndedKind).(event.TurnEnded)
 	assert.Equal(t, event.EndDone, end.Reason, "a decline does not end the Turn")
@@ -104,7 +104,7 @@ func TestTurn_DeclineStopsOneCallOnly(t *testing.T) {
 
 // Abort cancels in flight and still completes the Step.
 func TestTurn_AbortStillAnswersEveryCall(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		bashCall("c1", "sleep 1"), bashCall("c2", "sleep 2"), bashCall("c3", "sleep 3"),
 	}}})
 	r.runner.mu.Lock()
@@ -112,7 +112,7 @@ func TestTurn_AbortStillAnswersEveryCall(t *testing.T) {
 	r.runner.mu.Unlock()
 
 	r.bus.Publish(event.SubmitPrompt{Text: "slow work"})
-	started := r.await(event.CallStartedKind)
+	started := r.await(event.ToolCallStartedKind)
 	require.NotNil(t, started)
 
 	turn := r.of(event.TurnStartedKind)[0].(event.TurnStarted)
@@ -127,7 +127,7 @@ func TestTurn_AbortStillAnswersEveryCall(t *testing.T) {
 func TestTurn_BoundAsksAndCanBeContinued(t *testing.T) {
 	var replies []model.Reply
 	for i := range 6 {
-		replies = append(replies, model.Reply{Calls: []event.ToolCall{bashCall("c"+string(rune('0'+i)), "ls")}})
+		replies = append(replies, model.Reply{Requests: []event.ToolRequest{bashCall("c"+string(rune('0'+i)), "ls")}})
 	}
 	r := newRig(t, replies, WithMaxSteps(2))
 	r.bus.Publish(event.SubmitPrompt{Text: "keep going"})
@@ -143,8 +143,8 @@ func TestTurn_BoundAsksAndCanBeContinued(t *testing.T) {
 
 func TestTurn_BoundContinuesWhenApproved(t *testing.T) {
 	replies := []model.Reply{
-		{Calls: []event.ToolCall{bashCall("a", "ls")}},
-		{Calls: []event.ToolCall{bashCall("b", "pwd")}},
+		{Requests: []event.ToolRequest{bashCall("a", "ls")}},
+		{Requests: []event.ToolRequest{bashCall("b", "pwd")}},
 	}
 	r := newRig(t, replies, WithMaxSteps(2))
 	r.bus.Publish(event.SubmitPrompt{Text: "go"})
@@ -161,8 +161,8 @@ func TestTurn_BoundContinuesWhenApproved(t *testing.T) {
 // This is how the post-execution judge acts without intercepting.
 func TestTurn_RequestStopEndsAtTheNextBoundary(t *testing.T) {
 	replies := []model.Reply{
-		{Calls: []event.ToolCall{bashCall("a", "first")}},
-		{Calls: []event.ToolCall{bashCall("b", "second")}},
+		{Requests: []event.ToolRequest{bashCall("a", "first")}},
+		{Requests: []event.ToolRequest{bashCall("b", "second")}},
 	}
 	r := newRig(t, replies)
 	// Hold the first Call so the stop lands inside a Step, or the fake
@@ -172,7 +172,7 @@ func TestTurn_RequestStopEndsAtTheNextBoundary(t *testing.T) {
 	r.runner.mu.Unlock()
 
 	r.bus.Publish(event.SubmitPrompt{Text: "go"})
-	r.await(event.CallStartedKind)
+	r.await(event.ToolCallStartedKind)
 	turn := r.of(event.TurnStartedKind)[0].(event.TurnStarted)
 	r.bus.Publish(event.RequestStop{Turn: turn.Turn, Reason: "the goal looks met"})
 	// Settled before the Call is let go: the engine reads intents on
@@ -189,8 +189,8 @@ func TestTurn_RequestStopEndsAtTheNextBoundary(t *testing.T) {
 // A prompt typed while a Turn runs is steering, not a new Turn.
 func TestTurn_PromptMidTurnBecomesANote(t *testing.T) {
 	replies := []model.Reply{
-		{Calls: []event.ToolCall{bashCall("a", "find .")}},
-		{Calls: []event.ToolCall{bashCall("b", "rg x")}},
+		{Requests: []event.ToolRequest{bashCall("a", "find .")}},
+		{Requests: []event.ToolRequest{bashCall("b", "rg x")}},
 	}
 	r := newRig(t, replies)
 	r.runner.mu.Lock()
@@ -198,7 +198,7 @@ func TestTurn_PromptMidTurnBecomesANote(t *testing.T) {
 	r.runner.mu.Unlock()
 
 	r.bus.Publish(event.SubmitPrompt{Text: "search the tree"})
-	r.await(event.CallStartedKind)
+	r.await(event.ToolCallStartedKind)
 	r.bus.Publish(event.SubmitPrompt{Text: "use ripgrep, not find"})
 	r.bus.Settle(3 * time.Second)
 	close(r.runner.hold)
@@ -215,7 +215,7 @@ func TestTurn_PromptMidTurnBecomesANote(t *testing.T) {
 }
 
 func TestTurn_ModelErrorEndsTheTurnCleanly(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "ls")}}})
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
 	r.model.mu.Lock()
 	r.model.replies = nil
 	r.model.mu.Unlock()
@@ -229,7 +229,7 @@ func TestTurn_AnUnfinishedReplyIsNudgedOn(t *testing.T) {
 	r := newRig(t, []model.Reply{
 		{Text: "I could replace insight with", Thinking: true, Stop: "stop"},
 		{Text: "half an ans", Stop: "length"},
-		{Calls: []event.ToolCall{bashCall("c1", "ls")}},
+		{Requests: []event.ToolRequest{bashCall("c1", "ls")}},
 		{Text: "setting iterations to 30 and", Stop: "error"},
 	})
 	end := r.run("fix it")
@@ -266,7 +266,7 @@ func TestTurn_NudgingGivesUpAfterTheLimit(t *testing.T) {
 // A panicking Runner must cost one Call, not the session: every
 // checkpoint a human could still roll back to lives in the engine.
 func TestTurn_PanickingRunnerIsOneFailedCall(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "boom")}}})
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "boom")}}})
 	r.runner.mu.Lock()
 	r.runner.pan = true
 	r.runner.mu.Unlock()
@@ -278,13 +278,13 @@ func TestTurn_PanickingRunnerIsOneFailedCall(t *testing.T) {
 }
 
 func TestTurn_PublishesTheFactsAFrontEndNeeds(t *testing.T) {
-	r := newRig(t, []model.Reply{{Text: "looking", Calls: []event.ToolCall{bashCall("c1", "ls")}}})
+	r := newRig(t, []model.Reply{{Text: "looking", Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
 	r.run("go")
 
 	for _, k := range []event.Kind{
 		event.SessionStartedKind, event.TurnStartedKind, event.StepStartedKind,
-		event.ModelTextKind, event.CallProposedKind, event.CallAssessedKind,
-		event.CallStartedKind, event.OutputChunkKind, event.CallEndedKind,
+		event.ModelTextKind, event.ToolCallProposedKind, event.ToolCallAssessedKind,
+		event.ToolCallStartedKind, event.OutputChunkKind, event.ToolCallEndedKind,
 		event.StepEndedKind, event.TurnEndedKind,
 	} {
 		assert.NotEmpty(t, r.of(k), "nothing published %s", k)
@@ -295,8 +295,8 @@ func TestTurn_CheckpointsOncePerTurn(t *testing.T) {
 	bus := event.New()
 	snap := &snapRunner{fakeRunner: &fakeRunner{out: "ok\n"}}
 	fm := &fakeModel{replies: []model.Reply{
-		{Calls: []event.ToolCall{bashCall("a", "one")}},
-		{Calls: []event.ToolCall{bashCall("b", "two")}},
+		{Requests: []event.ToolRequest{bashCall("a", "one")}},
+		{Requests: []event.ToolRequest{bashCall("b", "two")}},
 	}}
 	r := rigWith(t, bus, fm, snap)
 	r.run("do several things")
@@ -308,7 +308,7 @@ func TestTurn_CheckpointsOncePerTurn(t *testing.T) {
 }
 
 func TestEngine_ResetForgetsTheTranscript(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "ls")}}})
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
 	r.run("go")
 	require.NotEmpty(t, r.eng.Transcript())
 
@@ -322,14 +322,14 @@ func TestEngine_ResetForgetsTheTranscript(t *testing.T) {
 func TestCallProposed_CarriesTheToolsDeclaredShape(t *testing.T) {
 	reg := tool.Standard()
 	require.NoError(t, reg.Register(markdownTool{}))
-	call := event.ToolCall{ID: "m1", Name: "declares_markdown"}
-	r := rigWithTools(t, event.New(), &fakeModel{replies: []model.Reply{{Calls: []event.ToolCall{call}}}},
+	call := event.ToolRequest{ID: "m1", Name: "declares_markdown"}
+	r := rigWithTools(t, event.New(), &fakeModel{replies: []model.Reply{{Requests: []event.ToolRequest{call}}}},
 		&fakeRunner{out: "ok\n"}, reg)
 	r.run("go")
 
-	proposed := r.of(event.CallProposedKind)
+	proposed := r.of(event.ToolCallProposedKind)
 	require.Len(t, proposed, 1)
-	assert.Equal(t, event.RendersMarkdown, proposed[0].(event.CallProposed).Renders,
+	assert.Equal(t, event.RendersMarkdown, proposed[0].(event.ToolCallProposed).Renders,
 		"the tool's answer did not reach the fact")
 }
 
@@ -339,37 +339,37 @@ func TestCallProposed_CarriesTheExecutor(t *testing.T) {
 	reg := tool.Standard()
 	require.NoError(t, reg.Register(remoteTool{name: "srv__do"}))
 	r := rigWithTools(t, event.New(),
-		&fakeModel{replies: []model.Reply{{Calls: []event.ToolCall{remoteCall("r1")}}}},
+		&fakeModel{replies: []model.Reply{{Requests: []event.ToolRequest{remoteCall("r1")}}}},
 		&fakeRunner{out: "ok\n"}, reg, WithInvoker(&fakeInvoker{}))
 	r.approve(t)
 	r.run("go")
 
-	proposed := r.of(event.CallProposedKind)
+	proposed := r.of(event.ToolCallProposedKind)
 	require.Len(t, proposed, 1)
-	assert.Equal(t, "srv", proposed[0].(event.CallProposed).Executor,
+	assert.Equal(t, "srv", proposed[0].(event.ToolCallProposed).Executor,
 		"nothing said this Call ran outside the sandbox")
 }
 
 // A shell Call must not claim one, or undo would say it cannot
 // reverse things it can.
 func TestCallProposed_AShellCallHasNoExecutor(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "ls")}}})
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
 	r.run("go")
 
-	proposed := r.of(event.CallProposedKind)
+	proposed := r.of(event.ToolCallProposedKind)
 	require.Len(t, proposed, 1)
-	assert.Empty(t, proposed[0].(event.CallProposed).Executor)
+	assert.Empty(t, proposed[0].(event.ToolCallProposed).Executor)
 }
 
 // No tool ships with an opinion, and inventing one would send ordinary
 // command output through a markdown renderer.
 func TestCallProposed_LeavesRendersEmptyWhenTheToolHasNoOpinion(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "ls")}}})
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
 	r.run("go")
 
-	proposed := r.of(event.CallProposedKind)
+	proposed := r.of(event.ToolCallProposedKind)
 	require.Len(t, proposed, 1)
-	assert.Empty(t, proposed[0].(event.CallProposed).Renders)
+	assert.Empty(t, proposed[0].(event.ToolCallProposed).Renders)
 }
 
 // A front-end measures a Step's prompt tokens against the budget, so
@@ -408,9 +408,9 @@ func (markdownTool) Lower(tool.Args) (string, error) { return "true", nil }
 // ends, and the model's second answer is the one that stands.
 func TestTurn_AChangingTurnIsAskedToCheckOnce(t *testing.T) {
 	r := newRig(t, []model.Reply{
-		{Calls: []event.ToolCall{bashCall("c1", "touch out.txt")}},
+		{Requests: []event.ToolRequest{bashCall("c1", "touch out.txt")}},
 		{Text: "made out.txt", Stop: "stop"},
-		{Calls: []event.ToolCall{readCall("c2", "out.txt")}},
+		{Requests: []event.ToolRequest{readCall("c2", "out.txt")}},
 		{Text: "made out.txt, and checked it", Stop: "stop"},
 		{Text: "never asked for", Stop: "stop"},
 	}, WithFinishCheck(true))
@@ -432,7 +432,7 @@ func TestTurn_AChangingTurnIsAskedToCheckOnce(t *testing.T) {
 // A Turn that only read is answered as it is, with no extra Step.
 func TestTurn_AReadOnlyTurnIsNotAskedToCheck(t *testing.T) {
 	r := newRig(t, []model.Reply{
-		{Calls: []event.ToolCall{readCall("c1", "a.go")}},
+		{Requests: []event.ToolRequest{readCall("c1", "a.go")}},
 		{Text: "a.go holds main", Stop: "stop"},
 	}, WithFinishCheck(true))
 	end := r.run("what is in a.go")

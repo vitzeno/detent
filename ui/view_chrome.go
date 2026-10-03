@@ -137,7 +137,7 @@ const viewSourceMark = "✦"
 
 // viewNote says how the pane was drawn, and usually says nothing: only
 // framing a model had a hand in is worth a word.
-func viewNote(r *callRow) string {
+func viewNote(r *historyRow) string {
 	switch r.viewSource {
 	case "composed", "saved":
 		return r.viewSource
@@ -147,7 +147,7 @@ func viewNote(r *callRow) string {
 
 // shellHint is the bar in shell mode, where / is a path.
 func (m Model) shellHint() string {
-	if m.shellRunning() {
+	if m.userCommandRunning() {
 		return "[esc] stop · [shift+tab] back to a request"
 	}
 	return "[shift+tab] request · [enter] run · [tab] history"

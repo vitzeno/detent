@@ -79,7 +79,7 @@ func transcriptText(msgs []event.Message) string {
 			if m.Content != "" {
 				fmt.Fprintf(&b, "Agent: %s\n", m.Content)
 			}
-			for _, c := range m.Calls {
+			for _, c := range m.Requests {
 				fmt.Fprintf(&b, "Agent ran %s(%s)\n", c.Name, argsText(c.Args))
 			}
 		case event.RoleTool:

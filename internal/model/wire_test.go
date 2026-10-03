@@ -10,16 +10,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/event"
-	"github.com/vitzeno/detent/internal/humanshell"
+	"github.com/vitzeno/detent/internal/usercommand"
 )
 
 // A Step on the wire: one assistant message carrying tool_calls, then
 // one tool message per id. Endpoints reject either half alone.
 func TestEncode_AStepIsAnAssistantPlusItsAnswers(t *testing.T) {
-	call := event.ToolCall{ID: "c1", Name: "read_file", Args: map[string]any{"path": "a.go"}}
+	call := event.ToolRequest{ID: "c1", Name: "read_file", Args: map[string]any{"path": "a.go"}}
 	step := []event.Message{
 		{Role: event.RoleUser, Content: "read a.go"},
-		{Role: event.RoleAssistant, Content: "reading", Calls: []event.ToolCall{call}},
+		{Role: event.RoleAssistant, Content: "reading", Requests: []event.ToolRequest{call}},
 		event.Answer(call, "package main"),
 	}
 
@@ -128,7 +128,7 @@ func TestSystemPrompt_StatesTheCommandLimit(t *testing.T) {
 // The prompt promises a shape another package emits, so it is checked
 // against that package's constant: prose drifting from it fails silently.
 func TestSystemPrompt_NamesTheMarkerHumanshellActuallyWrites(t *testing.T) {
-	assert.Contains(t, systemPrompt(LocalEnvironment()), humanshell.Marker)
+	assert.Contains(t, systemPrompt(LocalEnvironment()), usercommand.Marker)
 	assert.Contains(t, systemPrompt(LocalEnvironment()), "read it rather than running it again",
 		"and says what to do with it, which is the point of naming it")
 }

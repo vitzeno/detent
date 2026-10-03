@@ -157,7 +157,7 @@ func TestRepeatHook_ResetsEveryTurn(t *testing.T) {
 	r := newRig(t, nil)
 	for i := range 5 {
 		r.model.mu.Lock()
-		r.model.replies = []model.Reply{{Calls: []event.ToolCall{bashCall("t", "go test ./...")}}}
+		r.model.replies = []model.Reply{{Requests: []event.ToolRequest{bashCall("t", "go test ./...")}}}
 		r.model.mu.Unlock()
 		r.run("run the tests, take " + string(rune('1'+i)))
 	}
@@ -258,7 +258,7 @@ func (claimsSafe) Assess(context.Context, tool.Call, event.Risk) (event.Risk, er
 func repeatReplies(n int) []model.Reply {
 	out := make([]model.Reply, 0, n)
 	for i := range n {
-		out = append(out, model.Reply{Calls: []event.ToolCall{bashCall(string(rune('a'+i)), "git log -1")}})
+		out = append(out, model.Reply{Requests: []event.ToolRequest{bashCall(string(rune('a'+i)), "git log -1")}})
 	}
 	return out
 }

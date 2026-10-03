@@ -36,13 +36,13 @@ func TestNoteContext_LandsWhenNothingIsRunning(t *testing.T) {
 // Mid-Turn it waits for a Step boundary, because a note between an
 // assistant's calls and their answers is a Step nothing accepts.
 func TestNoteContext_MidTurnWaitsForAStepBoundary(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("a", "find .")}}})
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("a", "find .")}}})
 	r.runner.mu.Lock()
 	r.runner.hold = make(chan struct{})
 	r.runner.mu.Unlock()
 
 	r.bus.Publish(event.SubmitPrompt{Text: "search the tree"})
-	r.await(event.CallStartedKind)
+	r.await(event.ToolCallStartedKind)
 	r.bus.Publish(event.NoteContext{Text: "use ripgrep, not find"})
 	r.bus.Settle(3 * time.Second)
 	close(r.runner.hold)
@@ -54,7 +54,7 @@ func TestNoteContext_MidTurnWaitsForAStepBoundary(t *testing.T) {
 		switch {
 		case m.Content == "use ripgrep, not find":
 			note = i
-		case m.Role == event.RoleAssistant && len(m.Calls) > 0:
+		case m.Role == event.RoleAssistant && len(m.Requests) > 0:
 			step = i
 		}
 	}
@@ -67,13 +67,13 @@ func TestNoteContext_MidTurnWaitsForAStepBoundary(t *testing.T) {
 // A note while a Turn runs must not open one, the way a prompt does
 // not either: it is context for the Turn in flight.
 func TestNoteContext_MidTurnOpensNoTurn(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("a", "ls")}}})
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("a", "ls")}}})
 	r.runner.mu.Lock()
 	r.runner.hold = make(chan struct{})
 	r.runner.mu.Unlock()
 
 	r.bus.Publish(event.SubmitPrompt{Text: "look around"})
-	r.await(event.CallStartedKind)
+	r.await(event.ToolCallStartedKind)
 	r.bus.Publish(event.NoteContext{Text: "in the ui package"})
 	r.bus.Settle(3 * time.Second)
 	close(r.runner.hold)

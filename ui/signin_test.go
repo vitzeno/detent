@@ -22,8 +22,8 @@ const signInURL = "https://mcp.notion.com/authorize?response_type=code&client_id
 func TestSignIn_TheLinkIsInTheOutputPaneAtOnce(t *testing.T) {
 	shell := uuid.Must(uuid.NewV7())
 	m := feed(t,
-		event.ShellStarted{Shell: shell, Command: "ls"},
-		event.ShellEnded{Shell: shell, Result: event.Result{Stdout: "a\n"}})
+		event.UserCommandStarted{UserCommand: shell, Command: "ls"},
+		event.UserCommandEnded{UserCommand: shell, Result: event.Result{Stdout: "a\n"}})
 	m.sizeViewport()
 	require.Equal(t, "ls", m.focused().command, "a row is already in focus")
 	m.apply(waitingFor("notion"))

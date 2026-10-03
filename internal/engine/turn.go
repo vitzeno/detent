@@ -110,14 +110,14 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 			e.endTurn(ctx, t, event.EndError, err.Error(), total)
 			return
 		}
-		e.bus.Publish(event.StepEnded{Turn: t.id, Step: stepID, Usage: used, Calls: len(reply.Calls), Stop: reply.Stop})
+		e.bus.Publish(event.StepEnded{Turn: t.id, Step: stepID, Usage: used, ToolCalls: len(reply.Requests), Stop: reply.Stop})
 		e.bus.Publish(e.measure(used.PromptTokens))
 		if reply.Text != "" {
 			e.bus.Publish(event.ModelText{Turn: t.id, Step: stepID, Text: reply.Text})
 		}
 
 		// No calls means the model is finished asking, unless it stopped mid-thought.
-		if len(reply.Calls) == 0 {
+		if len(reply.Requests) == 0 {
 			e.appended(t.id, stepID, func() []event.Message { return e.tr.say(reply.Text) })
 			if reply.Unfinished() && nudges < DefaultNudges {
 				nudges++

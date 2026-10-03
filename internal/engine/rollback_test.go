@@ -17,9 +17,9 @@ import (
 func TestRollback_RestoresTheTurnsCheckpoint(t *testing.T) {
 	snap := &snapRunner{fakeRunner: &fakeRunner{out: "ok\n"}}
 	fm := &fakeModel{replies: []model.Reply{
-		{Calls: []event.ToolCall{bashCall("a", "one")}},
+		{Requests: []event.ToolRequest{bashCall("a", "one")}},
 		{Text: "first done"},
-		{Calls: []event.ToolCall{bashCall("b", "two")}},
+		{Requests: []event.ToolRequest{bashCall("b", "two")}},
 		{Text: "second done"},
 	}}
 	r := rigWith(t, event.New(), fm, snap)
@@ -56,13 +56,13 @@ func TestRollback_RefusesWhatItCannotDo(t *testing.T) {
 	})
 
 	t.Run("while a request is running", func(t *testing.T) {
-		r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("a", "slow")}}})
+		r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("a", "slow")}}})
 		r.runner.mu.Lock()
 		r.runner.hold = make(chan struct{})
 		r.runner.mu.Unlock()
 
 		r.bus.Publish(event.SubmitPrompt{Text: "go"})
-		r.await(event.CallStartedKind)
+		r.await(event.ToolCallStartedKind)
 		r.bus.Publish(event.RequestRollback{Turn: uuid.Must(uuid.NewV7())})
 
 		n := r.await(event.NoticeKind).(event.Notice)

@@ -15,12 +15,12 @@ import (
 // Cancelling ctx abandons compositions in flight, as the stop does.
 func (g *Generator) Watch(ctx context.Context, bus *event.Bus) func() {
 	facts, unsub := bus.Subscribe(event.Only(
-		event.TurnStartedKind, event.CallProposedKind,
-		event.CallEndedKind, event.CallJudgedKind,
-		event.ShellStartedKind, event.ShellEndedKind))
+		event.TurnStartedKind, event.ToolCallProposedKind,
+		event.ToolCallEndedKind, event.ToolCallJudgedKind,
+		event.UserCommandStartedKind, event.UserCommandEndedKind))
 	ctx, cancel := context.WithCancel(ctx)
 	w := &watcher{gen: g, bus: bus, ctx: ctx, calls: map[uuid.UUID]*pending{},
-		shells: map[uuid.UUID]string{}, slots: make(chan struct{}, maxComposing)}
+		commands: map[uuid.UUID]string{}, slots: make(chan struct{}, maxComposing)}
 	looped := make(chan struct{})
 	go func() {
 		defer close(looped)
@@ -59,8 +59,8 @@ type watcher struct {
 	ctx   context.Context
 	wg    sync.WaitGroup
 	calls map[uuid.UUID]*pending
-	// shells is the command each running Shell was started with.
-	shells map[uuid.UUID]string
+	// commands is the command each running Shell was started with.
+	commands map[uuid.UUID]string
 	// slots holds maxComposing: parallel Calls finish together and each
 	// costs a judge round trip.
 	slots chan struct{}
@@ -70,11 +70,11 @@ func (w *watcher) take(e event.Event) {
 	switch v := e.(type) {
 	case event.TurnStarted:
 		clear(w.calls) // nothing from a finished Turn can still compose
-	case event.CallProposed:
+	case event.ToolCallProposed:
 		// The command, not the tool, or every bash call would key as "bash".
-		w.calls[v.Call] = &pending{command: event.Command(v.Tool, v.Args)}
-	case event.CallEnded:
-		p := w.calls[v.Call]
+		w.calls[v.ToolCall] = &pending{command: event.Command(v.Tool, v.Args)}
+	case event.ToolCallEnded:
+		p := w.calls[v.ToolCall]
 		if p == nil {
 			return
 		}
@@ -82,25 +82,27 @@ func (w *watcher) take(e event.Event) {
 		p.result = &result
 		// With no judge wired no CallJudged follows, so the Call resolves now.
 		if w.gen.Unjudged {
-			w.start(v.Call, p)
+			w.start(v.ToolCall, p)
 		}
-	case event.CallJudged:
-		p := w.calls[v.Call]
+	case event.ToolCallJudged:
+		p := w.calls[v.ToolCall]
 		if p == nil || p.result == nil {
 			return
 		}
 		p.kind = v.RenderKind
-		w.start(v.Call, p)
-	case event.ShellStarted:
-		w.shells[v.Shell] = v.Command
-	case event.ShellEnded:
-		command, ok := w.shells[v.Shell]
+		w.start(v.ToolCall, p)
+	case event.UserCommandStarted:
+		w.commands[v.UserCommand] = v.Command
+	case event.UserCommandEnded:
+		command, ok := w.commands[v.UserCommand]
 		if !ok {
 			return
 		}
-		delete(w.shells, v.Shell)
+		delete(w.commands, v.UserCommand)
 		result := v.Result
-		w.spawn(func(ctx context.Context) { w.shell(ctx, v.Shell, pending{command: command, result: &result}) })
+		w.spawn(func(ctx context.Context) {
+			w.userCommand(ctx, v.UserCommand, pending{command: command, result: &result})
+		})
 	}
 }
 
@@ -129,13 +131,13 @@ func (w *watcher) spawn(fn func(context.Context)) {
 
 func (w *watcher) compose(ctx context.Context, call uuid.UUID, p pending) {
 	if got, ok := w.resolve(ctx, p); ok {
-		w.publish(call, got)
+		w.publish(event.ViewReady{ToolCall: call}, got)
 	}
 }
 
-// shell draws a command the human ran. Nothing judged it, so the shape
+// userCommand draws a command the human ran. Nothing judged it, so the shape
 // is asked here, and only the shape: never how it went.
-func (w *watcher) shell(ctx context.Context, id uuid.UUID, p pending) {
+func (w *watcher) userCommand(ctx context.Context, id uuid.UUID, p pending) {
 	p.kind = w.gen.Shape(ctx, p.command, outputOf(p.result))
 	got, ok := w.resolve(ctx, p)
 	if !ok {
@@ -144,7 +146,7 @@ func (w *watcher) shell(ctx context.Context, id uuid.UUID, p pending) {
 		got, ok = w.gen.forKind(ctx, w.request(p))
 	}
 	if ok {
-		w.publish(id, got)
+		w.publish(event.ViewReady{UserCommand: id}, got)
 	}
 }
 
@@ -163,11 +165,13 @@ func (w *watcher) request(p pending) Request {
 		ExitCode: p.result.ExitCode, Kind: p.kind}
 }
 
-func (w *watcher) publish(call uuid.UUID, got Result) {
+// publish sends v, which names what the view is for, with the spec filled in.
+func (w *watcher) publish(v event.ViewReady, got Result) {
 	if w.ctx.Err() != nil {
 		return // stopped: nothing is listening for this any more
 	}
-	w.bus.Publish(event.ViewReady{Call: call, Spec: got.Spec, Source: string(got.Source)})
+	v.Spec, v.Source = got.Spec, string(got.Source)
+	w.bus.Publish(v)
 }
 
 func outputOf(r *event.Result) string {

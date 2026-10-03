@@ -254,19 +254,19 @@ func nextFact(facts <-chan event.Record) tea.Cmd {
 
 // rows flattens every block's calls into the one list the cursor
 // indexes into.
-func (m Model) rows() []*callRow {
+func (m Model) rows() []*historyRow {
 	n := 0
 	for _, b := range m.blocks {
 		n += len(b.rows)
 	}
-	out := make([]*callRow, 0, n)
+	out := make([]*historyRow, 0, n)
 	for _, b := range m.blocks {
 		out = append(out, b.rows...)
 	}
 	return out
 }
 
-func (m Model) focused() *callRow {
+func (m Model) focused() *historyRow {
 	rows := m.rows()
 	if m.nav.cursor < 0 || m.nav.cursor >= len(rows) {
 		return nil
@@ -280,8 +280,8 @@ func (m Model) spinning() bool {
 	return m.waiting || slices.ContainsFunc(m.blocks, anyRunning)
 }
 
-// shellRunning is whether esc has a command of the human's to stop.
-func (m Model) shellRunning() bool {
+// userCommandRunning is whether esc has a command of the human's to stop.
+func (m Model) userCommandRunning() bool {
 	for _, b := range m.blocks {
 		for _, r := range b.rows {
 			if r.human && r.running {

@@ -18,11 +18,11 @@ import (
 func TestHistoryParts_SplitByRequestAndNameTheHeaviest(t *testing.T) {
 	var tr transcript
 	tr.user(1, "fix the tests")
-	tr.step(model.Reply{Calls: []event.ToolCall{bashCall("c1", "go test ./...")}},
+	tr.step(model.Reply{Requests: []event.ToolRequest{bashCall("c1", "go test ./...")}},
 		[]string{strings.Repeat("FAIL\n", 400)})
 	tr.say("fixed")
 	tr.user(2, "add grep")
-	tr.step(model.Reply{Calls: []event.ToolCall{readCall("c2", "grep.go")}}, []string{"short"})
+	tr.step(model.Reply{Requests: []event.ToolRequest{readCall("c2", "grep.go")}}, []string{"short"})
 
 	parts := historyParts(tr.msgs, tr.starts, tr.dropped, true)
 	require.Len(t, parts, 2)

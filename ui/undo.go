@@ -135,7 +135,7 @@ func (m Model) undoKeys(sep string) string {
 
 // split separates what a checkpoint covers from what it does not.
 // Prose is neither: nothing ran.
-func split(rows []*callRow) (reversible, standing []*callRow) {
+func split(rows []*historyRow) (reversible, standing []*historyRow) {
 	for _, r := range rows {
 		switch {
 		case r.prose != "":

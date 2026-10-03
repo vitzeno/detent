@@ -11,8 +11,8 @@ import (
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/headless"
-	"github.com/vitzeno/detent/internal/humanshell"
 	mcppkg "github.com/vitzeno/detent/internal/mcp"
+	"github.com/vitzeno/detent/internal/usercommand"
 	"github.com/vitzeno/detent/ui"
 )
 
@@ -59,8 +59,8 @@ func (s *session) runTUI(ctx context.Context) error {
 	}
 	// The same runner the model's commands go to: a shell that cannot
 	// see what the agent just did is not worth having.
-	shellRunner, shellWhere := s.runners.Select(event.UnknownRisk())
-	s.sd.shell = humanshell.Watch(ctx, s.bus, shellRunner, shellWhere)
+	runner, where := s.runners.Select(event.UnknownRisk())
+	s.sd.userCommand = usercommand.Watch(ctx, s.bus, runner, where)
 	signins := mcppkg.NewSignIns(s.bus, s.servers, mcppkg.Tokens{Dir: mcppkg.TokensDir()}, openBrowser)
 	s.sd.unwatch = append(s.sd.unwatch, mcppkg.Watch(ctx, s.bus, s.servers,
 		mcppkg.Redialer(s.tools, s.servers, s.configured, signins), signins))

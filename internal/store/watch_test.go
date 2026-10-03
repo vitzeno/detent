@@ -24,8 +24,8 @@ func TestWatch_StoresEveryFactInOrder(t *testing.T) {
 		event.SessionStarted{Session: session, Model: "m"},
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "go"},
 		event.Appended{Turn: turn, Messages: []event.Message{{Role: event.RoleUser, Content: "go"}}},
-		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "ls"}},
-		event.CallEnded{Call: call, Result: event.Result{Stdout: "a.go\n"}},
+		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "ls"}},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: "a.go\n"}},
 		event.TurnEnded{Turn: turn, Reason: event.EndDone},
 	}
 	for _, e := range published {
@@ -54,11 +54,11 @@ func TestWatch_SkipsLiveOutputAndIntents(t *testing.T) {
 	bus.Publish(event.SessionStarted{Session: session, Model: "m"})
 	call := uuid.Must(uuid.NewV7())
 	for range 50 {
-		bus.Publish(event.OutputChunk{Call: call, Line: "noise"})
+		bus.Publish(event.OutputChunk{ToolCall: call, Line: "noise"})
 	}
 	bus.Publish(event.SubmitPrompt{Text: "an intent"})
 	bus.Publish(event.Abort{Turn: uuid.Must(uuid.NewV7())})
-	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: "the whole of it"}})
+	bus.Publish(event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: "the whole of it"}})
 
 	bus.Drain(3 * time.Second)
 	stop()
@@ -66,7 +66,7 @@ func TestWatch_SkipsLiveOutputAndIntents(t *testing.T) {
 	got, err := s.Replay(session)
 	require.NoError(t, err)
 	require.Len(t, got, 2, "the header and the one fact worth replaying")
-	assert.Equal(t, event.CallEndedKind, got[1].Event.Kind())
+	assert.Equal(t, event.ToolCallEndedKind, got[1].Event.Kind())
 }
 
 // Stopping must wait for the last write, not the last receive, or a

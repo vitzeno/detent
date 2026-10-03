@@ -28,8 +28,8 @@ func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 	turn, step, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: turn, N: 1, Prompt: "go"})
 	bus.Publish(event.StepStarted{Turn: turn, Step: step, N: 1})
-	bus.Publish(event.CallProposed{Call: call, Step: step, Tool: "bash"})
-	bus.Publish(event.CallEnded{Call: call, Result: event.Result{ExitCode: 1, Stderr: "boom"},
+	bus.Publish(event.ToolCallProposed{ToolCall: call, Step: step, Tool: "bash"})
+	bus.Publish(event.ToolCallEnded{ToolCall: call, Result: event.Result{ExitCode: 1, Stderr: "boom"},
 		Took: 12 * time.Millisecond})
 	bus.Publish(event.TurnEnded{Turn: turn, Reason: event.EndDone})
 
@@ -46,10 +46,10 @@ func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 
 	assert.Equal(t, turn.String(), by["turn.started"][logging.KeyTurn])
 	assert.Equal(t, step.String(), by["step.started"][logging.KeyStep])
-	assert.Equal(t, call.String(), by["call.proposed"][logging.KeyCall],
+	assert.Equal(t, call.String(), by["tool_call.proposed"][logging.KeyToolCall],
 		"a call record names its call, and nothing had to thread it")
 
-	ended := by["call.ended"]
+	ended := by["tool_call.ended"]
 	assert.EqualValues(t, 1, ended["exit"])
 	assert.EqualValues(t, 12, ended[logging.KeyMS])
 	assert.Equal(t, "WARN", ended["level"], "a failed call is worth finding")
@@ -72,8 +72,8 @@ func TestWatch_LogsAHumanCommand(t *testing.T) {
 	stop := logging.Watch(bus)
 
 	shell := uuid.Must(uuid.NewV7())
-	bus.Publish(event.ShellStarted{Shell: shell, Command: "git status", Runner: "sandbox"})
-	bus.Publish(event.ShellEnded{Shell: shell, Took: 8 * time.Millisecond,
+	bus.Publish(event.UserCommandStarted{UserCommand: shell, Command: "git status", Runner: "sandbox"})
+	bus.Publish(event.UserCommandEnded{UserCommand: shell, Took: 8 * time.Millisecond,
 		Result: event.Result{ExitCode: 1, Stderr: "boom"}})
 
 	require.Eventually(t, func() bool { return len(records(t, dir, "w5")) == 2 },
@@ -86,13 +86,13 @@ func TestWatch_LogsAHumanCommand(t *testing.T) {
 		by[r[logging.KeyEvent].(string)] = r
 	}
 
-	started := by["shell.started"]
-	assert.Equal(t, shell.String(), started[logging.KeyShell])
+	started := by["user_command.started"]
+	assert.Equal(t, shell.String(), started[logging.KeyUserCommand])
 	assert.Equal(t, "git status", started["command"])
 	assert.Equal(t, "sandbox", started["runner"])
 
-	ended := by["shell.ended"]
-	assert.Equal(t, shell.String(), ended[logging.KeyShell])
+	ended := by["user_command.ended"]
+	assert.Equal(t, shell.String(), ended[logging.KeyUserCommand])
 	assert.EqualValues(t, 1, ended["exit"])
 	assert.EqualValues(t, 8, ended[logging.KeyMS])
 	assert.Equal(t, "WARN", ended["level"], "a failed command is worth finding")
@@ -108,7 +108,7 @@ func TestWatch_SkipsLiveOutput(t *testing.T) {
 	bus := event.New()
 	stop := logging.Watch(bus)
 	for range 50 {
-		bus.Publish(event.OutputChunk{Call: testID("c1"), Line: "noise"})
+		bus.Publish(event.OutputChunk{ToolCall: testID("c1"), Line: "noise"})
 	}
 	bus.Publish(event.Notice{Level: "info", Text: "done"})
 
@@ -118,7 +118,7 @@ func TestWatch_SkipsLiveOutput(t *testing.T) {
 	require.NoError(t, closer())
 
 	for _, r := range records(t, dir, "w2") {
-		assert.NotEqual(t, "call.output", r[logging.KeyEvent])
+		assert.NotEqual(t, "output.chunk", r[logging.KeyEvent])
 	}
 }
 
@@ -159,8 +159,8 @@ func TestWatch_RecordsTheCommand(t *testing.T) {
 	stop := logging.Watch(bus)
 	call := uuid.Must(uuid.NewV7())
 	args := map[string]any{"command": "rm -rf build"}
-	bus.Publish(event.CallProposed{Call: call, Tool: "bash", Args: args})
-	bus.Publish(event.ApprovalAsked{Call: call, Tool: "bash", Args: args, Rationale: "recursive delete"})
+	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: args})
+	bus.Publish(event.ApprovalAsked{ToolCall: call, Tool: "bash", Args: args, Rationale: "recursive delete"})
 
 	require.Eventually(t, func() bool { return len(records(t, dir, "c")) == 2 },
 		2*time.Second, 10*time.Millisecond)
@@ -171,10 +171,10 @@ func TestWatch_RecordsTheCommand(t *testing.T) {
 	for _, r := range records(t, dir, "c") {
 		by[r[logging.KeyEvent].(string)] = r
 	}
-	assert.Equal(t, "rm -rf build", by["call.proposed"]["command"])
-	assert.Equal(t, "rm -rf build", by["call.approval"]["command"],
+	assert.Equal(t, "rm -rf build", by["tool_call.proposed"]["command"])
+	assert.Equal(t, "rm -rf build", by["tool_call.approval"]["command"],
 		"this record exists because a human read that string")
-	assert.Equal(t, "recursive delete", by["call.approval"][logging.KeyReason])
+	assert.Equal(t, "recursive delete", by["tool_call.approval"][logging.KeyReason])
 }
 
 // slog writes its own "level", so a second one is not an extra field:

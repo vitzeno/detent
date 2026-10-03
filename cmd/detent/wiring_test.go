@@ -22,8 +22,8 @@ import (
 func TestWiring_TypingReachesTheEngineAndComesBack(t *testing.T) {
 	bus := event.New()
 	eng := engine.New(bus, &stubModel{replies: []model.Reply{{
-		Text:  "looking",
-		Calls: []event.ToolCall{{ID: "c1", Name: "bash", Args: map[string]any{"command": "ls"}}},
+		Text:     "looking",
+		Requests: []event.ToolRequest{{ID: "c1", Name: "bash", Args: map[string]any{"command": "ls"}}},
 	}}}, tool.Standard(), stubSelector{})
 
 	ctx, cancel := context.WithCancel(context.Background())

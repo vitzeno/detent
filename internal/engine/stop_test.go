@@ -28,7 +28,7 @@ func TestRun_PublishesTheAbandonedTurnBeforeItReturns(t *testing.T) {
 	go seen.collect(facts, marker)
 
 	runner := &fakeRunner{out: "output\n", hold: make(chan struct{})}
-	eng := New(bus, &fakeModel{replies: []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "sleep 60")}}}},
+	eng := New(bus, &fakeModel{replies: []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "sleep 60")}}}},
 		tool.Standard(), fakeSelector{runner})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -50,7 +50,7 @@ func TestRun_PublishesTheAbandonedTurnBeforeItReturns(t *testing.T) {
 	require.True(t, waitFor(seen.arrived), "the marker never arrived")
 
 	at, mark := seen.index()
-	callEnded, ok := at[event.CallEndedKind]
+	callEnded, ok := at[event.ToolCallEndedKind]
 	require.True(t, ok, "the abandoned call was never answered at all")
 	turnEnded, ok := at[event.TurnEndedKind]
 	require.True(t, ok, "the turn never ended at all")
@@ -95,7 +95,7 @@ func (l *kindLog) collect(facts <-chan event.Record, marker string) {
 		l.kinds = append(l.kinds, rec.Event.Kind())
 		l.mu.Unlock()
 		switch v := rec.Event.(type) {
-		case event.CallStarted:
+		case event.ToolCallStarted:
 			onceStarted.Do(func() { close(l.started) })
 		case event.Notice:
 			if v.Text == marker {

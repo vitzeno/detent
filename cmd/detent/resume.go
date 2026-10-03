@@ -10,9 +10,6 @@ import (
 	"github.com/vitzeno/detent/internal/model"
 )
 
-// What a resume owes: a seam the human can see, and a note saying
-// which of the transcript's earlier steps are still true.
-
 // announceResume marks the seam and says what did not come back.
 // Both or neither: a boundary nothing explains is worse than none.
 func announceResume(bus *event.Bus, session uuid.UUID, records []event.Record, env model.Environment) {

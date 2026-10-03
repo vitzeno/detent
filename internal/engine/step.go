@@ -16,11 +16,11 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// callPlan is one Call's journey. answer is always set by the end,
+// toolCallPlan is one Call's journey. answer is always set by the end,
 // which is what keeps the transcript well formed.
-type callPlan struct {
+type toolCallPlan struct {
 	id     uuid.UUID
-	call   event.ToolCall
+	call   event.ToolRequest
 	cmd    string
 	risk   event.Risk
 	answer string
@@ -31,11 +31,11 @@ type callPlan struct {
 	prepared tool.Call
 }
 
-func (p *callPlan) finish(answer string) { p.answer, p.done = answer, true }
+func (p *toolCallPlan) finish(answer string) { p.answer, p.done = answer, true }
 
 // readOnly is what the tool declares and nothing widened. A hook can
 // lower unknown to read-only, so the verdict alone cannot decide this.
-func (p *callPlan) readOnly() bool {
+func (p *toolCallPlan) readOnly() bool {
 	return p.prepared.Mutability == event.MutRead && p.risk.ReadOnly()
 }
 
@@ -54,7 +54,7 @@ func (e *Engine) runStep(ctx context.Context, t *turnState, step uuid.UUID, repl
 	plans := e.plan(ctx, step, reply)
 	stopping := func() bool { return t.aborted.Load() || ctx.Err() != nil }
 
-	var batch []*callPlan
+	var batch []*toolCallPlan
 	flush := func() {
 		if len(batch) > 0 && !stopping() {
 			e.runParallel(ctx, batch)
@@ -97,7 +97,7 @@ serial:
 			p.finish("This call was not run: the request was aborted.")
 		}
 		if !p.ended {
-			e.bus.Publish(event.CallEnded{Call: p.id, Result: event.Result{Err: p.answer}})
+			e.bus.Publish(event.ToolCallEnded{ToolCall: p.id, Result: event.Result{Err: p.answer}})
 		}
 		out[i] = p.answer
 	}
@@ -106,13 +106,13 @@ serial:
 
 // plan validates and assesses, settling anything that cannot run.
 // Every failure here is an answer the model reads, never a Go error.
-func (e *Engine) plan(ctx context.Context, step uuid.UUID, reply model.Reply) []*callPlan {
-	out := make([]*callPlan, 0, len(reply.Calls))
-	ids := make(map[string]bool, len(reply.Calls))
-	for i, c := range reply.Calls {
-		p := &callPlan{id: uuid.Must(uuid.NewV7()), call: c}
+func (e *Engine) plan(ctx context.Context, step uuid.UUID, reply model.Reply) []*toolCallPlan {
+	out := make([]*toolCallPlan, 0, len(reply.Requests))
+	ids := make(map[string]bool, len(reply.Requests))
+	for i, c := range reply.Requests {
+		p := &toolCallPlan{id: uuid.Must(uuid.NewV7()), call: c}
 		out = append(out, p)
-		e.bus.Publish(event.CallProposed{Call: p.id, Step: step, Tool: c.Name, Args: c.Args,
+		e.bus.Publish(event.ToolCallProposed{ToolCall: p.id, Step: step, Tool: c.Name, Args: c.Args,
 			Renders: e.renders(c.Name), Executor: e.executor(c.Name)})
 
 		dup := ids[c.ID]
@@ -124,8 +124,8 @@ func (e *Engine) plan(ctx context.Context, step uuid.UUID, reply model.Reply) []
 		case dup:
 			p.finish(fmt.Sprintf("Not run: another call in this step has the id %q. Give each call its own id.", c.ID))
 			continue
-		case i >= e.maxCalls:
-			p.finish(fmt.Sprintf("Not run: a step may ask for at most %d calls. Ask again in the next step.", e.maxCalls))
+		case i >= e.maxToolCalls:
+			p.finish(fmt.Sprintf("Not run: a step may ask for at most %d calls. Ask again in the next step.", e.maxToolCalls))
 			continue
 		}
 
@@ -140,14 +140,14 @@ func (e *Engine) plan(ctx context.Context, step uuid.UUID, reply model.Reply) []
 			continue
 		}
 		p.risk = e.assess(ctx, prepared)
-		e.bus.Publish(event.CallAssessed{Call: p.id, Risk: p.risk})
+		e.bus.Publish(event.ToolCallAssessed{ToolCall: p.id, Risk: p.risk})
 	}
 	return out
 }
 
 // runParallel runs read-only Calls together. They change nothing, so
 // nothing depends on their order.
-func (e *Engine) runParallel(ctx context.Context, plans []*callPlan) {
+func (e *Engine) runParallel(ctx context.Context, plans []*toolCallPlan) {
 	var wg sync.WaitGroup
 	for _, p := range plans {
 		wg.Go(func() { e.execute(ctx, p) })
@@ -157,9 +157,9 @@ func (e *Engine) runParallel(ctx context.Context, plans []*callPlan) {
 
 // approve publishes the question and waits. Whoever answers is nobody
 // the engine knows about.
-func (e *Engine) approve(ctx context.Context, t *turnState, p *callPlan) approval {
+func (e *Engine) approve(ctx context.Context, t *turnState, p *toolCallPlan) approval {
 	e.bus.Publish(event.ApprovalAsked{
-		Call: p.id, Tool: p.call.Name, Args: p.call.Args,
+		ToolCall: p.id, Tool: p.call.Name, Args: p.call.Args,
 		Rationale: describe(p.risk), Risk: p.risk,
 	})
 	for {
@@ -167,7 +167,7 @@ func (e *Engine) approve(ctx context.Context, t *turnState, p *callPlan) approva
 		case <-ctx.Done():
 			return abandoned
 		case ev := <-t.inbox:
-			if r, ok := ev.(event.ResolveApproval); ok && r.Call == p.id {
+			if r, ok := ev.(event.ResolveApproval); ok && r.ToolCall == p.id {
 				if r.Approved {
 					return approved
 				}
@@ -181,7 +181,7 @@ func (e *Engine) approve(ctx context.Context, t *turnState, p *callPlan) approva
 	}
 }
 
-func (e *Engine) execute(ctx context.Context, p *callPlan) {
+func (e *Engine) execute(ctx context.Context, p *toolCallPlan) {
 	if p.prepared.Executor != "" {
 		e.invoke(ctx, p)
 		return
@@ -192,14 +192,14 @@ func (e *Engine) execute(ctx context.Context, p *callPlan) {
 		return
 	}
 	p.ended = true
-	e.bus.Publish(event.CallStarted{Call: p.id, Runner: mode})
+	e.bus.Publish(event.ToolCallStarted{ToolCall: p.id, Runner: mode})
 
 	lines := make(chan capture.StreamEvent, 64)
 	relayed := make(chan struct{})
 	go func() {
 		defer close(relayed)
 		for l := range lines {
-			e.bus.Publish(event.OutputChunk{Call: p.id, Line: l.Line, Stderr: l.Stderr})
+			e.bus.Publish(event.OutputChunk{ToolCall: p.id, Line: l.Line, Stderr: l.Stderr})
 		}
 	}()
 
@@ -217,20 +217,20 @@ func (e *Engine) execute(ctx context.Context, p *callPlan) {
 	if err != nil {
 		out.Err = e.why(ctx, cctx, err)
 	}
-	e.bus.Publish(event.CallEnded{Call: p.id, Result: out, Took: took})
+	e.bus.Publish(event.ToolCallEnded{ToolCall: p.id, Result: out, Took: took})
 	p.finish(formatResult(p.cmd, out))
 	e.repeat.ran(p.cmd, p.answer)
 }
 
 // invoke runs a Call with no command. Runner names the executor, so
 // the row says where it ran rather than implying the sandbox.
-func (e *Engine) invoke(ctx context.Context, p *callPlan) {
+func (e *Engine) invoke(ctx context.Context, p *toolCallPlan) {
 	if e.invoker == nil {
 		p.finish("No invoker is wired for " + p.prepared.Executor + "; nothing could be executed.")
 		return
 	}
 	p.ended = true
-	e.bus.Publish(event.CallStarted{Call: p.id, Runner: p.prepared.Executor})
+	e.bus.Publish(event.ToolCallStarted{ToolCall: p.id, Runner: p.prepared.Executor})
 
 	start := time.Now()
 	cctx, cancel := context.WithTimeout(ctx, e.commandTimeout)
@@ -242,7 +242,7 @@ func (e *Engine) invoke(ctx context.Context, p *callPlan) {
 	if err != nil {
 		out.Err = e.why(ctx, cctx, err)
 	}
-	e.bus.Publish(event.CallEnded{Call: p.id, Result: out, Took: time.Since(start)})
+	e.bus.Publish(event.ToolCallEnded{ToolCall: p.id, Result: out, Took: time.Since(start)})
 	p.finish(formatResult(p.cmd, out))
 }
 

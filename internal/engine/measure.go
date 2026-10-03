@@ -184,7 +184,7 @@ func withLargest(p part, msgs []event.Message) part {
 	p.bytes = msgBytes(msgs)
 	calls := map[string]string{}
 	for _, m := range msgs {
-		for _, c := range m.Calls {
+		for _, c := range m.Requests {
 			calls[c.ID] = event.Command(c.Name, c.Args)
 		}
 	}
@@ -194,7 +194,7 @@ func withLargest(p part, msgs []event.Message) part {
 		}
 		switch m.Role {
 		case event.RoleTool:
-			p.Largest, p.largest = calls[m.CallID], len(m.Content)
+			p.Largest, p.largest = calls[m.RequestID], len(m.Content)
 		case event.RoleAssistant:
 			p.Largest, p.largest = "a reply", len(m.Content)
 		case event.RoleSystem, event.RoleUser:

@@ -17,7 +17,7 @@ func (SubmitPrompt) Kind() Kind { return SubmitPromptKind }
 // whether a human, an auto-approver or a policy sent it.
 type ResolveApproval struct {
 	fact
-	Call     uuid.UUID
+	ToolCall uuid.UUID
 	Approved bool
 }
 
@@ -45,7 +45,7 @@ func (RunCommand) Kind() Kind { return RunCommandKind }
 // a field on Abort, so no two subscribers read the same kind.
 type CancelCommand struct {
 	fact
-	Shell uuid.UUID
+	UserCommand uuid.UUID
 }
 
 func (CancelCommand) Kind() Kind { return CancelCommandKind }

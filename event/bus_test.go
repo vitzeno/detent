@@ -35,9 +35,9 @@ func TestBus_DropsLossyOnlyWhenBehind(t *testing.T) {
 
 	const flood = queueDepth * 3
 	for range flood {
-		b.Publish(OutputChunk{Call: testID("c1"), Line: "noise"})
+		b.Publish(OutputChunk{ToolCall: testID("c1"), Line: "noise"})
 	}
-	b.Publish(CallEnded{Call: testID("c1")})
+	b.Publish(ToolCallEnded{ToolCall: testID("c1")})
 
 	require.Positive(t, b.Dropped(), "a %d-deep flood past a %d queue must drop", flood, queueDepth)
 
@@ -46,7 +46,7 @@ func TestBus_DropsLossyOnlyWhenBehind(t *testing.T) {
 	for !sawEnd {
 		select {
 		case r := <-ch:
-			if _, ok := r.Event.(CallEnded); ok {
+			if _, ok := r.Event.(ToolCallEnded); ok {
 				sawEnd = true
 			}
 		case <-deadline:
@@ -79,7 +79,7 @@ func TestBus_PublishNeverBlocks(t *testing.T) {
 	go func() {
 		defer close(done)
 		for range queueDepth * 4 {
-			b.Publish(OutputChunk{Call: testID("c"), Line: "x"})
+			b.Publish(OutputChunk{ToolCall: testID("c"), Line: "x"})
 		}
 	}()
 	select {
@@ -93,17 +93,17 @@ func TestBus_PublishNeverBlocks(t *testing.T) {
 // subscriber-that-reacts has, so it must not deadlock.
 func TestBus_PublishFromASubscriber(t *testing.T) {
 	b := New()
-	ch, stop := b.Subscribe(Only(CallEndedKind))
+	ch, stop := b.Subscribe(Only(ToolCallEndedKind))
 	defer stop()
 	echo, stopEcho := b.Subscribe(Only(NoticeKind))
 	defer stopEcho()
 
 	go func() {
 		for r := range ch {
-			b.Publish(Notice{Level: "info", Text: r.Event.(CallEnded).Call.String()})
+			b.Publish(Notice{Level: "info", Text: r.Event.(ToolCallEnded).ToolCall.String()})
 		}
 	}()
-	b.Publish(CallEnded{Call: testID("c9")})
+	b.Publish(ToolCallEnded{ToolCall: testID("c9")})
 
 	got := drainN(t, echo, 1)
 	assert.Equal(t, testID("c9").String(), got[0].Event.(Notice).Text)
@@ -117,9 +117,9 @@ func TestBus_FiltersSplitIntentsFromFacts(t *testing.T) {
 	defer stopI()
 
 	b.Publish(Abort{Turn: testID("t1")})
-	b.Publish(CallEnded{Call: testID("c1")})
+	b.Publish(ToolCallEnded{ToolCall: testID("c1")})
 
-	assert.Equal(t, CallEndedKind, drainN(t, facts, 1)[0].Event.Kind())
+	assert.Equal(t, ToolCallEndedKind, drainN(t, facts, 1)[0].Event.Kind())
 	assert.Equal(t, AbortKind, drainN(t, intents, 1)[0].Event.Kind())
 }
 

@@ -12,8 +12,8 @@ import (
 // Reply is one Step's result. No Calls means the model stopped asking
 // for tools, which ends the Turn unless the reply is Unfinished.
 type Reply struct {
-	Text  string
-	Calls []event.ToolCall
+	Text     string
+	Requests []event.ToolRequest
 	// Stop is the endpoint's own reason the reply ended: "length" when cut
 	// off, "error" when the provider failed mid-reply.
 	Stop string
@@ -24,7 +24,7 @@ type Reply struct {
 // Unfinished is a reply with no call that did not end the way an answer does:
 // stopped for any reason but a finish, empty, or reasoning with nothing after it.
 func (r Reply) Unfinished() bool {
-	return len(r.Calls) == 0 && (!finished[r.Stop] || r.Thinking || strings.TrimSpace(r.Text) == "")
+	return len(r.Requests) == 0 && (!finished[r.Stop] || r.Thinking || strings.TrimSpace(r.Text) == "")
 }
 
 // finished are the stop reasons an answer ends with. An endpoint that sends

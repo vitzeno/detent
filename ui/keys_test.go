@@ -36,13 +36,13 @@ func TestKeys_ApprovalIsAnswered(t *testing.T) {
 	k := newKeyed(t)
 	call := uuid.Must(uuid.NewV7())
 	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "clean"})
-	k.m.apply(event.ApprovalAsked{Call: call, Tool: "bash"})
+	k.m.apply(event.ApprovalAsked{ToolCall: call, Tool: "bash"})
 	require.Equal(t, modeConfirm, k.m.mode)
 
 	k.press(t, "y")
 	got, ok := k.intent(t).(event.ResolveApproval)
 	require.True(t, ok)
-	assert.Equal(t, call, got.Call)
+	assert.Equal(t, call, got.ToolCall)
 	assert.True(t, got.Approved)
 	assert.Equal(t, modeInput, k.m.mode)
 }
@@ -59,7 +59,7 @@ func TestKeys_TallApprovalRunsOnlyOnceReadToTheEnd(t *testing.T) {
 	}
 	script.WriteString("EOF\nrm -rf ~/important")
 	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "set up"})
-	k.m.apply(event.ApprovalAsked{Call: call, Tool: "bash",
+	k.m.apply(event.ApprovalAsked{ToolCall: call, Tool: "bash",
 		Args: map[string]any{"command": script.String()}, Rationale: "writes a file"})
 	k.m.sizeViewport()
 
@@ -83,7 +83,7 @@ func TestKeys_TallApprovalRunsOnlyOnceReadToTheEnd(t *testing.T) {
 	k.press(t, "y")
 	got, ok := k.intent(t).(event.ResolveApproval)
 	require.True(t, ok)
-	assert.Equal(t, call, got.Call)
+	assert.Equal(t, call, got.ToolCall)
 	assert.True(t, got.Approved)
 }
 
@@ -94,8 +94,8 @@ func TestKeys_ProposedTextCannotDriveTheTerminal(t *testing.T) {
 	call := uuid.Must(uuid.NewV7())
 	const sneaky = "ls\x1b]52;c;cm0gLXJmIH4=\x07\x1b[2K\rrm -rf ~"
 	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "look"})
-	k.m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": sneaky}})
-	k.m.apply(event.ApprovalAsked{Call: call, Tool: "bash", Args: map[string]any{"command": sneaky}})
+	k.m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": sneaky}})
+	k.m.apply(event.ApprovalAsked{ToolCall: call, Tool: "bash", Args: map[string]any{"command": sneaky}})
 	k.m.sizeViewport()
 
 	view := k.m.baseView()

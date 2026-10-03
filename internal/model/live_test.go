@@ -52,10 +52,10 @@ func TestLive_ToolCallsRoundTrip(t *testing.T) {
 		{Role: event.RoleUser, Content: "List what is in the current directory. Use the tool."},
 	}, tools)
 	require.NoError(t, err)
-	t.Logf("step 1: %d calls, %d tokens, %v, finish=%q", len(first.Calls), used.Tokens(), used.Latency, first.Stop)
-	require.NotEmpty(t, first.Calls, "the endpoint never called a tool; this model cannot drive the loop")
+	t.Logf("step 1: %d calls, %d tokens, %v, finish=%q", len(first.Requests), used.Tokens(), used.Latency, first.Stop)
+	require.NotEmpty(t, first.Requests, "the endpoint never called a tool; this model cannot drive the loop")
 
-	call := first.Calls[0]
+	call := first.Requests[0]
 	assert.Equal(t, "list_dir", call.Name)
 	assert.NotEmpty(t, call.ID, "an id is what the answer pairs to")
 	assert.Empty(t, call.Err, "arguments did not parse: %s", call.Err)
@@ -63,12 +63,12 @@ func TestLive_ToolCallsRoundTrip(t *testing.T) {
 	// 2. Does it accept a role "tool" answer back?
 	second, used2, err := c.Complete(ctx, []event.Message{
 		{Role: event.RoleUser, Content: "List what is in the current directory. Use the tool."},
-		{Role: event.RoleAssistant, Content: first.Text, Calls: first.Calls},
+		{Role: event.RoleAssistant, Content: first.Text, Requests: first.Requests},
 		event.Answer(call, "go.mod\ngo.sum\nREADME.md"),
 	}, tools)
 	require.NoError(t, err, "the endpoint rejected a tool result")
-	t.Logf("step 2: %d calls, %d tokens, %v, finish=%q", len(second.Calls), used2.Tokens(), used2.Latency, second.Stop)
-	assert.NotEmpty(t, second.Text+joinNames(second.Calls), "the endpoint answered with nothing at all")
+	t.Logf("step 2: %d calls, %d tokens, %v, finish=%q", len(second.Requests), used2.Tokens(), used2.Latency, second.Stop)
+	assert.NotEmpty(t, second.Text+joinNames(second.Requests), "the endpoint answered with nothing at all")
 }
 
 // liveConfig reads the few keys this test needs out of .detent.yaml,
@@ -108,7 +108,7 @@ func liveConfig(t *testing.T) map[string]string {
 	return out
 }
 
-func joinNames(calls []event.ToolCall) string {
+func joinNames(calls []event.ToolRequest) string {
 	var b strings.Builder
 	for _, c := range calls {
 		b.WriteString(c.Name)

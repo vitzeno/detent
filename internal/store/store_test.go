@@ -28,15 +28,15 @@ func TestStore_RoundTripsEveryKind(t *testing.T) {
 		rec(2, event.TurnStarted{Turn: turn, N: 1, Prompt: "go"}),
 		rec(3, event.Appended{Turn: turn, Messages: []event.Message{
 			{Role: event.RoleUser, Content: "go"}}}),
-		rec(4, event.CallProposed{Call: call, Tool: "bash",
+		rec(4, event.ToolCallProposed{ToolCall: call, Tool: "bash",
 			Args: map[string]any{"command": "ls"}}),
-		rec(5, event.CallEnded{Call: call, Took: 12 * time.Millisecond,
+		rec(5, event.ToolCallEnded{ToolCall: call, Took: 12 * time.Millisecond,
 			Result: event.Result{ExitCode: 1, Stderr: "boom"}}),
 		rec(6, event.Compacted{Turn: turn, Dropped: 4, Note: "summary"}),
 		rec(7, event.TurnEnded{Turn: turn, Reason: event.EndDone,
 			Usage: event.Usage{PromptTokens: 9, Latency: time.Second}}),
-		rec(8, event.ShellStarted{Shell: shell, Command: "git status", Runner: "sandbox"}),
-		rec(9, event.ShellEnded{Shell: shell, Took: 8 * time.Millisecond,
+		rec(8, event.UserCommandStarted{UserCommand: shell, Command: "git status", Runner: "sandbox"}),
+		rec(9, event.UserCommandEnded{UserCommand: shell, Took: 8 * time.Millisecond,
 			Result: event.Result{Stdout: "clean"}}),
 	}
 	for _, r := range want {

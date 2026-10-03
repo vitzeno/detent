@@ -108,9 +108,9 @@ const (
 // BoundReached pauses the Turn at MaxSteps to ask. Not an ending.
 type BoundReached struct {
 	fact
-	Turn  uuid.UUID
-	Steps int
-	Calls int
+	Turn      uuid.UUID
+	Steps     int
+	ToolCalls int
 }
 
 func (BoundReached) Kind() Kind { return BoundReachedKind }
@@ -145,7 +145,7 @@ type StepEnded struct {
 	fact
 	Turn, Step uuid.UUID
 	Usage      Usage
-	Calls      int    // how many the model asked for, 0 when it stopped
+	ToolCalls  int    // how many the model asked for, 0 when it stopped
 	Stop       string // the endpoint's reason the reply ended
 }
 
@@ -214,13 +214,13 @@ type ContextPart struct {
 
 // A Call is one tool invocation.
 
-// CallProposed is a Call the model asked for, before anything assesses it.
-type CallProposed struct {
+// ToolCallProposed is a Call the model asked for, before anything assesses it.
+type ToolCallProposed struct {
 	fact
-	Call, Step uuid.UUID
-	Tool       string
-	Args       map[string]any
-	Rationale  string
+	ToolCall, Step uuid.UUID
+	Tool           string
+	Args           map[string]any
+	Rationale      string
 	// Renders is how the tool says its output should be read, which beats
 	// a judged guess.
 	Renders string
@@ -229,7 +229,7 @@ type CallProposed struct {
 	Executor string
 }
 
-func (CallProposed) Kind() Kind { return CallProposedKind }
+func (ToolCallProposed) Kind() Kind { return ToolCallProposedKind }
 
 // RendersMarkdown says a tool's output is a markdown document.
 const RendersMarkdown = "markdown"
@@ -237,19 +237,19 @@ const RendersMarkdown = "markdown"
 // RendersDiff says a tool's output is a unified diff, as an edit prints.
 const RendersDiff = "diff"
 
-// CallAssessed is the hook chain's verdict on a Call.
-type CallAssessed struct {
+// ToolCallAssessed is the hook chain's verdict on a Call.
+type ToolCallAssessed struct {
 	fact
-	Call uuid.UUID
-	Risk Risk
+	ToolCall uuid.UUID
+	Risk     Risk
 }
 
-func (CallAssessed) Kind() Kind { return CallAssessedKind }
+func (ToolCallAssessed) Kind() Kind { return ToolCallAssessedKind }
 
 // ApprovalAsked blocks the engine until a ResolveApproval names this Call.
 type ApprovalAsked struct {
 	fact
-	Call      uuid.UUID
+	ToolCall  uuid.UUID
 	Tool      string
 	Args      map[string]any
 	Rationale string
@@ -258,45 +258,45 @@ type ApprovalAsked struct {
 
 func (ApprovalAsked) Kind() Kind { return ApprovalAskedKind }
 
-// CallStarted says a Call began running.
-type CallStarted struct {
+// ToolCallStarted says a Call began running.
+type ToolCallStarted struct {
 	fact
-	Call   uuid.UUID
-	Runner string // host or sandbox
+	ToolCall uuid.UUID
+	Runner   string // host or sandbox
 }
 
-func (CallStarted) Kind() Kind { return CallStartedKind }
+func (ToolCallStarted) Kind() Kind { return ToolCallStartedKind }
 
 // OutputChunk is one live line, and the only lossy event. Parallel
 // Calls interleave, so route by id rather than assume one is running.
 type OutputChunk struct {
-	// Exactly one is set: a Call the model asked for, or the human's Shell.
-	Call   uuid.UUID
-	Shell  uuid.UUID
-	Line   string
-	Stderr bool
+	// Exactly one is set: a ToolCall the model asked for, or the human's Shell.
+	ToolCall    uuid.UUID
+	UserCommand uuid.UUID
+	Line        string
+	Stderr      bool
 }
 
-// Source is whichever of Call and Shell printed the line.
-func (o OutputChunk) Source() uuid.UUID {
-	if o.Shell != uuid.Nil {
-		return o.Shell
+// Owner is whichever of Call and Shell printed the line.
+func (o OutputChunk) Owner() uuid.UUID {
+	if o.UserCommand != uuid.Nil {
+		return o.UserCommand
 	}
-	return o.Call
+	return o.ToolCall
 }
 
 func (OutputChunk) Kind() Kind  { return OutputChunkKind }
 func (OutputChunk) Lossy() bool { return true }
 
-// CallEnded is a Call's whole result.
-type CallEnded struct {
+// ToolCallEnded is a Call's whole result.
+type ToolCallEnded struct {
 	fact
-	Call   uuid.UUID
-	Result Result
-	Took   time.Duration
+	ToolCall uuid.UUID
+	Result   Result
+	Took     time.Duration
 }
 
-func (CallEnded) Kind() Kind { return CallEndedKind }
+func (ToolCallEnded) Kind() Kind { return ToolCallEndedKind }
 
 // Result mirrors capture.Result, which is under internal/ and so
 // unreachable from here. The engine converts once.
@@ -309,10 +309,10 @@ type Result struct {
 	Err string
 }
 
-// CallJudged is how it went and how to draw it. Async: may land late.
-type CallJudged struct {
+// ToolCallJudged is how it went and how to draw it. Async: may land late.
+type ToolCallJudged struct {
 	fact
-	Call         uuid.UUID
+	ToolCall     uuid.UUID
 	Status       string
 	RenderKind   string
 	Attention    float64
@@ -320,40 +320,50 @@ type CallJudged struct {
 	FromJudge    bool
 }
 
-func (CallJudged) Kind() Kind { return CallJudgedKind }
+func (ToolCallJudged) Kind() Kind { return ToolCallJudgedKind }
 
 // ViewReady is a spec for a Call's output.
 type ViewReady struct {
 	fact
-	Call   uuid.UUID
-	Spec   *viewspec.Spec
-	Source string // shipped, saved, composed
+	// Exactly one is set, as on OutputChunk.
+	ToolCall    uuid.UUID
+	UserCommand uuid.UUID
+	Spec        *viewspec.Spec
+	Source      string // shipped, saved, composed
 }
 
 func (ViewReady) Kind() Kind { return ViewReadyKind }
 
+// Owner is whichever of ToolCall and UserCommand the view is for.
+func (v ViewReady) Owner() uuid.UUID {
+	if v.UserCommand != uuid.Nil {
+		return v.UserCommand
+	}
+	return v.ToolCall
+}
+
 // A Shell is one command the human ran themselves. Not a Call: the
 // model never asked for it, so nothing assesses or approves it.
 
-// ShellStarted says a Shell began running.
-type ShellStarted struct {
+// UserCommandStarted says a Shell began running.
+type UserCommandStarted struct {
 	fact
-	Shell   uuid.UUID
-	Command string
-	Runner  string // host or sandbox
+	UserCommand uuid.UUID
+	Command     string
+	Runner      string // host or sandbox
 }
 
-func (ShellStarted) Kind() Kind { return ShellStartedKind }
+func (UserCommandStarted) Kind() Kind { return UserCommandStartedKind }
 
-// ShellEnded is a Shell's whole result.
-type ShellEnded struct {
+// UserCommandEnded is a Shell's whole result.
+type UserCommandEnded struct {
 	fact
-	Shell  uuid.UUID
-	Result Result
-	Took   time.Duration
+	UserCommand uuid.UUID
+	Result      Result
+	Took        time.Duration
 }
 
-func (ShellEnded) Kind() Kind { return ShellEndedKind }
+func (UserCommandEnded) Kind() Kind { return UserCommandEndedKind }
 
 // SessionsListed answers ListSessions with what can be resumed.
 type SessionsListed struct {

@@ -15,7 +15,7 @@ import (
 // Read-only Calls run together, anything else runs alone and in the
 // order the model asked.
 func TestStep_ReadOnlyCallsRunTogether(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		readCall("c1", "a.go"), readCall("c2", "b.go"), readCall("c3", "c.go"),
 	}}})
 	r.runner.mu.Lock()
@@ -23,7 +23,7 @@ func TestStep_ReadOnlyCallsRunTogether(t *testing.T) {
 	r.runner.mu.Unlock()
 
 	r.bus.Publish(event.SubmitPrompt{Text: "read three files"})
-	require.Eventually(t, func() bool { return len(r.of(event.CallStartedKind)) == 3 },
+	require.Eventually(t, func() bool { return len(r.of(event.ToolCallStartedKind)) == 3 },
 		2*time.Second, 5*time.Millisecond, "all three should be in flight at once")
 
 	close(r.runner.hold)
@@ -32,7 +32,7 @@ func TestStep_ReadOnlyCallsRunTogether(t *testing.T) {
 }
 
 func TestStep_WritesRunOneAtATime(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		bashCall("c1", "touch a"), bashCall("c2", "touch b"), bashCall("c3", "touch c"),
 	}}})
 	r.run("make three files")
@@ -41,11 +41,11 @@ func TestStep_WritesRunOneAtATime(t *testing.T) {
 }
 
 func TestStep_CapsHowManyCallsOneStepMayAskFor(t *testing.T) {
-	var calls []event.ToolCall
+	var calls []event.ToolRequest
 	for i := range 6 {
 		calls = append(calls, readCall(string(rune('a'+i)), string(rune('a'+i))+".go"))
 	}
-	r := newRig(t, []model.Reply{{Calls: calls}}, WithCallsPerStep(3))
+	r := newRig(t, []model.Reply{{Requests: calls}}, WithToolCallsPerStep(3))
 	r.run("read everything")
 
 	assert.Len(t, r.runner.commands(), 3)
@@ -63,7 +63,7 @@ func TestStep_CapsHowManyCallsOneStepMayAskFor(t *testing.T) {
 // Only a Dangerous Call is shown. Everything else runs straight
 // through, which is the harness's whole posture.
 func TestStep_OnlyDangerousCallsAreShown(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		bashCall("c1", "ls -la"), readCall("c2", "a.go"),
 	}}})
 	r.run("look around")
@@ -72,11 +72,11 @@ func TestStep_OnlyDangerousCallsAreShown(t *testing.T) {
 }
 
 func TestStep_ApprovalLetsADangerousCallThrough(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "rm -rf build")}}})
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "rm -rf build")}}})
 	r.bus.Publish(event.SubmitPrompt{Text: "clean"})
 
 	asked := r.await(event.ApprovalAskedKind).(event.ApprovalAsked)
-	r.bus.Publish(event.ResolveApproval{Call: asked.Call, Approved: true})
+	r.bus.Publish(event.ResolveApproval{ToolCall: asked.ToolCall, Approved: true})
 	r.await(event.TurnEndedKind)
 
 	assert.Equal(t, []string{"rm -rf build"}, r.runner.commands())
@@ -108,14 +108,14 @@ func TestFormatResult_SaysWhatHappened(t *testing.T) {
 // A command that runs too long is stopped, and the model is told how long
 // it waited and what it printed, so it can tell slow from broken.
 func TestStep_ACommandPastItsLimitIsStoppedAndSaysSo(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "make build")}}},
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "make build")}}},
 		WithCommandTimeout(50*time.Millisecond))
 	r.runner.mu.Lock()
 	r.runner.hold, r.runner.partial = make(chan struct{}), "compiling 1 of 40\n"
 	r.runner.mu.Unlock()
 
 	r.run("build it")
-	ended := r.of(event.CallEndedKind)[0].(event.CallEnded)
+	ended := r.of(event.ToolCallEndedKind)[0].(event.ToolCallEnded)
 	assert.Equal(t, "stopped after 50ms, still running", ended.Result.Err)
 	var answer string
 	for _, m := range r.eng.Transcript() {

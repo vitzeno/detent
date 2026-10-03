@@ -98,14 +98,14 @@ func (p *Printer) handle(ev event.Event) (event.EndReason, bool) {
 			where = "sandbox"
 		}
 		fmt.Fprintf(p.errOut, "detent: model %s, commands run on the %s\n", v.Model, where)
-	case event.CallProposed:
+	case event.ToolCallProposed:
 		fmt.Fprintf(p.out, "  → %s\n", clip(event.Command(v.Tool, v.Args), 120))
-	case event.CallEnded:
+	case event.ToolCallEnded:
 		fmt.Fprintln(p.out, "    "+outcome(v.Result))
 	case event.ModelText:
 		fmt.Fprintf(p.out, "\n%s\n", v.Text)
 	case event.ApprovalAsked:
-		p.bus.Publish(event.ResolveApproval{Call: v.Call, Approved: p.approve(v)})
+		p.bus.Publish(event.ResolveApproval{ToolCall: v.ToolCall, Approved: p.approve(v)})
 	case event.BoundReached:
 		// Unattended, the bound is where it stops.
 		fmt.Fprintf(p.out, "\nstopped after %d steps\n", v.Steps)

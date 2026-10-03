@@ -37,10 +37,10 @@ const (
 func (m *Model) addSignIn(v event.AuthorizationWaiting) {
 	b := m.cur
 	if b == nil {
-		b = m.shellBlock()
+		b = m.commandBlock()
 	}
 	b.rev++
-	b.rows = append(b.rows, &callRow{
+	b.rows = append(b.rows, &historyRow{
 		id: uuid.Must(uuid.NewV7()), command: v.Server,
 		signin: &signInState{server: v.Server, url: v.URL, until: v.Until},
 	})

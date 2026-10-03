@@ -59,7 +59,7 @@ func (m Model) historyTail(height int) []string {
 
 // blockLines is the cached front of drawBlock. Scrolling moves only
 // the cursor, so every block but the two it touched is a hit.
-func (m Model) blockLines(b *turnBlock, focused *callRow) (lines []string, cursorAt int) {
+func (m Model) blockLines(b *turnBlock, focused *historyRow) (lines []string, cursorAt int) {
 	key := m.blockKey(b, focused)
 	if b.cache != nil && b.cache.key == key {
 		return b.cache.lines, b.cache.cursorAt
@@ -71,7 +71,7 @@ func (m Model) blockLines(b *turnBlock, focused *callRow) (lines []string, curso
 
 // blockKey carries focused only when the cursor is inside, so a
 // cursor moving elsewhere leaves this block's key alone.
-func (m Model) blockKey(b *turnBlock, focused *callRow) blockKey {
+func (m Model) blockKey(b *turnBlock, focused *historyRow) blockKey {
 	k := blockKey{rev: b.rev, width: m.blockWidth()}
 	if slices.Contains(b.rows, focused) {
 		k.focused = focused
@@ -97,7 +97,7 @@ func (m Model) spinnerFrame() string {
 
 // drawBlock renders one block against its rail, reporting where the
 // cursor landed inside it or -1 when it is elsewhere.
-func (m Model) drawBlock(b *turnBlock, focused *callRow) (lines []string, cursorAt int) {
+func (m Model) drawBlock(b *turnBlock, focused *historyRow) (lines []string, cursorAt int) {
 	cursorAt = -1
 	var block []string
 	// Split here, so a cached block is one entry per line.
@@ -164,7 +164,7 @@ func join(parts ...[]string) []string {
 
 // focusedRow is the row the cursor is on, or nil. Resolved once and
 // passed down: asking per row rebuilds the whole row list each time.
-func (m Model) focusedRow() *callRow {
+func (m Model) focusedRow() *historyRow {
 	rows := m.rows()
 	if len(rows) == 0 {
 		return nil
@@ -219,7 +219,7 @@ func (m Model) railStyle(b *turnBlock) lipgloss.Style {
 
 // rowLines draws one row: the model's words, or a call with its badge
 // and command. Takes focused rather than looking it up, per row.
-func (m Model) rowLines(r, focused *callRow) []string {
+func (m Model) rowLines(r, focused *historyRow) []string {
 	mark := "  "
 	if focused != nil && r == focused {
 		mark = styleRowCursor.Render("▸ ")
@@ -339,7 +339,7 @@ func resultSummary(r *event.Result) string {
 	return out
 }
 
-func previewLines(r *callRow, width int) []string {
+func previewLines(r *historyRow, width int) []string {
 	src := r.live
 	if r.result != nil {
 		src = strings.Split(strings.TrimSuffix(outputOf(r.result), "\n"), "\n")

@@ -42,7 +42,7 @@ type detailKey struct {
 	width, height int
 	panel         panelKind
 	mode          mode
-	row           *callRow
+	row           *historyRow
 	tableCursor   int
 	focused       bool
 }
@@ -122,7 +122,7 @@ func (m *Model) refreshViewport() {
 
 // viewBody draws the row's view whole. Height lets a plot grow into the
 // pane but clips nothing, so a view scrolls like any other output.
-func (m Model) viewBody(r *callRow) (viewspec.Render, bool) {
+func (m Model) viewBody(r *historyRow) (viewspec.Render, bool) {
 	b, ok := boundView(r)
 	if !ok {
 		return viewspec.Render{}, false
@@ -182,7 +182,7 @@ func (m Model) welcomePane() []string {
 		OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), WorkDir: m.workDir,
 		Image: m.info.Image, Mount: m.info.Mount,
 		Runtime: m.info.Runtime, Network: m.info.Network,
-		Turns: len(m.blocks), Calls: m.calls, Sessions: len(m.sessions),
+		Turns: len(m.blocks), ToolCalls: m.calls, Sessions: len(m.sessions),
 		Session: m.run.Session.String(), Resumed: m.run.Resumed, Recorded: m.run.Recorded,
 	}, paneInner(m.layout.outputColW), m.output.Height(), m.welcomeFrame)
 }

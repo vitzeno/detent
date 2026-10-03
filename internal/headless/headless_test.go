@@ -87,8 +87,8 @@ func TestRun(t *testing.T) {
 				switch v := ev.(type) {
 				case event.SubmitPrompt:
 					bus.Publish(event.SessionStarted{Model: "m", Sandbox: true})
-					bus.Publish(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "rm -rf x"}})
-					bus.Publish(event.ApprovalAsked{Call: call, Tool: "bash"})
+					bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "rm -rf x"}})
+					bus.Publish(event.ApprovalAsked{ToolCall: call, Tool: "bash"})
 				case event.ResolveApproval:
 					bus.Publish(event.BoundReached{Turn: turn, Steps: 3})
 				case event.Continue:
@@ -103,7 +103,7 @@ func TestRun(t *testing.T) {
 			assert.Equal(t, event.EndBound, reason)
 
 			require.Equal(t, event.SubmitPrompt{Text: "clean up"}, <-got)
-			assert.Equal(t, event.ResolveApproval{Call: call, Approved: c.approved}, <-got)
+			assert.Equal(t, event.ResolveApproval{ToolCall: call, Approved: c.approved}, <-got)
 			assert.Equal(t, event.Continue{Turn: turn, Approved: false}, <-got, "the bound is where an unattended run stops")
 			assert.Contains(t, out.String(), "→ rm -rf x")
 			assert.Contains(t, errOut.String(), "commands run on the sandbox")

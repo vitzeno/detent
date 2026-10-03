@@ -17,8 +17,13 @@ import (
 // not inside, because a reader needs it to choose the type.
 func Encode(e Event) ([]byte, error) { return json.Marshal(e) }
 
-// Decode rebuilds an event from its Kind and payload.
+// Decode rebuilds an event from its Kind and payload, either as stored now
+// or as it was before a rename.
 func Decode(k Kind, payload []byte) (Event, error) {
+	k, payload, err := upgrade(k, payload)
+	if err != nil {
+		return nil, err
+	}
 	decode, ok := codecs[k]
 	if !ok {
 		return nil, fmt.Errorf("event: no type registered for kind %q", k)
@@ -29,7 +34,7 @@ func Decode(k Kind, payload []byte) (Event, error) {
 // Kinds is every kind that can be decoded, which is every kind, sorted.
 func Kinds() []Kind { return slices.Sorted(maps.Keys(codecs)) }
 
-// Subject is which Turn and Call a fact is about, read off the fields
+// Subject is which Turn and ToolCall a fact is about, read off the fields
 // rather than switched on, since a switch is a second list.
 func Subject(e Event) (turn, call uuid.UUID) {
 	v := reflect.ValueOf(e)
@@ -43,7 +48,7 @@ func Subject(e Event) (turn, call uuid.UUID) {
 		}
 		return out
 	}
-	return read("Turn"), read("Call")
+	return read("Turn"), read("ToolCall")
 }
 
 func codec[T Event](payload []byte) (Event, error) {
@@ -56,32 +61,32 @@ func codec[T Event](payload []byte) (Event, error) {
 
 // codecs is the one place a new event type must be added.
 var codecs = map[Kind]func([]byte) (Event, error){
-	SessionStartedKind:  codec[SessionStarted],
-	SessionResumedKind:  codec[SessionResumed],
-	SessionResetKind:    codec[SessionReset],
-	TurnStartedKind:     codec[TurnStarted],
-	TurnEndedKind:       codec[TurnEnded],
-	CheckpointTakenKind: codec[CheckpointTaken],
-	RolledBackKind:      codec[RolledBack],
-	BoundReachedKind:    codec[BoundReached],
-	StepStartedKind:     codec[StepStarted],
-	StepEndedKind:       codec[StepEnded],
-	ModelTextKind:       codec[ModelText],
-	AppendedKind:        codec[Appended],
-	CompactedKind:       codec[Compacted],
-	MeasuredKind:        codec[ContextMeasured],
-	CallProposedKind:    codec[CallProposed],
-	CallAssessedKind:    codec[CallAssessed],
-	ApprovalAskedKind:   codec[ApprovalAsked],
-	CallStartedKind:     codec[CallStarted],
-	OutputChunkKind:     codec[OutputChunk],
-	CallEndedKind:       codec[CallEnded],
-	CallJudgedKind:      codec[CallJudged],
-	ViewReadyKind:       codec[ViewReady],
-	ShellStartedKind:    codec[ShellStarted],
-	ShellEndedKind:      codec[ShellEnded],
-	NoticeKind:          codec[Notice],
-	SessionsListedKind:  codec[SessionsListed],
+	SessionStartedKind:     codec[SessionStarted],
+	SessionResumedKind:     codec[SessionResumed],
+	SessionResetKind:       codec[SessionReset],
+	TurnStartedKind:        codec[TurnStarted],
+	TurnEndedKind:          codec[TurnEnded],
+	CheckpointTakenKind:    codec[CheckpointTaken],
+	RolledBackKind:         codec[RolledBack],
+	BoundReachedKind:       codec[BoundReached],
+	StepStartedKind:        codec[StepStarted],
+	StepEndedKind:          codec[StepEnded],
+	ModelTextKind:          codec[ModelText],
+	AppendedKind:           codec[Appended],
+	CompactedKind:          codec[Compacted],
+	MeasuredKind:           codec[ContextMeasured],
+	ToolCallProposedKind:   codec[ToolCallProposed],
+	ToolCallAssessedKind:   codec[ToolCallAssessed],
+	ApprovalAskedKind:      codec[ApprovalAsked],
+	ToolCallStartedKind:    codec[ToolCallStarted],
+	OutputChunkKind:        codec[OutputChunk],
+	ToolCallEndedKind:      codec[ToolCallEnded],
+	ToolCallJudgedKind:     codec[ToolCallJudged],
+	ViewReadyKind:          codec[ViewReady],
+	UserCommandStartedKind: codec[UserCommandStarted],
+	UserCommandEndedKind:   codec[UserCommandEnded],
+	NoticeKind:             codec[Notice],
+	SessionsListedKind:     codec[SessionsListed],
 
 	AuthorizationWaitingKind: codec[AuthorizationWaiting],
 	ServerAuthorizedKind:     codec[ServerAuthorized],

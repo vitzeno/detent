@@ -58,11 +58,11 @@ func (m Model) answerApproval(yes bool) (tea.Model, tea.Cmd) {
 		m.mode = modeInput
 		return m, nil
 	}
-	call := m.asking.Call
+	call := m.asking.ToolCall
 	m.asking = nil
 	m.backToInput()
 	m.waiting = true
-	return m, tea.Batch(m.spinner.Tick, m.send(event.ResolveApproval{Call: call, Approved: yes}))
+	return m, tea.Batch(m.spinner.Tick, m.send(event.ResolveApproval{ToolCall: call, Approved: yes}))
 }
 
 func (m Model) answerBound(keepGoing bool) (tea.Model, tea.Cmd) {

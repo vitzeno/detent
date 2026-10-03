@@ -27,11 +27,11 @@ func TestComplete_DecodesAStep(t *testing.T) {
 	reply, used, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 	require.NoError(t, err)
 
-	require.Len(t, reply.Calls, 2)
+	require.Len(t, reply.Requests, 2)
 	assert.Equal(t, "looking", reply.Text, "prose alongside calls is kept")
-	assert.Equal(t, event.ToolCall{ID: "c1", Name: "read_file", Args: map[string]any{"path": "a.go"}}, reply.Calls[0])
-	assert.Equal(t, map[string]any{"path": ".", "all": true}, reply.Calls[1].Args)
-	assert.Equal(t, []string{"c1", "c2"}, event.CallIDs(reply.Calls))
+	assert.Equal(t, event.ToolRequest{ID: "c1", Name: "read_file", Args: map[string]any{"path": "a.go"}}, reply.Requests[0])
+	assert.Equal(t, map[string]any{"path": ".", "all": true}, reply.Requests[1].Args)
+	assert.Equal(t, []string{"c1", "c2"}, event.RequestIDs(reply.Requests))
 	assert.Equal(t, 18, used.Tokens())
 	assert.Positive(t, used.Latency)
 }
@@ -40,7 +40,7 @@ func TestComplete_TextOnlyIsAStop(t *testing.T) {
 	c, _ := serve(t, `{"choices":[{"message":{"content":"three files changed"},"finish_reason":"stop"}]}`)
 	reply, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 	require.NoError(t, err)
-	assert.Empty(t, reply.Calls, "no calls means the Turn ends")
+	assert.Empty(t, reply.Requests, "no calls means the Turn ends")
 	assert.Equal(t, "three files changed", reply.Text)
 }
 
@@ -52,10 +52,10 @@ func TestComplete_KeepsCallsItCannotParse(t *testing.T) {
 	]}}]}`)
 	reply, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 	require.NoError(t, err, "a bad argument string is the model's problem, not a transport error")
-	require.Len(t, reply.Calls, 1)
-	assert.Equal(t, "c1", reply.Calls[0].ID)
-	assert.Contains(t, reply.Calls[0].Err, "not valid JSON")
-	assert.NotNil(t, reply.Calls[0].Args, "args must be usable even when empty")
+	require.Len(t, reply.Requests, 1)
+	assert.Equal(t, "c1", reply.Requests[0].ID)
+	assert.Contains(t, reply.Requests[0].Err, "not valid JSON")
+	assert.NotNil(t, reply.Requests[0].Args, "args must be usable even when empty")
 }
 
 func TestComplete_TolerantOfEndpointQuirks(t *testing.T) {
@@ -80,12 +80,12 @@ func TestComplete_TolerantOfEndpointQuirks(t *testing.T) {
 		{
 			name:  "a call with no id gets one",
 			body:  `{"choices":[{"message":{"tool_calls":[{"type":"function","function":{"name":"bash","arguments":"{}"}}]}}]}`,
-			check: func(t *testing.T, r Reply) { t.Helper(); assert.Equal(t, "call_0", r.Calls[0].ID) },
+			check: func(t *testing.T, r Reply) { t.Helper(); assert.Equal(t, "call_0", r.Requests[0].ID) },
 		},
 		{
 			name:  "empty arguments are an empty map",
 			body:  `{"choices":[{"message":{"tool_calls":[{"id":"c","type":"function","function":{"name":"list_dir","arguments":""}}]}}]}`,
-			check: func(t *testing.T, r Reply) { t.Helper(); assert.Equal(t, map[string]any{}, r.Calls[0].Args) },
+			check: func(t *testing.T, r Reply) { t.Helper(); assert.Equal(t, map[string]any{}, r.Requests[0].Args) },
 		},
 	}
 	for _, tt := range tests {
@@ -228,11 +228,11 @@ func TestComplete_NullArgumentsAreAnEmptyMap(t *testing.T) {
 	c, _ := serve(t, `{"choices":[{"message":{"tool_calls":[{"id":"c","type":"function","function":{"name":"list_dir","arguments":"null"}}]}}]}`)
 	reply, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]any{}, reply.Calls[0].Args, "null must not go back to the endpoint as null")
+	assert.Equal(t, map[string]any{}, reply.Requests[0].Args, "null must not go back to the endpoint as null")
 }
 
 func TestReply_Unfinished(t *testing.T) {
-	call := []event.ToolCall{{ID: "c", Name: "bash"}}
+	call := []event.ToolRequest{{ID: "c", Name: "bash"}}
 	tests := []struct {
 		name  string
 		reply Reply
@@ -245,7 +245,7 @@ func TestReply_Unfinished(t *testing.T) {
 		{"provider error", Reply{Text: "half", Stop: "error"}, true},
 		{"only whitespace", Reply{Text: " \n", Stop: "stop"}, true},
 		{"only reasoning", Reply{Text: "thinking", Thinking: true, Stop: "stop"}, true},
-		{"calls are never unfinished", Reply{Calls: call, Stop: "length"}, false},
+		{"calls are never unfinished", Reply{Requests: call, Stop: "length"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

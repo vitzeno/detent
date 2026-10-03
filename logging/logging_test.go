@@ -105,7 +105,7 @@ func TestEvents_NamesAreUnique(t *testing.T) {
 // No name may say "goal": the unit is a Turn, and a query for the
 // wrong word finds nothing.
 func TestEvents_NoNameSaysGoal(t *testing.T) {
-	for _, e := range append(slices.Clone(names), logging.KeyTurn, logging.KeyStep, logging.KeyCall) {
+	for _, e := range append(slices.Clone(names), logging.KeyTurn, logging.KeyStep, logging.KeyToolCall) {
 		assert.NotContains(t, e, "goal", "%q still names a goal", e)
 	}
 }

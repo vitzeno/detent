@@ -74,7 +74,7 @@ func TestWatch_AHighScoreAsksTheTurnToStop(t *testing.T) {
 
 	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: turn, N: 1, Prompt: "count the files"})
-	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
+	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash"})
 	ran(bus, call, event.Result{Stdout: "12\n"})
 
 	select {
@@ -97,17 +97,17 @@ func TestWatch_ALowScoreLetsItCarryOn(t *testing.T) {
 	}})
 	defer stop()
 
-	facts, unsub := bus.Subscribe(event.Only(event.CallJudgedKind, event.RequestStopKind))
+	facts, unsub := bus.Subscribe(event.Only(event.ToolCallJudgedKind, event.RequestStopKind))
 	defer unsub()
 
 	call := uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
-	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
+	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash"})
 	ran(bus, call, event.Result{Stdout: "partial\n"})
 
-	judged, ok := next(t, facts).(event.CallJudged)
+	judged, ok := next(t, facts).(event.ToolCallJudged)
 	require.True(t, ok, "the judgement comes first")
-	assert.Equal(t, call, judged.Call)
+	assert.Equal(t, call, judged.ToolCall)
 
 	stop()
 	assert.Empty(t, rest(facts), "nothing else should follow")
@@ -121,15 +121,15 @@ func TestWatch_AGuessNeverStopsATurn(t *testing.T) {
 	stop := Watch(t.Context(), bus, nil) // no judge at all
 	defer stop()
 
-	facts, unsub := bus.Subscribe(event.Only(event.CallJudgedKind, event.RequestStopKind))
+	facts, unsub := bus.Subscribe(event.Only(event.ToolCallJudgedKind, event.RequestStopKind))
 	defer unsub()
 
 	call := uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
-	bus.Publish(event.CallProposed{Call: call, Tool: "bash"})
+	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash"})
 	ran(bus, call, event.Result{Stdout: "done\n"})
 
-	assert.Equal(t, event.CallJudgedKind, next(t, facts).Kind())
+	assert.Equal(t, event.ToolCallJudgedKind, next(t, facts).Kind())
 	stop()
 	assert.Empty(t, rest(facts), "a heuristic asked a request to stop")
 }
@@ -143,7 +143,7 @@ func TestWatch_ALateVerdictStopsOnlyItsOwnTurn(t *testing.T) {
 	stop := Watch(t.Context(), bus, asker)
 	defer stop()
 
-	facts, unsub := bus.Subscribe(event.Only(event.CallJudgedKind, event.RequestStopKind))
+	facts, unsub := bus.Subscribe(event.Only(event.ToolCallJudgedKind, event.RequestStopKind))
 	defer unsub()
 
 	first, second := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
@@ -160,7 +160,7 @@ func TestWatch_ALateVerdictStopsOnlyItsOwnTurn(t *testing.T) {
 	var stops []uuid.UUID
 	for judged := 0; judged < 2; {
 		switch v := next(t, facts).(type) {
-		case event.CallJudged:
+		case event.ToolCallJudged:
 			judged++
 		case event.RequestStop:
 			stops = append(stops, v.Turn)
@@ -183,7 +183,7 @@ func TestWatch_StopCancelsWhatIsInFlight(t *testing.T) {
 	asker := &gatedAsker{gate: make(chan struct{}), asked: make(chan struct{}, 1)}
 	stop := Watch(t.Context(), bus, asker)
 
-	facts, unsub := bus.Subscribe(event.Only(event.CallJudgedKind))
+	facts, unsub := bus.Subscribe(event.Only(event.ToolCallJudgedKind))
 	defer unsub()
 
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
@@ -292,7 +292,7 @@ func TestWatch_TheJudgeSeesTheCommand(t *testing.T) {
 
 	call := uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "list it"})
-	bus.Publish(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "ls -la"}})
+	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "ls -la"}})
 	ran(bus, call, event.Result{Stdout: "total 0\n"})
 
 	select {
@@ -327,8 +327,8 @@ func (f fakeAsker) Ask(context.Context, classify.State, classify.Questions) (cla
 
 // ran publishes a Call starting and ending, as the engine does for one that ran.
 func ran(bus *event.Bus, call uuid.UUID, res event.Result) {
-	bus.Publish(event.CallStarted{Call: call, Runner: "host"})
-	bus.Publish(event.CallEnded{Call: call, Result: res})
+	bus.Publish(event.ToolCallStarted{ToolCall: call, Runner: "host"})
+	bus.Publish(event.ToolCallEnded{ToolCall: call, Result: res})
 }
 
 // A Call that was declined or abandoned never ran, so nobody asks about it.
@@ -338,7 +338,7 @@ func TestWatch_ACallThatNeverRanIsNotJudged(t *testing.T) {
 	asker := recordingAsker{states: make(chan classify.State, 1)}
 	defer Watch(t.Context(), bus, asker)()
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "p"})
-	bus.Publish(event.CallEnded{Call: uuid.Must(uuid.NewV7()), Result: event.Result{Err: "declined"}})
+	bus.Publish(event.ToolCallEnded{ToolCall: uuid.Must(uuid.NewV7()), Result: event.Result{Err: "declined"}})
 	select {
 	case <-asker.states:
 		t.Fatal("judged a Call that never ran")

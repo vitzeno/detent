@@ -38,8 +38,8 @@ type Facts struct {
 	Runtime string // "" means containerd's own default
 	Network string // "host" shares the containerd daemon's network
 
-	Turns int
-	Calls int
+	Turns     int
+	ToolCalls int
 	// Sessions is how many are on disk, 0 until a listing arrives.
 	Sessions int
 	// Session is this run's own id, and Resumed how many records it
@@ -211,7 +211,7 @@ func session(f Facts) []string {
 	out := []string{
 		row("this session", sessionID(f)),
 		row("so far", primary.Render(fmt.Sprintf("%s · %s",
-			plural(f.Turns, "request"), plural(f.Calls, "call")))),
+			plural(f.Turns, "request"), plural(f.ToolCalls, "call")))),
 	}
 	if f.Resumed > 0 {
 		out = append(out, row("resumed", primary.Render(plural(f.Resumed, "record"))+

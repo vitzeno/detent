@@ -30,10 +30,10 @@ func TestWatch_KeysOnTheCommandNotTheTool(t *testing.T) {
 
 	call := uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1})
-	bus.Publish(event.CallProposed{Call: call, Tool: "bash",
+	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash",
 		Args: map[string]any{"command": "go test ./..."}})
-	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: goTest}})
-	bus.Publish(event.CallJudged{Call: call, RenderKind: viewgen.KindText})
+	bus.Publish(event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: goTest}})
+	bus.Publish(event.ToolCallJudged{ToolCall: call, RenderKind: viewgen.KindText})
 
 	select {
 	case rec := <-views:
@@ -59,8 +59,8 @@ func TestWatch_AShellGetsTheShippedViewWithoutAJudge(t *testing.T) {
 	defer unsub()
 
 	shell := uuid.Must(uuid.NewV7())
-	bus.Publish(event.ShellStarted{Shell: shell, Command: "go test ./..."})
-	bus.Publish(event.ShellEnded{Shell: shell, Result: event.Result{Stdout: goTest}})
+	bus.Publish(event.UserCommandStarted{UserCommand: shell, Command: "go test ./..."})
+	bus.Publish(event.UserCommandEnded{UserCommand: shell, Result: event.Result{Stdout: goTest}})
 
 	got := viewFor(t, views, shell)
 	assert.Equal(t, "go test", got.Spec.Match)
@@ -82,11 +82,13 @@ func TestWatch_AShellIsAskedItsShapeAndNothingElse(t *testing.T) {
 	defer unsub()
 
 	shell := uuid.Must(uuid.NewV7())
-	bus.Publish(event.ShellStarted{Shell: shell, Command: "cat stats.txt"})
-	bus.Publish(event.ShellEnded{Shell: shell, Result: event.Result{Stdout: "pkg secs status\n" +
+	bus.Publish(event.UserCommandStarted{UserCommand: shell, Command: "cat stats.txt"})
+	bus.Publish(event.UserCommandEnded{UserCommand: shell, Result: event.Result{Stdout: "pkg secs status\n" +
 		"a 1.2 ok\nb 3.4 ok\nc 0.5 FAIL\nd 9.9 ok\ne 1.1 ok\nf 2.2 ok\ng 3.3 ok\nh 4.4 ok\n"}})
 
 	got := viewFor(t, views, shell)
+	assert.Equal(t, shell, got.UserCommand, "a user command's view names it as one")
+	assert.Equal(t, uuid.Nil, got.ToolCall, "and never as a tool call")
 	assert.Equal(t, string(viewgen.SourceGenerated), got.Source)
 
 	judge.mu.Lock()
@@ -111,8 +113,8 @@ func TestWatch_AShellFallsBackToItsKindsView(t *testing.T) {
 	defer unsub()
 
 	shell := uuid.Must(uuid.NewV7())
-	bus.Publish(event.ShellStarted{Shell: shell, Command: "git diff"})
-	bus.Publish(event.ShellEnded{Shell: shell, Result: event.Result{Stdout: "diff --git a/x b/x\n" +
+	bus.Publish(event.UserCommandStarted{UserCommand: shell, Command: "git diff"})
+	bus.Publish(event.UserCommandEnded{UserCommand: shell, Result: event.Result{Stdout: "diff --git a/x b/x\n" +
 		"--- a/x\n+++ b/x\n@@ -1,4 +1,4 @@\n-one\n+uno\n two\n three\n-four\n+cuatro\n"}})
 
 	got := viewFor(t, views, shell)
@@ -133,9 +135,9 @@ func TestWatch_AnUnjudgedCallResolvesWhenItEnds(t *testing.T) {
 
 	call := uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1})
-	bus.Publish(event.CallProposed{Call: call, Tool: "bash",
+	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash",
 		Args: map[string]any{"command": "go test ./..."}})
-	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: goTest}})
+	bus.Publish(event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: goTest}})
 
 	got := viewFor(t, views, call)
 	assert.Equal(t, "go test", got.Spec.Match)
@@ -155,8 +157,8 @@ func TestWatch_ParallelShellsShareNoState(t *testing.T) {
 	const n = 6
 	for range n {
 		shell := uuid.Must(uuid.NewV7())
-		bus.Publish(event.ShellStarted{Shell: shell, Command: "go test ./..."})
-		bus.Publish(event.ShellEnded{Shell: shell, Result: event.Result{Stdout: goTest}})
+		bus.Publish(event.UserCommandStarted{UserCommand: shell, Command: "go test ./..."})
+		bus.Publish(event.UserCommandEnded{UserCommand: shell, Result: event.Result{Stdout: goTest}})
 	}
 	for range n {
 		select {
@@ -183,8 +185,8 @@ func TestWatch_StopCancelsCompositionInFlight(t *testing.T) {
 	defer unsub()
 
 	shell := uuid.Must(uuid.NewV7())
-	bus.Publish(event.ShellStarted{Shell: shell, Command: "cat stats.txt"})
-	bus.Publish(event.ShellEnded{Shell: shell, Result: event.Result{Stdout: strings.Repeat("a 1 ok\n", 10)}})
+	bus.Publish(event.UserCommandStarted{UserCommand: shell, Command: "cat stats.txt"})
+	bus.Publish(event.UserCommandEnded{UserCommand: shell, Result: event.Result{Stdout: strings.Repeat("a 1 ok\n", 10)}})
 	select {
 	case <-judge.asked:
 	case <-time.After(3 * time.Second):
@@ -216,8 +218,8 @@ func TestWatch_ItsContextEndingCancelsCompositionInFlight(t *testing.T) {
 	defer g.Watch(ctx, bus)()
 
 	shell := uuid.Must(uuid.NewV7())
-	bus.Publish(event.ShellStarted{Shell: shell, Command: "cat stats.txt"})
-	bus.Publish(event.ShellEnded{Shell: shell, Result: event.Result{Stdout: strings.Repeat("a 1 ok\n", 10)}})
+	bus.Publish(event.UserCommandStarted{UserCommand: shell, Command: "cat stats.txt"})
+	bus.Publish(event.UserCommandEnded{UserCommand: shell, Result: event.Result{Stdout: strings.Repeat("a 1 ok\n", 10)}})
 	select {
 	case <-judge.asked:
 	case <-time.After(3 * time.Second):
@@ -252,7 +254,7 @@ func viewFor(t *testing.T, views <-chan event.Record, id uuid.UUID) event.ViewRe
 	case rec := <-views:
 		got, ok := rec.Event.(event.ViewReady)
 		require.True(t, ok)
-		require.Equal(t, id, got.Call, "the view is for the Shell that ran")
+		require.Equal(t, id, got.Owner(), "the view is for what ran")
 		require.NotNil(t, got.Spec)
 		return got
 	case <-time.After(3 * time.Second):

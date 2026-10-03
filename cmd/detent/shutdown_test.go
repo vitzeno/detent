@@ -75,7 +75,7 @@ func TestShutdown_StopsTheShellBeforeTheEngineAndTheDrain(t *testing.T) {
 	// Stands in for what humanshell.Watch returns: it publishes what
 	// the cancelled command owes and only then returns.
 	shell := func() {
-		bus.Publish(event.ShellEnded{Result: event.Result{Err: "stopped by the human"}})
+		bus.Publish(event.UserCommandEnded{Result: event.Result{Err: "stopped by the human"}})
 		bus.Publish(event.NoteContext{Text: "[human ran a command on the host]"})
 	}
 	stopped, engine := make(chan struct{}), make(chan struct{})
@@ -85,15 +85,15 @@ func TestShutdown_StopsTheShellBeforeTheEngineAndTheDrain(t *testing.T) {
 		close(engine)
 	}()
 
-	sd := shutdown{bus: bus, shell: shell, engine: engine, stop: func() { close(stopped) }}
+	sd := shutdown{bus: bus, userCommand: shell, engine: engine, stop: func() { close(stopped) }}
 	sd.close()
 	<-collected
 
 	mu.Lock()
 	defer mu.Unlock()
-	require.Contains(t, got, event.ShellEndedKind, "the command's end was lost to the drain")
+	require.Contains(t, got, event.UserCommandEndedKind, "the command's end was lost to the drain")
 	require.Contains(t, got, event.NoteContextKind, "and so was the message it owes the model")
-	assert.Less(t, slices.Index(got, event.ShellEndedKind), slices.Index(got, event.TurnEndedKind),
+	assert.Less(t, slices.Index(got, event.UserCommandEndedKind), slices.Index(got, event.TurnEndedKind),
 		"the shell stops first, or its note reaches an engine that has already gone")
 }
 

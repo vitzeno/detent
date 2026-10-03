@@ -319,7 +319,7 @@ func (m Model) onEscape() (tea.Model, tea.Cmd) {
 	}
 	// A command the human ran stops before the Turn does: it is theirs,
 	// and they are watching it.
-	if m.shellRunning() {
+	if m.userCommandRunning() {
 		return m, m.send(event.CancelCommand{})
 	}
 	if m.cur != nil {
@@ -330,7 +330,7 @@ func (m Model) onEscape() (tea.Model, tea.Cmd) {
 
 // toggleExpand opens or shuts a row's preview, outside apply, so it
 // marks the row's block and history itself.
-func (m *Model) toggleExpand(r *callRow) {
+func (m *Model) toggleExpand(r *historyRow) {
 	r.expanded = !r.expanded
 	for _, b := range m.blocks {
 		if slices.Contains(b.rows, r) {

@@ -16,9 +16,9 @@ import (
 // reconstructable from the facts, with no formatting reproduced.
 func TestAppended_RebuildsTheTranscriptExactly(t *testing.T) {
 	r := newRig(t, []model.Reply{
-		{Text: "looking", Calls: []event.ToolCall{
+		{Text: "looking", Requests: []event.ToolRequest{
 			bashCall("c1", "ls"), readCall("c2", "a.go")}},
-		{Text: "and one more", Calls: []event.ToolCall{bashCall("c3", "pwd")}},
+		{Text: "and one more", Requests: []event.ToolRequest{bashCall("c3", "pwd")}},
 	})
 	r.run("do the thing")
 
@@ -38,8 +38,8 @@ func TestAppended_RebuildResolvesAMarkTakenAfterCompaction(t *testing.T) {
 	var replies []model.Reply
 	for i := range 6 {
 		replies = append(replies, model.Reply{
-			Text:  big,
-			Calls: []event.ToolCall{bashCall(string(rune('a'+i)), "echo "+big)},
+			Text:     big,
+			Requests: []event.ToolRequest{bashCall(string(rune('a'+i)), "echo "+big)},
 		})
 	}
 	r := newRig(t, replies, WithContextTokens(2000))
@@ -68,7 +68,7 @@ func TestAppended_RebuildResolvesAMarkTakenAfterCompaction(t *testing.T) {
 // back and the next Turn carries on numbering.
 func TestRestore_RebuildsTheTranscriptAndTheTurnCount(t *testing.T) {
 	r := newRig(t, []model.Reply{
-		{Text: "one", Calls: []event.ToolCall{bashCall("c1", "ls")}},
+		{Text: "one", Requests: []event.ToolRequest{bashCall("c1", "ls")}},
 	})
 	r.run("first request")
 	r.run("second request")

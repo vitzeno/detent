@@ -1,7 +1,7 @@
 // Package humanshell runs the commands a human types. A Shell is a
 // fifth scope beside Session, Turn, Step and Call: no model asked for
 // one, so nothing here assesses, approves or judges it.
-package humanshell
+package usercommand
 
 import (
 	"context"
@@ -18,16 +18,16 @@ import (
 )
 
 const (
-	// shellMax is a backstop for a human who walked away, not a bound
+	// commandMax is a backstop for a human who walked away, not a bound
 	// on their work: esc stops it and they are the one watching.
-	shellMax       = 30 * time.Minute
+	commandMax     = 30 * time.Minute
 	stoppedByHuman = "stopped by the human"
 )
 
 // Watch runs what RunCommand carries and stops it on CancelCommand.
 // where is "host" or "sandbox". Cancelling ctx stops a running command.
 func Watch(ctx context.Context, bus *event.Bus, runner Runner, where string) func() {
-	s := &shell{ctx: ctx, bus: bus, runner: runner, where: where}
+	s := &commands{ctx: ctx, bus: bus, runner: runner, where: where}
 	intents, unsub := bus.Subscribe(event.Only(event.RunCommandKind, event.CancelCommandKind))
 	done := make(chan struct{})
 	go func() {
@@ -37,7 +37,7 @@ func Watch(ctx context.Context, bus *event.Bus, runner Runner, where string) fun
 			case event.RunCommand:
 				s.start(v.Text)
 			case event.CancelCommand:
-				s.cancel(v.Shell)
+				s.cancel(v.UserCommand)
 			}
 		}
 	}()
@@ -57,9 +57,9 @@ type Runner interface {
 	Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error)
 }
 
-// shell holds the one command that may be in flight. One at a time:
+// commands holds the one command that may be in flight. One at a time:
 // two interleaved outputs are unreadable whatever the runner allows.
-type shell struct {
+type commands struct {
 	ctx    context.Context
 	bus    *event.Bus
 	runner Runner
@@ -74,14 +74,14 @@ type shell struct {
 
 // start refuses a second command rather than queueing it: the human
 // can see the first one running.
-func (s *shell) start(command string) {
+func (s *commands) start(command string) {
 	command = strings.TrimSpace(command)
 	if command == "" {
 		return
 	}
 	// Stopped by the func Watch returned too. The deadline is set here
 	// so host.Shell does not apply the model's own.
-	ctx, cancel := context.WithTimeout(s.ctx, shellMax)
+	ctx, cancel := context.WithTimeout(s.ctx, commandMax)
 	id := uuid.Must(uuid.NewV7())
 
 	s.mu.Lock()
@@ -105,15 +105,15 @@ func (s *shell) start(command string) {
 
 // run publishes the two facts the command is, then the message the
 // model reads. The engine appends that at a Step boundary.
-func (s *shell) run(ctx context.Context, id uuid.UUID, command string) {
-	s.bus.Publish(event.ShellStarted{Shell: id, Command: command, Runner: s.where})
+func (s *commands) run(ctx context.Context, id uuid.UUID, command string) {
+	s.bus.Publish(event.UserCommandStarted{UserCommand: id, Command: command, Runner: s.where})
 
 	lines := make(chan capture.StreamEvent, 64)
 	relayed := make(chan struct{})
 	go func() {
 		defer close(relayed)
 		for l := range lines {
-			s.bus.Publish(event.OutputChunk{Shell: id, Line: l.Line, Stderr: l.Stderr})
+			s.bus.Publish(event.OutputChunk{UserCommand: id, Line: l.Line, Stderr: l.Stderr})
 		}
 	}()
 
@@ -133,15 +133,15 @@ func (s *shell) run(ctx context.Context, id uuid.UUID, command string) {
 	case errors.Is(ctx.Err(), context.Canceled):
 		out.Err = stoppedByHuman
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		out.Err = fmt.Sprintf("gave up after %s", shellMax)
+		out.Err = fmt.Sprintf("gave up after %s", commandMax)
 	}
-	s.bus.Publish(event.ShellEnded{Shell: id, Result: out, Took: took})
+	s.bus.Publish(event.UserCommandEnded{UserCommand: id, Result: out, Took: took})
 	s.bus.Publish(event.NoteContext{Text: transcribe(command, s.where, out)})
 }
 
 // cancel stops the running command. A zero id means whichever one
 // that is, which is what esc knows without tracking it.
-func (s *shell) cancel(id uuid.UUID) {
+func (s *commands) cancel(id uuid.UUID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stop != nil && (id == uuid.Nil || id == s.id) {
@@ -149,7 +149,7 @@ func (s *shell) cancel(id uuid.UUID) {
 	}
 }
 
-func (s *shell) done(id uuid.UUID) {
+func (s *commands) done(id uuid.UUID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.id == id {

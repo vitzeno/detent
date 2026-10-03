@@ -13,12 +13,12 @@ import (
 )
 
 func TestSummarize_FlattensStepsAndAsksForProse(t *testing.T) {
-	call := event.ToolCall{ID: "c1", Name: "bash", Args: map[string]any{"command": "go test ./..."}}
+	call := event.ToolRequest{ID: "c1", Name: "bash", Args: map[string]any{"command": "go test ./..."}}
 	c, got := serve(t, `{"choices":[{"message":{"content":"  tests pass  "}}]}`)
 
 	out, err := c.Summarize(context.Background(), []event.Message{
 		{Role: event.RoleUser, Content: "run the tests"},
-		{Role: event.RoleAssistant, Calls: []event.ToolCall{call}},
+		{Role: event.RoleAssistant, Requests: []event.ToolRequest{call}},
 		event.Answer(call, "ok 12 packages"),
 	})
 	require.NoError(t, err)
@@ -67,10 +67,10 @@ func TestSummarize_CutsOnARuneBoundary(t *testing.T) {
 // The same history must read the same each time, and a written file's
 // content is not what a summary needs.
 func TestTranscriptText_BoundsArgumentsAndResults(t *testing.T) {
-	call := event.ToolCall{ID: "c1", Name: "write_file",
+	call := event.ToolRequest{ID: "c1", Name: "write_file",
 		Args: map[string]any{"path": "a.go", "content": strings.Repeat("y", 5000)}}
 	text := transcriptText([]event.Message{
-		{Role: event.RoleAssistant, Calls: []event.ToolCall{call}},
+		{Role: event.RoleAssistant, Requests: []event.ToolRequest{call}},
 		event.Answer(call, "start"+strings.Repeat("z", 10000)+"the error"),
 	})
 	assert.Contains(t, text, "write_file(content=yyy")

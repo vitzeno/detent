@@ -45,7 +45,7 @@ func TestKinds_IntentsAreExactlyTheDoKinds(t *testing.T) {
 // Exactly one event is lossy. If a second ever is, it was a decision.
 func TestLossy_IsOutputChunkAlone(t *testing.T) {
 	assert.True(t, OutputChunk{}.Lossy())
-	for _, e := range []Event{CallEnded{}, StepEnded{}, TurnEnded{}, Notice{}, Abort{}} {
+	for _, e := range []Event{ToolCallEnded{}, StepEnded{}, TurnEnded{}, Notice{}, Abort{}} {
 		assert.False(t, e.Lossy(), "%T must be delivered", e)
 	}
 }

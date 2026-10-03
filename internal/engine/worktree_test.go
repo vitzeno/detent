@@ -40,7 +40,7 @@ func TestRollback_RevertsTheHumansDirectory(t *testing.T) {
 			require.NoError(t, err)
 
 			fm := &fakeModel{replies: []model.Reply{
-				{Calls: []event.ToolCall{bashCall("a",
+				{Requests: []event.ToolRequest{bashCall("a",
 					"echo edited > tracked.txt && echo new > made.txt && mkdir -p pkg && echo x > pkg/a.go")}},
 				{Text: "done"},
 			}}

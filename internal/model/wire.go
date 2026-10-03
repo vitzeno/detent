@@ -56,8 +56,8 @@ type wireResponse struct {
 }
 
 func encode(m event.Message) wireMessage {
-	w := wireMessage{Role: string(m.Role), Content: m.Content, ToolCallID: m.CallID}
-	for _, c := range m.Calls {
+	w := wireMessage{Role: string(m.Role), Content: m.Content, ToolCallID: m.RequestID}
+	for _, c := range m.Requests {
 		wc := wireToolCall{ID: c.ID, Type: "function"}
 		wc.Function.Name = c.Name
 		args, err := json.Marshal(c.Args)
@@ -82,15 +82,15 @@ func decode(r wireResponse) (Reply, error) {
 		Stop: c.FinishReason}
 	out.Thinking = c.Message.Content == "" && out.Text != ""
 	for i, wc := range c.Message.ToolCalls {
-		out.Calls = append(out.Calls, decodeCall(wc, i))
+		out.Requests = append(out.Requests, decodeRequest(wc, i))
 	}
 	return out, nil
 }
 
-// decodeCall keeps a call whose arguments would not parse. Dropping it
+// decodeRequest keeps a call whose arguments would not parse. Dropping it
 // would leave the assistant message naming an id nothing answers.
-func decodeCall(wc wireToolCall, i int) event.ToolCall {
-	c := event.ToolCall{ID: wc.ID, Name: wc.Function.Name}
+func decodeRequest(wc wireToolCall, i int) event.ToolRequest {
+	c := event.ToolRequest{ID: wc.ID, Name: wc.Function.Name}
 	if c.ID == "" {
 		c.ID = fmt.Sprintf("call_%d", i) // some endpoints omit it
 	}

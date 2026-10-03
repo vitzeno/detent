@@ -19,8 +19,8 @@ import (
 // Every wait here is bounded. Quitting is the one thing a human cannot
 // take back by pressing another key, so no step may hang the terminal.
 const (
-	// shellGrace bounds unwinding a cancelled command, not running one.
-	shellGrace = 3 * time.Second
+	// userCommandGrace bounds unwinding a cancelled command, not running one.
+	userCommandGrace = 3 * time.Second
 	// engineGrace outlasts engine.DefaultStopGrace, so a Turn that will
 	// not stop is the engine's own bound expiring rather than this one.
 	engineGrace    = engine.DefaultStopGrace + time.Second
@@ -33,11 +33,11 @@ const (
 // opens each thing, so an early return closes only what was reached.
 type shutdown struct {
 	session uuid.UUID
-	// shell stops the human's own command. Not in unwatch: that list
+	// userCommand stops the human's own command. Not in unwatch: that list
 	// runs after the drain, and a fact published then reaches nobody.
-	shell  func()
-	stop   context.CancelFunc
-	engine <-chan struct{}
+	userCommand func()
+	stop        context.CancelFunc
+	engine      <-chan struct{}
 	// grace bounds the wait on engine, zero meaning engineGrace.
 	grace   time.Duration
 	bus     *event.Bus
@@ -54,7 +54,7 @@ type shutdown struct {
 func (s shutdown) close() {
 	// Before the engine, so the message the command owes the
 	// transcript still has somewhere to land.
-	errs := s.stopShell()
+	errs := s.stopUserCommand()
 	errs = append(errs, s.stopEngine()...)
 	// Drained before the subscribers go, so what the engine just
 	// published reaches the log and the store rather than dying here.
@@ -81,15 +81,15 @@ func (s shutdown) close() {
 	s.report(os.Stderr, errs)
 }
 
-// stopShell cancels the human's command and waits for its last facts,
+// stopUserCommand cancels the human's command and waits for its last facts,
 // then lets them reach the engine before that stops too.
-func (s shutdown) stopShell() []error {
-	if s.shell == nil {
+func (s shutdown) stopUserCommand() []error {
+	if s.userCommand == nil {
 		return nil
 	}
-	err := bounded(shellGrace, "the running command", func() error { s.shell(); return nil })
+	err := bounded(userCommandGrace, "the running command", func() error { s.userCommand(); return nil })
 	if s.bus != nil {
-		s.bus.Settle(shellGrace)
+		s.bus.Settle(userCommandGrace)
 	}
 	return appendErr(nil, err)
 }

@@ -55,11 +55,11 @@ func TestGenerated_EveryToolCallIsAnswered(t *testing.T) {
 			continue
 		}
 		for _, m := range app.Messages {
-			for _, c := range m.Calls {
+			for _, c := range m.Requests {
 				asked[c.ID] = c.Name
 			}
 			if m.Role == event.RoleTool {
-				answered[m.CallID] = true
+				answered[m.RequestID] = true
 			}
 		}
 	}
@@ -92,7 +92,7 @@ func TestGenerated_TheUiFoldsEveryCallIntoARow(t *testing.T) {
 	want := 0
 	for _, r := range records {
 		switch v := r.Event.(type) {
-		case event.CallProposed:
+		case event.ToolCallProposed:
 			if !undone[turnOf[v.Step]] {
 				want++
 			}

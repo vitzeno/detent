@@ -14,7 +14,7 @@ type turnBlock struct {
 	id     uuid.UUID
 	n      int
 	prompt string
-	rows   []*callRow
+	rows   []*historyRow
 
 	ended   bool
 	end     event.EndReason
@@ -45,8 +45,8 @@ type turnBlock struct {
 // a hit is one equality check. Miss it and the pane renders stale.
 type blockKey struct {
 	rev, width int
-	focused    *callRow // nil unless the cursor is in this block
-	spinner    string   // only the live block ever draws one
+	focused    *historyRow // nil unless the cursor is in this block
+	spinner    string      // only the live block ever draws one
 }
 
 type blockCache struct {
@@ -68,9 +68,9 @@ type histCache struct {
 	cursorLine int
 }
 
-// callRow is one tool call, or the model's own words. Exactly one of
+// historyRow is one tool call, or the model's own words. Exactly one of
 // command and prose is set.
-type callRow struct {
+type historyRow struct {
 	id uuid.UUID
 	// command is what the human reads: the tool's arguments, rendered.
 	command string
@@ -113,7 +113,7 @@ type verdict struct {
 }
 
 // text is what the row draws in the output pane.
-func (r *callRow) text() string {
+func (r *historyRow) text() string {
 	if r.prose != "" {
 		return r.prose
 	}
@@ -125,12 +125,12 @@ func (r *callRow) text() string {
 
 // drawable reports whether there is settled text to draw. False while
 // a call streams, since live output has its own path.
-func (r *callRow) drawable() bool {
+func (r *historyRow) drawable() bool {
 	return r != nil && !r.running && (r.prose != "" || r.result != nil)
 }
 
 // kind is the judged render kind, or "" while pending.
-func (r *callRow) kind() string {
+func (r *historyRow) kind() string {
 	if r == nil || r.running || r.post == nil {
 		return ""
 	}
@@ -138,7 +138,7 @@ func (r *callRow) kind() string {
 }
 
 // ok reports whether the call succeeded, for the row's status glyph.
-func (r *callRow) ok() bool {
+func (r *historyRow) ok() bool {
 	return r.result != nil && r.result.Err == "" && r.result.ExitCode == 0
 }
 

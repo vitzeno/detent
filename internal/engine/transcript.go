@@ -60,9 +60,9 @@ type start struct {
 // so two calls a model gave one id still get one answer each.
 func (t *transcript) step(reply model.Reply, answers []string) []event.Message {
 	added := []event.Message{{
-		Role: event.RoleAssistant, Content: reply.Text, Calls: reply.Calls,
+		Role: event.RoleAssistant, Content: reply.Text, Requests: reply.Requests,
 	}}
-	for i, c := range reply.Calls {
+	for i, c := range reply.Requests {
 		body := "This call did not run."
 		if i < len(answers) && answers[i] != "" {
 			body = answers[i]
@@ -138,7 +138,7 @@ func msgBytes(msgs []event.Message) int {
 	n := 0
 	for _, m := range msgs {
 		n += len(m.Content)
-		for _, c := range m.Calls {
+		for _, c := range m.Requests {
 			n += len(c.Name) + len(fmt.Sprint(c.Args))
 		}
 	}

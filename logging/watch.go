@@ -62,7 +62,7 @@ func describe(e event.Event) (slog.Level, []any) {
 	case event.StepStarted:
 		return slog.LevelDebug, []any{KeyTurn, v.Turn, KeyStep, v.Step, "n", v.N}
 	case event.StepEnded:
-		return slog.LevelInfo, []any{KeyTurn, v.Turn, KeyStep, v.Step, "calls", v.Calls,
+		return slog.LevelInfo, []any{KeyTurn, v.Turn, KeyStep, v.Step, "tool_calls", v.ToolCalls,
 			"stop", v.Stop, "tokens", v.Usage.Tokens(), "prompt_tokens", v.Usage.PromptTokens,
 			"completion_tokens", v.Usage.CompletionTokens, KeyMS, v.Usage.Latency.Milliseconds()}
 	case event.Appended:
@@ -81,42 +81,42 @@ func describe(e event.Event) (slog.Level, []any) {
 		return slog.LevelInfo, []any{KeyTurn, v.Turn, "dropped", v.Dropped, "note", Body(v.Note)}
 	case event.ModelText:
 		return slog.LevelDebug, []any{KeyStep, v.Step, "text", Body(v.Text)}
-	case event.CallProposed:
+	case event.ToolCallProposed:
 		// The command, not just the tool: most calls are bash, and a log
 		// that cannot say what ran answers nothing.
-		return slog.LevelInfo, []any{KeyCall, v.Call, KeyStep, v.Step, "tool", v.Tool,
+		return slog.LevelInfo, []any{KeyToolCall, v.ToolCall, KeyStep, v.Step, "tool", v.Tool,
 			"command", Body(event.Command(v.Tool, v.Args))}
-	case event.CallAssessed:
-		return slog.LevelInfo, []any{KeyCall, v.Call, "dangerous", v.Risk.Dangerous,
+	case event.ToolCallAssessed:
+		return slog.LevelInfo, []any{KeyToolCall, v.ToolCall, "dangerous", v.Risk.Dangerous,
 			"mutability", v.Risk.Mutability, "scope_risk", v.Risk.ScopeRisk,
 			"from_judge", v.Risk.FromJudge, KeyReason, Snippet(v.Risk.Note)}
 	case event.ApprovalAsked:
 		// The same string the human was shown, since what they approved
 		// is the whole of what this record is for.
-		return slog.LevelInfo, []any{KeyCall, v.Call, "tool", v.Tool,
+		return slog.LevelInfo, []any{KeyToolCall, v.ToolCall, "tool", v.Tool,
 			"command", Body(event.Command(v.Tool, v.Args)), KeyReason, Snippet(v.Rationale)}
-	case event.CallStarted:
-		return slog.LevelDebug, []any{KeyCall, v.Call, "runner", v.Runner}
-	case event.CallEnded:
+	case event.ToolCallStarted:
+		return slog.LevelDebug, []any{KeyToolCall, v.ToolCall, "runner", v.Runner}
+	case event.ToolCallEnded:
 		return level(v.Result.ExitCode != 0 || v.Result.Err != ""), []any{
-			KeyCall, v.Call, "exit", v.Result.ExitCode, KeyMS, v.Took.Milliseconds(),
+			KeyToolCall, v.ToolCall, "exit", v.Result.ExitCode, KeyMS, v.Took.Milliseconds(),
 			"bytes", len(v.Result.Stdout) + len(v.Result.Stderr),
 			"stdout", Body(v.Result.Stdout), "stderr", Body(v.Result.Stderr),
 			KeyReason, Snippet(v.Result.Err)}
-	case event.CallJudged:
-		return slog.LevelDebug, []any{KeyCall, v.Call, "status", v.Status,
+	case event.ToolCallJudged:
+		return slog.LevelDebug, []any{KeyToolCall, v.ToolCall, "status", v.Status,
 			"kind", v.RenderKind, "attention", v.Attention,
 			"goal_achieved", v.GoalAchieved, "from_judge", v.FromJudge}
 	case event.ViewReady:
-		return slog.LevelDebug, []any{KeyCall, v.Call, "source", v.Source}
-	case event.ShellStarted:
+		return slog.LevelDebug, []any{KeyToolCall, v.ToolCall, "source", v.Source}
+	case event.UserCommandStarted:
 		// The command through Body like any other: it is the human's
 		// content, not the harness's metadata.
-		return slog.LevelInfo, []any{KeyShell, v.Shell, "runner", v.Runner,
+		return slog.LevelInfo, []any{KeyUserCommand, v.UserCommand, "runner", v.Runner,
 			"command", Body(v.Command)}
-	case event.ShellEnded:
+	case event.UserCommandEnded:
 		return level(v.Result.ExitCode != 0 || v.Result.Err != ""), []any{
-			KeyShell, v.Shell, "exit", v.Result.ExitCode, KeyMS, v.Took.Milliseconds(),
+			KeyUserCommand, v.UserCommand, "exit", v.Result.ExitCode, KeyMS, v.Took.Milliseconds(),
 			"bytes", len(v.Result.Stdout) + len(v.Result.Stderr),
 			"stdout", Body(v.Result.Stdout), "stderr", Body(v.Result.Stderr),
 			KeyReason, Snippet(v.Result.Err)}

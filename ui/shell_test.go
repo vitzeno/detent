@@ -80,7 +80,7 @@ func TestShell_ShiftTabFlipsFromEveryOwner(t *testing.T) {
 func TestShell_ShiftTabDoesNotAnswerAPendingQuestion(t *testing.T) {
 	k := newKeyed(t)
 	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "clean"})
-	k.m.apply(event.ApprovalAsked{Call: uuid.Must(uuid.NewV7()), Tool: "bash"})
+	k.m.apply(event.ApprovalAsked{ToolCall: uuid.Must(uuid.NewV7()), Tool: "bash"})
 	require.Equal(t, modeConfirm, k.m.mode)
 
 	k.press(t, "shift+tab")
@@ -95,14 +95,14 @@ func TestShell_EscapeStopsTheirCommandBeforeTheTurn(t *testing.T) {
 	k := newKeyed(t)
 	turn, shell := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	k.m.apply(event.TurnStarted{Turn: turn, N: 1, Prompt: "look"})
-	k.m.apply(event.ShellStarted{Shell: shell, Command: "sleep 45", Runner: "host"})
+	k.m.apply(event.UserCommandStarted{UserCommand: shell, Command: "sleep 45", Runner: "host"})
 
 	k.press(t, "esc")
 	got, ok := k.intent(t).(event.CancelCommand)
 	require.True(t, ok, "esc must cancel the command, not abort the Turn")
-	assert.Equal(t, uuid.Nil, got.Shell, "whichever is running, which is what esc knows")
+	assert.Equal(t, uuid.Nil, got.UserCommand, "whichever is running, which is what esc knows")
 
-	k.m.apply(event.ShellEnded{Shell: shell, Result: event.Result{Err: "stopped by the human"}})
+	k.m.apply(event.UserCommandEnded{UserCommand: shell, Result: event.Result{Err: "stopped by the human"}})
 	k.press(t, "esc")
 	_, ok = k.intent(t).(event.Abort)
 	assert.True(t, ok, "and once it has gone, esc aborts the Turn again")
@@ -111,8 +111,8 @@ func TestShell_EscapeStopsTheirCommandBeforeTheTurn(t *testing.T) {
 func TestApply_ACommandBetweenTurnsGetsItsOwnBlock(t *testing.T) {
 	shell := uuid.Must(uuid.NewV7())
 	m := feed(t,
-		event.ShellStarted{Shell: shell, Command: "git status", Runner: "sandbox"},
-		event.ShellEnded{Shell: shell, Result: event.Result{Stdout: "clean\n"}},
+		event.UserCommandStarted{UserCommand: shell, Command: "git status", Runner: "sandbox"},
+		event.UserCommandEnded{UserCommand: shell, Result: event.Result{Stdout: "clean\n"}},
 	)
 	require.Len(t, m.blocks, 1)
 	b := m.blocks[0]
@@ -132,10 +132,10 @@ func TestApply_ACommandBetweenTurnsGetsItsOwnBlock(t *testing.T) {
 func TestApply_ABurstOfCommandsSharesOneBlock(t *testing.T) {
 	a, b := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := feed(t,
-		event.ShellStarted{Shell: a, Command: "ls"},
-		event.ShellEnded{Shell: a},
-		event.ShellStarted{Shell: b, Command: "pwd"},
-		event.ShellEnded{Shell: b},
+		event.UserCommandStarted{UserCommand: a, Command: "ls"},
+		event.UserCommandEnded{UserCommand: a},
+		event.UserCommandStarted{UserCommand: b, Command: "pwd"},
+		event.UserCommandEnded{UserCommand: b},
 	)
 	require.Len(t, m.blocks, 1)
 	assert.Len(t, m.blocks[0].rows, 2)
@@ -147,8 +147,8 @@ func TestApply_ACommandDuringATurnLandsInThatTurn(t *testing.T) {
 	turn, call, shell := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := feed(t,
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "find it"},
-		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "find ."}},
-		event.ShellStarted{Shell: shell, Command: "ps aux"},
+		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "find ."}},
+		event.UserCommandStarted{UserCommand: shell, Command: "ps aux"},
 	)
 	require.Len(t, m.blocks, 1, "no second block opened")
 	rows := m.blocks[0].rows
@@ -160,8 +160,8 @@ func TestApply_ACommandDuringATurnLandsInThatTurn(t *testing.T) {
 func TestShell_TheRowSaysItWasTheirs(t *testing.T) {
 	shell := uuid.Must(uuid.NewV7())
 	m := feed(t,
-		event.ShellStarted{Shell: shell, Command: "git status", Runner: "host"},
-		event.ShellEnded{Shell: shell, Result: event.Result{Stdout: "clean\n"}},
+		event.UserCommandStarted{UserCommand: shell, Command: "git status", Runner: "host"},
+		event.UserCommandEnded{UserCommand: shell, Result: event.Result{Stdout: "clean\n"}},
 	)
 	m.sizeViewport()
 
@@ -173,13 +173,13 @@ func TestShell_TheRowSaysItWasTheirs(t *testing.T) {
 // Nothing ever ends a shell block, so anything keyed on "not ended"
 // would treat it as live for the rest of the session.
 func TestShell_AShellBlockDoesNotReadAsALiveTurn(t *testing.T) {
-	m := feed(t, event.ShellStarted{Shell: uuid.Must(uuid.NewV7()), Command: "ls"})
+	m := feed(t, event.UserCommandStarted{UserCommand: uuid.Must(uuid.NewV7()), Command: "ls"})
 	require.Len(t, m.blocks, 1)
 	assert.Equal(t, styleMuted, m.railStyle(m.blocks[0]))
 }
 
 func TestShell_AShellBlockIsNotAnUndoTarget(t *testing.T) {
-	m := feed(t, event.ShellStarted{Shell: uuid.Must(uuid.NewV7()), Command: "rm -rf build"})
+	m := feed(t, event.UserCommandStarted{UserCommand: uuid.Must(uuid.NewV7()), Command: "rm -rf build"})
 	_, err := m.undoTarget("/undo 0")
 	assert.Equal(t, "no request 0", err, "a command is not a request, so it is not undone")
 
@@ -190,7 +190,7 @@ func TestShell_AShellBlockIsNotAnUndoTarget(t *testing.T) {
 // Driven through Update rather than asserted on the predicate,
 // because the guard in route is what actually decides.
 func TestShell_TheSpinnerTurnsForTheirCommandToo(t *testing.T) {
-	m := feed(t, event.ShellStarted{Shell: uuid.Must(uuid.NewV7()), Command: "sleep 45"})
+	m := feed(t, event.UserCommandStarted{UserCommand: uuid.Must(uuid.NewV7()), Command: "sleep 45"})
 	require.False(t, m.waiting, "no Turn is running, so waiting alone would freeze it")
 
 	before := m.spinner.View()
@@ -249,8 +249,8 @@ func TestShell_TheRenderedBorderFollowsTheMode(t *testing.T) {
 func TestShell_TheRowNeverPromisesAVerdict(t *testing.T) {
 	shell := uuid.Must(uuid.NewV7())
 	m := feed(t,
-		event.ShellStarted{Shell: shell, Command: "git status"},
-		event.ShellEnded{Shell: shell, Result: event.Result{Stdout: "clean\n"}},
+		event.UserCommandStarted{UserCommand: shell, Command: "git status"},
+		event.UserCommandEnded{UserCommand: shell, Result: event.Result{Stdout: "clean\n"}},
 	)
 	m.sizeViewport()
 
@@ -264,8 +264,8 @@ func TestShell_TheRowNeverPromisesAVerdict(t *testing.T) {
 func TestShell_ACancelledCommandDoesNotReadAsASuccess(t *testing.T) {
 	shell := uuid.Must(uuid.NewV7())
 	m := feed(t,
-		event.ShellStarted{Shell: shell, Command: "sleep 45"},
-		event.ShellEnded{Shell: shell, Result: event.Result{Err: "stopped by the human"}},
+		event.UserCommandStarted{UserCommand: shell, Command: "sleep 45"},
+		event.UserCommandEnded{UserCommand: shell, Result: event.Result{Err: "stopped by the human"}},
 	)
 	m.sizeViewport()
 
@@ -281,8 +281,8 @@ func TestShell_TheirCommandIsUndoneWithTheTurnItRanIn(t *testing.T) {
 	turn, shell := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := feed(t,
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "build it"},
-		event.ShellStarted{Shell: shell, Command: "ls build/", Runner: "sandbox"},
-		event.ShellEnded{Shell: shell},
+		event.UserCommandStarted{UserCommand: shell, Command: "ls build/", Runner: "sandbox"},
+		event.UserCommandEnded{UserCommand: shell},
 	)
 	reversible, standing := split(m.blocks[0].rows)
 	assert.Len(t, reversible, 1, "the snapshot predates it, so it goes back")
@@ -295,8 +295,8 @@ func TestResume_HistoryMarksWhereItWasPickedUp(t *testing.T) {
 	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := feed(t,
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "install jq"},
-		event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "apt-get install jq"}},
-		event.CallEnded{Call: call},
+		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "apt-get install jq"}},
+		event.ToolCallEnded{ToolCall: call},
 		event.TurnEnded{Turn: turn, Reason: event.EndDone},
 		event.SessionResumed{Records: 412, Sandbox: false},
 	)

@@ -19,14 +19,14 @@ import (
 // The judge stops a Turn from its own goroutine after a network call, so
 // its verdict on one request can land in the next.
 func TestDispatch_IntentsForAnEndedTurnAreDropped(t *testing.T) {
-	r := newRig(t, []model.Reply{{Text: "one done"}, {Calls: []event.ToolCall{bashCall("c1", "slow")}}})
+	r := newRig(t, []model.Reply{{Text: "one done"}, {Requests: []event.ToolRequest{bashCall("c1", "slow")}}})
 	first := r.run("one").Turn
 
 	r.runner.mu.Lock()
 	r.runner.hold = make(chan struct{})
 	r.runner.mu.Unlock()
 	r.bus.Publish(event.SubmitPrompt{Text: "two"})
-	r.await(event.CallStartedKind)
+	r.await(event.ToolCallStartedKind)
 
 	r.bus.Publish(event.RequestStop{Turn: first, Reason: "stale"})
 	r.bus.Publish(event.Abort{Turn: first})
@@ -39,13 +39,13 @@ func TestDispatch_IntentsForAnEndedTurnAreDropped(t *testing.T) {
 // Reset mid-Turn aborts at once rather than queueing behind a blocked
 // Call, and the transcript the model sees is really gone afterwards.
 func TestReset_MidTurnAbortsAndForgets(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "sleep 60")}}})
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "sleep 60")}}})
 	r.runner.mu.Lock()
 	r.runner.hold = make(chan struct{})
 	r.runner.mu.Unlock()
 
 	r.bus.Publish(event.SubmitPrompt{Text: "go"})
-	r.await(event.CallStartedKind)
+	r.await(event.ToolCallStartedKind)
 	start := time.Now()
 	r.bus.Publish(event.ResetSession{})
 
@@ -101,7 +101,7 @@ func TestAbort_WhileTheModelIgnoresItsContext(t *testing.T) {
 	stall := make(chan struct{})
 	r.model.mu.Lock()
 	r.model.stall = stall
-	r.model.replies = []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "ls")}}}
+	r.model.replies = []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}}
 	r.model.mu.Unlock()
 
 	r.bus.Publish(event.SubmitPrompt{Text: "go"})
@@ -120,7 +120,7 @@ func TestAbort_WhileTheModelIgnoresItsContext(t *testing.T) {
 // decides parallelism, so an unknown command still runs alone.
 func TestStep_AJudgeCannotMakeAShellCommandParallel(t *testing.T) {
 	judge := fixedJudge{risk: event.Risk{Mutability: event.MutRead, ScopeRisk: -1}}
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		bashCall("c1", "sed -i s/a/b/ x"), bashCall("c2", "cat x"),
 	}}}, WithJudge(judge, 0.5))
 	r.runner.mu.Lock()
@@ -128,9 +128,9 @@ func TestStep_AJudgeCannotMakeAShellCommandParallel(t *testing.T) {
 	r.runner.mu.Unlock()
 
 	r.bus.Publish(event.SubmitPrompt{Text: "go"})
-	r.await(event.CallStartedKind)
+	r.await(event.ToolCallStartedKind)
 	time.Sleep(100 * time.Millisecond)
-	assert.Len(t, r.of(event.CallStartedKind), 1, "two shell commands ran at once")
+	assert.Len(t, r.of(event.ToolCallStartedKind), 1, "two shell commands ran at once")
 	close(r.runner.hold)
 	r.await(event.TurnEndedKind)
 }
@@ -138,8 +138,8 @@ func TestStep_AJudgeCannotMakeAShellCommandParallel(t *testing.T) {
 // Reads run together only with reads beside them, never ahead of a write
 // asked for first.
 func TestStep_AReadNeverJumpsAnEarlierWrite(t *testing.T) {
-	write := event.ToolCall{ID: "w", Name: "write_file", Args: map[string]any{"path": "x", "content": "new"}}
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{readCall("r0", "y"), write, readCall("r1", "x")}}})
+	write := event.ToolRequest{ID: "w", Name: "write_file", Args: map[string]any{"path": "x", "content": "new"}}
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{readCall("r0", "y"), write, readCall("r1", "x")}}})
 	r.run("write then read")
 
 	reg := tool.Standard()
@@ -155,7 +155,7 @@ func TestStep_AReadNeverJumpsAnEarlierWrite(t *testing.T) {
 // An abort during the question is not the human saying no, and the
 // next Step must not be told never to try it again.
 func TestApproval_AnAbortIsNotADecline(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "rm -rf build")}}})
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "rm -rf build")}}})
 	r.bus.Publish(event.SubmitPrompt{Text: "clean"})
 	r.await(event.ApprovalAskedKind)
 	r.bus.Publish(event.Abort{})
@@ -171,7 +171,7 @@ func TestApproval_AnAbortIsNotADecline(t *testing.T) {
 
 // Every proposed row gets an end, however its Call was settled.
 func TestStep_EveryProposedCallEnds(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		{ID: "bad", Name: "bash", Err: "arguments are not JSON"},
 		bashCall("ok", "ls"),
 		bashCall("ok", "pwd"),
@@ -179,17 +179,17 @@ func TestStep_EveryProposedCallEnds(t *testing.T) {
 	}}})
 	r.bus.Publish(event.SubmitPrompt{Text: "go"})
 	ask := r.await(event.ApprovalAskedKind).(event.ApprovalAsked)
-	r.bus.Publish(event.ResolveApproval{Call: ask.Call, Approved: false})
+	r.bus.Publish(event.ResolveApproval{ToolCall: ask.ToolCall, Approved: false})
 	r.await(event.TurnEndedKind)
 
-	proposed, ended := r.of(event.CallProposedKind), r.of(event.CallEndedKind)
+	proposed, ended := r.of(event.ToolCallProposedKind), r.of(event.ToolCallEndedKind)
 	assert.Len(t, ended, len(proposed))
 	assert.Equal(t, []string{"ls"}, r.runner.commands())
 }
 
 // Two calls a model gave one id each get their own answer.
 func TestStep_ADuplicateIDIsRefusedNotMerged(t *testing.T) {
-	r := newRig(t, []model.Reply{{Calls: []event.ToolCall{bashCall("same", "ls"), bashCall("same", "pwd")}}})
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("same", "ls"), bashCall("same", "pwd")}}})
 	r.run("go")
 	var answers []string
 	for _, m := range r.eng.Transcript() {
@@ -227,11 +227,11 @@ func TestCheckpoint_AFailedSnapshotIsSaid(t *testing.T) {
 // The caller closes the output channel, so a Runner failing before it
 // sent anything costs no grace period.
 func TestExecute_ARunnerErrorEndsTheCallAtOnce(t *testing.T) {
-	r := rigWith(t, event.New(), &fakeModel{replies: []model.Reply{{Calls: []event.ToolCall{bashCall("c1", "ls")}}}}, failingRunner{})
+	r := rigWith(t, event.New(), &fakeModel{replies: []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}}}, failingRunner{})
 	start := time.Now()
 	r.run("go")
 	assert.Less(t, time.Since(start), time.Second)
-	ended := r.await(event.CallEndedKind).(event.CallEnded)
+	ended := r.await(event.ToolCallEndedKind).(event.ToolCallEnded)
 	assert.Contains(t, ended.Result.Err, "already exists")
 }
 
