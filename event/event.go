@@ -27,13 +27,16 @@ type Kind string
 // Facts. Past tense, mostly published by the engine.
 const (
 	SessionStartedKind Kind = "session.started"
+	SessionResumedKind Kind = "session.resumed"
 	SessionResetKind   Kind = "session.reset"
+	SessionsListedKind Kind = "sessions.listed"
+	NoticeKind         Kind = "notice"
 
 	TurnStartedKind     Kind = "turn.started"
-	TurnEndedKind       Kind = "turn.ended"
 	CheckpointTakenKind Kind = "turn.checkpoint"
-	RolledBackKind      Kind = "turn.rolledback"
+	TurnEndedKind       Kind = "turn.ended"
 	BoundReachedKind    Kind = "turn.bound"
+	RolledBackKind      Kind = "turn.rolledback"
 
 	StepStartedKind Kind = "step.started"
 	StepEndedKind   Kind = "step.ended"
@@ -54,16 +57,11 @@ const (
 	ToolCallJudgedKind   Kind = "tool_call.judged"
 	ViewReadyKind        Kind = "view.ready"
 
-	SessionResumedKind Kind = "session.resumed"
-
 	// A user command is one command the human ran themselves.
 	UserCommandStartedKind Kind = "user_command.started"
 	UserCommandEndedKind   Kind = "user_command.ended"
 
-	NoticeKind         Kind = "notice"
-	SessionsListedKind Kind = "sessions.listed"
-	ServersListedKind  Kind = "servers.listed"
-
+	ServersListedKind Kind = "servers.listed"
 	// An MCP server asking a human to sign in, and how it ended.
 	AuthorizationWaitingKind Kind = "auth.waiting"
 	ServerAuthorizedKind     Kind = "auth.done"
@@ -73,22 +71,26 @@ const (
 // Intents. Imperative, published by anyone.
 const (
 	SubmitPromptKind    Kind = "do.prompt"
-	ResolveApprovalKind Kind = "do.approve"
 	NoteContextKind     Kind = "do.note"
+	ResolveApprovalKind Kind = "do.approve"
 	AbortKind           Kind = "do.abort"
 	RequestStopKind     Kind = "do.stop"
 	ContinueKind        Kind = "do.continue"
 	RequestRollbackKind Kind = "do.rollback"
 	ResetSessionKind    Kind = "do.reset"
-	ListSessionsKind    Kind = "do.list_sessions"
+	MeasureContextKind  Kind = "do.measure_context"
+
+	ListSessionsKind  Kind = "do.list_sessions"
+	RenameSessionKind Kind = "do.rename_session"
+
+	DeleteSessionKind Kind = "do.delete_session"
+
+	RunCommandKind    Kind = "do.run_command"
+	CancelCommandKind Kind = "do.cancel_command"
+
 	ListServersKind     Kind = "do.list_servers"
-	DeleteSessionKind   Kind = "do.delete_session"
-	RenameSessionKind   Kind = "do.rename_session"
-	RunCommandKind      Kind = "do.run_command"
-	CancelCommandKind   Kind = "do.cancel_command"
 	AuthorizeServerKind Kind = "do.authorize"
 	OpenAuthKind        Kind = "do.open_authorization"
-	MeasureContextKind  Kind = "do.measure_context"
 )
 
 // IsIntent splits what someone wants from what happened. The engine
@@ -96,12 +98,12 @@ const (
 func (k Kind) IsIntent() bool { return intents[k] }
 
 var intents = map[Kind]bool{
-	SubmitPromptKind: true, ResolveApprovalKind: true, NoteContextKind: true,
+	SubmitPromptKind: true, NoteContextKind: true, ResolveApprovalKind: true,
 	AbortKind: true, RequestStopKind: true, ContinueKind: true,
-	RequestRollbackKind: true, ResetSessionKind: true, ListSessionsKind: true, RenameSessionKind: true,
-	ListServersKind: true, DeleteSessionKind: true,
+	RequestRollbackKind: true, ResetSessionKind: true, MeasureContextKind: true,
+	ListSessionsKind: true, RenameSessionKind: true, DeleteSessionKind: true,
 	RunCommandKind: true, CancelCommandKind: true,
-	AuthorizeServerKind: true, OpenAuthKind: true, MeasureContextKind: true,
+	ListServersKind: true, AuthorizeServerKind: true, OpenAuthKind: true,
 }
 
 // fact marks an event as never dropped. Every event but OutputChunk
