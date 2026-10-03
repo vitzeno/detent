@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -120,21 +119,6 @@ func (m Model) blockLines(b *turnBlock, focused *historyRow) (lines []string, cu
 	lines, cursorAt = m.drawBlock(b, key.focused)
 	b.cache = &blockCache{key: key, lines: lines, cursorAt: cursorAt}
 	return lines, cursorAt
-}
-
-// blockKey carries focused only when the cursor is inside, so a
-// cursor moving elsewhere leaves this block's key alone.
-func (m Model) blockKey(b *turnBlock, focused *historyRow) blockKey {
-	k := blockKey{rev: b.rev, width: m.blockWidth()}
-	if slices.Contains(b.rows, focused) {
-		k.focused = focused
-	}
-	// Every running row draws a spinner too, not just the thinking
-	// line, so the frame is part of the key whenever either shows.
-	if !b.ended && (anyRunning(b) || (b == m.cur && m.waiting)) {
-		k.spinner = m.spinner.View()
-	}
-	return k
 }
 
 // spinnerFrame is the frame a live block is drawing, or "" when none

@@ -34,32 +34,6 @@ func (m Model) detailLines() []string {
 	return strings.Split(m.output.View(), "\n")
 }
 
-// detailKey is everything the output pane's content depends on. set is
-// always true when computed, so the first render is never skipped.
-type detailKey struct {
-	set           bool
-	rev           int
-	width, height int
-	panel         panelKind
-	mode          mode
-	row           *historyRow
-	tableCursor   int
-	focused       bool
-}
-
-func (m Model) detailKey() detailKey {
-	k := detailKey{
-		set: true, rev: m.histRev,
-		width: paneInner(m.layout.outputColW), height: m.output.Height(),
-		panel: m.panel.open, mode: m.mode, row: m.focused(),
-		focused: m.nav.focus == focusOutput,
-	}
-	if k.row != nil {
-		k.tableCursor = k.row.tableCursor
-	}
-	return k
-}
-
 // refreshViewport redraws the output pane when its detailKey changed.
 func (m *Model) refreshViewport() {
 	window, offset := m.historyWindow()

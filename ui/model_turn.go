@@ -41,33 +41,6 @@ type turnBlock struct {
 	cache *blockCache
 }
 
-// blockKey is everything a block's drawing depends on. Comparable, so
-// a hit is one equality check. Miss it and the pane renders stale.
-type blockKey struct {
-	rev, width int
-	focused    *historyRow // nil unless the cursor is in this block
-	spinner    string      // only the live block ever draws one
-}
-
-type blockCache struct {
-	key      blockKey
-	lines    []string
-	cursorAt int
-}
-
-// histKey is everything the assembled history depends on. A scroll
-// only moves the window over it, so it is a hit.
-type histKey struct {
-	rev, width, cursor int
-	spinner            string // only while a block is still live
-}
-
-type histCache struct {
-	key        histKey
-	lines      []string
-	cursorLine int
-}
-
 // historyRow is one tool call, or the model's own words. Exactly one of
 // command and prose is set.
 type historyRow struct {
