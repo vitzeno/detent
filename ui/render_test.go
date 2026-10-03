@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -101,7 +102,8 @@ func TestTildePath_MatchesWholeElements(t *testing.T) {
 		{"/Users/mx/proj", "/Users/m", "/Users/mx/proj"},
 		{"/tmp", "", "/tmp"},
 	} {
-		assert.Equal(t, c.want, tildePath(c.dir, c.home), "%s under %s", c.dir, c.home)
+		dir, home, want := filepath.FromSlash(c.dir), filepath.FromSlash(c.home), filepath.FromSlash(c.want)
+		assert.Equal(t, want, tildePath(dir, home), "%s under %s", dir, home)
 	}
 }
 

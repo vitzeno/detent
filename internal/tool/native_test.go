@@ -80,3 +80,11 @@ func parity(t *testing.T, tl Native, args Args, files map[string]string) {
 	assert.Equal(t, stdout.String(), got.Stdout, "%s %v prints what the sandbox would", tl.Name(), args)
 	assert.Equal(t, code, got.ExitCode, "%s %v exits as the sandbox would", tl.Name(), args)
 }
+
+// posixOnly skips a test of the sandbox's sh side where Windows cannot hold it.
+func posixOnly(t *testing.T, why string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("sandbox behaviour, always Linux: " + why)
+	}
+}

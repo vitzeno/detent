@@ -23,7 +23,8 @@ import (
 // Every phase run() strings together, against a fake endpoint on the host,
 // opens a session, answers one request and records it.
 func TestSession_PhasesRunOneRequestEndToEnd(t *testing.T) {
-	t.Setenv("HOME", t.TempDir()) // the store, the worktree and the views live under it
+	t.Setenv("HOME", t.TempDir())              // the store, the worktree and the views live under it
+	t.Setenv("USERPROFILE", os.Getenv("HOME")) // where Windows looks for home
 	asked := make(chan string, 4)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

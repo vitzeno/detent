@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -59,6 +60,9 @@ func TestTailFile(t *testing.T) {
 }
 
 func TestHeldElsewhere(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no sandbox on Windows, so no process is ever reported live")
+	}
 	host, err := os.Hostname()
 	require.NoError(t, err)
 	cases := []struct {

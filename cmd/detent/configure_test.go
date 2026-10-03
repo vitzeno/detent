@@ -57,6 +57,7 @@ func TestLayer_LoadsWhatTrustApproved(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME")) // where Windows looks for home
 	t.Setenv("DETENT_MODEL", "")
 	require.NoError(t, os.Unsetenv("DETENT_MODEL"))
 	t.Setenv("DETENT_T_APPROVED", "")

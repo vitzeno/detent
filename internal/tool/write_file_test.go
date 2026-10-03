@@ -14,6 +14,7 @@ import (
 // The heredoc has to survive content that attacks it, so this runs the
 // command: what is under test is what `sh` does with it.
 func TestWriteFile_RoundTripsThroughARealShell(t *testing.T) {
+	posixOnly(t, "Git Bash rewrites backslashes and CRLF")
 	bodies := map[string]string{
 		"plain":                "hello\nworld\n",
 		"no trailing newline":  "no newline at the end",
@@ -49,6 +50,7 @@ func TestWriteFile_RoundTripsThroughARealShell(t *testing.T) {
 }
 
 func TestWriteFile_QuotesHostilePaths(t *testing.T) {
+	posixOnly(t, "names like *.txt are not legal paths on Windows")
 	dir := t.TempDir()
 	for _, name := range []string{"a b.txt", "$(touch pwned).txt", "it's.txt", "*.txt"} {
 		path := filepath.Join(dir, name)

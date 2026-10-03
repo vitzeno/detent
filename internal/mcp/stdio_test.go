@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -121,7 +122,8 @@ func stdioServer(t *testing.T, env ...string) *Server {
 // fakeServer builds testdata/fakeserver once. Built rather than
 // skipped, so CI exercises the transport every server arrives on.
 var fakeServer = sync.OnceValues(func() (string, error) {
-	bin := filepath.Join(buildDir, "fakeserver")
+	// Windows runs only what ends in .exe.
+	bin := filepath.Join(buildDir, "fakeserver"+exeSuffix())
 	out, err := exec.Command("go", "build", "-o", bin, "./testdata/fakeserver").CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("building testdata/fakeserver: %w\n%s", err, out)
@@ -139,4 +141,11 @@ func running(t *testing.T, bin string) int {
 		return 0 // pgrep exits non-zero when nothing matches
 	}
 	return len(strings.Fields(string(out)))
+}
+
+func exeSuffix() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
 }

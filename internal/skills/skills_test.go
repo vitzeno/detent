@@ -130,10 +130,10 @@ func TestFind_SkipsAProjectSkillLinkedOutOfTheRepository(t *testing.T) {
 
 func TestRoots_WalkUpToTheRepositoryThenHome(t *testing.T) {
 	repo := tree(t, map[string]string{".git/HEAD": "ref", "sub/x": ""})
-	roots := Roots(filepath.Join(repo, "sub"), "/home/ada")
+	roots := Roots(filepath.Join(repo, "sub"), filepath.FromSlash("/home/ada"))
 	var dirs []string
 	for _, r := range roots {
-		dirs = append(dirs, strings.TrimPrefix(r.Dir, repo))
+		dirs = append(dirs, filepath.ToSlash(strings.TrimPrefix(r.Dir, repo)))
 	}
 	assert.Equal(t, []string{
 		"/sub/.agents/skills", "/sub/.claude/skills", "/.agents/skills", "/.claude/skills",

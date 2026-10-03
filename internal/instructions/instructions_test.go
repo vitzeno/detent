@@ -3,6 +3,7 @@ package instructions
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -23,7 +24,7 @@ func TestFind_WalksUpToTheRepositoryRoot(t *testing.T) {
 
 	files, err := Find(filepath.Join(root, "svc/api/x"), "")
 	require.NoError(t, err)
-	assert.Equal(t, []string{"../../../AGENTS.md", "../../CLAUDE.md", "../AGENTS.md"}, Paths(files))
+	assert.Equal(t, []string{"../../../AGENTS.md", "../../CLAUDE.md", "../AGENTS.md"}, slashed(Paths(files)))
 	assert.Equal(t, "api rules", files[2].Text, "the nearest comes last")
 }
 
@@ -54,7 +55,7 @@ func TestFind_ReadsOnlyItsOwnDirectoryOutsideARepository(t *testing.T) {
 	parent := tree(t, map[string]string{"AGENTS.md": "parent", "child/AGENTS.md": "child"})
 	files, err := Find(filepath.Join(parent, "child"), "")
 	require.NoError(t, err)
-	assert.Equal(t, []string{"AGENTS.md"}, Paths(files))
+	assert.Equal(t, []string{"AGENTS.md"}, slashed(Paths(files)))
 }
 
 // The nearest file matters most, so the budget cuts from the root down.
@@ -103,7 +104,7 @@ func TestFind_ReadsNoLinkOutOfTheRepository(t *testing.T) {
 	files, err := Find(filepath.Join(root, "sub"), "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "outside the repository")
-	assert.Equal(t, []string{"CLAUDE.md"}, Paths(files), "the rest still load")
+	assert.Equal(t, []string{"CLAUDE.md"}, slashed(Paths(files)), "the rest still load")
 
 	require.NoError(t, os.Remove(filepath.Join(root, "AGENTS.md")))
 	require.NoError(t, os.Symlink(filepath.Join("docs", "rules.md"), filepath.Join(root, "AGENTS.md")))
@@ -114,14 +115,14 @@ func TestFind_ReadsNoLinkOutOfTheRepository(t *testing.T) {
 }
 
 func TestFind_OneUnreadableFileKeepsTheRest(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root reads anything")
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
+		t.Skip("root reads anything, and Windows ignores chmod 0")
 	}
 	root := tree(t, map[string]string{".git/HEAD": "ref", "AGENTS.md": "root", "sub/AGENTS.md": "near"})
 	require.NoError(t, os.Chmod(filepath.Join(root, "AGENTS.md"), 0))
 	files, err := Find(filepath.Join(root, "sub"), "")
 	require.Error(t, err)
-	assert.Equal(t, []string{"AGENTS.md"}, Paths(files))
+	assert.Equal(t, []string{"AGENTS.md"}, slashed(Paths(files)))
 	assert.Equal(t, "near", files[0].Text)
 }
 
@@ -138,7 +139,7 @@ func TestFind_WalksUpFromARelativeDirectory(t *testing.T) {
 	t.Chdir(filepath.Join(root, "sub"))
 	files, err := Find(".", "")
 	require.NoError(t, err)
-	assert.Equal(t, []string{"../AGENTS.md", "AGENTS.md"}, Paths(files))
+	assert.Equal(t, []string{"../AGENTS.md", "AGENTS.md"}, slashed(Paths(files)))
 }
 
 func TestPrompt_NamesEachFileAndSaysWhatWasCut(t *testing.T) {
@@ -165,4 +166,13 @@ func tree(t *testing.T, files map[string]string) string {
 		require.NoError(t, os.WriteFile(p, []byte(body), 0o644))
 	}
 	return dir
+}
+
+// slashed spells paths with forward slashes, so expectations read the same on every OS.
+func slashed(paths []string) []string {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		out[i] = filepath.ToSlash(p)
+	}
+	return out
 }

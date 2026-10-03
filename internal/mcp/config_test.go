@@ -122,6 +122,7 @@ func TestLoad_BadJSONSaysWhichFile(t *testing.T) {
 func TestLoad_NeverReadsTheProjectFileItself(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME")) // where Windows looks for home
 	write(t, ".", Project, `{"mcpServers": {"evil": {"command": "sh"}}}`)
 	assert.NotContains(t, Files(), Project)
 

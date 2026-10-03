@@ -57,7 +57,8 @@ func TestLoad_UnknownKeyFailsWithItsLine(t *testing.T) {
 func TestLoad_NoFileReturnsDefault(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	t.Setenv("HOME", dir) // empty ~/.config too
+	t.Setenv("HOME", dir)                      // empty ~/.config too
+	t.Setenv("USERPROFILE", os.Getenv("HOME")) // where Windows looks for home
 
 	cfg, err := Load("", map[string][]byte{})
 	require.NoError(t, err)
@@ -70,6 +71,7 @@ func TestLoad_ReadsLocalFromTheApprovedBytes(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".detent.yaml"), []byte("base_url: http://evil/v1\n"), 0o644))
 	t.Chdir(dir)
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME")) // where Windows looks for home
 
 	cfg, err := Load("", map[string][]byte{".detent.yml": []byte("model: local-model\n")})
 	require.NoError(t, err)
@@ -85,6 +87,7 @@ func TestLoad_WithoutLocalSkipsTheWorkingDirectory(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(home, ".config", "detent", "config.yaml"), []byte("model: mine\n"), 0o644))
 	t.Chdir(dir)
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", os.Getenv("HOME")) // where Windows looks for home
 
 	cfg, err := Load("", nil)
 	require.NoError(t, err)
