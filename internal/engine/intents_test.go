@@ -107,7 +107,7 @@ func TestAbort_WhileTheModelIgnoresItsContext(t *testing.T) {
 	r.bus.Publish(event.SubmitPrompt{Text: "go"})
 	r.await(event.StepStartedKind)
 	r.bus.Publish(event.Abort{})
-	time.Sleep(20 * time.Millisecond)
+	r.dispatched()
 	close(stall)
 
 	end := r.await(event.TurnEndedKind).(event.TurnEnded)

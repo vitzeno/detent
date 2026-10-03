@@ -174,12 +174,7 @@ func rigOn(t *testing.T, bus *event.Bus, fm *fakeModel, runner Runner, sel Runne
 	}
 
 	r := &rig{t: t, bus: bus, eng: eng, model: fm, runner: inner, subs: map[event.Kind][]chan event.Event{}}
-	facts, unsub := bus.Subscribe(event.Facts())
-	go func() {
-		for rec := range facts {
-			r.record(rec.Event)
-		}
-	}()
+	unsub := bus.Handle(event.Facts(), func(rec event.Record) { r.record(rec.Event) })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go eng.Run(ctx)
@@ -242,6 +237,13 @@ func (r *rig) waitNth(k event.Kind, n int) (event.Event, bool) {
 			return nil, false
 		}
 	}
+}
+
+// dispatched waits until the engine has handled every intent published so far.
+// It reads them one at a time, so once it has taken one it ignores, the rest are done.
+func (r *rig) dispatched() {
+	r.bus.Publish(event.ListSessions{})
+	r.bus.Settle(3 * time.Second)
 }
 
 // records is every fact so far as a store would hand them back.

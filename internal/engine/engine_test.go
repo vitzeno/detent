@@ -175,9 +175,9 @@ func TestTurn_RequestStopEndsAtTheNextBoundary(t *testing.T) {
 	r.await(event.ToolCallStartedKind)
 	turn := r.of(event.TurnStartedKind)[0].(event.TurnStarted)
 	r.bus.Publish(event.RequestStop{Turn: turn.Turn, Reason: "the goal looks met"})
-	// Settled before the tool call is let go: the engine reads intents on
+	// Dispatched before the tool call is let go: the engine reads intents on
 	// its own goroutine, so releasing straight away races the hop.
-	r.bus.Settle(3 * time.Second)
+	r.dispatched()
 	close(r.runner.hold)
 
 	end := r.await(event.TurnEndedKind).(event.TurnEnded)
@@ -200,7 +200,7 @@ func TestTurn_PromptMidTurnBecomesANote(t *testing.T) {
 	r.bus.Publish(event.SubmitPrompt{Text: "search the tree"})
 	r.await(event.ToolCallStartedKind)
 	r.bus.Publish(event.SubmitPrompt{Text: "use ripgrep, not find"})
-	r.bus.Settle(3 * time.Second)
+	r.dispatched()
 	close(r.runner.hold)
 
 	r.await(event.TurnEndedKind)

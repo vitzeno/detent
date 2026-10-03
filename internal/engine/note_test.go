@@ -2,7 +2,6 @@ package engine
 
 import (
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -44,7 +43,7 @@ func TestNoteContext_MidTurnWaitsForAStepBoundary(t *testing.T) {
 	r.bus.Publish(event.SubmitPrompt{Text: "search the tree"})
 	r.await(event.ToolCallStartedKind)
 	r.bus.Publish(event.NoteContext{Text: "use ripgrep, not find"})
-	r.bus.Settle(3 * time.Second)
+	r.dispatched()
 	close(r.runner.hold)
 
 	r.await(event.TurnEndedKind)
@@ -75,7 +74,7 @@ func TestNoteContext_MidTurnOpensNoTurn(t *testing.T) {
 	r.bus.Publish(event.SubmitPrompt{Text: "look around"})
 	r.await(event.ToolCallStartedKind)
 	r.bus.Publish(event.NoteContext{Text: "in the ui package"})
-	r.bus.Settle(3 * time.Second)
+	r.dispatched()
 	close(r.runner.hold)
 
 	r.await(event.TurnEndedKind)
