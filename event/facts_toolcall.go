@@ -13,8 +13,8 @@ import (
 // ToolCallProposed is a tool call the model asked for, before anything assesses it.
 type ToolCallProposed struct {
 	fact
-	ToolCall  uuid.UUID      `json:"ToolCall"`
 	Step      uuid.UUID      `json:"Step"`
+	ToolCall  uuid.UUID      `json:"ToolCall"`
 	Tool      string         `json:"Tool"`
 	Args      map[string]any `json:"Args"`
 	Rationale string         `json:"Rationale"`

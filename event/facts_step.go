@@ -19,9 +19,9 @@ type StepEnded struct {
 	fact
 	Turn      uuid.UUID `json:"Turn"`
 	Step      uuid.UUID `json:"Step"`
-	Usage     Usage     `json:"Usage"`
 	ToolCalls int       `json:"ToolCalls"` // how many the model asked for, 0 when it stopped
 	Stop      string    `json:"Stop"`      // the endpoint's reason the reply ended
+	Usage     Usage     `json:"Usage"`
 }
 
 func (StepEnded) Kind() Kind { return StepEndedKind }
