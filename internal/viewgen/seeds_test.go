@@ -1,7 +1,6 @@
 package viewgen
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -82,23 +81,6 @@ func TestPrune_NarrowsGenerationWithoutNarrowingWhatDraws(t *testing.T) {
 	// Against the pruned set it is refused: nothing may name what it was
 	// not offered.
 	assert.Error(t, draws(saved, narrowed, xy))
-}
-
-// Trimming a kind's list is a real saving and a modest one.
-func TestPrune_SchemaShrinksButMostOfItIsFixed(t *testing.T) {
-	size := func(reg *viewspec.Registry) int {
-		b, err := json.Marshal(reg.Schema())
-		require.NoError(t, err)
-		return len(b)
-	}
-	full := viewspec.Standard()
-	table := size(prune(full, KindTable))
-	floor := size(full.Subset("text"))
-
-	assert.Greater(t, table, floor)
-	assert.Greater(t, floor, table/2,
-		"over half the schema is the block and parse shape, not the widget guide, "+
-			"so cutting widgets moves less than it looks like it should")
 }
 
 // A parse kind is a bare string here and an extractor name in viewspec,

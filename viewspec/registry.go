@@ -148,8 +148,8 @@ type Container interface {
 	Arrange(cols [][]string, widths []int, b Block, f Frame) (lines []string, paneAt []int)
 }
 
-// Described is an optional Widget extension carrying that description
-// into Registry.Schema.
+// Described is an optional Widget extension carrying that description to
+// Registry.Describe, which is what the judge is offered.
 type Described interface {
 	Describe() Description
 }
@@ -213,17 +213,5 @@ func (r *Registry) clone() *Registry {
 	out := NewRegistry()
 	maps.Copy(out.widgets, r.widgets)
 	maps.Copy(out.extractors, r.extractors)
-	return out
-}
-
-// describe returns every registered widget's description, keyed by
-// kind. A widget that says nothing is absent.
-func (r *Registry) describe() map[string]Description {
-	out := make(map[string]Description, len(r.widgets))
-	for kind, w := range r.widgets {
-		if d, ok := w.(Described); ok {
-			out[kind] = d.Describe()
-		}
-	}
 	return out
 }

@@ -3,7 +3,6 @@ package viewspec_test
 import (
 	"encoding/json"
 	"errors"
-	"slices"
 	"strings"
 	"testing"
 
@@ -302,26 +301,14 @@ func TestRegistry_IsTheExtensionPoint(t *testing.T) {
 	assert.Error(t, err, "the standard registry is unaffected by another's registrations")
 }
 
-// Register a widget and the schema handed to a model includes it, so the
-// generator cannot drift from the interpreter.
-func TestSchema_DescribesTheRegisteredVocabulary(t *testing.T) {
+// A registered widget is part of the vocabulary at once, beside the built-ins.
+func TestRegistry_ListsWhatIsRegistered(t *testing.T) {
 	reg := viewspec.Standard()
 	require.NoError(t, reg.Widget("hologram", viewspec.WidgetFunc(
 		func(viewspec.Block, viewspec.Data, viewspec.Frame) ([]string, error) { return nil, nil })))
-
-	raw, err := json.Marshal(reg.Schema())
-	require.NoError(t, err)
-	var s map[string]any
-	require.NoError(t, json.Unmarshal(raw, &s))
-
-	blocks := s["properties"].(map[string]any)["blocks"].(map[string]any)
-	kinds := blocks["items"].(map[string]any)["properties"].(map[string]any)["kind"].(map[string]any)["enum"]
-	assert.ElementsMatch(t, toStrings(reg.Kinds()), kinds)
-	assert.Contains(t, toStrings(reg.Kinds()), "hologram")
-
-	parse := s["properties"].(map[string]any)["parse"].(map[string]any)
-	assert.ElementsMatch(t, toStrings(reg.ParseKinds()),
-		parse["properties"].(map[string]any)["kind"].(map[string]any)["enum"])
+	assert.Contains(t, reg.Kinds(), "hologram")
+	assert.Contains(t, reg.Kinds(), "table")
+	assert.Contains(t, reg.ParseKinds(), "columns")
 }
 
 func TestRole_IsNamedOnTheWire(t *testing.T) {
@@ -747,14 +734,12 @@ func TestBar_ScalesToTheLargestValue(t *testing.T) {
 		"bar length tracks the value")
 }
 
-// Every built-in says what it is for and what it is not.
-func TestSchema_EveryBuiltinDescribesItself(t *testing.T) {
+// Every built-in says what it is for and what it is not, or the judge is
+// never offered it.
+func TestRegistry_EveryBuiltinDescribesItself(t *testing.T) {
 	reg := viewspec.Standard()
-	guide := reg.Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)
-	got := guide["const"].(map[string]viewspec.Description)
-
 	for _, kind := range reg.Kinds() {
-		d, ok := got[kind]
+		d, ok := reg.Describe(kind)
 		require.True(t, ok, "%s describes itself", kind)
 		assert.NotEmpty(t, d.What, kind)
 		assert.NotEmpty(t, d.NotFor, "%s names what it is confused with", kind)
@@ -764,8 +749,8 @@ func TestSchema_EveryBuiltinDescribesItself(t *testing.T) {
 	// A widget that says nothing is absent rather than blank.
 	require.NoError(t, reg.Widget("hologram", viewspec.WidgetFunc(
 		func(viewspec.Block, viewspec.Data, viewspec.Frame) ([]string, error) { return nil, nil })))
-	guide = reg.Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)
-	assert.NotContains(t, guide["const"].(map[string]viewspec.Description), "hologram")
+	_, ok := reg.Describe("hologram")
+	assert.False(t, ok)
 }
 
 func TestRow_LaysPanesSideBySide(t *testing.T) {
@@ -846,19 +831,20 @@ func TestRow_RefusesShapesItCannotDraw(t *testing.T) {
 	}
 }
 
-// The schema spells a pane's blocks out rather than pointing back at
-// itself, because a recursive $ref is where strict mode gets thin.
-func TestSchema_PanesAreFiniteAndCannotNest(t *testing.T) {
-	blocks := viewspec.Standard().Schema()["properties"].(map[string]any)["blocks"].(map[string]any)
-	props := blocks["items"].(map[string]any)["properties"].(map[string]any)
+// Nesting stops at one: a pane holds leaves, never another container.
+func TestCompile_ContainersDoNotNest(t *testing.T) {
+	leaf := viewspec.Block{Kind: "list", Field: "line"}
+	pane := func(b viewspec.Block) viewspec.Pane { return viewspec.Pane{Blocks: []viewspec.Block{b}} }
+	ok := viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{{Kind: viewspec.RowKind,
+		Panes: []viewspec.Pane{pane(leaf), pane(leaf)}}}}
+	_, err := viewspec.Compile(ok)
+	require.NoError(t, err, "a top-level row of leaves")
 
-	inner := props["panes"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)["blocks"].(map[string]any)["items"].(map[string]any)
-	assert.NotContains(t, inner["properties"].(map[string]any), "panes",
-		"a pane's blocks have no panes of their own")
-	assert.NotContains(t, inner["properties"].(map[string]any)["kind"].(map[string]any)["enum"],
-		viewspec.RowKind, "and cannot be a row")
-	assert.Contains(t, props["kind"].(map[string]any)["enum"], viewspec.RowKind,
-		"while a top-level block still can")
+	nested := viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{{Kind: viewspec.RowKind,
+		Panes: []viewspec.Pane{pane(leaf), pane(viewspec.Block{Kind: viewspec.RowKind,
+			Panes: []viewspec.Pane{pane(leaf), pane(leaf)}})}}}}
+	_, err = viewspec.Compile(nested)
+	assert.ErrorContains(t, err, "do not nest")
 }
 
 // Any widget drawing one row per record is navigable, so on_enter
@@ -945,9 +931,7 @@ func TestSubset_NarrowsWidgetsAndValidatesAgainstTheSame(t *testing.T) {
 	_, err := viewspec.Compile(spec, viewspec.WithRegistry(reg))
 	require.Error(t, err, "a kind outside the subset will not compile")
 
-	guide := reg.Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)
-	assert.Len(t, guide["const"].(map[string]viewspec.Description), 2,
-		"and the model is only told about what it may use")
+	assert.Len(t, reg.Kinds(), 2, "and only what it may use is described")
 }
 
 // A kind that cannot be drawn without a field says so, and the slot count
@@ -1011,8 +995,10 @@ func TestContainer_IsAnExtensionPoint(t *testing.T) {
 	assert.Equal(t, 4, r.CursorLine, "the container said where its second pane starts")
 
 	// It is a container to every rule, not just to Draw.
-	assert.False(t, slices.Contains(nestedKinds(t, reg), "stacked"),
-		"a container cannot sit inside a pane")
+	_, err = viewspec.Compile(viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{{Kind: viewspec.RowKind,
+		Panes: []viewspec.Pane{{Blocks: []viewspec.Block{{Kind: "list", Field: "pkg"}}}, {Blocks: spec.Blocks}}}}},
+		viewspec.WithRegistry(reg))
+	require.ErrorContains(t, err, "do not nest", "a container cannot sit inside a pane")
 	_, err = viewspec.Compile(viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{
 		{Kind: "stacked", Panes: []viewspec.Pane{{Blocks: []viewspec.Block{{Kind: "log"}}}}}}},
 		viewspec.WithRegistry(reg))
@@ -1196,14 +1182,6 @@ func rowsOf(spec viewspec.Spec, output string) ([]viewspec.Row, error) {
 	return got, nil
 }
 
-func toStrings(in []string) []any {
-	out := make([]any, len(in))
-	for i, s := range in {
-		out[i] = s
-	}
-	return out
-}
-
 // rolePainter makes roles visible to assertions. Plain paints nothing,
 // on purpose, so golden files stay readable.
 type rolePainter struct{ viewspec.Painter }
@@ -1277,16 +1255,6 @@ func (stacked) Arrange(cols [][]string, _ []int, _ viewspec.Block, _ viewspec.Fr
 		lines = append(lines, col...)
 	}
 	return lines, at
-}
-
-// nestedKinds is what a pane may hold, per the schema.
-func nestedKinds(t *testing.T, reg *viewspec.Registry) []string {
-	t.Helper()
-	blocks := reg.Schema()["properties"].(map[string]any)["blocks"].(map[string]any)
-	panes := blocks["items"].(map[string]any)["properties"].(map[string]any)["panes"].(map[string]any)
-	inner := panes["items"].(map[string]any)["properties"].(map[string]any)["blocks"].(map[string]any)
-	kinds := inner["items"].(map[string]any)["properties"].(map[string]any)["kind"].(map[string]any)
-	return kinds["enum"].([]string)
 }
 
 // fieldOrder is the order a table would draw, which is the extractor's

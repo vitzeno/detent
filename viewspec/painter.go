@@ -33,16 +33,6 @@ var roleNames = map[Role]string{
 	RoleDanger:  "danger",
 }
 
-// RoleNames lists every role name, in role order. Registry.Schema uses
-// it so a spec's accent values are constrained to what exists.
-func RoleNames() []string {
-	out := make([]string, 0, len(roleNames))
-	for r := RoleDefault; r <= RoleDanger; r++ {
-		out = append(out, roleNames[r])
-	}
-	return out
-}
-
 func (r Role) String() string {
 	if n, ok := roleNames[r]; ok {
 		return n

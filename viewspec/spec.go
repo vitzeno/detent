@@ -46,7 +46,7 @@ type Data struct {
 }
 
 // Block configures one widget. Kind decides which fields are read. Flat
-// rather than a per-kind union, so strict JSON schema sees one shape.
+// rather than a per-kind union, so every saved spec has one shape.
 type Block struct {
 	Kind string `json:"kind"`
 

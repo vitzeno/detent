@@ -194,7 +194,7 @@ func TestCompose_AnUnknownKindStillHasAVocabulary(t *testing.T) {
 func TestCompose_EveryOfferedWidgetCanBeComposed(t *testing.T) {
 	const columnar = "pkg secs status\na 1.2 ok\nb 3.4 ok\nc 0.5 FAIL\nd 9.9 ok\n" +
 		"e 1.1 ok\nf 2.2 ok\ng 3.3 ok\nh 4.4 ok\n"
-	guide := ui.Registry().Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)["const"].(map[string]viewspec.Description)
+	guide := described(ui.Registry())
 
 	for _, k := range viewgen.Kinds() {
 		if !k.Generate {
@@ -375,7 +375,7 @@ func TestExisting_AShippedViewThatHidesTheOutputIsNotUsed(t *testing.T) {
 func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
 	criteria := viewgen.RenderKindCriteria()
 	require.Len(t, criteria, len(viewgen.Kinds()))
-	guide := ui.Registry().Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)["const"].(map[string]viewspec.Description)
+	guide := described(ui.Registry())
 
 	// The registry detent actually runs with, not viewspec's own: ui
 	// registers markdown on top, and a kind may name it.
@@ -559,6 +559,18 @@ func composer(t *testing.T, say map[string]string) (*viewgen.Generator, *scripte
 
 // firstBody is any widget from the list that draws rows, for a test
 // that needs a body it is not itself about.
+// described is every widget that says what it is for, keyed by kind, which
+// is what the judge is offered.
+func described(reg *viewspec.Registry) map[string]viewspec.Description {
+	out := map[string]viewspec.Description{}
+	for _, k := range reg.Kinds() {
+		if d, ok := reg.Describe(k); ok {
+			out[k] = d
+		}
+	}
+	return out
+}
+
 func firstBody(guide map[string]viewspec.Description, kinds []string) string {
 	for _, k := range kinds {
 		if d, ok := guide[k]; ok && !d.Summarises && k != viewspec.RowKind && k != viewspec.PanelKind {
