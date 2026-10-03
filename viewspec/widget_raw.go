@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// errorLine and warningLine pick the role severityRole paints a whole line in.
 var (
 	errorLine   = regexp.MustCompile(`(?i)\b(error|fail|panic|traceback|exception)\b`)
 	warningLine = regexp.MustCompile(`(?i)\b(warn(ing)?|deprecat|retry)\b`)
