@@ -91,12 +91,12 @@ func TestSignIn_SlashMCPAuthAsksForANewLink(t *testing.T) {
 		{Name: "notion", Auth: event.AuthSignedOut}, {Name: "plain"}}})
 
 	next, cmd := k.m.listServers("/mcp auth notion")
-	k.m = next.(Model)
+	k.m = next
 	runCmd(cmd)
 	assert.Equal(t, event.AuthorizeServer{Server: "notion"}, intent(t, k, event.AuthorizeServerKind))
 
 	next, _ = k.m.listServers("/mcp auth nobody")
-	assert.Contains(t, next.(Model).notice.text, "not a configured MCP server")
+	assert.Contains(t, next.notice.text, "not a configured MCP server")
 }
 
 func TestSignIn_MCPPageSaysWhereEachStands(t *testing.T) {

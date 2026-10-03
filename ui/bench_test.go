@@ -37,8 +37,7 @@ func BenchmarkStressPerEvent(b *testing.B) {
 			b.ReportAllocs()
 			cur := m
 			for b.Loop() {
-				next, _ := cur.Update(msg)
-				cur = next.(Model)
+				cur, _ = cur.update(msg)
 				_ = cur.View()
 			}
 		})
@@ -61,8 +60,7 @@ func BenchmarkStressPerEventScrolledUp(b *testing.B) {
 			b.ReportAllocs()
 			cur := m
 			for b.Loop() {
-				next, _ := cur.Update(msg)
-				cur = next.(Model)
+				cur, _ = cur.update(msg)
 				_ = cur.View()
 			}
 		})
@@ -136,8 +134,7 @@ func BenchmarkUpdateAndView(b *testing.B) {
 			b.ReportAllocs()
 			cur := m
 			for b.Loop() {
-				next, _ := cur.Update(msg)
-				cur = next.(Model)
+				cur, _ = cur.update(msg)
 				_ = cur.View()
 			}
 		})
@@ -162,8 +159,7 @@ func BenchmarkScrollUp(b *testing.B) {
 					cur.nav.cursor = len(cur.rows()) - 1
 					cur.nav.follow = false
 				}
-				next, _ := cur.Update(up)
-				cur = next.(Model)
+				cur, _ = cur.update(up)
 				_ = cur.View()
 			}
 		})
@@ -184,8 +180,7 @@ func BenchmarkScrollFollowing(b *testing.B) {
 			b.ReportAllocs()
 			cur := m
 			for b.Loop() {
-				next, _ := cur.Update(down)
-				cur = next.(Model)
+				cur, _ = cur.update(down)
 				_ = cur.View()
 			}
 		})
@@ -201,8 +196,7 @@ func BenchmarkScrollOutputPane(b *testing.B) {
 			b.ReportAllocs()
 			cur := m
 			for b.Loop() {
-				next, _ := cur.Update(down)
-				cur = next.(Model)
+				cur, _ = cur.update(down)
 				_ = cur.View()
 			}
 		})
@@ -221,8 +215,7 @@ func BenchmarkScrollContextPanel(b *testing.B) {
 			b.ReportAllocs()
 			cur := m
 			for b.Loop() {
-				next, _ := cur.Update(down)
-				cur = next.(Model)
+				cur, _ = cur.update(down)
 				_ = cur.View()
 			}
 		})
@@ -263,8 +256,7 @@ func burst(m Model, call uuid.UUID, n int) Model {
 		for j := i; j < min(i+maxFactBatch, n); j++ {
 			batch = append(batch, chunk(call))
 		}
-		next, _ := m.Update(factMsg{batch})
-		m = next.(Model)
+		m, _ = m.update(factMsg{batch})
 		_ = m.View()
 	}
 	return m

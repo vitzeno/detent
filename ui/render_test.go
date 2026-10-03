@@ -255,8 +255,7 @@ func TestNavUp_PinsTheOffsetOnLeavingFollow(t *testing.T) {
 	m.nav.follow = true
 	m.nav.cursor = len(m.rows()) - 1
 
-	next, _ := m.navUp()
-	got := next.(Model)
+	got, _ := m.navUp()
 	require.False(t, got.nav.follow)
 
 	all, _ := m.historyAll()
@@ -310,8 +309,7 @@ func TestBlockCache_NeverGoesStale(t *testing.T) {
 			m.apply(event.TurnEnded{Turn: m.cur.id, Reason: event.EndAborted})
 		}},
 		{"a prompt is sent", func(m *Model) {
-			next, _ := m.sendPrompt("and again")
-			*m = next.(Model)
+			*m, _ = m.sendPrompt("and again")
 		}},
 		{"an old turn is undone", func(m *Model) { m.apply(event.RolledBack{Turn: turn}) }},
 	}
@@ -552,8 +550,7 @@ func TestDetailCache_ScrollingDoesNotRedraw(t *testing.T) {
 	m.refreshViewport()
 	was := m.detail
 
-	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	got := next.(Model)
+	got, _ := m.update(tea.KeyPressMsg{Code: tea.KeyDown})
 	assert.Equal(t, was, got.detail, "a scroll changed the key, so the content was redrawn")
 }
 
@@ -793,8 +790,7 @@ func TestSlashMCP_OpensThePageAndAsks(t *testing.T) {
 	defer stop()
 
 	m := New(t.Context(), bus, SessionInfo{})
-	next, cmd := m.listServers("/mcp")
-	got := next.(Model)
+	got, cmd := m.listServers("/mcp")
 	assert.Equal(t, panelMCP, got.panel.open)
 
 	require.NotNil(t, cmd)
@@ -810,19 +806,17 @@ func TestSlashMCP_OpensThePageAndAsks(t *testing.T) {
 // esc closes it, the way it closes every other page.
 func TestMCPPage_EscapeCloses(t *testing.T) {
 	m := feed(t, event.SessionStarted{Model: "m"})
-	next, _ := m.listServers("/mcp")
-	got := next.(Model)
+	got, _ := m.listServers("/mcp")
 	require.Equal(t, panelMCP, got.panel.open)
 
 	closed, _ := got.onEscape()
-	assert.Equal(t, panelNone, closed.(Model).panel.open)
+	assert.Equal(t, panelNone, closed.panel.open)
 }
 
 // A checkpoint restores a container but cannot un-file an issue, and
 // doing less than a human expects is the worst thing here.
 func TestUndoPage_NamesWhatItCannotReverse(t *testing.T) {
-	next, _ := undoTurn(t).runUndo("/undo 1")
-	got := next.(Model)
+	got, _ := undoTurn(t).runUndo("/undo 1")
 	page := stripANSI(strings.Join(got.undoLines(), "\n"))
 
 	assert.Contains(t, page, "2 tool call(s) will be undone")
@@ -845,8 +839,7 @@ func TestUndoPage_SaysNothingWhenEverythingReverses(t *testing.T) {
 	m.layout.width, m.layout.height = 150, 45
 	m.sizeViewport()
 
-	next, _ := m.runUndo("/undo 1")
-	shown := next.(Model)
+	shown, _ := m.runUndo("/undo 1")
 	page := stripANSI(strings.Join(shown.undoLines(), "\n"))
 	assert.NotContains(t, page, "cannot be undone")
 	assert.Contains(t, page, "1 tool call(s) will be undone")
@@ -856,8 +849,7 @@ func TestUndoPage_SaysNothingWhenEverythingReverses(t *testing.T) {
 // rather than counting it.
 func TestForgetPage_NamesWhatGoesAndWhatStays(t *testing.T) {
 	m, other := sessionsListed(t)
-	next, _ := m.runForget("/delete the sandbox bug")
-	got := next.(Model)
+	got, _ := m.runForget("/delete the sandbox bug")
 	require.Equal(t, modeForget, got.mode)
 
 	page := stripANSI(strings.Join(got.forgetLines(), "\n"))
@@ -873,8 +865,7 @@ func TestForgetPage_NamesWhatGoesAndWhatStays(t *testing.T) {
 // The running session has its store and container open.
 func TestForgetPage_RefusesTheRunningSession(t *testing.T) {
 	m, _ := sessionsListed(t)
-	next, _ := m.runForget("/delete current")
-	got := next.(Model)
+	got, _ := m.runForget("/delete current")
 
 	assert.NotEqual(t, modeForget, got.mode, "it asked about the running session")
 	assert.Contains(t, got.notice.text, "running session")
@@ -883,8 +874,7 @@ func TestForgetPage_RefusesTheRunningSession(t *testing.T) {
 func TestForgetPage_RefusesWhatItCannotFind(t *testing.T) {
 	m, _ := sessionsListed(t)
 	for _, arg := range []string{"", "no-such-session"} {
-		next, _ := m.runForget("/delete " + arg)
-		got := next.(Model)
+		got, _ := m.runForget("/delete " + arg)
 		assert.NotEqual(t, modeForget, got.mode)
 		assert.NotEmpty(t, got.notice.text)
 	}
@@ -914,12 +904,12 @@ func TestForgetPage_OnlyYDeletes(t *testing.T) {
 			}})
 
 			next, _ := m.runForget("/delete doomed")
-			after, cmd := next.(Model).forgetKey(key.msg)
+			after, cmd := next.forgetKey(key.msg)
 			if cmd != nil {
 				cmd()
 			}
-			assert.Nil(t, after.(Model).forget.target, "%s left it armed", key.name)
-			assert.NotEqual(t, modeForget, after.(Model).mode)
+			assert.Nil(t, after.forget.target, "%s left it armed", key.name)
+			assert.NotEqual(t, modeForget, after.mode)
 
 			// Clearing the state is what cancel and confirm have in
 			// common. Publishing is the only thing that tells them apart.
@@ -946,7 +936,7 @@ func TestForgetPage_YPublishesTheIntent(t *testing.T) {
 	}})
 
 	next, _ := m.runForget("/delete doomed")
-	_, cmd := next.(Model).forgetKey(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	_, cmd := next.forgetKey(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	require.NotNil(t, cmd)
 	cmd()
 

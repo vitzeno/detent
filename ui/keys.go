@@ -11,7 +11,7 @@ import (
 // Keystroke routing. handleKey hands each key to exactly one owner,
 // so no two panes can claim the same key.
 
-func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
 		return m.onQuit("ctrl+c")
 	}
@@ -49,7 +49,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // handlePaste routes pasted text to whoever owns text entry. A paste
 // anywhere else has no meaning, so it is dropped.
-func (m Model) handlePaste(text string) (tea.Model, tea.Cmd) {
+func (m Model) handlePaste(text string) (Model, tea.Cmd) {
 	if text == "" {
 		return m, nil
 	}
@@ -94,7 +94,7 @@ func (m Model) owner() keyOwner {
 }
 
 // onTab completes an open dropdown, otherwise cycles panes.
-func (m Model) onTab() (tea.Model, tea.Cmd) {
+func (m Model) onTab() (Model, tea.Cmd) {
 	if m.mode == modeConfirm {
 		return m, nil
 	}
@@ -106,7 +106,7 @@ func (m Model) onTab() (tea.Model, tea.Cmd) {
 
 // toggleEntry switches the bar between a request and a command.
 // Focus follows, unless a question is up: that still comes first.
-func (m Model) toggleEntry() (tea.Model, tea.Cmd) {
+func (m Model) toggleEntry() (Model, tea.Cmd) {
 	m.entry = entryShell
 	if m.prompt.shell {
 		m.entry = entryPrompt
@@ -121,7 +121,7 @@ func (m Model) toggleEntry() (tea.Model, tea.Cmd) {
 }
 
 // boundKey answers the step bound. The engine is paused, waiting.
-func (m Model) boundKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) boundKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y", "enter":
 		return m.answerBound(true)
@@ -133,7 +133,7 @@ func (m Model) boundKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // confirmKey answers an approval. y waits until the whole command has
 // been on screen, since approving a tail nobody saw is no approval.
-func (m Model) confirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) confirmKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	_, room := m.confirmLines()
 	switch msg.String() {
 	case "y", "Y", "enter":
@@ -158,7 +158,7 @@ func (m Model) confirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // undoKey owns every key while the undo question is up: three
 // outcomes, none of them implicit.
-func (m Model) undoKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) undoKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	// With no files to revert there is one question, not two.
 	if b := m.undo.target; b != nil && !b.files {
 		switch msg.String() {
@@ -195,7 +195,7 @@ func (m Model) undoKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // inputKey gives a focused idle input every keystroke: typing must
 // never trigger navigation. Only pgup/pgdn and enter bypass it.
-func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) inputKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if next, cmd, handled := m.slashKey(msg); handled {
 		return next, cmd
 	}
@@ -215,7 +215,7 @@ func (m Model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // slashKey drives the open dropdown's arrows and enter. Reports
 // handled=false when no dropdown is open.
-func (m Model) slashKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
+func (m Model) slashKey(msg tea.KeyPressMsg) (Model, tea.Cmd, bool) {
 	if !m.prompt.Open() {
 		return m, nil, false
 	}
@@ -236,7 +236,7 @@ func (m Model) slashKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 }
 
 // outputKey acts inside the detail component instead of moving rows.
-func (m Model) outputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) outputKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if r := m.focused(); r != nil && r.signin != nil {
 		if next, cmd, ok := m.signInKey(r.signin, msg.String()); ok {
 			return next, cmd
@@ -269,7 +269,7 @@ func (m Model) outputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) historyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if r := m.focused(); r != nil && r.signin != nil {
 		if next, cmd, ok := m.signInKey(r.signin, msg.String()); ok {
 			return next, cmd
@@ -300,7 +300,7 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // onEscape backs out of the innermost thing first: question, dropdown,
 // panel, output pane, then a running command or request.
-func (m Model) onEscape() (tea.Model, tea.Cmd) {
+func (m Model) onEscape() (Model, tea.Cmd) {
 	if m.mode == modeConfirm {
 		return m.decline()
 	}
@@ -341,7 +341,7 @@ func (m *Model) toggleExpand(r *historyRow) {
 }
 
 // forgetKey answers the delete question. Every key but y cancels.
-func (m Model) forgetKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) forgetKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
 		return m.confirmForget()

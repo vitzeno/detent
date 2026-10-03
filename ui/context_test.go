@@ -50,7 +50,7 @@ func TestContext_OpeningAsksForAMeasurement(t *testing.T) {
 
 	next, cmd := m.runSlash("/context")
 	run(cmd)
-	assert.Equal(t, panelContext, next.(Model).panel.open)
+	assert.Equal(t, panelContext, next.panel.open)
 	select {
 	case <-asked:
 	case <-time.After(2 * time.Second):

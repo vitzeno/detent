@@ -131,14 +131,13 @@ func (m Model) Init() tea.Cmd {
 
 // Update routes the message, then re-syncs the panes once, so no
 // handler has to remember to resize or re-render.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { return m.update(msg) }
+
+// update is Update for callers that want the Model back, not an interface.
+func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	next, cmd := m.route(msg)
-	updated, ok := next.(Model)
-	if !ok {
-		return next, cmd
-	}
-	updated.sizeViewport()
-	return updated, cmd
+	next.sizeViewport()
+	return next, cmd
 }
 
 // Idle reports whether no request is open or awaited. It and RowCount
@@ -148,7 +147,7 @@ func (m Model) Idle() bool { return m.cur == nil && !m.waiting }
 // RowCount is how many rows history holds.
 func (m Model) RowCount() int { return len(m.rows()) }
 
-func (m Model) route(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.layout.width, m.layout.height = msg.Width, msg.Height

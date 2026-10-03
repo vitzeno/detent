@@ -126,7 +126,7 @@ func signInPageLines(s *signInState, width int) []string {
 
 // signInKey is what enter, o and c do on a sign-in row. ok is false
 // for any other key, which the pane handles as usual.
-func (m Model) signInKey(s *signInState, key string) (tea.Model, tea.Cmd, bool) {
+func (m Model) signInKey(s *signInState, key string) (Model, tea.Cmd, bool) {
 	switch key {
 	case "enter", "o":
 		switch s.stage {

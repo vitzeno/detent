@@ -9,7 +9,7 @@ import (
 
 // outputNav moves inside the detail component: the view's own
 // selection when it draws one, viewport lines otherwise.
-func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
+func (m Model) outputNav(d int) (Model, tea.Cmd) {
 	if r := m.focused(); r != nil && !r.running {
 		if b, ok := boundView(r); ok {
 			if n, ok := b.SelectableRows(); ok && n > 0 {
@@ -26,7 +26,7 @@ func (m Model) outputNav(d int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) navUp() (tea.Model, tea.Cmd) {
+func (m Model) navUp() (Model, tea.Cmd) {
 	if m.nav.cursor > 0 {
 		if m.nav.follow {
 			// Following never counted a total, so pin one here.
@@ -39,7 +39,7 @@ func (m Model) navUp() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) navDown() (tea.Model, tea.Cmd) {
+func (m Model) navDown() (Model, tea.Cmd) {
 	rows := m.rows()
 	if m.nav.cursor < len(rows)-1 {
 		m.nav.cursor++
@@ -50,7 +50,7 @@ func (m Model) navDown() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) scrollViewport(key string) (tea.Model, tea.Cmd) {
+func (m Model) scrollViewport(key string) (Model, tea.Cmd) {
 	if key == "pgup" {
 		m.output.HalfPageUp()
 	} else {
@@ -61,7 +61,7 @@ func (m Model) scrollViewport(key string) (tea.Model, tea.Cmd) {
 
 // toggleFocus cycles input → history → output → input. Arrows act in
 // whichever pane is focused.
-func (m Model) toggleFocus() (tea.Model, tea.Cmd) {
+func (m Model) toggleFocus() (Model, tea.Cmd) {
 	switch m.nav.focus {
 	case focusInput:
 		m.nav.focus = focusHistory

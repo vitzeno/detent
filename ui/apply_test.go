@@ -271,8 +271,7 @@ func TestSessions_AreAskedForAndFolded(t *testing.T) {
 
 	m := New(context.Background(), bus, SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
-	next, cmd := m.listSessions("/sessions")
-	m = next.(Model)
+	m, cmd := m.listSessions("/sessions")
 	require.NotNil(t, cmd)
 	cmd()
 
@@ -356,7 +355,7 @@ func TestRename_PublishesTheIntent(t *testing.T) {
 	m.layout.width, m.layout.height = 120, 40
 	m.apply(event.SessionStarted{Session: mine, Recorded: true})
 
-	next, cmd := m.renameSession("/rename the sandbox bug")
+	_, cmd := m.renameSession("/rename the sandbox bug")
 	require.NotNil(t, cmd)
 	cmd()
 
@@ -368,7 +367,6 @@ func TestRename_PublishesTheIntent(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("/rename published nothing")
 	}
-	_ = next
 }
 
 // Naming a session nothing records would not keep, so say so rather
@@ -384,7 +382,7 @@ func TestRename_RefusedWhenNothingIsRecording(t *testing.T) {
 
 	next, cmd := m.renameSession("/rename doomed")
 	assert.Nil(t, cmd, "nothing is published")
-	assert.True(t, next.(Model).notice.bad, "and it says why")
+	assert.True(t, next.notice.bad, "and it says why")
 
 	select {
 	case <-asked:
@@ -399,7 +397,7 @@ func TestRename_NeedsAName(t *testing.T) {
 	m.apply(event.SessionStarted{Recorded: true})
 	next, cmd := m.renameSession("/rename   ")
 	assert.Nil(t, cmd)
-	assert.Contains(t, next.(Model).notice.text, "usage")
+	assert.Contains(t, next.notice.text, "usage")
 }
 
 // The UI must not claim a rename worked: only the store knows, and
@@ -410,7 +408,7 @@ func TestRename_ClaimsNothing(t *testing.T) {
 	m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Recorded: true})
 
 	next, _ := m.renameSession("/rename the sandbox bug")
-	assert.Empty(t, next.(Model).notice.text, "the store says whether it took")
+	assert.Empty(t, next.notice.text, "the store says whether it took")
 }
 
 // Resuming replays the original run's facts, and a notice says

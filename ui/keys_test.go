@@ -128,8 +128,7 @@ func TestKeys_NewResetsWhetherOrNotATurnRuns(t *testing.T) {
 func TestUndo_IsRefusedWhileATurnRuns(t *testing.T) {
 	_, evs := aTurn("slow")
 	m := feed(t, evs...)
-	next, cmd := m.runUndo("/undo")
-	got := next.(Model)
+	got, cmd := m.runUndo("/undo")
 	assert.Nil(t, cmd)
 	assert.Equal(t, modeInput, got.mode, "no page offering what the engine will refuse")
 	assert.Contains(t, got.notice.text, "abort")
@@ -286,9 +285,9 @@ func newKeyed(t *testing.T) *keyed {
 // where the publish happens.
 func (k *keyed) press(t *testing.T, key string) {
 	t.Helper()
-	next, cmd := k.m.Update(tea.KeyPressMsg{
+	var cmd tea.Cmd
+	k.m, cmd = k.m.update(tea.KeyPressMsg{
 		Code: keyCode(key), Text: keyText(key), Mod: keyMod(key)})
-	k.m = next.(Model)
 	runCmd(cmd)
 }
 

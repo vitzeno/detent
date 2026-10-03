@@ -14,7 +14,7 @@ import (
 
 // runForget handles /delete <id or name>. The argument is required:
 // nothing that cannot come back gets a default.
-func (m Model) runForget(input string) (tea.Model, tea.Cmd) {
+func (m Model) runForget(input string) (Model, tea.Cmd) {
 	arg := strings.TrimSpace(strings.TrimPrefix(input, "/delete"))
 	if arg == "" {
 		m.noteErr("usage: /delete <session id or name>")
@@ -48,7 +48,7 @@ func (m Model) forgetTarget(arg string) (*event.SessionSummary, string) {
 }
 
 // confirmForget publishes the intent. The store reports the outcome.
-func (m Model) confirmForget() (tea.Model, tea.Cmd) {
+func (m Model) confirmForget() (Model, tea.Cmd) {
 	s := m.forget.target
 	m.forget.target = nil
 	m.backToInput()
@@ -58,7 +58,7 @@ func (m Model) confirmForget() (tea.Model, tea.Cmd) {
 	return m, m.send(event.DeleteSession{Session: s.ID})
 }
 
-func (m Model) cancelForget() (tea.Model, tea.Cmd) {
+func (m Model) cancelForget() (Model, tea.Cmd) {
 	m.forget.target = nil
 	m.backToInput()
 	return m, nil

@@ -15,7 +15,7 @@ import (
 
 // runUndo handles /undo [n], where n is a request number as history
 // shows it. No argument means the last one that can be undone.
-func (m Model) runUndo(input string) (tea.Model, tea.Cmd) {
+func (m Model) runUndo(input string) (Model, tea.Cmd) {
 	// The engine refuses a rollback mid-Turn, so say so before asking.
 	if m.cur != nil {
 		m.noteErr("a request is running: /abort it first")
@@ -63,7 +63,7 @@ func (m Model) undoTarget(input string) (*turnBlock, string) {
 
 // confirmUndo publishes the intent. revertFiles is the answer to the
 // only question worth asking: its default is the non-destructive one.
-func (m Model) confirmUndo(revertFiles bool) (tea.Model, tea.Cmd) {
+func (m Model) confirmUndo(revertFiles bool) (Model, tea.Cmd) {
 	b := m.undo.target
 	m.undo.target = nil
 	m.backToInput()
@@ -73,7 +73,7 @@ func (m Model) confirmUndo(revertFiles bool) (tea.Model, tea.Cmd) {
 	return m, m.send(event.RequestRollback{Turn: b.id, RevertFiles: revertFiles})
 }
 
-func (m Model) cancelUndo() (tea.Model, tea.Cmd) {
+func (m Model) cancelUndo() (Model, tea.Cmd) {
 	m.undo.target = nil
 	m.backToInput()
 	return m, nil

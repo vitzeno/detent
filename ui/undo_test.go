@@ -39,8 +39,7 @@ func TestUndo_AsksWhatTheCheckpointCovers(t *testing.T) {
 			} {
 				k.m.apply(ev)
 			}
-			next, _ := k.m.runUndo("/undo")
-			k.m = next.(Model)
+			k.m, _ = k.m.runUndo("/undo")
 			require.Equal(t, modeUndo, k.m.mode)
 			assert.Contains(t, k.m.statusHint(), c.hint)
 			assert.Contains(t, stripANSI(strings.Join(k.m.undoLines(), "\n")), c.page)

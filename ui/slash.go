@@ -17,7 +17,7 @@ import (
 type slashCmd struct {
 	Name string
 	Desc string
-	run  func(m Model, input string) (tea.Model, tea.Cmd)
+	run  func(m Model, input string) (Model, tea.Cmd)
 	// answers is set when the outcome comes back over the bus.
 	answers bool
 }
@@ -26,22 +26,22 @@ type slashCmd struct {
 // the registry contains /help, which would be an initialisation cycle.
 func slashCommands() []slashCmd {
 	return []slashCmd{
-		{Name: "/quit", Desc: "quit detent", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/quit", Desc: "quit detent", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.onQuit("/quit")
 		}},
-		{Name: "/abort", Desc: "stop the running request", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/abort", Desc: "stop the running request", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.abortRunning()
 		}},
-		{Name: "/context", Desc: "show what fills the model's context, and what to trim", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/context", Desc: "show what fills the model's context, and what to trim", run: func(m Model, _ string) (Model, tea.Cmd) {
 			next, cmd := m.openPanel(panelContext)
 			// Measured afresh, since a server may have connected since the last Step.
 			return next, tea.Batch(cmd, m.send(event.MeasureContext{}))
 		}},
-		{Name: "/status", Desc: "show what detent is and what it has done", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/status", Desc: "show what detent is and what it has done", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.openPanel(panelStatus)
 		}},
 		{Name: "/sessions", Desc: "list the sessions that can be resumed", run: Model.listSessions},
-		{Name: "/skills", Desc: "show the skills this session found", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/skills", Desc: "show the skills this session found", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.openPanel(panelSkills)
 		}},
 		{Name: "/mcp", Desc: "show the MCP servers, or /mcp auth <server> to sign in again", run: Model.listServers},
@@ -51,13 +51,13 @@ func slashCommands() []slashCmd {
 		{Name: "/delete", Desc: "delete a stored session, e.g. /delete the sandbox bug",
 			run: Model.runForget, answers: true},
 		{Name: "/shell", Desc: "type commands instead of requests (shift+tab)",
-			run: func(m Model, _ string) (tea.Model, tea.Cmd) {
+			run: func(m Model, _ string) (Model, tea.Cmd) {
 				return m.toggleEntry()
 			}},
-		{Name: "/new", Desc: "forget the conversation and start over", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/new", Desc: "forget the conversation and start over", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.startOver()
 		}},
-		{Name: "/help", Desc: "show slash commands", run: func(m Model, _ string) (tea.Model, tea.Cmd) {
+		{Name: "/help", Desc: "show slash commands", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.openPanel(panelHelp)
 		}},
 	}
@@ -78,14 +78,14 @@ func skillCommands(skills []event.SkillSummary) []slashCmd {
 		}
 		skill := s.Name
 		out = append(out, slashCmd{Name: name, Desc: "skill: " + s.Description,
-			run: func(m Model, input string) (tea.Model, tea.Cmd) { return m.useSkill(skill, input) }})
+			run: func(m Model, input string) (Model, tea.Cmd) { return m.useSkill(skill, input) }})
 	}
 	return out
 }
 
 // useSkill asks the model to load a skill, so a skill asked for by hand
 // is a call to the skill tool like any other, and replays as one.
-func (m Model) useSkill(name, input string) (tea.Model, tea.Cmd) {
+func (m Model) useSkill(name, input string) (Model, tea.Cmd) {
 	text := "Load the " + name + " skill and follow it."
 	if _, rest, ok := strings.Cut(strings.TrimSpace(input), " "); ok && strings.TrimSpace(rest) != "" {
 		text += " The request: " + strings.TrimSpace(rest)
@@ -94,7 +94,7 @@ func (m Model) useSkill(name, input string) (tea.Model, tea.Cmd) {
 }
 
 // runSlash dispatches input to the command its first word names.
-func (m Model) runSlash(input string) (tea.Model, tea.Cmd) {
+func (m Model) runSlash(input string) (Model, tea.Cmd) {
 	c, ok := lookupSlash(input, m.skillCmds)
 	if !ok {
 		m.noteErr("unknown command " + input + " (try /help)")
@@ -103,14 +103,13 @@ func (m Model) runSlash(input string) (tea.Model, tea.Cmd) {
 	next, cmd := c.run(m, input)
 	// Nothing is claimed for a command that has not finished: one that
 	// opened a question, or one whose reply comes over the bus.
-	if nm, isModel := next.(Model); isModel && nm.notice.text == "" && nm.mode == modeInput && !c.answers {
-		nm.noteOK(c.Name)
-		return nm, cmd
+	if next.notice.text == "" && next.mode == modeInput && !c.answers {
+		next.noteOK(c.Name)
 	}
 	return next, cmd
 }
 
-func (m Model) acceptSlash() (tea.Model, tea.Cmd) {
+func (m Model) acceptSlash() (Model, tea.Cmd) {
 	m.prompt.Accept()
 	return m, nil
 }

@@ -26,7 +26,7 @@ func TestQuit_AsksOnlyWhileARequestIsRunning(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := feed(t, tt.evs...)
-			_, cmd := m.Update(ctrlC)
+			_, cmd := m.update(ctrlC)
 			assert.Equal(t, tt.wantsUp, quits(cmd))
 		})
 	}
@@ -36,12 +36,11 @@ func TestQuit_AsksOnlyWhileARequestIsRunning(t *testing.T) {
 func TestQuit_TheSecondPressGoes(t *testing.T) {
 	m := feed(t, runningTurn()...)
 
-	next, cmd := m.Update(ctrlC)
-	m = next.(Model)
+	m, cmd := m.update(ctrlC)
 	require.False(t, quits(cmd))
 	assert.Contains(t, m.notice.text, "again to quit", "nothing told them it was asking")
 
-	_, cmd = m.Update(ctrlC)
+	_, cmd = m.update(ctrlC)
 	assert.True(t, quits(cmd), "the second ctrl+c did not quit")
 }
 
@@ -50,9 +49,9 @@ func TestQuit_TheSecondPressGoes(t *testing.T) {
 func TestQuit_AnotherKeyTakesItBack(t *testing.T) {
 	m := feed(t, runningTurn()...)
 
-	next, _ := m.Update(ctrlC)
-	next, _ = next.(Model).Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
-	_, cmd := next.(Model).Update(ctrlC)
+	next, _ := m.update(ctrlC)
+	next, _ = next.update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	_, cmd := next.update(ctrlC)
 
 	assert.False(t, quits(cmd), "a quit asked for and typed past still went through")
 }
@@ -61,8 +60,7 @@ func TestQuit_AnotherKeyTakesItBack(t *testing.T) {
 func TestQuit_TheSlashCommandAsksToo(t *testing.T) {
 	m := feed(t, runningTurn()...)
 
-	next, cmd := m.runSlash("/quit")
-	m = next.(Model)
+	m, cmd := m.runSlash("/quit")
 	assert.False(t, quits(cmd), "/quit quit mid-request without asking")
 	assert.Contains(t, m.notice.text, "/quit again to quit")
 }

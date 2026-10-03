@@ -210,8 +210,8 @@ func TestShell_TheSpinnerTurnsForTheirCommandToo(t *testing.T) {
 	require.False(t, m.waiting, "no Turn is running, so waiting alone would freeze it")
 
 	before := m.spinner.View()
-	next, cmd := m.Update(spinner.TickMsg{})
-	assert.NotEqual(t, before, next.(Model).spinner.View(), "the frame moved on")
+	next, cmd := m.update(spinner.TickMsg{})
+	assert.NotEqual(t, before, next.spinner.View(), "the frame moved on")
 	assert.NotNil(t, cmd, "and the chain carries on by itself")
 }
 

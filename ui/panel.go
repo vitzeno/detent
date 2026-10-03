@@ -16,7 +16,7 @@ import (
 // The read-only pages about the session rather than one call. An
 // overlay, not a block, so opening one leaves history alone.
 
-func (m Model) openPanel(k panelKind) (tea.Model, tea.Cmd) {
+func (m Model) openPanel(k panelKind) (Model, tea.Cmd) {
 	m.panel.open = k
 	m.nav.focus = focusOutput
 	m.output.GotoTop()
