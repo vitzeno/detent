@@ -17,6 +17,17 @@ var multiplexers = map[string]bool{
 	"apt": true, "pip": true, "systemctl": true,
 }
 
+var unsafeName = regexp.MustCompile(`[^a-z0-9]+`)
+
+// Key identifies a saved view. The judged kind is part of it because
+// "ls" is a file_listing and "ls -la" a table, which cannot share a parse.
+func Key(command string, kind event.RenderKind) string {
+	shape := Normalise(command)
+	sum := sha256.Sum256([]byte(shape + "\x00" + string(kind)))
+	name := unsafeName.ReplaceAllString(strings.ToLower(shape+"-"+string(kind)), "-")
+	return strings.Trim(name, "-") + "-" + hex.EncodeToString(sum[:4])
+}
+
 // Normalise reduces a command to its shape, so "git status
 // --porcelain=v1 --branch" and "git status -sb" share one view.
 func Normalise(command string) string {
@@ -38,15 +49,4 @@ func Normalise(command string) string {
 		return name + " " + f
 	}
 	return name
-}
-
-var unsafeName = regexp.MustCompile(`[^a-z0-9]+`)
-
-// Key identifies a saved view. The judged kind is part of it because
-// "ls" is a file_listing and "ls -la" a table, which cannot share a parse.
-func Key(command string, kind event.RenderKind) string {
-	shape := Normalise(command)
-	sum := sha256.Sum256([]byte(shape + "\x00" + string(kind)))
-	name := unsafeName.ReplaceAllString(strings.ToLower(shape+"-"+string(kind)), "-")
-	return strings.Trim(name, "-") + "-" + hex.EncodeToString(sum[:4])
 }

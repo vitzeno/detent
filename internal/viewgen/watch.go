@@ -10,6 +10,13 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
+// maxComposing caps concurrent composition.
+const maxComposing = 2
+
+// composeTimeout bounds one view, waiting for a slot included. The row
+// already draws a fallback, so a view this late is not worth the wait.
+const composeTimeout = 30 * time.Second
+
 // Watch composes a view per judged tool call and per user command. A subscriber, so
 // a redraw cannot fire a second model call: a redraw is not an event.
 // Cancelling ctx abandons compositions in flight, as the stop does.
@@ -31,21 +38,6 @@ func (g *Generator) Watch(ctx context.Context, bus *event.Bus) func() {
 	}
 }
 
-// pending is what is known about one tool call so far: the command, output
-// and judged kind arrive in three separate facts.
-type pending struct {
-	command string
-	result  *event.Result
-	kind    event.RenderKind
-}
-
-// maxComposing caps concurrent composition.
-const maxComposing = 2
-
-// composeTimeout bounds one view, waiting for a slot included. The row
-// already draws a fallback, so a view this late is not worth the wait.
-const composeTimeout = 30 * time.Second
-
 type watcher struct {
 	gen *Generator
 	bus *event.Bus
@@ -58,6 +50,14 @@ type watcher struct {
 	// slots holds maxComposing: parallel tool calls finish together and each
 	// costs a judge round trip.
 	slots chan struct{}
+}
+
+// pending is what is known about one tool call so far: the command, output
+// and judged kind arrive in three separate facts.
+type pending struct {
+	command string
+	result  *event.Result
+	kind    event.RenderKind
 }
 
 func (w *watcher) take(e event.Event) {

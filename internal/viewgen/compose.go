@@ -13,6 +13,9 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
+// maxBadges is the most distinct values a count summary is drawn for.
+const maxBadges = 12
+
 // Compose builds a spec by asking the judge closed questions and
 // assembling the answers, so it cannot name anything that does not exist.
 func (g *Generator) Compose(ctx context.Context, req Request) (Result, error) {
@@ -368,6 +371,3 @@ func repeats(p viewspec.Parse, output, field string) bool {
 	}
 	return len(seen) <= maxBadges && len(seen)*2 <= len(rows)
 }
-
-// maxBadges is the most distinct values a count summary is drawn for.
-const maxBadges = 12

@@ -8,9 +8,6 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// meter, stat, text and dots are in no list: each needs a filter, a
-// title or an accent map that a field choice cannot supply.
-
 // Kind describes one output shape. One table defines each one's criteria,
 // widgets and worth, so the three cannot drift.
 type Kind struct {
@@ -53,6 +50,9 @@ func RenderKindQuestion() classify.Question {
 		Choice:       &classify.ChoiceQuestion{Criteria: RenderKindCriteria()},
 	}
 }
+
+// meter, stat, text and dots are in no list: each needs a filter, a
+// title or an accent map that a field choice cannot supply.
 
 var kinds = []Kind{
 	{

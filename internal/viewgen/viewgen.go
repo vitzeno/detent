@@ -18,6 +18,34 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
+// MaxJudgeBytes caps the output shown to the judge. A choice about
+// shape needs a sample, not the whole thing.
+const MaxJudgeBytes = 4 * 1024
+
+// MinLinesToCompose is the text below which no view is worth asking about.
+const MinLinesToCompose = 8
+
+// MinRecordsToCompose is the same for records, which earn a view far
+// sooner: kubectl get nodes is seven lines, and minified JSON is one.
+const MinRecordsToCompose = 3
+
+// ErrNotWorth means this output has no view worth a judge call: a few
+// lines, or a shape already drawn well. Not a failure.
+var ErrNotWorth = errors.New("viewgen: nothing to gain from a view here")
+
+// ErrNoneFit means nothing was composed: the judge declined, or did
+// not answer, or what it chose could not draw this output.
+var ErrNoneFit = errors.New("viewgen: nothing composed fit the output")
+
+var (
+	// ErrNoJudge says composition was asked for without a judge.
+	ErrNoJudge = errors.New("viewgen: composing a view needs a judge")
+
+	errJudgeSilent   = errors.New("the judge did not answer")
+	errNothingToDraw = errors.New("no structure worth extracting")
+	errHides         = errors.New("the view hides most of the output")
+)
+
 // Generator composes specs. Without a Judge there is no composition,
 // and a nil Store disables caching.
 type Generator struct {
@@ -27,6 +55,12 @@ type Generator struct {
 	// Unjudged says nothing publishes CallJudged, so Watch resolves a tool call
 	// when it ends rather than waiting for a verdict that never comes.
 	Unjudged bool
+}
+
+// Judge is what composition asks its questions of. classify.JevJudge
+// satisfies it, and a test can script one.
+type Judge interface {
+	Ask(ctx context.Context, state classify.State, questions classify.Questions) (classify.Answers, classify.Usage, error)
 }
 
 // Request is one command's outcome, as the generator sees it.
@@ -60,25 +94,6 @@ const (
 	// SourceGenerated was composed by the judge just now.
 	SourceGenerated Source = "generated"
 )
-
-// MaxJudgeBytes caps the output shown to the judge. A choice about
-// shape needs a sample, not the whole thing.
-const MaxJudgeBytes = 4 * 1024
-
-// MinLinesToCompose is the text below which no view is worth asking about.
-const MinLinesToCompose = 8
-
-// MinRecordsToCompose is the same for records, which earn a view far
-// sooner: kubectl get nodes is seven lines, and minified JSON is one.
-const MinRecordsToCompose = 3
-
-// ErrNotWorth means this output has no view worth a judge call: a few
-// lines, or a shape already drawn well. Not a failure.
-var ErrNotWorth = errors.New("viewgen: nothing to gain from a view here")
-
-// ErrNoneFit means nothing was composed: the judge declined, or did
-// not answer, or what it chose could not draw this output.
-var ErrNoneFit = errors.New("viewgen: nothing composed fit the output")
 
 // Existing returns a spec already written, calling nothing: the store
 // first, so a human's edit beats what detent ships. All of views: saved.
@@ -134,6 +149,13 @@ func (g *Generator) usable(ctx context.Context, req Request, spec *viewspec.Spec
 	return true
 }
 
+func (g *Generator) registry() *viewspec.Registry {
+	if g.Registry != nil {
+		return g.Registry
+	}
+	return viewspec.Standard()
+}
+
 // worthAsking reports whether this output earns a judge call. Shape
 // decides most of it, length the rest.
 func worthAsking(req Request) bool {
@@ -153,13 +175,6 @@ func skipReason(req Request) string {
 		return fmt.Sprintf("under %d records", MinRecordsToCompose)
 	}
 	return fmt.Sprintf("under %d lines", MinLinesToCompose)
-}
-
-func (g *Generator) registry() *viewspec.Registry {
-	if g.Registry != nil {
-		return g.Registry
-	}
-	return viewspec.Standard()
 }
 
 // draws is validate without the decoding, for a spec already in hand.
