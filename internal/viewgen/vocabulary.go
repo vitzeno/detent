@@ -2,7 +2,6 @@ package viewgen
 
 import (
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/vitzeno/detent/internal/classify"
@@ -81,9 +80,6 @@ var parseCriteria = map[string]any{
 		"not_for": "output with any repeating shape at all; prefer a real parse kind",
 	},
 }
-
-// logger is what a composer records through.
-type logger = *slog.Logger
 
 // describe reads what each registered widget says about itself.
 func describe(reg *viewspec.Registry) map[string]viewspec.Description {

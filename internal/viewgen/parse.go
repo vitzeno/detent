@@ -9,10 +9,14 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-const maxPositional = 12
+const (
+	// maxPositional caps the columns a headerless table is named for.
+	maxPositional = 12
+	// sampleRows is how many rows show the judge what each field holds.
+	sampleRows = 3
+)
 
-const sampleRows = 3
-
+// twoSpaced splits a header on the runs of spaces between its titles.
 var twoSpaced = regexp.MustCompile(`\s{2,}`)
 
 // headerLine is the line the header question identified, or "" when it

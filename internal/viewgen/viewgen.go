@@ -18,26 +18,28 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-// MaxJudgeBytes caps the output shown to the judge. A choice about
-// shape needs a sample, not the whole thing.
-const MaxJudgeBytes = 4 * 1024
+const (
+	// MaxJudgeBytes caps the output shown to the judge. A choice about
+	// shape needs a sample, not the whole thing.
+	MaxJudgeBytes = 4 * 1024
 
-// MinLinesToCompose is the text below which no view is worth asking about.
-const MinLinesToCompose = 8
+	// MinLinesToCompose is the text below which no view is worth asking about.
+	MinLinesToCompose = 8
 
-// MinRecordsToCompose is the same for records, which earn a view far
-// sooner: kubectl get nodes is seven lines, and minified JSON is one.
-const MinRecordsToCompose = 3
-
-// ErrNotWorth means this output has no view worth a judge call: a few
-// lines, or a shape already drawn well. Not a failure.
-var ErrNotWorth = errors.New("viewgen: nothing to gain from a view here")
-
-// ErrNoneFit means nothing was composed: the judge declined, or did
-// not answer, or what it chose could not draw this output.
-var ErrNoneFit = errors.New("viewgen: nothing composed fit the output")
+	// MinRecordsToCompose is the same for records, which earn a view far
+	// sooner: kubectl get nodes is seven lines, and minified JSON is one.
+	MinRecordsToCompose = 3
+)
 
 var (
+	// ErrNotWorth means this output has no view worth a judge call: a few
+	// lines, or a shape already drawn well. Not a failure.
+	ErrNotWorth = errors.New("viewgen: nothing to gain from a view here")
+
+	// ErrNoneFit means nothing was composed: the judge declined, or did
+	// not answer, or what it chose could not draw this output.
+	ErrNoneFit = errors.New("viewgen: nothing composed fit the output")
+
 	// ErrNoJudge says composition was asked for without a judge.
 	ErrNoJudge = errors.New("viewgen: composing a view needs a judge")
 

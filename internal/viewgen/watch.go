@@ -10,12 +10,14 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// maxComposing caps concurrent composition.
-const maxComposing = 2
+const (
+	// maxComposing caps concurrent composition.
+	maxComposing = 2
 
-// composeTimeout bounds one view, waiting for a slot included. The row
-// already draws a fallback, so a view this late is not worth the wait.
-const composeTimeout = 30 * time.Second
+	// composeTimeout bounds one view, waiting for a slot included. The row
+	// already draws a fallback, so a view this late is not worth the wait.
+	composeTimeout = 30 * time.Second
+)
 
 // Watch composes a view per judged tool call and per user command. A subscriber, so
 // a redraw cannot fire a second model call: a redraw is not an event.
@@ -38,6 +40,7 @@ func (g *Generator) Watch(ctx context.Context, bus *event.Bus) func() {
 	}
 }
 
+// watcher is the state Watch's handler keeps between facts.
 type watcher struct {
 	gen *Generator
 	bus *event.Bus

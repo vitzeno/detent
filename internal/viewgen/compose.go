@@ -3,6 +3,7 @@ package viewgen
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -80,7 +81,7 @@ func (g *Generator) shipped(ctx context.Context, req Request, key string) (Resul
 type composer struct {
 	g     *Generator
 	req   Request
-	log   logger
+	log   *slog.Logger
 	asked int
 	used  event.Usage
 }

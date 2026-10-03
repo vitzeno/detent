@@ -27,7 +27,8 @@ type Kind struct {
 	Records bool
 }
 
-// Kinds lists every output shape, in the order they are described.
+// Kinds lists every output shape, in the order they are described. The
+// Widgets and Examples slices are shared with the package, so read only.
 func Kinds() []Kind { return slices.Clone(kinds) }
 
 // RenderKindCriteria is what Jev classifies output against, built from the
@@ -51,9 +52,8 @@ func RenderKindQuestion() classify.Question {
 	}
 }
 
-// meter, stat, text and dots are in no list: each needs a filter, a
+// kinds leaves out meter, stat, text and dots: each needs a filter, a
 // title or an accent map that a field choice cannot supply.
-
 var kinds = []Kind{
 	{
 		Name:     event.RendersText,
