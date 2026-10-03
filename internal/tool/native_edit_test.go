@@ -90,3 +90,19 @@ func TestEditFile_NativeRefusesWhatLowerRefuses(t *testing.T) {
 		assert.Contains(t, got.Stderr, err.Error(), name)
 	}
 }
+
+// read_file shows a CRLF file without its \r, so the model's old_string has
+// none. The edit must still find it, and keep the file's CRLF endings.
+func TestEditFile_NativeEditsACRLFFileFromWhatReadFileShowed(t *testing.T) {
+	t.Chdir(t.TempDir())
+	require.NoError(t, os.WriteFile("win.txt", []byte("alpha\r\nbeta\r\ngamma\r\n"), 0o600))
+
+	shown := ReadFile{}.Run(t.Context(), Args{"path": "win.txt"}).Stdout
+	require.Equal(t, "alpha\nbeta\ngamma\n", shown, "what the model reads")
+
+	got := EditFile{}.Run(t.Context(), Args{"path": "win.txt", "old_string": "alpha\nbeta\n", "new_string": "alpha\nBETA\n"})
+	require.Zero(t, got.ExitCode, got.Stderr)
+	b, err := os.ReadFile("win.txt")
+	require.NoError(t, err)
+	assert.Equal(t, "alpha\r\nBETA\r\ngamma\r\n", string(b), "the file keeps CRLF, new text included")
+}

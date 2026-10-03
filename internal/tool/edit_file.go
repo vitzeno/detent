@@ -70,6 +70,9 @@ func (EditFile) Run(ctx context.Context, a Args) capture.Result {
 	}
 	before := string(b)
 	n := strings.Count(before, old)
+	if n == 0 {
+		old, repl, n = asCRLF(before, old, repl)
+	}
 	switch {
 	case n == 0:
 		return failed(255, "edit_file: old_string is not in %s", p)
@@ -126,4 +129,17 @@ func perlStatus(err error) int {
 		return int(errno)
 	}
 	return 255
+}
+
+// asCRLF retries a missed match in a CRLF file with the model's \n as \r\n, since
+// read_file shows such a file without its \r. The new text gets CRLF to match.
+func asCRLF(before, old, repl string) (string, string, int) {
+	if !strings.Contains(before, "\r\n") || !strings.Contains(old, "\n") || strings.Contains(old, "\r\n") {
+		return old, repl, 0
+	}
+	crlf := func(s string) string { return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n") }
+	if n := strings.Count(before, crlf(old)); n > 0 {
+		return crlf(old), crlf(repl), n
+	}
+	return old, repl, 0
 }
