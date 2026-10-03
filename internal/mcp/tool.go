@@ -91,9 +91,8 @@ func cut(s string, n int) string {
 	return s[:n]
 }
 
-// rawSchema keeps the server's schema as it came. An unusable one
-// becomes "no parameters", which is what the spec recommends anyway.
-// A non-object one is unusable: an endpoint refuses the whole request.
+// rawSchema keeps the server's schema as it came. One that is not an object,
+// which an endpoint refuses outright, becomes "no parameters" instead.
 func rawSchema(in any) map[string]any {
 	if m, ok := in.(map[string]any); ok && m["type"] == "object" {
 		return m

@@ -16,9 +16,8 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// Tokens keeps each sign-in on disk, one 0600 file per server name and
-// URL, so a config reusing a name elsewhere never receives the token.
-// Not the keychain: that costs cgo or a shell-out per platform.
+// Tokens keeps each sign-in on disk, one 0600 file per name and URL, not
+// the keychain: that costs cgo or a shell-out per platform.
 type Tokens struct{ Dir string }
 
 // Saved is what a sign-in leaves: the client registered for it and the
