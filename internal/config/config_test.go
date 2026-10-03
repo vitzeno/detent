@@ -49,9 +49,7 @@ func TestLoad_BadYAMLErrors(t *testing.T) {
 
 func TestLoad_NoFileReturnsDefault(t *testing.T) {
 	dir := t.TempDir()
-	cwd, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer func() { _ = os.Chdir(cwd) }()
+	t.Chdir(dir)
 	t.Setenv("HOME", dir) // empty ~/.config too
 
 	cfg, err := Load("")
@@ -62,14 +60,58 @@ func TestLoad_NoFileReturnsDefault(t *testing.T) {
 func TestLoad_FindsLocalFile(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".detent.yaml"), []byte("model: local-model\n"), 0o644))
-	cwd, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer func() { _ = os.Chdir(cwd) }()
+	t.Chdir(dir)
 	t.Setenv("HOME", t.TempDir())
 
 	cfg, err := Load("")
 	require.NoError(t, err)
 	assert.Equal(t, "local-model", cfg.Model)
+}
+
+// A misspelt key used to load as nothing at all, which is a setting the user thinks is on.
+func TestLoad_UnknownKeyFailsWithItsLine(t *testing.T) {
+	_, err := Load(writeTemp(t, "model: m\nsandbox_mod: host\n"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sandbox_mod")
+	assert.Contains(t, err.Error(), "line 2")
+}
+
+func TestLoad_EmptyFileIsDefault(t *testing.T) {
+	cfg, err := Load(writeTemp(t, ""))
+	require.NoError(t, err)
+	assert.Equal(t, Default(), cfg)
+}
+
+func TestValidate_ReportsEveryBadValue(t *testing.T) {
+	require.NoError(t, Default().Validate())
+
+	bad := Default()
+	bad.SandboxMode = "docker"
+	bad.SandboxNetwork = "bridge"
+	bad.Views = "generte"
+	bad.LogLevel = "verbose"
+	bad.RiskThreshold = 1.5
+	bad.Steps = -1
+	bad.ContextTokens = -1
+	bad.CommandTimeout = "soon"
+	err := bad.Validate()
+	require.Error(t, err)
+	for _, want := range []string{"docker", "bridge", "generte", "verbose", "1.5", "steps", "context_tokens", "soon"} {
+		assert.Contains(t, err.Error(), want)
+	}
+
+	gen := Default()
+	gen.Views = ViewsGenerate
+	require.ErrorContains(t, gen.Validate(), "jev_api_key")
+	gen.JevAPIKey = "k"
+	assert.NoError(t, gen.Validate())
+}
+
+func TestLogValue_MasksTheKeys(t *testing.T) {
+	c := Config{APIKey: "sk-secret", JevAPIKey: "sk-jev", Headers: map[string]string{"Authorization": "Bearer sk-h"}, Model: "m"}
+	got := c.LogValue().String()
+	assert.NotContains(t, got, "sk-")
+	assert.Contains(t, got, "m")
 }
 
 func TestLoad_Headers(t *testing.T) {
@@ -87,7 +129,7 @@ func TestLoad_JudgeFields(t *testing.T) {
 	assert.Equal(t, "sk-jev", cfg.JevAPIKey)
 	assert.Equal(t, "jev-9.9.9", cfg.JevModel)
 	assert.Equal(t, "http://x/v1", cfg.JevEndpoint)
-	assert.Equal(t, 0.7, cfg.RiskThreshold)
+	assert.InDelta(t, 0.7, cfg.RiskThreshold, 1e-9)
 }
 
 func TestLoad_Theme(t *testing.T) {

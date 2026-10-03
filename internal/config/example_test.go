@@ -25,8 +25,8 @@ func TestExample_NamesEveryKeyAndNoOthers(t *testing.T) {
 
 	want := map[string]bool{}
 	fields := reflect.TypeOf(Config{})
-	for i := range fields.NumField() {
-		if tag := fields.Field(i).Tag.Get("yaml"); tag != "" && tag != "-" {
+	for field := range fields.Fields() {
+		if tag := field.Tag.Get("yaml"); tag != "" && tag != "-" {
 			want[strings.Split(tag, ",")[0]] = true
 		}
 	}
@@ -50,16 +50,12 @@ func TestExample_CopiedWholesaleChangesNothing(t *testing.T) {
 	file, err := Load(path)
 	require.NoError(t, err)
 
-	t.Setenv("DETENT_BASE_URL", "")
-	t.Setenv("DETENT_MODEL", "")
-	t.Setenv("DETENT_API_KEY", "")
-	t.Setenv("OPENROUTER_API_KEY", "")
-	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("TYPESAFE_API_KEY", "")
-	t.Setenv("DETENT_THEME", "")
-	t.Setenv("DETENT_CONTEXT_TOKENS", "")
+	clearEnv(t)
 
 	withFile := Resolve(file, Config{}, -1)
 	withNone := Resolve(Config{}, Config{}, -1)
+	// log_bodies: false is the default spelled out, not a change.
+	assert.False(t, withFile.LogsBodies())
+	withFile.LogBodies = nil
 	assert.Equal(t, withNone, withFile)
 }

@@ -4,9 +4,16 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -44,15 +51,15 @@ type Config struct {
 	// LogLevel is "debug", "info", "warn" or "error".
 	LogLevel string `yaml:"log_level"`
 	// LogBodies lets prompts, replies and command output into the log.
-	// Off by default: they carry secrets and bulk.
-	LogBodies bool `yaml:"log_bodies"`
+	// Off by default: they carry secrets and bulk. A pointer so env can turn off what the file turned on.
+	LogBodies *bool `yaml:"log_bodies"`
 	// LogDir holds one JSONL file per session, empty for logging.DefaultDir.
 	LogDir string `yaml:"log_dir"`
 
 	// Views is ViewsSaved or ViewsGenerate.
 	Views string `yaml:"views"`
 
-	// SandboxMode is "auto" or "host", unvalidated here like Theme.
+	// SandboxMode is SandboxAuto or SandboxHost.
 	SandboxMode string `yaml:"sandbox_mode"`
 	// SandboxSocket overrides the OS-conventional containerd socket.
 	SandboxSocket  string `yaml:"sandbox_socket"`
@@ -66,6 +73,65 @@ type Config struct {
 
 // FinishChecks is FinishCheck with its default, on.
 func (c Config) FinishChecks() bool { return c.FinishCheck == nil || *c.FinishCheck }
+
+// LogsBodies is LogBodies with its default, off.
+func (c Config) LogsBodies() bool { return c.LogBodies != nil && *c.LogBodies }
+
+// LogValue masks the two keys, so logging a Config cannot leak them.
+func (c Config) LogValue() slog.Value {
+	masked := c
+	masked.APIKey, masked.JevAPIKey = mask(c.APIKey), mask(c.JevAPIKey)
+	masked.Headers = nil
+	return slog.AnyValue(plain(masked))
+}
+
+// plain drops LogValue, or logging one would recurse.
+type plain Config
+
+func mask(key string) string {
+	if key == "" {
+		return ""
+	}
+	return "***"
+}
+
+// Validate reports every value no part of detent can act on. Theme is
+// checked by main, which can import ui.
+func (c Config) Validate() error {
+	var errs []error
+	bad := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
+	if c.SandboxMode != SandboxAuto && c.SandboxMode != SandboxHost {
+		bad("unknown sandbox mode %q, choose one of: %s, %s", c.SandboxMode, SandboxAuto, SandboxHost)
+	}
+	if c.SandboxNetwork != sandbox.NetworkHost && c.SandboxNetwork != sandbox.NetworkNone {
+		bad("unknown sandbox_network %q, choose one of: %s, %s", c.SandboxNetwork, sandbox.NetworkHost, sandbox.NetworkNone)
+	}
+	switch c.Views {
+	case ViewsSaved:
+	case ViewsGenerate:
+		if c.JevAPIKey == "" {
+			bad("views: generate composes a view by asking the judge, so it needs jev_api_key (or TYPESAFE_API_KEY). Set one, or use views: saved")
+		}
+	default:
+		bad("unknown views %q, choose one of: %s, %s", c.Views, ViewsSaved, ViewsGenerate)
+	}
+	if !slices.Contains(LogLevels, strings.ToLower(c.LogLevel)) {
+		bad("unknown log_level %q, choose one of: %s", c.LogLevel, strings.Join(LogLevels, ", "))
+	}
+	if c.RiskThreshold < 0 || c.RiskThreshold > 1 {
+		bad("risk_threshold %v: want a number from 0 to 1", c.RiskThreshold)
+	}
+	if c.Steps < 0 {
+		bad("steps %d: want 0 for the built-in, or more", c.Steps)
+	}
+	if c.ContextTokens < 0 {
+		bad("context_tokens %d: want 0 for the built-in, or more", c.ContextTokens)
+	}
+	if _, err := c.Timeout(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
 
 // Timeout is CommandTimeout as a duration, the built-in when it is empty.
 func (c Config) Timeout() (time.Duration, error) {
@@ -91,7 +157,7 @@ func Default() Config {
 		Views:         DefaultViews,
 		LogLevel:      DefaultLogLevel,
 
-		SandboxMode:      "auto",
+		SandboxMode:      SandboxAuto,
 		SandboxImage:     sandbox.DefaultImage,
 		SandboxNetwork:   sandbox.NetworkHost,
 		SandboxWorkspace: DefaultSandboxWorkspace,
@@ -111,8 +177,12 @@ func Load(path string) (Config, error) {
 			filepath.Join(home, ".config", "detent", "config.yml"))
 	}
 	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
+		_, err := os.Stat(c)
+		switch {
+		case err == nil:
 			return read(c)
+		case !errors.Is(err, fs.ErrNotExist):
+			return Config{}, fmt.Errorf("config: %w", err)
 		}
 	}
 	return Default(), nil
@@ -154,13 +224,25 @@ const DefaultViews = ViewsSaved
 // DefaultLogLevel records what happened without recording everything.
 const DefaultLogLevel = "info"
 
+// LogLevels are the levels logging knows, quietest last.
+var LogLevels = []string{"debug", "info", "warn", "error"}
+
+// The sandbox modes: a container when one can be had, or this machine.
+const (
+	SandboxAuto = "auto"
+	SandboxHost = "host"
+)
+
 func read(path string) (Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("config: %w", err)
 	}
 	cfg := Default()
-	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+	// Strict, so a misspelt key fails with its line instead of quietly doing nothing.
+	dec := yaml.NewDecoder(bytes.NewReader(raw))
+	dec.KnownFields(true)
+	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
 		return Config{}, fmt.Errorf("config %s: %w", path, err)
 	}
 	return cfg, nil

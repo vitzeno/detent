@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -39,17 +40,87 @@ func TestResolve_FlagStepsAndHeaders(t *testing.T) {
 }
 
 func TestResolve_EmptyIsDefault(t *testing.T) {
-	t.Setenv("DETENT_BASE_URL", "")
-	t.Setenv("DETENT_MODEL", "")
-	t.Setenv("DETENT_API_KEY", "")
-	t.Setenv("OPENROUTER_API_KEY", "")
-	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("TYPESAFE_API_KEY", "")
-	t.Setenv("DETENT_THEME", "")
-	t.Setenv("DETENT_SANDBOX_MODE", "")
-	t.Setenv("DETENT_SANDBOX_SOCKET", "")
-	t.Setenv("DETENT_SANDBOX_RUNTIME", "")
+	clearEnv(t)
 	assert.Equal(t, Default(), Resolve(Config{}, Config{}, -1))
+}
+
+// clearEnv blanks every variable envConfig reads, so a developer's own
+// DETENT_* cannot change what a test sees.
+func clearEnv(t *testing.T) {
+	t.Helper()
+	for _, k := range envKeys {
+		t.Setenv(k, "")
+	}
+}
+
+// clearEnv is only as good as envKeys, so the two must name the same variables.
+func TestEnvConfig_ReadsExactlyEnvKeys(t *testing.T) {
+	read := map[string]bool{}
+	envConfig(func(k string) string { read[k] = true; return "" })
+	want := map[string]bool{}
+	for _, k := range envKeys {
+		want[k] = true
+	}
+	assert.Equal(t, want, read)
+}
+
+// A field apply forgets is loaded from the file and then silently dropped.
+func TestResolve_EveryFieldSurvives(t *testing.T) {
+	clearEnv(t)
+	for i := range reflect.TypeFor[Config]().NumField() {
+		var file Config
+		v := reflect.ValueOf(&file).Elem().Field(i)
+		name := reflect.TypeFor[Config]().Field(i).Name
+		switch v.Kind() {
+		case reflect.String:
+			v.SetString("set")
+		case reflect.Int:
+			v.SetInt(7)
+		case reflect.Float64:
+			v.SetFloat(0.25)
+		case reflect.Map:
+			v.Set(reflect.ValueOf(map[string]string{"k": "v"}))
+		case reflect.Pointer:
+			v.Set(reflect.ValueOf(new(true)))
+		default:
+			t.Fatalf("%s: teach this test about %s", name, v.Kind())
+		}
+		got := reflect.ValueOf(Resolve(file, Config{}, -1)).Field(i)
+		assert.Equal(t, v.Interface(), got.Interface(), "%s was dropped by apply", name)
+	}
+}
+
+func TestEnvBool_ReadsTheUsualSpellings(t *testing.T) {
+	for in, want := range map[string]*bool{
+		"true": new(true), "1": new(true), "yes": new(true), "ON": new(true),
+		"false": new(false), "0": new(false), "no": new(false), "Off": new(false),
+		"": nil, "maybe": nil,
+	} {
+		assert.Equal(t, want, envBool(in), in)
+	}
+}
+
+// Bodies carry secrets, so DETENT_LOG_BODIES=false must mean off, even over a file that said on.
+func TestResolve_LogBodies(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		file *bool
+		env  string
+		want bool
+	}{
+		{"off by default", nil, "", false},
+		{"the file turns it on", new(true), "", true},
+		{"env false over a file true", new(true), "false", false},
+		{"env 0 over a file true", new(true), "0", false},
+		{"env true over a file false", new(false), "true", true},
+		{"env yes", nil, "yes", true},
+		{"env nonsense leaves the file", new(true), "maybe", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("DETENT_LOG_BODIES", tc.env)
+			assert.Equal(t, tc.want, Resolve(Config{LogBodies: tc.file}, Config{}, -1).LogsBodies())
+		})
+	}
 }
 
 func TestResolve_JudgePrecedence(t *testing.T) {
@@ -58,7 +129,7 @@ func TestResolve_JudgePrecedence(t *testing.T) {
 	got := Resolve(file, Config{}, -1)
 	assert.Equal(t, "sk-jev-env", got.JevAPIKey, "env beats file")
 	assert.Equal(t, "jev-file", got.JevModel)
-	assert.Equal(t, 0.8, got.RiskThreshold)
+	assert.InDelta(t, 0.8, got.RiskThreshold, 1e-9)
 }
 
 func TestResolve_ThemePrecedence(t *testing.T) {

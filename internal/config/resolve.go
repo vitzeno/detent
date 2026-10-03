@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Resolve layers built-ins, file, environment, then flags, each setting
@@ -11,7 +12,7 @@ import (
 func Resolve(file, flags Config, steps int) Config {
 	out := Default()
 	out.apply(file)
-	out.apply(envConfig())
+	out.apply(envConfig(os.Getenv))
 	out.apply(flags)
 	if steps >= 0 {
 		out.Steps = steps
@@ -71,8 +72,8 @@ func (c *Config) apply(o Config) {
 	if o.LogDir != "" {
 		c.LogDir = o.LogDir
 	}
-	if o.LogBodies {
-		c.LogBodies = true
+	if o.LogBodies != nil {
+		c.LogBodies = o.LogBodies
 	}
 	if o.SandboxMode != "" {
 		c.SandboxMode = o.SandboxMode
@@ -99,48 +100,61 @@ func (c *Config) apply(o Config) {
 
 // envInt reads a numeric variable. Unset and unparseable both give 0,
 // which apply skips.
-func envInt(key string) int {
-	n, err := strconv.Atoi(os.Getenv(key))
+func envInt(v string) int {
+	n, err := strconv.Atoi(v)
 	if err != nil {
 		return 0
 	}
 	return n
 }
 
-// envBool reads a true or false variable. Unset and unparseable both give nil,
-// which apply skips.
-func envBool(key string) *bool {
-	b, err := strconv.ParseBool(os.Getenv(key))
-	if err != nil {
+// envBool reads a true or false variable, in any of the spellings people
+// use for one. Unset and unparseable both give nil, which apply skips.
+func envBool(v string) *bool {
+	var b bool
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "t", "true", "y", "yes", "on":
+		b = true
+	case "0", "f", "false", "n", "no", "off":
+		b = false
+	default:
 		return nil
 	}
 	return &b
 }
 
+// envKeys are every variable envConfig reads.
+var envKeys = []string{
+	"DETENT_BASE_URL", "DETENT_MODEL", "DETENT_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY",
+	"DETENT_CONTEXT_TOKENS", "DETENT_COMMAND_TIMEOUT", "DETENT_FINISH_CHECK", "TYPESAFE_API_KEY",
+	"DETENT_THEME", "DETENT_VIEWS", "DETENT_LOG_LEVEL", "DETENT_LOG_DIR", "DETENT_LOG_BODIES",
+	"DETENT_SANDBOX_MODE", "DETENT_SANDBOX_SOCKET", "DETENT_SANDBOX_RUNTIME", "DETENT_SANDBOX_NETWORK",
+}
+
 // envConfig reads the environment as one layer. For aliased keys the
 // first set variable wins.
-func envConfig() Config {
+func envConfig(getenv func(string) string) Config {
 	return Config{
-		BaseURL: os.Getenv("DETENT_BASE_URL"),
-		Model:   os.Getenv("DETENT_MODEL"),
+		BaseURL: getenv("DETENT_BASE_URL"),
+		Model:   getenv("DETENT_MODEL"),
 		APIKey: cmp.Or(
-			os.Getenv("DETENT_API_KEY"),
-			os.Getenv("OPENROUTER_API_KEY"),
-			os.Getenv("OPENAI_API_KEY"),
+			getenv("DETENT_API_KEY"),
+			getenv("OPENROUTER_API_KEY"),
+			getenv("OPENAI_API_KEY"),
 		),
-		ContextTokens:  envInt("DETENT_CONTEXT_TOKENS"),
-		CommandTimeout: os.Getenv("DETENT_COMMAND_TIMEOUT"),
-		FinishCheck:    envBool("DETENT_FINISH_CHECK"),
-		JevAPIKey:      os.Getenv("TYPESAFE_API_KEY"),
-		Theme:          os.Getenv("DETENT_THEME"),
-		Views:          os.Getenv("DETENT_VIEWS"),
-		LogLevel:       os.Getenv("DETENT_LOG_LEVEL"),
-		LogDir:         os.Getenv("DETENT_LOG_DIR"),
-		LogBodies:      os.Getenv("DETENT_LOG_BODIES") != "",
+		ContextTokens:  envInt(getenv("DETENT_CONTEXT_TOKENS")),
+		CommandTimeout: getenv("DETENT_COMMAND_TIMEOUT"),
+		FinishCheck:    envBool(getenv("DETENT_FINISH_CHECK")),
+		JevAPIKey:      getenv("TYPESAFE_API_KEY"),
+		Theme:          getenv("DETENT_THEME"),
+		Views:          getenv("DETENT_VIEWS"),
+		LogLevel:       getenv("DETENT_LOG_LEVEL"),
+		LogDir:         getenv("DETENT_LOG_DIR"),
+		LogBodies:      envBool(getenv("DETENT_LOG_BODIES")),
 
-		SandboxMode:    os.Getenv("DETENT_SANDBOX_MODE"),
-		SandboxSocket:  os.Getenv("DETENT_SANDBOX_SOCKET"),
-		SandboxRuntime: os.Getenv("DETENT_SANDBOX_RUNTIME"),
-		SandboxNetwork: os.Getenv("DETENT_SANDBOX_NETWORK"),
+		SandboxMode:    getenv("DETENT_SANDBOX_MODE"),
+		SandboxSocket:  getenv("DETENT_SANDBOX_SOCKET"),
+		SandboxRuntime: getenv("DETENT_SANDBOX_RUNTIME"),
+		SandboxNetwork: getenv("DETENT_SANDBOX_NETWORK"),
 	}
 }
