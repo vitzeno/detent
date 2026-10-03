@@ -32,7 +32,7 @@ func TestPrintable_DefusesControls(t *testing.T) {
 	}
 }
 
-// ui imports it, and ui may import nothing heavier than the standard library here.
+// headless shares it with the TUI, and needs nothing from outside the standard library.
 func TestPackage_DependsOnStdlibOnly(t *testing.T) {
 	out, err := exec.Command("go", "list", "-deps", "github.com/vitzeno/detent/termsafe").Output()
 	require.NoError(t, err)

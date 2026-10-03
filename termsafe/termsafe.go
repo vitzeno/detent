@@ -11,13 +11,13 @@ import (
 // Printable shows control characters and bidi overrides as escapes rather
 // than letting them act on the terminal. Newlines stay, tabs become spaces.
 func Printable(s string) string {
-	if strings.IndexFunc(s, unsafe) < 0 {
+	if strings.IndexFunc(s, needsEscape) < 0 {
 		return s
 	}
 	var b strings.Builder
 	for _, r := range s {
 		switch {
-		case !unsafe(r):
+		case !needsEscape(r):
 			b.WriteRune(r)
 		case r == '\t':
 			b.WriteString("    ")
@@ -30,9 +30,9 @@ func Printable(s string) string {
 	return b.String()
 }
 
-// unsafe is a rune that moves the cursor, opens an escape sequence or
+// needsEscape reports a rune that moves the cursor, opens an escape sequence or
 // reorders the text drawn around it.
-func unsafe(r rune) bool {
+func needsEscape(r rune) bool {
 	if r == '\n' {
 		return false
 	}
