@@ -1,0 +1,4 @@
+# LF on every OS, so golden files and fixtures read the same on Windows.
+* text=auto eol=lf
+# Real redis INFO output ends its lines in CRLF, which this fixture tests.
+internal/viewgen/testdata/corpus/redis-info.txt -text
