@@ -3,7 +3,8 @@ package theme
 
 import (
 	"image/color"
-	"sort"
+	"maps"
+	"slices"
 
 	"charm.land/lipgloss/v2"
 )
@@ -19,6 +20,10 @@ type Theme struct {
 
 	// Markdown names the closest glamour style, since glamour cannot take ours.
 	Markdown string
+}
+
+func init() {
+	Apply(Themes[DefaultName])
 }
 
 // The active palette. Apply reassigns these directly.
@@ -105,24 +110,26 @@ var Themes = map[string]Theme{
 
 // Names lists every valid theme name, sorted.
 func Names() []string {
-	out := make([]string, 0, len(Themes))
-	for name := range Themes {
-		out = append(out, name)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func init() {
-	Apply(dark)
+	return slices.Sorted(maps.Keys(Themes))
 }
 
 // Apply makes t the active theme. Callers must also refresh any style
-// already baked from the old colors, as ui.RefreshStyles does.
+// already baked from the old colors, as ui.RefreshStyles does. Not safe
+// for concurrent use: call it once, before the TUI starts.
 func Apply(t Theme) {
 	Accent = t.Accent
 	Safe, Caution, Danger = t.Safe, t.Caution, t.Danger
 	TextPrimary, TextMuted, TextFaint, Border = t.TextPrimary, t.TextMuted, t.TextFaint, t.Border
 	Background = t.Background
 	Markdown = t.Markdown
+}
+
+// active is the palette Apply left, read back so a test can prove no
+// field was missed.
+func active() Theme {
+	return Theme{
+		Accent: Accent, Safe: Safe, Caution: Caution, Danger: Danger,
+		TextPrimary: TextPrimary, TextMuted: TextMuted, TextFaint: TextFaint, Border: Border,
+		Background: Background, Markdown: Markdown,
+	}
 }

@@ -40,8 +40,8 @@ func init() {
 	RefreshStyles()
 }
 
-// RefreshStyles rebuilds every style baked from a theme color. Call
-// after theme.Apply.
+// RefreshStyles rebuilds every style baked from a theme color. Call it
+// after theme.Apply and before the program runs, since View reads them unlocked.
 func RefreshStyles() {
 	accent = theme.Accent
 	safe, caution, danger = theme.Safe, theme.Caution, theme.Danger

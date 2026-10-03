@@ -3,6 +3,7 @@ package theme
 import (
 	"image/color"
 	"math"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,16 +16,19 @@ func TestNames_SortedAndCoversDefault(t *testing.T) {
 	assert.Contains(t, names, DefaultName)
 }
 
+// Every field, so one added to Theme but not to Apply fails here.
 func TestApply_SwitchesActiveColors(t *testing.T) {
-	t.Cleanup(func() { Apply(dark) })
+	was := active()
+	t.Cleanup(func() { Apply(was) })
 
-	Apply(Themes["light"])
-	assert.Equal(t, Themes["light"].Accent, Accent)
-	assert.Equal(t, Themes["light"].Border, Border)
-
-	Apply(Themes["dracula"])
-	assert.Equal(t, Themes["dracula"].Accent, Accent)
-	assert.NotEqual(t, Themes["light"].Accent, Accent, "Apply must fully replace the prior theme's colors")
+	for _, name := range Names() {
+		Apply(Themes[name])
+		assert.Equal(t, Themes[name], active(), "theme %s", name)
+	}
+	v := reflect.ValueOf(active())
+	for i := range v.NumField() {
+		assert.False(t, v.Field(i).IsZero(), "%s is never set", v.Type().Field(i).Name)
+	}
 }
 
 // Every theme has to be readable against its own background.
