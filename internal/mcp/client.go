@@ -126,19 +126,19 @@ func (t *stdioTransport) Connect(ctx context.Context) (sdk.Connection, error) {
 	if err != nil {
 		return nil, err
 	}
-	return groupConn{Connection: conn, cmd: t.Command}, nil
+	return groupConn{Connection: conn, end: joinGroup(t.Command)}, nil
 }
 
 // groupConn ends what a wrapper such as npx or uvx started, which a
 // signal to the wrapper alone can leave running.
 type groupConn struct {
 	sdk.Connection
-	cmd *exec.Cmd
+	end func()
 }
 
 func (c groupConn) Close() error {
 	err := c.Connection.Close()
-	endGroup(c.cmd)
+	c.end()
 	return err
 }
 

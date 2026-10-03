@@ -64,11 +64,12 @@ func (s *Shell) Run(ctx context.Context, command string, events chan<- capture.S
 	cmd.Env = environ(os.Environ())
 	// A backgrounded child keeps the pipes open, so stop reading soon after sh exits.
 	cmd.WaitDelay = waitDelay
-	killGroup(cmd)
+	g := newGroup(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return capture.Result{}, fmt.Errorf("host: %w", err)
 	}
+	g.started(cmd)
 
 	var stdout, stderr bytes.Buffer
 	var outCut, errCut bool
@@ -83,6 +84,7 @@ func (s *Shell) Run(ctx context.Context, command string, events chan<- capture.S
 	go scan(errR, true, &stderr, &errCut)
 
 	waitErr := cmd.Wait()
+	g.done()
 	_ = outW.Close()
 	_ = errW.Close()
 	wg.Wait()
