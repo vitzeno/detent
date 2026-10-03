@@ -39,7 +39,7 @@ Either can come from anyone. The engine publishes most facts, but the store, the
     ├── tool                   │  ──→  headless   one request, no TUI
     ├── model                  │  ──→  logging    the JSONL stream
     └── routing                │  ──→  store      SQLite allows resume
-          ├── host             │  ──→  judge      how the Call went
+          ├── host             │  ──→  judge      how the tool call went
           └── sandbox          │  ──→  viewgen    how to draw it
                                │
   anyone ───── intents ─────→  │
@@ -60,7 +60,7 @@ All keys are documented in [`detent.example.yaml`](detent.example.yaml). A key d
 ### What leaves your machine
 
 - Your requests, the transcript and every command's output go to the model endpoint, `base_url`
-- With `jev_api_key` set, each Call's request, command and up to 4KB of its output go to TypeSafe to be assessed and judged, whatever `log_bodies` says
+- With `jev_api_key` set, each tool call's request, command and up to 4KB of its output go to TypeSafe to be assessed and judged, whatever `log_bodies` says
 - With `views: generate`, a command you ran yourself and up to 4KB of its output go to TypeSafe too
 - `web_search` queries go to DuckDuckGo through `r.jina.ai`
 
@@ -92,8 +92,8 @@ next launch does not ask again. Claude Code's `oauth` object (`clientId`,
 `clientSecret`, `callbackPort`, `scopes`) is read for providers that need it.
 `/mcp auth <server>` signs in again
 
-These calls run in detent's process, not the container, and no checkpoint
-undoes one. So every MCP call is confirmed, whatever the server says about
+These tool calls run in detent's process, not the container, and no checkpoint
+undoes one. So every MCP tool call is confirmed, whatever the server says about
 itself
 
 ## Skills
@@ -157,7 +157,7 @@ row, esc stops it
 
 Nothing flags it and nothing asks you to approve it
 
-It gets the same views as the agent's commands. With `views: generate`, Jev is
+It gets the same views as the agent's tool calls. With `views: generate`, Jev is
 asked what shape the output is, never whether it went well
 
 The model reads it afterwards, as a message in the transcript
@@ -196,7 +196,7 @@ alone anything still running.
 
 ## Approving
 
-A Call runs without asking unless it is flagged dangerous, you see the
+A tool call runs without asking unless it is flagged dangerous, you see the
 literal command and answer it.
 
 Flagging is a chain: the tool's own declared mutability, a regex backstop, a
@@ -207,7 +207,7 @@ A command too tall for the screen shows how much is below, and `y` does
 nothing until you have scrolled to its last line. Control characters
 in it are shown rather than sent to your terminal
 
-Declining stops that Call, the agent reads the refusal and tries
+Declining stops that tool call, the agent reads the refusal and tries
 something else
 
 Typing while it works steers it
@@ -276,11 +276,9 @@ All takes about 600ms, then cached
 One JSONL stream per session in `~/.local/state/detent/logs/`
 
 ```sh
-jq 'select(.turn == "01a0…")'              one request, end to end
-jq 'select(.event | startswith("call."))'  every tool call
-jq 'select(.level == "WARN")'              what went wrong
+jq 'select(.turn == "01a0…")'                   one request, end to end
+jq 'select(.event | startswith("tool_call."))'  every tool call
+jq 'select(.level == "WARN")'                   what went wrong
 ```
 
 [CLAUDE.md](CLAUDE.md) has how the code is arranged and why.
-
-Hello, world!

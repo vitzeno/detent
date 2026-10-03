@@ -10,7 +10,7 @@ publishing everything it does on a bus the front-end subscribes to.
 
 There is no closed capability registry. `bash` is one of the tools, so
 the model can run anything, and the safety story rests entirely on the
-Dangerous flag rather than on structural restriction. A Call flagged
+Dangerous flag rather than on structural restriction. A tool call flagged
 Dangerous is shown to a human who reads the literal command and must
 approve it. Everything else runs straight through.
 
@@ -39,7 +39,7 @@ make tidy-check    # fail if go mod tidy would change anything
 ```
 
 Run one request headlessly: `./bin/detent -prompt "..."`, with
-`-unattended` to decline every flagged Call instead of asking, or
+`-unattended` to decline every flagged tool call instead of asking, or
 `-approve-all` to run them all, for a throwaway container like a
 benchmark's. Both need `-prompt`. A headless run exits 0 when the request
 is done, 1 on an error, 3 at the step bound, 4 when stopped and 130 when
@@ -154,25 +154,38 @@ default one is context `colima`, a named one is `colima-<profile>`.
 ## The vocabulary
 
 Everything is named for one of five scopes, and using the wrong word
-is how a bug gets written:
+is how a bug gets written. The names are the ones other harnesses and
+the APIs use, so a reader coming from them meets nothing new:
 
 | Term | Is | Unit of |
 | ---- | -- | ------- |
 | Session | process lifetime, one message log | the transcript |
 | **Turn** | one human prompt and all the agent did about it | **undo**, the history block |
 | **Step** | one model round trip | **the transcript's atom**, compaction |
-| **Call** | one tool invocation | the row, approval, parallelism |
-| **Shell** | one command the human ran themselves | looking, not working |
+| **Tool call** | one tool invocation | the row, approval, parallelism |
+| **User command** | one command the human ran themselves | looking, not working |
 
-A Step holds zero or more Calls. A Turn holds Steps until the model
+A Step holds zero or more tool calls. A Turn holds Steps until the model
 stops asking for tools. Steps are never shown, since a human does not think
 in model round trips.
 
-A **Shell** is none of the other four: no model asked for it, so
+What the model sends is a **tool request** (`event.ToolRequest`, the
+wire's `tool_calls` entry, carrying the endpoint's id). Each becomes one
+tool call with an id of ours. Two names because they are two things: a
+request can be malformed, refused by the step cap or never run, and the
+transcript must still answer it.
+
+A **user command** is none of the other four: no model asked for it, so
 nothing assesses, approves or judges it, and it opens no Turn. It is
-its own noun precisely so it cannot be bolted onto Call and quietly
-break those three at once. `internal/humanshell` owns it. Its output
-is still drawn: `viewgen` asks Jev its shape, never how it went.
+its own noun precisely so it cannot be bolted onto a tool call and quietly
+break those three at once, which is why `OutputChunk` and `ViewReady`
+carry a `UserCommand` id beside `ToolCall` rather than reuse it.
+`internal/usercommand` owns it, and the human starts one in the TUI's
+shell mode (shift+tab). Its output is still drawn: `viewgen` asks Jev
+its shape, never how it went.
+
+Sessions saved under the old names (Call, Shell) still resume:
+`event/legacy.go` renames their kinds and keys as they are read.
 
 ### The transcript's atom is a Step
 
@@ -181,7 +194,7 @@ messages answering them are **indivisible**. Endpoints reject a
 `tool_calls` message whose answers are missing, and reject a `tool`
 message answering nothing. Three mechanisms depend on it:
 
-- **Abort** must still emit a result for every Call that never ran, or
+- **Abort** must still emit a result for every tool call that never ran, or
   the failure surfaces on the *next* Step, far from its cause.
 - **Compaction** moves whole Steps and never half of one.
 - **`NoteContext`** lands between Steps, never inside one.
@@ -191,8 +204,8 @@ which is what keeps this true.
 
 ### Undo is per Turn
 
-One checkpoint, taken before the first Call runs, and the Turn is the
-only rollback target. Not per Call: a forty-call Turn would mean forty
+One checkpoint, taken before the first tool call runs, and the Turn is the
+only rollback target. Not per tool call: a forty-tool-call Turn would mean forty
 containerd snapshots, and "undo call #23" is not a thought anyone has.
 Rolling back truncates the transcript to where that prompt landed,
 which is a whole number of Steps by construction. Reverting the
@@ -217,11 +230,11 @@ subscribers:
 | `internal/headless` | prints one Turn | the TUI still runs |
 | `logging` | the JSONL stream | nothing else notices |
 | `internal/store` | the SQLite log, answers `ListSessions` | resume stops, nothing else |
-| `internal/judge` | scores a finished Call, may `RequestStop` | rows lose their verdict |
+| `internal/judge` | scores a finished tool call, may `RequestStop` | rows lose their verdict |
 | `internal/viewgen` | composes the view for an output, and draws shipped and saved ones with no key | rows fall back to text |
 | `internal/mcp` | answers `ListServers`, signs in on `AuthorizeServer` | `/mcp` draws nothing, no server signs in |
 | `internal/forget` | answers `DeleteSession` | `/delete` does nothing |
-| `internal/humanshell` | runs `RunCommand`, the human's own | shift+tab stops working |
+| `internal/usercommand` | runs `RunCommand`, the human's own | shift+tab stops working |
 
 Each is a `Watch(...)` returning a stop that waits for whatever it
 started. One doing network or process work also takes the session's
@@ -262,7 +275,7 @@ ui          →  event, viewspec, views, version, logging + its own subpackages
 engine      →  event, tool, model, capture, classify (via an interface)
 mcp         →  event, tool, capture, the MCP SDK
 forget      →  event (the store and sandbox arrive as arguments)
-humanshell  →  event, capture (the runner arrives as an argument)
+usercommand →  event, capture (the runner arrives as an argument)
 tool        →  event
 model       →  event
 event       →  the standard library, plus viewspec and google/uuid
@@ -289,7 +302,7 @@ adding a fat dependency fails with the transitive import named.
   inside a handler is safe and cannot deadlock. Each subscriber has
   its own queue: a lagging one grows it and drops only events that say
   they are `Lossy`, which is `OutputChunk` and nothing else. A dropped
-  live line costs a redraw. A dropped `CallEnded` is a row that never
+  live line costs a redraw. A dropped `ToolCallEnded` is a row that never
   finishes. `Record` carries a gapless `Ordinal`, and every subscriber
   receives records in ordinal order, so live order and replay order
   agree and a subscriber that filters or drops can be told apart from
@@ -298,7 +311,7 @@ adding a fat dependency fails with the transitive import named.
   is what a test needs to mean "processed" rather than "received". Ids are `uuid.UUID` directly, with no
   wrapper type: `google/uuid`'s v7 is monotonic within a millisecond
   as well as across them, which matters because a Step mints all its
-  Call ids inside one.
+  tool call ids inside one.
 
 - **`internal/engine`**: the loop, and it drives itself. One
   goroutine, blocking and linear, reading intents and publishing
@@ -308,17 +321,17 @@ adding a fat dependency fails with the transitive import named.
   for the TUI. `New` subscribes to intents, not `Run`, so a caller
   that publishes the moment it returns cannot lose the intent.
   `Abort` is handled in `dispatch` rather than queued to the Turn: a
-  blocked Call never reaches a boundary, and the inbox is only drained
+  blocked tool call never reaches a boundary, and the inbox is only drained
   at one. Intents name their Turn and one naming another is dropped,
-  so a late verdict cannot stop the next request. Contiguous Calls
+  so a late verdict cannot stop the next request. Contiguous tool calls
   whose tool declares them read-only run concurrently, and anything
   else runs alone in the order asked: parallelism comes from the tool,
   never from a hook, so a judge saying "reads only" cannot make `bash`
   parallel. The repeat check counts runs per Turn that printed the
-  same thing, so rerunning tests after a fix is never refused. Every Call is bounded by `commandTimeout`
+  same thing, so rerunning tests after a fix is never refused. Every tool call is bounded by `commandTimeout`
   (10m, `command_timeout`), host and sandbox alike, and one stopped by
-  it says how long it ran. A declined Call returns a result saying
-  so and its siblings still run: **declining stops a Call, not a
+  it says how long it ran. A declined tool call returns a result saying
+  so and its siblings still run: **declining stops a tool call, not a
   Turn.** A reply with no calls that stopped short (cut off, errored,
   empty or only reasoning) is nudged to carry on, twice at most, and a
   Turn that ran anything not read-only is asked once to check its work
@@ -383,9 +396,9 @@ adding a fat dependency fails with the transitive import named.
   and the reader on the same kernel, which stops holding once the
   daemon runs inside a VM. **`Run` is serialised** by a slot that
   also covers `Snapshot` and `Rollback` and gives up with its ctx: one
-  task and one spec per container, so parallel Calls overwrote each
+  task and one spec per container, so parallel tool calls overwrote each
   other's and returned exit 0 with no output. Real parallelism needs
-  one long-lived task and `task.Exec` per Call. **A rollback does not revert the
+  one long-lived task and `task.Exec` per tool call. **A rollback does not revert the
   workspace**: that is a bind mount to the user's real directory,
   deliberately outside the snapshot. Checkpoints are held by a
   per-session lease. Without one the GC sweeps them and rollback works
@@ -417,7 +430,7 @@ adding a fat dependency fails with the transitive import named.
   `RiskJudge`, which adapts it to the engine's hook chain. It answers.
   It never decides, because `Widen` folds its answer with everyone
   else's. A failed request is an error the engine shows once a Turn,
-  and adds nothing to the verdict. With a key set, every Call's request,
+  and adds nothing to the verdict. With a key set, every tool call's request,
   command and up to 4KB of its output go to TypeSafe, whatever
   `log_bodies` says.
 
@@ -431,7 +444,7 @@ adding a fat dependency fails with the transitive import named.
   and the project's are merged nearest-last, an entry at a time rather
   than field by field, and `${VAR}` expands from the environment so a
   committed file can name a token it does not hold.
-  Calls run in this process, which is why the sandbox is the only
+  MCP tool calls run in this process, which is why the sandbox is the only
   executor **of shell commands** rather than of everything. Nothing a
   checkpoint can undo, so `mcpFloor` confirms every one: `Widen` makes
   that stick, since a server's own `readOnlyHint` can only widen a
@@ -501,7 +514,7 @@ adding a fat dependency fails with the transitive import named.
   could name a widget, a role or a field that did not exist. All three
   happened. None is representable from a list the program built.
   Without a key it still draws shipped and saved views (`Unjudged`),
-  and `views: generate` sends a Shell's command and up to 4KB of its
+  and `views: generate` sends a user command and up to 4KB of its
   output to the judge.
 
 - **`ui`**: the TUI, and nothing but a projection of the event
@@ -601,7 +614,7 @@ adding a fat dependency fails with the transitive import named.
   silently drop a new one, so `event/codec.go` owns it and a test
   parses the package to prove no type lacks a codec. `Watch` is the
   subscriber, wired beside `logging.Watch`. It skips `OutputChunk`
-  because a replayed Call has already finished and `CallEnded` carries
+  because a replayed tool call has already finished and `ToolCallEnded` carries
   the whole output. It also answers `ListSessions` over the bus, since
   `ui` cannot import it to ask directly. Its pragmas (`foreign_keys`,
   `busy_timeout`, WAL) are in the DSN and the pool holds one connection,
@@ -662,7 +675,7 @@ Start from what the feature actually is:
   compiler catches the first two.
 
 A tool that knows how its output should be read says so in
-`Spec.Renders`, which rides on `CallProposed` and beats a judged
+`Spec.Renders`, which rides on `ToolCallProposed` and beats a judged
 render kind, because the tool knows and the judge is estimating. No
 shipped tool claims one: `web_search` returns markdown but glamour
 prints every link's destination, and DuckDuckGo's redirects double the
@@ -690,7 +703,7 @@ standard library and `viewspec`. Break that and the boundary is back.
 - `docs/` is gitignored: planning documents live there but are never
   committed to the repo.
 - Confirm is conditional on `event.Risk.Dangerous`, not universal. A
-  Call nobody answers blocks its Turn rather than running, which is
+  tool call nobody answers blocks its Turn rather than running, which is
   the right way round: the approval gate fails closed.
 - Comments are one line by default, two when load-bearing, three only
   for a package doc or an invariant the design rests on.
