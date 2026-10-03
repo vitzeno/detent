@@ -117,7 +117,7 @@ func TestWatch_StopWaitsForADeleteInFlight(t *testing.T) {
 	defer bus.Close()
 	entered, release := make(chan struct{}), make(chan struct{})
 	store := &fakeSessions{gone: true}
-	stop := Watch(bus, store, uuid.Must(uuid.NewV7()),
+	stop := Watch(t.Context(), bus, store, uuid.Must(uuid.NewV7()),
 		WithContainers(func(context.Context, string) error {
 			close(entered)
 			<-release
@@ -136,6 +136,24 @@ func TestWatch_StopWaitsForADeleteInFlight(t *testing.T) {
 	close(release)
 	<-stopped
 	assert.Len(t, store.calls(), 1)
+}
+
+// Quitting while a container goes leaves the session's events alone,
+// rather than a session with no container and half its history.
+func TestForget_QuittingPartWayDeletesNothing(t *testing.T) {
+	store := &fakeSessions{gone: true}
+	ctx, cancel := context.WithCancel(t.Context())
+	r := startIn(t, ctx, store, uuid.Must(uuid.NewV7()),
+		WithContainers(func(ctx context.Context, _ string) error {
+			cancel()
+			<-ctx.Done()
+			return ctx.Err()
+		}))
+	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
+
+	n := r.notice(t)
+	assert.Contains(t, n.Text, "closing")
+	assert.Empty(t, store.calls(), "events went while detent was quitting")
 }
 
 // No sandbox this run, by omitting the option or passing nil, means
@@ -194,9 +212,14 @@ type rig struct {
 
 func start(t *testing.T, sessions Sessions, current uuid.UUID, opts ...Option) *rig {
 	t.Helper()
+	return startIn(t, t.Context(), sessions, current, opts...)
+}
+
+func startIn(t *testing.T, ctx context.Context, sessions Sessions, current uuid.UUID, opts ...Option) *rig {
+	t.Helper()
 	bus := event.New()
 	facts, unsub := bus.Subscribe(event.Only(event.NoticeKind, event.ListSessionsKind))
-	stop := Watch(bus, sessions, current, opts...)
+	stop := Watch(ctx, bus, sessions, current, opts...)
 	t.Cleanup(func() { stop(); unsub(); bus.Close() })
 
 	r := &rig{bus: bus, notices: make(chan event.Notice, 8), relisted: make(chan struct{}, 8)}

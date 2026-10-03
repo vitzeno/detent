@@ -22,7 +22,7 @@ func TestWatch_RunsACommandAndTellsTheModel(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
 	r := &fakeRunner{out: "M ui/keys.go\n", lines: []string{"M ui/keys.go"}}
-	stop := Watch(bus, r, "sandbox")
+	stop := Watch(t.Context(), bus, r, "sandbox")
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "  git status --short  "})
@@ -49,7 +49,7 @@ func TestWatch_RunsACommandAndTellsTheModel(t *testing.T) {
 func TestWatch_AsksTheEngineToAppendRatherThanAppending(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
-	stop := Watch(bus, &fakeRunner{}, "host")
+	stop := Watch(t.Context(), bus, &fakeRunner{}, "host")
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "pwd"})
@@ -64,7 +64,7 @@ func TestWatch_CancelStopsTheRunningCommand(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
 	r := &fakeRunner{hold: make(chan struct{})}
-	stop := Watch(bus, r, "host")
+	stop := Watch(t.Context(), bus, r, "host")
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "sleep 45"})
@@ -84,7 +84,7 @@ func TestWatch_CancelStopsTheRunningCommand(t *testing.T) {
 func TestWatch_CancelWithNoIdStopsWhateverRuns(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
-	stop := Watch(bus, &fakeRunner{hold: make(chan struct{})}, "host")
+	stop := Watch(t.Context(), bus, &fakeRunner{hold: make(chan struct{})}, "host")
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "sleep 45"})
@@ -100,7 +100,7 @@ func TestWatch_RefusesASecondCommandWhileOneRuns(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
 	r := &fakeRunner{hold: make(chan struct{})}
-	stop := Watch(bus, r, "host")
+	stop := Watch(t.Context(), bus, r, "host")
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "sleep 45"})
@@ -119,7 +119,7 @@ func TestWatch_RefusesASecondCommandWhileOneRuns(t *testing.T) {
 func TestWatch_StopPublishesTheEndBeforeItReturns(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
-	stop := Watch(bus, &fakeRunner{hold: make(chan struct{})}, "host")
+	stop := Watch(t.Context(), bus, &fakeRunner{hold: make(chan struct{})}, "host")
 
 	bus.Publish(event.RunCommand{Text: "sleep 45"})
 	c.await(t, event.ShellStartedKind)
@@ -134,11 +134,24 @@ func TestWatch_StopPublishesTheEndBeforeItReturns(t *testing.T) {
 		"the end was published while stop was still running")
 }
 
+// The session ending stops the human's command without anyone calling stop.
+func TestWatch_ItsContextEndingStopsTheCommand(t *testing.T) {
+	bus := event.New()
+	c := collect(t, bus)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer Watch(ctx, bus, &fakeRunner{hold: make(chan struct{})}, "host")()
+
+	bus.Publish(event.RunCommand{Text: "sleep 45"})
+	c.await(t, event.ShellStartedKind)
+	cancel()
+	c.await(t, event.ShellEndedKind)
+}
+
 func TestWatch_EmptyCommandDoesNothing(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
 	r := &fakeRunner{}
-	stop := Watch(bus, r, "host")
+	stop := Watch(t.Context(), bus, r, "host")
 
 	bus.Publish(event.RunCommand{Text: "   "})
 	stop()
@@ -153,7 +166,7 @@ func TestWatch_EmptyCommandDoesNothing(t *testing.T) {
 func TestWatch_APanickingRunnerEndsTheCommandOnly(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
-	stop := Watch(bus, &fakeRunner{boom: true}, "host")
+	stop := Watch(t.Context(), bus, &fakeRunner{boom: true}, "host")
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "boom"})
@@ -171,7 +184,7 @@ func TestWatch_DoesNotInheritTheTimeoutMeantForTheModel(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
 	r := &fakeRunner{}
-	stop := Watch(bus, r, "host")
+	stop := Watch(t.Context(), bus, r, "host")
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "go test ./..."})
@@ -189,7 +202,7 @@ func TestWatch_DoesNotInheritTheTimeoutMeantForTheModel(t *testing.T) {
 func TestWatch_AgainstTheRealHostShell(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
-	stop := Watch(bus, host.NewShell(), "host")
+	stop := Watch(t.Context(), bus, host.NewShell(), "host")
 	t.Cleanup(stop)
 
 	bus.Publish(event.RunCommand{Text: "printf 'one\\ntwo\\n'; printf 'oops\\n' >&2; exit 3"})
@@ -268,7 +281,7 @@ func (failingRunner) Run(context.Context, string, chan<- capture.StreamEvent) (c
 func TestWatch_ARunnerErrorEndsTheCommandAtOnce(t *testing.T) {
 	bus := event.New()
 	c := collect(t, bus)
-	stop := Watch(bus, failingRunner{}, "sandbox")
+	stop := Watch(t.Context(), bus, failingRunner{}, "sandbox")
 	t.Cleanup(stop)
 
 	start := time.Now()

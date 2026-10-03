@@ -307,16 +307,18 @@ func run() error {
 
 	// Wired before Run so nothing published at startup is missed, and
 	// unwatched by shutdown after it drains, so the last record lands.
+	// Those doing network or process work take ctx, which shutdown ends
+	// first. logging and store take none: they must outlive it.
 	sd.unwatch = append(sd.unwatch, logging.Watch(bus))
 	if events != nil {
 		sd.unwatch = append(sd.unwatch, store.Watch(bus, events, sessionID))
 	}
 	if judge != nil {
-		sd.unwatch = append(sd.unwatch, judgepkg.Watch(bus, judge))
+		sd.unwatch = append(sd.unwatch, judgepkg.Watch(ctx, bus, judge))
 	}
 	// Without a key there is nothing to compose with, but shipped and saved views still draw.
-	sd.unwatch = append(sd.unwatch, composer(resolved.Views, judge).Watch(bus))
-	sd.unwatch = append(sd.unwatch, forget.Watch(bus, sessionStore(events), sessionID,
+	sd.unwatch = append(sd.unwatch, composer(resolved.Views, judge).Watch(ctx, bus))
+	sd.unwatch = append(sd.unwatch, forget.Watch(ctx, bus, sessionStore(events), sessionID,
 		forget.WithContainers(containerRemover(sandboxSocketFor(resolved)))))
 
 	// After the watchers, so what this records is recorded too.
@@ -362,10 +364,10 @@ func run() error {
 	// The same runner the model's commands go to: a shell that cannot
 	// see what the agent just did is not worth having.
 	shellRunner, shellWhere := runners.Select(event.UnknownRisk())
-	sd.shell = humanshell.Watch(bus, shellRunner, shellWhere)
+	sd.shell = humanshell.Watch(ctx, bus, shellRunner, shellWhere)
 	signins := mcppkg.NewSignIns(bus, servers, mcppkg.Tokens{Dir: mcppkg.TokensDir()}, openBrowser)
-	sd.unwatch = append(sd.unwatch, mcppkg.Watch(bus, servers,
-		mcppkg.Redialer(ctx, tools, servers, configured, signins), signins))
+	sd.unwatch = append(sd.unwatch, mcppkg.Watch(ctx, bus, servers,
+		mcppkg.Redialer(tools, servers, configured, signins), signins))
 	sd.connect = connectServers(ctx, bus, tools, servers, configured, signins)
 	sd.engine = runEngine(ctx, eng)
 

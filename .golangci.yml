@@ -52,6 +52,9 @@ linters:
         - name: unused-parameter
         - name: redefines-builtin-id
         - name: context-as-argument
+          # A test helper takes t first, as thelper requires.
+          arguments:
+            - allow-types-before: "*testing.T"
         - name: error-strings
     staticcheck:
       checks: ["all", "-ST1000", "-ST1003"]

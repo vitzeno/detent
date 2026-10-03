@@ -3,6 +3,7 @@ package viewgen_test
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func TestWatch_KeysOnTheCommandNotTheTool(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	g := &viewgen.Generator{Registry: ui.Registry()}
-	defer g.Watch(bus)()
+	defer g.Watch(t.Context(), bus)()
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
 	defer unsub()
@@ -52,7 +53,7 @@ func TestWatch_AShellGetsTheShippedViewWithoutAJudge(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	g := &viewgen.Generator{Registry: ui.Registry()}
-	defer g.Watch(bus)()
+	defer g.Watch(t.Context(), bus)()
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
 	defer unsub()
@@ -75,7 +76,7 @@ func TestWatch_AShellIsAskedItsShapeAndNothingElse(t *testing.T) {
 		"render_kind": "table", "header_line": "0", "parse_kind": "columns",
 		"body": "table", "summary": "none",
 	})
-	defer g.Watch(bus)()
+	defer g.Watch(t.Context(), bus)()
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
 	defer unsub()
@@ -104,7 +105,7 @@ func TestWatch_AShellFallsBackToItsKindsView(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	g, _ := composer(t, map[string]string{"render_kind": viewgen.KindDiff})
-	defer g.Watch(bus)()
+	defer g.Watch(t.Context(), bus)()
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
 	defer unsub()
@@ -125,7 +126,7 @@ func TestWatch_AnUnjudgedCallResolvesWhenItEnds(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	g := &viewgen.Generator{Registry: ui.Registry(), Unjudged: true}
-	defer g.Watch(bus)()
+	defer g.Watch(t.Context(), bus)()
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
 	defer unsub()
@@ -146,7 +147,7 @@ func TestWatch_ParallelShellsShareNoState(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	g := &viewgen.Generator{Registry: ui.Registry()}
-	defer g.Watch(bus)()
+	defer g.Watch(t.Context(), bus)()
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
 	defer unsub()
@@ -176,7 +177,7 @@ func TestWatch_StopCancelsCompositionInFlight(t *testing.T) {
 	defer bus.Close()
 	judge := &blockingJudge{asked: make(chan struct{}, 1)}
 	g := &viewgen.Generator{Judge: judge, Registry: ui.Registry()}
-	stop := g.Watch(bus)
+	stop := g.Watch(t.Context(), bus)
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
 	defer unsub()
@@ -205,11 +206,43 @@ func TestWatch_StopCancelsCompositionInFlight(t *testing.T) {
 }
 
 // blockingJudge answers nothing until its ctx is cancelled.
-type blockingJudge struct{ asked chan struct{} }
+// The session's ctx ending abandons a composition without anyone calling stop.
+func TestWatch_ItsContextEndingCancelsCompositionInFlight(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	judge := &blockingJudge{asked: make(chan struct{}, 1), quit: make(chan struct{})}
+	g := &viewgen.Generator{Judge: judge, Registry: ui.Registry()}
+	defer g.Watch(ctx, bus)()
+
+	shell := uuid.Must(uuid.NewV7())
+	bus.Publish(event.ShellStarted{Shell: shell, Command: "cat stats.txt"})
+	bus.Publish(event.ShellEnded{Shell: shell, Result: event.Result{Stdout: strings.Repeat("a 1 ok\n", 10)}})
+	select {
+	case <-judge.asked:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the judge was never asked")
+	}
+	cancel()
+	select {
+	case <-judge.quit:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the composition did not give up when its ctx ended")
+	}
+}
+
+// blockingJudge blocks until its ctx ends. quit, when set, is closed then.
+type blockingJudge struct {
+	asked, quit chan struct{}
+	once        sync.Once
+}
 
 func (j *blockingJudge) Ask(ctx context.Context, _ classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
 	j.asked <- struct{}{}
 	<-ctx.Done()
+	if j.quit != nil {
+		j.once.Do(func() { close(j.quit) })
+	}
 	return nil, classify.Usage{}, ctx.Err()
 }
 

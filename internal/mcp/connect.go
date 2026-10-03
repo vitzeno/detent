@@ -89,9 +89,9 @@ func ConnectAll(ctx context.Context, reg *tool.Registry, in *Invokers, servers m
 
 // Redialer dials one server again after forgetting its token, so an
 // AuthorizeServer always ends in a fresh sign-in, never a silent reuse.
-func Redialer(ctx context.Context, reg *tool.Registry, in *Invokers, servers map[string]Config,
-	signins *SignIns) func(string) error {
-	return func(name string) error {
+func Redialer(reg *tool.Registry, in *Invokers, servers map[string]Config,
+	signins *SignIns) func(context.Context, string) error {
+	return func(ctx context.Context, name string) error {
 		c, ok := servers[name]
 		switch {
 		case signins == nil:

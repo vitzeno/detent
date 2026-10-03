@@ -21,9 +21,9 @@ const containerTimeout = 30 * time.Second
 
 // Watch answers DeleteSession and reports the outcome either way.
 // current is the running session, the one thing that cannot go. The
-// stop waits for a delete in flight.
-func Watch(bus *event.Bus, sessions Sessions, current uuid.UUID, opts ...Option) func() {
-	w := watcher{sessions: sessions, current: current}
+// stop waits for a delete in flight, and cancelling ctx abandons one.
+func Watch(ctx context.Context, bus *event.Bus, sessions Sessions, current uuid.UUID, opts ...Option) func() {
+	w := watcher{ctx: ctx, sessions: sessions, current: current}
 	for _, o := range opts {
 		o(&w)
 	}
@@ -51,6 +51,7 @@ func WithContainers(remove func(ctx context.Context, sessionID string) error) Op
 }
 
 type watcher struct {
+	ctx        context.Context
 	sessions   Sessions
 	current    uuid.UUID
 	containers func(ctx context.Context, sessionID string) error
@@ -69,8 +70,13 @@ func (w watcher) forget(bus *event.Bus, id uuid.UUID) {
 	// The container first: only it can tell that another detent has
 	// this session open, and by then its events must still be there.
 	stayed := w.container(id)
-	if errors.Is(stayed, ErrLive) {
+	switch {
+	case errors.Is(stayed, ErrLive):
 		fail(bus, "session "+id.String()+" is open in another detent, so it was not deleted")
+		return
+	case w.ctx.Err() != nil:
+		// Quitting part way leaves the session whole rather than half gone.
+		fail(bus, "detent is closing, so session "+id.String()+" was not deleted")
 		return
 	}
 
@@ -97,7 +103,7 @@ func (w watcher) container(id uuid.UUID) error {
 	if w.containers == nil {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), containerTimeout)
+	ctx, cancel := context.WithTimeout(w.ctx, containerTimeout)
 	defer cancel()
 	return w.containers(ctx, id.String())
 }

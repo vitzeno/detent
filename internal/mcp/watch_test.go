@@ -17,7 +17,7 @@ func TestWatch_AuthorizeServerDialsTheServerAgain(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	asked := make(chan string, 1)
-	stop := Watch(bus, NewInvokers(), func(name string) error { asked <- name; return nil }, nil)
+	stop := Watch(t.Context(), bus, NewInvokers(), func(_ context.Context, name string) error { asked <- name; return nil }, nil)
 	defer stop()
 	bus.Publish(event.AuthorizeServer{Server: "notion"})
 	select {
@@ -28,6 +28,32 @@ func TestWatch_AuthorizeServerDialsTheServerAgain(t *testing.T) {
 	}
 }
 
+// A sign-in waits on a human, so stopping must cancel it and wait for it,
+// not leave it running against servers about to close.
+func TestWatch_StopCancelsASignInAndWaitsForIt(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	started, ended := make(chan struct{}), make(chan struct{})
+	stop := Watch(t.Context(), bus, NewInvokers(), func(ctx context.Context, _ string) error {
+		close(started)
+		<-ctx.Done()
+		close(ended)
+		return ctx.Err()
+	}, nil)
+	bus.Publish(event.AuthorizeServer{Server: "notion"})
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("AuthorizeServer dialled nothing")
+	}
+	stop()
+	select {
+	case <-ended:
+	default:
+		t.Fatal("stop returned with a sign-in still running")
+	}
+}
+
 func TestWatch_OpenAuthorizationOpensOnlyAWaitingLink(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
@@ -35,7 +61,7 @@ func TestWatch_OpenAuthorizationOpensOnlyAWaitingLink(t *testing.T) {
 	signins := NewSignIns(bus, nil, Tokens{}, func(link string) error { opened <- link; return nil })
 	notices, unsub := bus.Subscribe(event.Only(event.NoticeKind))
 	defer unsub()
-	defer Watch(bus, NewInvokers(), nil, signins)()
+	defer Watch(t.Context(), bus, NewInvokers(), nil, signins)()
 
 	bus.Publish(event.OpenAuthorization{Server: "notion"})
 	select {
@@ -68,8 +94,8 @@ func TestRedialer_SignsInAfresh(t *testing.T) {
 	before, err := r.tokens.Load("notion", f.url()+"/mcp")
 	require.NoError(t, err)
 
-	redial := Redialer(context.Background(), r.reg, r.in, servers, r.signins)
-	require.NoError(t, redial("notion"))
+	redial := Redialer(r.reg, r.in, servers, r.signins)
+	require.NoError(t, redial(t.Context(), "notion"))
 	after, err := r.tokens.Load("notion", f.url()+"/mcp")
 	require.NoError(t, err)
 	assert.NotEqual(t, before.Token.AccessToken, after.Token.AccessToken)
@@ -83,11 +109,11 @@ func TestRedialer_SignsInAfresh(t *testing.T) {
 		assert.NotContains(t, name, "notion__ping_", "a stale copy is still offered")
 	}
 
-	require.ErrorContains(t, redial("nobody"), "no MCP server is called nobody")
-	require.ErrorContains(t, redial("local"), "launched, not reached")
+	require.ErrorContains(t, redial(t.Context(), "nobody"), "no MCP server is called nobody")
+	require.ErrorContains(t, redial(t.Context(), "local"), "launched, not reached")
 
 	require.True(t, r.signins.claim("notion"))
-	require.ErrorContains(t, redial("notion"), "already", "two dials of one server raced")
+	require.ErrorContains(t, redial(t.Context(), "notion"), "already", "two dials of one server raced")
 	r.signins.release("notion")
 }
 
@@ -103,8 +129,8 @@ func TestRedialer_AFailureKeepsTheWorkingSession(t *testing.T) {
 	f.mu.Lock()
 	f.deny = true
 	f.mu.Unlock()
-	redial := Redialer(context.Background(), r.reg, r.in, servers, r.signins)
-	require.Error(t, redial("notion"))
+	redial := Redialer(r.reg, r.in, servers, r.signins)
+	require.Error(t, redial(t.Context(), "notion"))
 
 	_, ok := r.reg.Lookup("notion__ping")
 	assert.True(t, ok, "a failed redial took a working server's tools")

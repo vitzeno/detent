@@ -12,12 +12,13 @@ import (
 
 // Watch composes a view per judged Call and per Shell. A subscriber, so
 // a redraw cannot fire a second model call: a redraw is not an event.
-func (g *Generator) Watch(bus *event.Bus) func() {
+// Cancelling ctx abandons compositions in flight, as the stop does.
+func (g *Generator) Watch(ctx context.Context, bus *event.Bus) func() {
 	facts, unsub := bus.Subscribe(event.Only(
 		event.TurnStartedKind, event.CallProposedKind,
 		event.CallEndedKind, event.CallJudgedKind,
 		event.ShellStartedKind, event.ShellEndedKind))
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	w := &watcher{gen: g, bus: bus, ctx: ctx, calls: map[uuid.UUID]*pending{},
 		shells: map[uuid.UUID]string{}, slots: make(chan struct{}, maxComposing)}
 	looped := make(chan struct{})

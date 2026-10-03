@@ -223,6 +223,13 @@ subscribers:
 | `internal/forget` | answers `DeleteSession` | `/delete` does nothing |
 | `internal/humanshell` | runs `RunCommand`, the human's own | shift+tab stops working |
 
+Each is a `Watch(...)` returning a stop that waits for whatever it
+started. One doing network or process work also takes the session's
+ctx and derives every request from it, so quitting cancels them all at
+once. `logging` and `store` take no ctx on purpose: shutdown stops
+everything else first and they must still write the session's last
+records.
+
 **The engine is not the only intent subscriber**, and a sentence here
 once said it was. Four packages own intents of their own. What holds is
 narrower: each intent kind has exactly one owner, and the engine owns

@@ -63,7 +63,7 @@ func TestJudge_FallsBackWithoutClaimingToBeAVerdict(t *testing.T) {
 func TestWatch_AHighScoreAsksTheTurnToStop(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
-	stop := Watch(bus, fakeAsker{answers: classify.Answers{
+	stop := Watch(t.Context(), bus, fakeAsker{answers: classify.Answers{
 		"result_status": {Choice: StatusClean},
 		"goal_achieved": {Noul: 0.97},
 	}})
@@ -91,7 +91,7 @@ func TestWatch_AHighScoreAsksTheTurnToStop(t *testing.T) {
 func TestWatch_ALowScoreLetsItCarryOn(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
-	stop := Watch(bus, fakeAsker{answers: classify.Answers{
+	stop := Watch(t.Context(), bus, fakeAsker{answers: classify.Answers{
 		"result_status": {Choice: StatusClean},
 		"goal_achieved": {Noul: 0.2},
 	}})
@@ -118,7 +118,7 @@ func TestWatch_ALowScoreLetsItCarryOn(t *testing.T) {
 func TestWatch_AGuessNeverStopsATurn(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
-	stop := Watch(bus, nil) // no judge at all
+	stop := Watch(t.Context(), bus, nil) // no judge at all
 	defer stop()
 
 	facts, unsub := bus.Subscribe(event.Only(event.CallJudgedKind, event.RequestStopKind))
@@ -140,7 +140,7 @@ func TestWatch_ALateVerdictStopsOnlyItsOwnTurn(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	asker := &gatedAsker{gate: make(chan struct{}), asked: make(chan struct{}, 2)}
-	stop := Watch(bus, asker)
+	stop := Watch(t.Context(), bus, asker)
 	defer stop()
 
 	facts, unsub := bus.Subscribe(event.Only(event.CallJudgedKind, event.RequestStopKind))
@@ -181,7 +181,7 @@ func TestWatch_StopCancelsWhatIsInFlight(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	asker := &gatedAsker{gate: make(chan struct{}), asked: make(chan struct{}, 1)}
-	stop := Watch(bus, asker)
+	stop := Watch(t.Context(), bus, asker)
 
 	facts, unsub := bus.Subscribe(event.Only(event.CallJudgedKind))
 	defer unsub()
@@ -198,6 +198,31 @@ func TestWatch_StopCancelsWhatIsInFlight(t *testing.T) {
 		t.Fatal("stop waited on a judgement nobody wants any more")
 	}
 	assert.Empty(t, rest(facts))
+}
+
+// The session's ctx ending abandons a judgement without anyone calling stop.
+func TestWatch_ItsContextEndingCancelsWhatIsInFlight(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	asker := &quittingAsker{asked: make(chan struct{}, 1), quit: make(chan struct{})}
+	defer Watch(ctx, bus, asker)()
+
+	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
+	ran(bus, uuid.Must(uuid.NewV7()), event.Result{Stdout: "x\n"})
+	waitFor(t, asker.asked)
+	cancel()
+	waitFor(t, asker.quit)
+}
+
+// quittingAsker blocks until its ctx ends, and says when it has.
+type quittingAsker struct{ asked, quit chan struct{} }
+
+func (q *quittingAsker) Ask(ctx context.Context, _ classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
+	q.asked <- struct{}{}
+	<-ctx.Done()
+	close(q.quit)
+	return nil, classify.Usage{}, ctx.Err()
 }
 
 func TestOutput_KeepsTheTailOfStderr(t *testing.T) {
@@ -263,7 +288,7 @@ func TestWatch_TheJudgeSeesTheCommand(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	asker := recordingAsker{states: make(chan classify.State, 1)}
-	defer Watch(bus, asker)()
+	defer Watch(t.Context(), bus, asker)()
 
 	call := uuid.Must(uuid.NewV7())
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "list it"})
@@ -311,7 +336,7 @@ func TestWatch_ACallThatNeverRanIsNotJudged(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	asker := recordingAsker{states: make(chan classify.State, 1)}
-	defer Watch(bus, asker)()
+	defer Watch(t.Context(), bus, asker)()
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "p"})
 	bus.Publish(event.CallEnded{Call: uuid.Must(uuid.NewV7()), Result: event.Result{Err: "declined"}})
 	select {

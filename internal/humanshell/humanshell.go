@@ -25,9 +25,9 @@ const (
 )
 
 // Watch runs what RunCommand carries and stops it on CancelCommand.
-// where is "host" or "sandbox".
-func Watch(bus *event.Bus, runner Runner, where string) func() {
-	s := &shell{bus: bus, runner: runner, where: where}
+// where is "host" or "sandbox". Cancelling ctx stops a running command.
+func Watch(ctx context.Context, bus *event.Bus, runner Runner, where string) func() {
+	s := &shell{ctx: ctx, bus: bus, runner: runner, where: where}
 	intents, unsub := bus.Subscribe(event.Only(event.RunCommandKind, event.CancelCommandKind))
 	done := make(chan struct{})
 	go func() {
@@ -60,6 +60,7 @@ type Runner interface {
 // shell holds the one command that may be in flight. One at a time:
 // two interleaved outputs are unreadable whatever the runner allows.
 type shell struct {
+	ctx    context.Context
 	bus    *event.Bus
 	runner Runner
 	where  string
@@ -78,9 +79,9 @@ func (s *shell) start(command string) {
 	if command == "" {
 		return
 	}
-	// Background, stopped by the func Watch returned. The deadline is
-	// set here so host.Shell does not apply the model's 30s.
-	ctx, cancel := context.WithTimeout(context.Background(), shellMax)
+	// Stopped by the func Watch returned too. The deadline is set here
+	// so host.Shell does not apply the model's own.
+	ctx, cancel := context.WithTimeout(s.ctx, shellMax)
 	id := uuid.Must(uuid.NewV7())
 
 	s.mu.Lock()
