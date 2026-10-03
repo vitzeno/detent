@@ -28,6 +28,3 @@ ui/zz_snapshot_test.go
 
 # go build ./cmd/detent in the root
 /detent
-
-# Claude Code's own state: agent worktrees, locks, local settings
-/.claude/
