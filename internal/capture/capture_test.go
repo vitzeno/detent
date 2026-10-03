@@ -12,20 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func scan(t *testing.T, in string, limit int) (string, []string, bool) {
-	t.Helper()
-	var buf bytes.Buffer
-	events := make(chan StreamEvent, 1024)
-	truncated, err := ScanCapped(strings.NewReader(in), false, &buf, limit, events)
-	require.NoError(t, err)
-	close(events)
-	var lines []string
-	for e := range events {
-		lines = append(lines, e.Line)
-	}
-	return buf.String(), lines, truncated
-}
-
 func TestScanCapped(t *testing.T) {
 	long := strings.Repeat("x", maxLineBytes+10)
 	cases := []struct {
@@ -74,10 +60,6 @@ func TestScanCapped_MarksStderr(t *testing.T) {
 	assert.Equal(t, StreamEvent{Stderr: true, Line: "e"}, <-events)
 }
 
-type failingReader struct{}
-
-func (failingReader) Read([]byte) (int, error) { return 0, errors.New("broken pipe") }
-
 func TestScanCapped_ReportsAReadError(t *testing.T) {
 	var buf bytes.Buffer
 	_, err := ScanCapped(io.MultiReader(strings.NewReader("ok\n"), failingReader{}), false, &buf, 64, nil)
@@ -108,3 +90,21 @@ func FuzzScanCapped(f *testing.F) {
 		assert.LessOrEqual(t, buf.Len(), limit)
 	})
 }
+
+func scan(t *testing.T, in string, limit int) (string, []string, bool) {
+	t.Helper()
+	var buf bytes.Buffer
+	events := make(chan StreamEvent, 1024)
+	truncated, err := ScanCapped(strings.NewReader(in), false, &buf, limit, events)
+	require.NoError(t, err)
+	close(events)
+	var lines []string
+	for e := range events {
+		lines = append(lines, e.Line)
+	}
+	return buf.String(), lines, truncated
+}
+
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) { return 0, errors.New("broken pipe") }

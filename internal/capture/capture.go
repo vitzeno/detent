@@ -25,12 +25,6 @@ const (
 	maxLineBytes = 1024 * 1024
 )
 
-// StreamEvent is one line of live output from a running command.
-type StreamEvent struct {
-	Stderr bool
-	Line   string
-}
-
 // Result is a command's captured outcome. ExitCode is 0 for a command
 // that was stopped, and Truncated covers either stream.
 type Result struct {
@@ -38,6 +32,12 @@ type Result struct {
 	Stderr    string
 	ExitCode  int
 	Truncated bool
+}
+
+// StreamEvent is one line of live output from a running command.
+type StreamEvent struct {
+	Stderr bool
+	Line   string
 }
 
 // ScanCapped reads r by line, capping buf at limit bytes and sending each
@@ -90,20 +90,6 @@ func Clip(s string, n int) string {
 	return s[:head] + "\n…[truncated]…\n" + s[tail:]
 }
 
-func runeFloor(s string, i int) int {
-	for i > 0 && i < len(s) && !utf8.RuneStart(s[i]) {
-		i--
-	}
-	return i
-}
-
-func runeCeil(s string, i int) int {
-	for i < len(s) && !utf8.RuneStart(s[i]) {
-		i++
-	}
-	return i
-}
-
 // limitedWriter keeps the first limit bytes and drops the rest, cutting
 // only at a rune boundary.
 type limitedWriter struct {
@@ -129,4 +115,18 @@ func (w *limitedWriter) Write(p []byte) (int, error) {
 	w.buf.Write(p[:n])
 	w.full, w.dropped = true, true
 	return len(p), nil
+}
+
+func runeFloor(s string, i int) int {
+	for i > 0 && i < len(s) && !utf8.RuneStart(s[i]) {
+		i--
+	}
+	return i
+}
+
+func runeCeil(s string, i int) int {
+	for i < len(s) && !utf8.RuneStart(s[i]) {
+		i++
+	}
+	return i
 }
