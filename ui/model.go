@@ -18,7 +18,6 @@ import (
 // and every key publishes an intent.
 type Model struct {
 	bus *event.Bus
-	ctx context.Context
 
 	info SessionInfo
 
@@ -95,15 +94,16 @@ type SessionInfo struct {
 }
 
 // New builds the TUI over bus. It subscribes immediately, so nothing
-// published between here and the first Update is lost.
+// published between here and the first Update is lost, until ctx ends.
 func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(accent)
 
-	facts, _ := bus.Subscribe(event.Facts())
+	facts, stop := bus.Subscribe(event.Facts())
+	context.AfterFunc(ctx, stop)
 	return Model{
-		bus: bus, ctx: ctx, info: info,
+		bus: bus, info: info,
 		prompt:  newPrompt(),
 		output:  viewport.New(),
 		spinner: sp,
@@ -266,18 +266,6 @@ func (m Model) focused() *callRow {
 		return nil
 	}
 	return rows[m.nav.cursor]
-}
-
-// blockOf finds which block a row index falls in, for the rail.
-func (m Model) blockOf(i int) *turnBlock {
-	n := 0
-	for _, b := range m.blocks {
-		if i < n+len(b.rows) {
-			return b
-		}
-		n += len(b.rows)
-	}
-	return nil
 }
 
 // spinning reports whether anything on screen is still turning: the
