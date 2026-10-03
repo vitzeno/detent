@@ -15,6 +15,59 @@ import (
 // The history pane: one block per request, its calls under it. View
 // calls this on a throwaway copy of Model, so nothing but the caches may write back.
 
+// histWindow is what sizeViewport laid out. The fallback is the first
+// frame, which lands before any Update.
+func (m Model) histWindow() []string {
+	if m.nav.histWindow != nil {
+		return m.nav.histWindow
+	}
+	window, _ := m.historyWindow()
+	return window
+}
+
+// historyWindow returns the visible slice and the offset it settled
+// on. Pure, so sizeViewport can call it before anything is committed.
+func (m Model) historyWindow() (window []string, offset int) {
+	// Only the tail is on screen, so only the tail is drawn. Offset is
+	// -1 because no total was counted, and navUp pins one before it matters.
+	if m.nav.follow {
+		lines := m.historyTail(m.nav.histHeight)
+		if len(lines) > m.nav.histHeight {
+			lines = lines[len(lines)-m.nav.histHeight:]
+		}
+		return lines, -1
+	}
+
+	lines, cursorLine := m.historyAll()
+	start := 0
+	if len(lines) > m.nav.histHeight {
+		start = m.nav.histOffset
+		start = min(start, cursorLine)
+		if cursorLine >= start+m.nav.histHeight {
+			start = cursorLine - m.nav.histHeight + 1
+		}
+		start = max(start, 0)
+	}
+	return lines[start:min(start+m.nav.histHeight, len(lines))], start
+}
+
+// historyAll is every line and the cursor's, cached whole since Update
+// wants it for every message once the pane has scrolled off the end.
+func (m Model) historyAll() (lines []string, cursorLine int) {
+	key := histKey{
+		rev: m.histRev, width: m.blockWidth(),
+		cursor: m.nav.cursor, spinner: m.spinnerFrame(),
+	}
+	if m.hist != nil && m.hist.lines != nil && m.hist.key == key {
+		return m.hist.lines, m.hist.cursorLine
+	}
+	lines, cursorLine = m.historyLines()
+	if m.hist != nil {
+		*m.hist = histCache{key: key, lines: lines, cursorLine: cursorLine}
+	}
+	return lines, cursorLine
+}
+
 // historyLines renders every entry and reports which one the cursor is
 // on. Pure, so sizeViewport can call it before anything is committed.
 func (m Model) historyLines() (lines []string, cursorEntry int) {
