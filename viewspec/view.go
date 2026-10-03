@@ -57,7 +57,7 @@ func (c *Compiled) Bind(output string) (*Bound, error) {
 		return nil, fmt.Errorf("viewspec: parse %q: %w", c.spec.Parse.Kind, err)
 	}
 	fields := fieldsOf(rows)
-	out := &Bound{c: c, raw: output, fields: fields, rows: len(rows), selSeq: -1}
+	out := &Bound{c: c, raw: output, fields: fields, rows: rows, selSeq: -1}
 	seq := 0
 	out.blocks, err = c.bindBlocks(c.spec.Blocks, rows, Data{
 		Rows: nil, Raw: output, Columns: orderedColumns(order, fields)}, fields, &seq)
@@ -76,7 +76,7 @@ type Bound struct {
 	c      *Compiled
 	raw    string
 	fields []string
-	rows   int
+	rows   []Row
 	blocks []boundBlock
 	selSeq int
 }
@@ -141,22 +141,23 @@ func (b *Bound) Hides() bool {
 			lines++
 		}
 	}
-	return b.rows*2 < lines
+	return len(b.rows)*2 < lines
 }
 
 // Rows is how many rows the parse produced, before any block filtered.
-func (b *Bound) Rows() int { return b.rows }
+func (b *Bound) Rows() int { return len(b.rows) }
 
-// Sample returns up to n parsed rows, so a caller asking which field to
-// draw can show what each one holds.
+// Sample returns copies of up to n parsed rows, before any block's filter
+// or sort, so a caller asking which field to draw can show what each holds.
 func (b *Bound) Sample(n int) []Row {
-	for _, bb := range leaves(b.blocks) {
-		if len(bb.data.Rows) == 0 {
-			continue
-		}
-		return slices.Clone(bb.data.Rows[:min(n, len(bb.data.Rows))])
+	if n <= 0 || len(b.rows) == 0 {
+		return nil
 	}
-	return nil
+	out := make([]Row, min(n, len(b.rows)))
+	for i := range out {
+		out[i] = maps.Clone(b.rows[i])
+	}
+	return out
 }
 
 // Render is one drawn view. A struct rather than a bare []string so a

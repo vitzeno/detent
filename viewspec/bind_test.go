@@ -50,6 +50,15 @@ func TestBind_IsSafeOnOneCompiledAcrossGoroutines(t *testing.T) {
 	}
 }
 
+func TestSample_IsTheParseNotABlocksSlice(t *testing.T) {
+	b := bind(t, viewspec.Spec{Parse: linesParse(), Blocks: []viewspec.Block{
+		{Kind: "list", Field: "pkg", Where: "status=FAIL"}}}, goTest)
+	got := b.Sample(4)
+	require.Len(t, got, 4, "before the block's filter")
+	got[0]["pkg"] = "edited"
+	assert.Equal(t, "github.com/x/a", b.Sample(1)[0]["pkg"], "a caller's edit stays its own")
+}
+
 func TestCompile_NamesTheBlockThatFailed(t *testing.T) {
 	_, err := viewspec.Compile(viewspec.Spec{Parse: colsParse(), Blocks: []viewspec.Block{
 		{Kind: "list", Field: "a"}, {Kind: "list", Field: "b"}, {Kind: "nope"}}})
