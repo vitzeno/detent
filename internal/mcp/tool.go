@@ -3,6 +3,7 @@ package mcp
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -23,18 +24,21 @@ type Tool struct {
 func Register(reg *tool.Registry, s *Server, tools []*sdk.Tool) []Tool {
 	var added []Tool
 	for _, t := range tools {
-		tl := Tool{
-			name:   free(reg, toolName(s.Name, t.Name)),
-			remote: t.Name, server: s, spec: specOf(s.Name, t),
+		name, ok := free(reg, toolName(s.Name, t.Name))
+		if !ok {
+			continue
 		}
+		tl := Tool{name: name, remote: t.Name, server: s, spec: specOf(s.Name, t)}
 		reg.Register(tl)
 		added = append(added, tl)
 	}
 	return added
 }
 
+// Name is the namespaced name the model calls it by.
 func (t Tool) Name() string { return t.name }
 
+// Describe is the server's description and schema, as it gave them.
 func (t Tool) Describe() tool.Spec { return t.spec }
 
 // Lower renders the call for a human to read before approving it.
@@ -57,22 +61,41 @@ func specOf(server string, t *sdk.Tool) tool.Spec {
 	}
 }
 
+// maxDescription bounds what one tool adds to every request.
+const maxDescription = 2048
+
 // describeTool prefers a title when the server gave one, since that is
 // what it wanted shown.
 func describeTool(t *sdk.Tool) string {
-	if t.Title != "" && t.Description != "" {
-		return t.Title + ": " + t.Description
+	d := t.Title
+	switch {
+	case t.Title != "" && t.Description != "":
+		d = t.Title + ": " + t.Description
+	case t.Description != "":
+		d = t.Description
 	}
-	if t.Description != "" {
-		return t.Description
+	if len(d) <= maxDescription {
+		return d
 	}
-	return t.Title
+	return cut(d, maxDescription) + " [truncated]"
+}
+
+// cut shortens s to at most n bytes without splitting a rune.
+func cut(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // rawSchema keeps the server's schema as it came. An unusable one
 // becomes "no parameters", which is what the spec recommends anyway.
+// A non-object one is unusable: an endpoint refuses the whole request.
 func rawSchema(in any) map[string]any {
-	if m, ok := in.(map[string]any); ok && len(m) > 0 {
+	if m, ok := in.(map[string]any); ok && m["type"] == "object" {
 		return m
 	}
 	return map[string]any{"type": "object", "additionalProperties": false}
@@ -82,10 +105,17 @@ func rawSchema(in any) map[string]any {
 // and neither survives a chat-completions request.
 const maxToolName = 64
 
+// maxServerPrefix leaves room for the tool's own name after the server's.
+const maxServerPrefix = 24
+
 // toolName namespaces a server's tool, because two servers offering
 // "search" is the collision the spec warns aggregators about.
 func toolName(server, remote string) string {
-	name := clean(server) + "__" + clean(remote)
+	prefix := clean(server)
+	if len(prefix) > maxServerPrefix {
+		prefix = prefix[:maxServerPrefix]
+	}
+	name := prefix + "__" + clean(remote)
 	if len(name) <= maxToolName {
 		return name
 	}
@@ -112,9 +142,9 @@ func clean(s string) string {
 
 // free finds a name nothing has taken, so registering can only ever
 // add. Truncation makes collisions likelier than the namespace alone.
-func free(reg *tool.Registry, name string) string {
+func free(reg *tool.Registry, name string) (string, bool) {
 	if _, taken := reg.Lookup(name); !taken {
-		return name
+		return name, true
 	}
 	for n := 2; n < 1000; n++ {
 		suffix := fmt.Sprintf("_%d", n)
@@ -123,8 +153,8 @@ func free(reg *tool.Registry, name string) string {
 			next = next[:maxToolName-len(suffix)]
 		}
 		if _, taken := reg.Lookup(next + suffix); !taken {
-			return next + suffix
+			return next + suffix, true
 		}
 	}
-	return name
+	return "", false
 }

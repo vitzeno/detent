@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/internal/tool"
 )
 
 // The in-memory tests launch nothing. This one uses real pipes.
@@ -52,6 +54,57 @@ func TestStdio_AMissingCommandIsAnError(t *testing.T) {
 	_, err := Connect(context.Background(), "nope",
 		Stdio{Command: "/nonexistent/detent-mcp-server"}.Transport())
 	assert.Error(t, err)
+}
+
+// An Env left nil is no environment, not all of detent's.
+func TestStdio_ANilEnvInheritsNothing(t *testing.T) {
+	bin, err := fakeServer()
+	require.NoError(t, err)
+	t.Setenv("DETENT_MARKER", "leaked")
+
+	s, err := Connect(context.Background(), "subproc", Stdio{Command: bin}.Transport())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	res := s.Call(context.Background(), "echo", nil)
+	assert.Contains(t, res.Stdout, "env=")
+	assert.NotContains(t, res.Stdout, "leaked")
+}
+
+// A server that exits at once says why on stderr, and that is the one
+// thing worth showing on /mcp.
+func TestStdio_AFailedStartSaysWhatTheServerSaid(t *testing.T) {
+	bin, err := fakeServer()
+	require.NoError(t, err)
+	_, err = Connect(context.Background(), "subproc",
+		Stdio{Command: bin, Env: []string{"FAKESERVER_MODE=fail"}}.Transport())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "FAKE_TOKEN is not set")
+}
+
+// A server offering nothing is still a process, and Close must reach it.
+func TestConnectAll_AServerWithNoToolsIsStillClosed(t *testing.T) {
+	bin, err := fakeServer()
+	require.NoError(t, err)
+	before := running(t, bin)
+
+	in := NewInvokers()
+	errs := ConnectAll(context.Background(), tool.Standard(), in, map[string]Config{
+		"empty": {Command: bin, Env: map[string]string{"FAKESERVER_MODE": "none"}},
+	}, nil)
+	require.Empty(t, errs)
+	require.Len(t, in.Servers(), 1)
+	require.Greater(t, running(t, bin), before)
+
+	require.NoError(t, in.Close())
+	assert.Eventually(t, func() bool { return running(t, bin) <= before },
+		5*time.Second, 100*time.Millisecond, "a server with no tools outlived Close")
+}
+
+func TestTail_KeepsTheEnd(t *testing.T) {
+	tl := &tail{max: 8}
+	_, _ = tl.Write([]byte("0123456789"))
+	_, _ = tl.Write([]byte("ab"))
+	assert.Equal(t, "456789ab", tl.String())
 }
 
 func stdioServer(t *testing.T, env ...string) *Server {

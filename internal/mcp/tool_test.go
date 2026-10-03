@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -29,6 +30,34 @@ func TestToolName_TruncatesToWhatAnEndpointTakes(t *testing.T) {
 	got := toolName("server", strings.Repeat("x", 200))
 	assert.Len(t, got, 64)
 	legal(t, got)
+}
+
+// A long server name must not crowd out the tool's own, or every tool
+// it offers truncates to the same prefix.
+func TestToolName_KeepsTheToolsOwnNameUnderALongServerName(t *testing.T) {
+	a := toolName(strings.Repeat("s", 80), "create_issue")
+	b := toolName(strings.Repeat("s", 80), "list_issues")
+	assert.NotEqual(t, a, b)
+	assert.True(t, strings.HasSuffix(a, "__create_issue"), a)
+	legal(t, a)
+}
+
+// One verbose server must not swell every request, and a schema an
+// endpoint would refuse must not fail every Step.
+func TestSpecOf_BoundsWhatAServerSends(t *testing.T) {
+	long := specOf("srv", &sdk.Tool{Name: "x", Description: strings.Repeat("é", 3000)})
+	assert.LessOrEqual(t, len(long.Description), maxDescription+len(" [truncated]"))
+	assert.True(t, utf8.ValidString(long.Description))
+	assert.Contains(t, long.Description, "[truncated]")
+
+	for _, schema := range []any{
+		map[string]any{"type": "string"},
+		map[string]any{},
+		nil,
+	} {
+		got := specOf("srv", &sdk.Tool{Name: "x", InputSchema: schema}).Raw
+		assert.Equal(t, "object", got["type"], "%v", schema)
+	}
 }
 
 // A server that offers a tool called bash must not become bash.

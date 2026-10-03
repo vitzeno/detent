@@ -75,7 +75,7 @@ func bound(s string) (string, bool) {
 	if len(s) <= capture.MaxOutputBytes {
 		return s, false
 	}
-	return s[:capture.MaxOutputBytes], true
+	return cut(s, capture.MaxOutputBytes), true
 }
 
 func size(n int) string {

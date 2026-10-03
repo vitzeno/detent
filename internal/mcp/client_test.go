@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -109,6 +110,63 @@ func TestServer_ToolsFollowsPagination(t *testing.T) {
 	assert.Len(t, tools, 25, "a page boundary lost tools")
 }
 
+// A server whose cursors go round in a circle, or never end, must not
+// hold connecting up forever.
+func TestServer_ToolsStopsOnACursorThatNeverEnds(t *testing.T) {
+	for name, next := range map[string]func(cursor string) string{
+		"a cycle":    func(c string) string { return map[string]string{"": "A", "A": "B", "B": "A"}[c] },
+		"no end":     func(c string) string { return c + "x" },
+		"one repeat": func(c string) string { return "A" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := sdk.NewServer(&sdk.Implementation{Name: "loop", Version: "1"},
+				&sdk.ServerOptions{Capabilities: &sdk.ServerCapabilities{Tools: &sdk.ToolCapabilities{}}})
+			srv.AddReceivingMiddleware(func(h sdk.MethodHandler) sdk.MethodHandler {
+				return func(ctx context.Context, method string, req sdk.Request) (sdk.Result, error) {
+					if method != "tools/list" {
+						return h(ctx, method, req)
+					}
+					cursor := req.GetParams().(*sdk.ListToolsParams).Cursor
+					return &sdk.ListToolsResult{NextCursor: next(cursor),
+						Tools: []*sdk.Tool{{Name: "t" + cursor, InputSchema: map[string]any{"type": "object"}}}}, nil
+				}
+			})
+			client, server := sdk.NewInMemoryTransports()
+			ss, err := srv.Connect(context.Background(), server, nil)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = ss.Close() })
+			s, err := Connect(context.Background(), "loop", client)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = s.Close() })
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				_, _ = s.Tools(context.Background())
+			}()
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("listing tools never finished")
+			}
+		})
+	}
+}
+
+// A Call stopped by its deadline says how long it waited, so a slow
+// server is not read as a broken one.
+func TestServer_ACallOutOfTimeSaysHowLongItRan(t *testing.T) {
+	s := serve(t, fake{name: "slow", handle: func(ctx context.Context, _ *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	res := s.Call(ctx, "slow", nil)
+	assert.NotZero(t, res.ExitCode)
+	assert.Contains(t, res.Stderr, "no answer after")
+}
+
 func TestToResult_NonTextBlocksBecomeALineNotAPayload(t *testing.T) {
 	res := toResult(&sdk.CallToolResult{Content: []sdk.Content{
 		&sdk.TextContent{Text: "here is the chart"},
@@ -156,12 +214,14 @@ func TestToResult_SaysWhenItTruncated(t *testing.T) {
 // serve wires a real server to a real client over an in-memory pair,
 // so these exercise the protocol rather than a fake of it.
 func serve(t *testing.T, tools ...fake) *Server {
+	t.Helper()
 	return serveAs(t, "fake", 0, tools...)
 }
 
 // servePaged takes the page size: the SDK's default is 1000, and a
 // test that never crosses a boundary proves nothing about the cursor.
 func servePaged(t *testing.T, pageSize int, tools ...fake) *Server {
+	t.Helper()
 	return serveAs(t, "fake", pageSize, tools...)
 }
 
