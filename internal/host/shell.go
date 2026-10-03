@@ -41,6 +41,25 @@ type Shell struct {
 	path    string
 }
 
+// Option configures a Shell.
+type Option func(*Shell)
+
+// NewShell builds a Shell, capping output at capture.MaxOutputBytes unless overridden.
+func NewShell(opts ...Option) *Shell {
+	s := &Shell{limit: capture.MaxOutputBytes}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
+}
+
+// WithLimit caps the bytes captured from each of stdout and stderr.
+func WithLimit(limit int) Option {
+	return func(s *Shell) {
+		s.limit = limit
+	}
+}
+
 // Dialect is the shell commands are written for.
 func (s *Shell) Dialect() string { return cmp.Or(s.dialect, Sh) }
 
