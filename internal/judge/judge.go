@@ -75,7 +75,6 @@ func (j ResultJudge) Judge(ctx context.Context, command string, res event.Result
 
 // Watch judges every finished Call and publishes what it decided. A high
 // goal-achieved becomes a RequestStop, honoured at the next Step boundary.
-// The returned stop cancels judgements in flight and waits for them.
 func Watch(bus *event.Bus, asker classify.Asker) func() {
 	facts, unsub := bus.Subscribe(event.Only(
 		event.TurnStartedKind, event.TurnEndedKind, event.CallProposedKind, event.CallEndedKind))
@@ -105,6 +104,7 @@ func Watch(bus *event.Bus, asker classify.Asker) func() {
 			}
 		}
 	}()
+	// Stopping cancels judgements in flight and waits for them.
 	return func() {
 		unsub()
 		cancel()
