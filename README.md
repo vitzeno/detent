@@ -53,6 +53,8 @@ All extensions listen, publish, or both
 
 `./.detent.yaml` or `~/.config/detent/config.yaml`
 
+A directory's own `.detent.yaml`, `.env` and `.mcp.json` can point your key at another endpoint or start programs, so the first time you run detent there it shows what they would do and asks before reading them. A yes is remembered until one of them changes. `-prompt` runs never ask and ignore them unless you pass `-trust`
+
 All keys are documented in [`detent.example.yaml`](detent.example.yaml). A key detent does not know stops it starting, with the line it is on
 
 ### What leaves your machine

@@ -76,7 +76,18 @@ key. Relevant env vars: `DETENT_BASE_URL`, `DETENT_MODEL`,
 names). The full list is `envKeys` in `internal/config/resolve.go`.
 Boolean variables take 1/0, true/false, yes/no or on/off. A `.env` in
 the working directory is also loaded at startup, and real env vars
-always win over it. An unknown key in the config file is an error that
+always win over it.
+
+A directory's own `.detent.yaml`, `.env` and `.mcp.json` are read only
+once trusted, because each can redirect the key or start a program
+before the human has typed anything. The first TUI run there shows what
+they set (endpoints, sandbox and log keys, header and variable names,
+MCP commands and URLs, never a value) and asks `Trust this directory?
+[y/N]`. A yes is recorded in `~/.local/state/detent/trust.json`, keyed
+by the directory and a hash of the files, so any change asks again. A
+no runs on the user's own config only. Headless runs never ask:
+untrusted files are ignored with a warning unless `-trust` is passed,
+which trusts them for that run without recording it. An unknown key in the config file is an error that
 names its line, so a typo cannot silently do nothing.
 
 At startup `main.go` pings the endpoint's `/models` and fails fast
@@ -233,7 +244,7 @@ shape was worth the rework:
   and no existing component at all.
 
 ```
-cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless
+cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless, trust
 ui          →  event, viewspec, views, version, logging + its own subpackages
 engine      →  event, tool, model, capture, classify (via an interface)
 mcp         →  event, tool, capture, the MCP SDK
@@ -412,6 +423,10 @@ adding a fat dependency fails with the transitive import named.
   is passed through rather than rebuilt, so those tools are not offered
   as `strict` and `Prepare` leaves their arguments to the server, which
   the spec says must validate them anyway.
+
+- **`internal/trust`**: decides, before config, `.env` or MCP are read,
+  whether the working directory's own files may be. It parses them
+  itself, so its summary never sees an expanded secret.
 
 - **`internal/instructions`**: the project's `AGENTS.md`, or `CLAUDE.md`
   where a directory has none, from the git root down, after the human's

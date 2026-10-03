@@ -153,6 +153,10 @@ func run() error {
 	// Said once something can show them: printed headless, a Notice in
 	// the TUI, whose screen would otherwise hide anything printed now.
 	var warnings []string
+	// The TUI's alt screen hides what Decide printed, so it is said again there.
+	if !trusted.Trusted && len(trusted.Present) > 0 && *prompt == "" {
+		warnings = append(warnings, "ignoring "+strings.Join(trusted.Present, ", ")+": this directory is not trusted")
+	}
 	// A session that cannot log is still a session: Setup says so and
 	// carries on discarding.
 	closeLog, logErr := logging.Setup(sessionID.String(),
