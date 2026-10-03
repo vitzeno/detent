@@ -176,7 +176,7 @@ func TestBounded_ReturnsWhenTheCloseWillNot(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "mcp servers did not close")
 
-	assert.NoError(t, bounded(time.Second, "mcp servers", func() error { return nil }))
+	require.NoError(t, bounded(time.Second, "mcp servers", func() error { return nil }))
 	assert.EqualError(t, bounded(time.Second, "mcp servers", func() error { return errors.New("boom") }), "boom")
 }
 
@@ -185,7 +185,7 @@ func TestBounded_ReturnsWhenTheCloseWillNot(t *testing.T) {
 func TestWait_HoldsForTheBackgroundDialButNotForever(t *testing.T) {
 	settled := make(chan struct{})
 	close(settled)
-	assert.NoError(t, wait(settled, time.Second, "mcp servers finished connecting"))
+	require.NoError(t, wait(settled, time.Second, "mcp servers finished connecting"))
 
 	err := wait(make(chan struct{}), 50*time.Millisecond, "mcp servers finished connecting")
 	require.Error(t, err)

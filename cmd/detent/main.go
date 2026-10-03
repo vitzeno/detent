@@ -284,7 +284,7 @@ func run() error {
 	bus.Resume(engine.Resumable(restore))
 	eng := engine.New(bus, client, tools, runners, opts...)
 	eng.Restore(restore)
-	ctx, stop := context.WithCancel(context.Background())
+	ctx, stop := context.WithCancel(context.Background()) //nolint:gosec // sd.close calls stop
 	sd.stop = stop
 
 	// Wired before Run so nothing published at startup is missed, and
@@ -415,7 +415,7 @@ func loadDotenv(path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -482,7 +482,7 @@ func openSession(resume string) (uuid.UUID, []event.Record, error) {
 	if err != nil {
 		return uuid.Nil, nil, err
 	}
-	defer events.Close()
+	defer func() { _ = events.Close() }()
 
 	id, err := resolveSession(events, resume)
 	if err != nil {

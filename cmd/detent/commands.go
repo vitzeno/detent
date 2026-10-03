@@ -21,7 +21,7 @@ func listSessions() error {
 	if err != nil {
 		return err
 	}
-	defer events.Close()
+	defer func() { _ = events.Close() }()
 
 	all, err := events.Sessions()
 	if err != nil {

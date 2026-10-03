@@ -75,7 +75,7 @@ func Find(roots []Root) ([]Skill, []string) {
 			if !isDir(dir) {
 				continue
 			}
-			if root.Within != "" && !(inside(dir, root.Within) && inside(filepath.Join(dir, "SKILL.md"), root.Within)) {
+			if root.Within != "" && (!inside(dir, root.Within) || !inside(filepath.Join(dir, "SKILL.md"), root.Within)) {
 				warnings = append(warnings, fmt.Sprintf("skills: %s links outside the repository, so it was skipped", dir))
 				continue
 			}
@@ -179,7 +179,7 @@ func readHead(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	b, err := io.ReadAll(io.LimitReader(f, maxHead))
 	return string(b), err
 }
@@ -222,7 +222,7 @@ func upToRoot(dir string) []string {
 
 // inside reports whether p, links followed, is dir or under it.
 func inside(p, dir string) bool {
-	real, err := filepath.EvalSymlinks(p)
+	resolved, err := filepath.EvalSymlinks(p)
 	if err != nil {
 		// Missing is load's to report, and nothing outside was reached.
 		return errors.Is(err, fs.ErrNotExist)
@@ -230,7 +230,7 @@ func inside(p, dir string) bool {
 	if d, err := filepath.EvalSymlinks(dir); err == nil {
 		dir = d
 	}
-	rel, err := filepath.Rel(dir, real)
+	rel, err := filepath.Rel(dir, resolved)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 

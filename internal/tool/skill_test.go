@@ -54,7 +54,7 @@ func TestSkill_HidesAManualSkillFromTheCatalog(t *testing.T) {
 
 func TestSkill_RegistersWithTheBuiltIns(t *testing.T) {
 	r := Standard(Skill{})
-	r.Register(fakeMCP{"aaa__first"})
+	require.NoError(t, r.Register(fakeMCP{"aaa__first"}))
 	names := r.Names()
 	assert.Equal(t, "aaa__first", names[len(names)-1], "a skill is not sorted in among MCP tools")
 }

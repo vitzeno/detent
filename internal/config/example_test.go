@@ -24,7 +24,7 @@ func TestExample_NamesEveryKeyAndNoOthers(t *testing.T) {
 	require.NoError(t, yaml.Unmarshal(raw, &got))
 
 	want := map[string]bool{}
-	fields := reflect.TypeOf(Config{})
+	fields := reflect.TypeFor[Config]()
 	for field := range fields.Fields() {
 		if tag := field.Tag.Get("yaml"); tag != "" && tag != "-" {
 			want[strings.Split(tag, ",")[0]] = true

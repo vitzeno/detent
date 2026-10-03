@@ -44,27 +44,31 @@ func Find(dir, global string) ([]File, error) {
 	if abs, err := filepath.Abs(dir); err == nil {
 		dir = abs
 	}
-	var found []*File
+	var found []File
 	var errs []error
 	dirs := upToRoot(dir)
 	// A project file may link only within its own repository, never to a key elsewhere on this machine.
 	within := dirs[len(dirs)-1]
 	// Nearest first, so the file that matters most is the last to be cut.
 	for _, d := range dirs {
-		f, err := firstOf(d, dir, within)
+		f, ok, err := firstOf(d, dir, within)
 		errs = append(errs, err)
-		found = append(found, f)
+		if ok {
+			found = append(found, f)
+		}
 	}
 	if global != "" && !slices.Contains(dirs, filepath.Dir(global)) {
-		f, err := read(global, tilde(global), "")
+		f, ok, err := read(global, tilde(global), "")
 		errs = append(errs, err)
-		found = append(found, f)
+		if ok {
+			found = append(found, f)
+		}
 	}
 
 	var out []File
 	budget := MaxBytes
 	for _, f := range found {
-		if f == nil || strings.TrimSpace(f.Text) == "" {
+		if strings.TrimSpace(f.Text) == "" {
 			continue
 		}
 		if budget <= 0 {
@@ -74,7 +78,7 @@ func Find(dir, global string) ([]File, error) {
 			f.Text, f.Truncated = cut(f.Text, budget), true
 		}
 		budget -= len(f.Text)
-		out = append(out, *f)
+		out = append(out, f)
 	}
 	slices.Reverse(out)
 	return out, errors.Join(errs...)
@@ -108,61 +112,60 @@ func Paths(files []File) []string {
 }
 
 // firstOf reads the first of names in dir, named relative to from.
-func firstOf(dir, from, within string) (*File, error) {
+func firstOf(dir, from, within string) (File, bool, error) {
 	for _, name := range names {
 		p := filepath.Join(dir, name)
 		rel, err := filepath.Rel(from, p)
 		if err != nil {
 			rel = p
 		}
-		f, err := read(p, rel, within)
-		if f != nil || err != nil {
-			return f, err
+		if f, ok, err := read(p, rel, within); ok || err != nil {
+			return f, ok, err
 		}
 	}
-	return nil, nil
+	return File{}, false, nil
 }
 
-// read returns the file at p, or nil when it is missing, not a regular
-// file, or empty. An empty AGENTS.md still hides a CLAUDE.md beside it.
+// read returns the file at p, ok false when it is missing or not a regular
+// file. An empty AGENTS.md still hides a CLAUDE.md beside it.
 // Unless within is empty, a p that resolves outside it is an error.
-func read(p, name, within string) (*File, error) {
+func read(p, name, within string) (File, bool, error) {
 	info, err := os.Stat(p)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+		return File{}, false, nil
 	}
 	if err != nil {
-		return nil, err
+		return File{}, false, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, nil
+		return File{}, false, nil
 	}
 	if within != "" && !inside(p, within) {
-		return nil, fmt.Errorf("%s links outside the repository, so it was not read", p)
+		return File{}, false, fmt.Errorf("%s links outside the repository, so it was not read", p)
 	}
 	f, err := os.Open(p)
 	if err != nil {
-		return nil, err
+		return File{}, false, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	// One byte over the cap is enough for Find to know it cut something.
 	text, err := io.ReadAll(io.LimitReader(f, MaxBytes+1))
 	if err != nil {
-		return nil, err
+		return File{}, false, err
 	}
-	return &File{Path: name, Text: string(text)}, nil
+	return File{Path: name, Text: string(text)}, true, nil
 }
 
 // inside reports whether p, links followed, is dir or under it.
 func inside(p, dir string) bool {
-	real, err := filepath.EvalSymlinks(p)
+	resolved, err := filepath.EvalSymlinks(p)
 	if err != nil {
 		return false
 	}
 	if d, err := filepath.EvalSymlinks(dir); err == nil {
 		dir = d
 	}
-	rel, err := filepath.Rel(dir, real)
+	rel, err := filepath.Rel(dir, resolved)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 

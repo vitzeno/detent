@@ -64,7 +64,7 @@ func TestEnvConfig_ReadsExactlyEnvKeys(t *testing.T) {
 	assert.Equal(t, want, read)
 }
 
-// A field apply forgets is loaded from the file and then silently dropped.
+// A field merge forgets is loaded from the file and then silently dropped.
 func TestResolve_EveryFieldSurvives(t *testing.T) {
 	clearEnv(t)
 	for i := range reflect.TypeFor[Config]().NumField() {
@@ -86,7 +86,7 @@ func TestResolve_EveryFieldSurvives(t *testing.T) {
 			t.Fatalf("%s: teach this test about %s", name, v.Kind())
 		}
 		got := reflect.ValueOf(Resolve(file, Config{}, -1)).Field(i)
-		assert.Equal(t, v.Interface(), got.Interface(), "%s was dropped by apply", name)
+		assert.Equal(t, v.Interface(), got.Interface(), "%s was dropped by merge", name)
 	}
 }
 

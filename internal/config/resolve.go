@@ -11,17 +11,17 @@ import (
 // only the fields it has. steps is -1 when not passed, so -steps 0 applies.
 func Resolve(file, flags Config, steps int) Config {
 	out := Default()
-	out.apply(file)
-	out.apply(envConfig(os.Getenv))
-	out.apply(flags)
+	merge(&out, file)
+	merge(&out, envConfig(os.Getenv))
+	merge(&out, flags)
 	if steps >= 0 {
 		out.Steps = steps
 	}
 	return out
 }
 
-// apply overwrites the fields o sets, leaving the rest alone.
-func (c *Config) apply(o Config) {
+// merge overwrites the fields o sets in c, leaving the rest alone.
+func merge(c *Config, o Config) {
 	if o.BaseURL != "" {
 		c.BaseURL = o.BaseURL
 	}
@@ -99,7 +99,7 @@ func (c *Config) apply(o Config) {
 // it would need the -1 sentinel steps uses.
 
 // envInt reads a numeric variable. Unset and unparseable both give 0,
-// which apply skips.
+// which merge skips.
 func envInt(v string) int {
 	n, err := strconv.Atoi(v)
 	if err != nil {
@@ -109,7 +109,7 @@ func envInt(v string) int {
 }
 
 // envBool reads a true or false variable, in any of the spellings people
-// use for one. Unset and unparseable both give nil, which apply skips.
+// use for one. Unset and unparseable both give nil, which merge skips.
 func envBool(v string) *bool {
 	var b bool
 	switch strings.ToLower(strings.TrimSpace(v)) {
