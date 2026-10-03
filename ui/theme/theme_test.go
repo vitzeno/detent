@@ -52,7 +52,7 @@ func TestThemes_ReadableAgainstTheirBackground(t *testing.T) {
 			}{
 				{"TextPrimary", th.TextPrimary, 4.5},
 				{"TextMuted", th.TextMuted, 3.0},
-				{"TextFaint", th.TextFaint, 1.8},
+				{"TextFaint", th.TextFaint, 1.8}, // below WCAG on purpose: faint is for what may be skipped
 				{"Accent", th.Accent, 3.0},
 				{"Safe", th.Safe, 3.0},
 				{"Caution", th.Caution, 3.0},

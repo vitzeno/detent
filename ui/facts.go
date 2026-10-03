@@ -12,7 +12,7 @@ import (
 )
 
 // maxLiveLines bounds what one running call keeps on screen. The rest
-// is counted away and the full output arrives with CallEnded.
+// is counted away and the full output arrives with ToolCallEnded.
 const maxLiveLines = 200
 
 // Restore rebuilds history from a stored session by looping over apply.

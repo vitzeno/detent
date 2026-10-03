@@ -45,9 +45,8 @@ func Names() []string {
 // Current is the active theme.
 func Current() Theme { return active }
 
-// Apply makes t the active theme. Callers must also refresh any style
-// already baked from the old colors, as ui.RefreshStyles does. Not safe
-// for concurrent use: call it once, before the TUI starts.
+// Apply makes t the active theme. Restyle afterwards, as ui.RefreshStyles does.
+// Not safe for concurrent use: call it once, before the TUI starts.
 func Apply(t Theme) { active = t }
 
 var dark = Theme{

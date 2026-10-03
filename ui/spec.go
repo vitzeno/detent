@@ -132,9 +132,8 @@ func fallbackChain(r *historyRow, output string) []*viewspec.Compiled {
 	return append(chain, compiledPlain)
 }
 
-// markdownWidget renders prose through glamour, which viewspec cannot
-// import. It caches renders because Draw runs per frame, and one
-// instance serves every row, so the cache holds several.
+// markdownWidget draws prose through glamour, which viewspec cannot import.
+// Draw runs per frame and one instance serves every row, so it caches several renders.
 type markdownWidget struct {
 	mu    sync.Mutex
 	cache map[markdownKey][]string

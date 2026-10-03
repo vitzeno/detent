@@ -224,7 +224,7 @@ func allTime(f Facts) string {
 		faint.Render("  resume one with /sessions")
 }
 
-// examples gives a first goal to copy rather than a blank box.
+// examples gives a first request to copy rather than a blank box.
 func examples(width int) []string {
 	out := make([]string, 0, 4)
 	for _, e := range []string{

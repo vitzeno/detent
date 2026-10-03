@@ -123,7 +123,7 @@ func TestApply_ACommandBetweenTurnsGetsItsOwnBlock(t *testing.T) {
 	r := b.rows[0]
 	assert.True(t, r.human)
 	assert.Equal(t, "git status", r.command)
-	assert.False(t, r.running, "ShellEnded settles it")
+	assert.False(t, r.running, "UserCommandEnded settles it")
 	require.NotNil(t, r.result)
 	assert.Equal(t, "clean\n", r.result.Stdout)
 }
@@ -260,7 +260,7 @@ func TestShell_TheRenderedBorderFollowsTheMode(t *testing.T) {
 	assert.Equal(t, stripStyle(inPrompt), stripStyle(inShell), "and nothing but the colour moved")
 }
 
-// Nothing subscribes ShellEnded to the judge, on purpose, so a row
+// Nothing subscribes UserCommandEnded to the judge, on purpose, so a row
 // that said "judging…" would wait for a verdict that never comes.
 func TestShell_TheRowNeverPromisesAVerdict(t *testing.T) {
 	shell := uuid.Must(uuid.NewV7())

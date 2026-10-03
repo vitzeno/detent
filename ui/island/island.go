@@ -15,9 +15,8 @@ import (
 // padding take two cells a side, and width never goes below 10.
 func Inner(width int) int { return max(10, width) - 4 }
 
-// Render wraps lines in a bordered island height tall and width wide,
-// padding or truncating to fit. An empty title renders none. A line
-// holding newlines counts as several, and height is at least one.
+// Render borders lines in an island exactly width by height, at least 1 tall,
+// padding or cutting to fit. Embedded newlines split a line, an empty title draws none.
 func Render(title string, border color.Color, lines []string, width, height int) string {
 	width = max(10, width)
 	height = max(1, height)
