@@ -8,12 +8,13 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// DefaultRiskThreshold is the scope risk at which a command is flagged.
-const DefaultRiskThreshold = 0.5
-
-// DefaultRiskTimeout bounds one assessment. Every tool call waits on it, and
-// an answer usually takes well under a second.
-const DefaultRiskTimeout = 5 * time.Second
+const (
+	// DefaultRiskThreshold is the scope risk at which a command is flagged.
+	DefaultRiskThreshold = 0.5
+	// DefaultRiskTimeout bounds one assessment. Every tool call waits on it,
+	// and an answer usually takes well under a second.
+	DefaultRiskTimeout = 5 * time.Second
+)
 
 // RiskJudge adapts Jev to the engine's hook chain. It answers, it
 // never decides: Widen folds it with everyone else's.
