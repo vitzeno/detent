@@ -4,6 +4,7 @@ package event
 // is drawn. The judge picks one, or a tool declares it in ToolCallProposed.
 type RenderKind string
 
+// The render kinds, one per shape of output.
 const (
 	// RendersText is unstructured text read top to bottom, whatever its length.
 	RendersText    RenderKind = "plain_text"
@@ -26,6 +27,7 @@ func RenderKinds() []RenderKind {
 // Status is how a finished tool call went, as the judge reads it.
 type Status string
 
+// The statuses. Warnings means it worked but printed something worth a look.
 const (
 	StatusClean    Status = "clean_success"
 	StatusWarnings Status = "success_with_warnings"

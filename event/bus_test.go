@@ -50,7 +50,7 @@ func TestBus_DropsLossyOnlyWhenBehind(t *testing.T) {
 				sawEnd = true
 			}
 		case <-deadline:
-			t.Fatal("CallEnded was dropped; lifecycle delivery must be guaranteed")
+			t.Fatal("ToolCallEnded was dropped; lifecycle delivery must be guaranteed")
 		}
 	}
 }
@@ -310,7 +310,7 @@ func TestBus_SubscribeAfterDrainIsClosed(t *testing.T) {
 	defer stop()
 	_, open := <-ch
 	assert.False(t, open)
-	assert.NotPanics(t, b.Handle(nil, func(Record) {}))
+	assert.NotPanics(t, func() { b.Handle(nil, func(Record) {})() })
 }
 
 // Shutdown is the one time a backlog must not be abandoned: the
@@ -371,21 +371,15 @@ func TestBus_ResumeContinuesTheOrdinals(t *testing.T) {
 func TestBus_SettleDeliversThenCarriesOn(t *testing.T) {
 	b := New()
 	defer b.Close()
-	ch, stop := b.Subscribe(nil)
-	defer stop()
-
 	var got atomic.Int64
-	go func() {
-		for range ch {
-			got.Add(1)
-		}
-	}()
+	stop := b.Handle(nil, func(Record) { got.Add(1) })
+	defer stop()
 
 	for range 50 {
 		b.Publish(Notice{Text: "before"})
 	}
 	b.Settle(3 * time.Second)
-	assert.EqualValues(t, 50, got.Load(), "everything published so far has been received")
+	assert.EqualValues(t, 50, got.Load(), "everything published so far has been handled")
 
 	b.Publish(Notice{Text: "after"})
 	b.Settle(3 * time.Second)
