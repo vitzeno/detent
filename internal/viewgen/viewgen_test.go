@@ -76,8 +76,11 @@ func TestCompose_OffersOnlyFieldsTheParseProduced(t *testing.T) {
 	// The question offered the parsed fields and nothing else.
 	var offered []string
 	for _, state := range judge.seen {
-		if f, ok := state.(map[string]any)["fields_found"]; ok {
-			offered = f.([]string)
+		m, ok := state.(map[string]any)
+		require.True(t, ok)
+		if f, ok := m["fields_found"]; ok {
+			offered, ok = f.([]string)
+			require.True(t, ok)
 		}
 	}
 	assert.Equal(t, []string{"pkg", "secs", "status"}, offered)
@@ -148,7 +151,10 @@ func TestCompose_TheJudgeSeesABoundedSample(t *testing.T) {
 	_, err := g.Compose(context.Background(), req)
 	require.NoError(t, err)
 	require.NotEmpty(t, judge.seen)
-	shown := judge.seen[0].(map[string]any)["output"].(string)
+	state, ok := judge.seen[0].(map[string]any)
+	require.True(t, ok)
+	shown, ok := state["output"].(string)
+	require.True(t, ok)
 	assert.LessOrEqual(t, len(shown), viewgen.MaxJudgeBytes+len("\n…[truncated]"))
 }
 
@@ -367,6 +373,8 @@ func TestExisting_AShippedViewThatHidesTheOutputIsNotUsed(t *testing.T) {
 	assert.True(t, ok, "the summary alone still draws with it")
 }
 
+// One table defines a kind's criteria and what may draw it, so a kind
+// cannot be judged into existence with nothing able to render it.
 func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
 	criteria := viewgen.RenderKindCriteria()
 	require.Len(t, criteria, len(viewgen.Kinds()))
@@ -401,8 +409,6 @@ func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
 	}
 }
 
-// One table defines a kind's criteria and what may draw it, so a kind
-// cannot be judged into existence with nothing able to render it.
 // event owns the render kinds, so a shape added here or in views fails
 // until it exists there, and one added there fails until it is judged.
 func TestKinds_AgreeWithEvent(t *testing.T) {
@@ -577,8 +583,6 @@ func composer(t *testing.T, say map[string]string) (*viewgen.Generator, *scripte
 	return &viewgen.Generator{Judge: j, Store: &viewgen.Store{Dir: t.TempDir()}}, j
 }
 
-// firstBody is any widget from the list that draws rows, for a test
-// that needs a body it is not itself about.
 // described is every widget that says what it is for, keyed by kind, which
 // is what the judge is offered.
 func described(reg *viewspec.Registry) map[string]viewspec.Description {
@@ -591,6 +595,8 @@ func described(reg *viewspec.Registry) map[string]viewspec.Description {
 	return out
 }
 
+// firstBody is any widget from the list that draws rows, for a test
+// that needs a body it is not itself about.
 func firstBody(guide map[string]viewspec.Description, kinds []string) string {
 	for _, k := range kinds {
 		if d, ok := guide[k]; ok && !d.Summarises && k != viewspec.RowKind && k != viewspec.PanelKind {

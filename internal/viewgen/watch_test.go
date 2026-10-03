@@ -209,7 +209,6 @@ func TestWatch_StopCancelsCompositionInFlight(t *testing.T) {
 	}
 }
 
-// blockingJudge answers nothing until its ctx is cancelled.
 // The session's ctx ending abandons a composition without anyone calling stop.
 func TestWatch_ItsContextEndingCancelsCompositionInFlight(t *testing.T) {
 	bus := event.New()
