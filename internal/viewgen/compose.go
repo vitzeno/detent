@@ -145,9 +145,8 @@ func (c *composer) parse(ctx context.Context) (viewspec.Parse, error) {
 	return honour(p, skip, c.req.Output), nil
 }
 
-// header asks which line names the columns, offering the lines rather
-// than a count. -1 means no header at all, as in ls -la. A silent judge
-// ends the composition here rather than costing a second round trip.
+// header asks which line names the columns, -1 for none as in ls -la. A
+// silent judge ends the composition here rather than cost a second round trip.
 func (c *composer) header(ctx context.Context) (int, error) {
 	lines := strings.Split(strings.TrimRight(c.req.Output, "\n"), "\n")
 	if len(lines) < 2 {

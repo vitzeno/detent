@@ -19,9 +19,8 @@ const (
 	composeTimeout = 30 * time.Second
 )
 
-// Watch composes a view per judged tool call and per user command. A subscriber, so
-// a redraw cannot fire a second model call: a redraw is not an event.
-// Cancelling ctx abandons compositions in flight, as the stop does.
+// Watch composes a view per judged tool call and per user command, never per
+// redraw. Cancelling ctx abandons compositions in flight, as the stop does.
 func (g *Generator) Watch(ctx context.Context, bus *event.Bus) func() {
 	ctx, cancel := context.WithCancel(ctx)
 	w := &watcher{gen: g, bus: bus, ctx: ctx, calls: map[uuid.UUID]*pending{},
