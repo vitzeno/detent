@@ -4,44 +4,40 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestBadge(t *testing.T) {
-	icon, detail := Badge(Row{Running: true, LiveLines: 7, Dropped: 2}, "…")
-	assert.Equal(t, "…", icon)
-	assert.Contains(t, detail, "7 live lines")
-
-	icon, detail = Badge(Row{}, "…")
-	assert.Contains(t, icon, "○")
-	assert.Equal(t, "pending", detail)
-
-	icon, detail = Badge(Row{HasResult: true, ExitCode: 0, Summary: "exit 0, 3 lines"}, "…")
-	assert.Contains(t, icon, "✓")
-	assert.Contains(t, detail, "judging…")
-
-	icon, detail = Badge(Row{HasResult: true, ExitCode: 1, Summary: "exit 1, 0 lines"}, "…")
-	assert.Contains(t, icon, "✗")
-
-	// Nothing judges one of these, so the summary is all there is.
-	icon, detail = Badge(Row{HasResult: true, Summary: "clean", NoVerdict: true}, "…")
-	assert.Contains(t, icon, "✓")
-	assert.Equal(t, "clean", detail)
-	assert.NotContains(t, detail, "judging")
-
-	// It exited 0 because it never got to exit at all.
-	icon, detail = Badge(Row{HasResult: true, Err: true,
-		Summary: "stopped by the human", NoVerdict: true}, "…")
-	assert.Contains(t, icon, "✗")
-	assert.Equal(t, "stopped by the human", detail)
-
-	icon, detail = Badge(Row{Judged: true, Status: "clean_success"}, "…")
-	assert.Contains(t, icon, "✓")
-	assert.Equal(t, "clean", detail)
-
-	icon, detail = Badge(Row{Judged: true, Status: "failed", Attention: 0.9}, "…")
-	assert.Contains(t, icon, "⚠")
-	assert.Contains(t, detail, "0.90")
+	tests := []struct {
+		name         string
+		row          Row
+		icon, detail string
+	}{
+		{"running", Row{Running: true, LiveLines: 7}, "…", "7 live lines"},
+		{"running past the cap", Row{Running: true, LiveLines: 7, Dropped: 2}, "…", "7 live lines (+2 dropped)"},
+		{"pending", Row{}, "○", "pending"},
+		{"exited 0, awaiting a verdict", Row{HasResult: true, Summary: "exit 0, 3 lines"}, "✓", "exit 0, 3 lines · judging…"},
+		{"exited 1, awaiting a verdict", Row{HasResult: true, ExitCode: 1, Summary: "exit 1, 0 lines"}, "✗", "exit 1, 0 lines · judging…"},
+		// Nothing judges one of these, so the summary is all there is.
+		{"nothing will judge it", Row{HasResult: true, Summary: "clean", NoVerdict: true}, "✓", "clean"},
+		// It exited 0 because it never got to exit at all.
+		{"could not run", Row{HasResult: true, Err: true, Summary: "stopped by the human", NoVerdict: true}, "✗", "stopped by the human"},
+		{"clean", Row{Judged: true, Status: "clean_success"}, "✓", "clean"},
+		{"warnings", Row{Judged: true, Status: "success_with_warnings"}, "⚠", "warnings"},
+		{"failed", Row{Judged: true, Status: "failed"}, "✗", "failed"},
+		{"empty", Row{Judged: true, Status: "empty"}, "○", "no output"},
+		{"a status nobody spelt", Row{Judged: true, Status: "novel"}, "○", "done"},
+		{"needs attention", Row{Judged: true, Status: "failed", Attention: 0.9}, "⚠", "failed · attention 0.90"},
+		{"exactly at the threshold", Row{Judged: true, Status: "clean_success", Attention: AttentionThreshold}, "⚠", "clean · attention 0.70"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			icon, detail := Badge(tt.row, "…")
+			assert.Equal(t, tt.icon, ansi.Strip(icon))
+			assert.Equal(t, tt.detail, detail)
+		})
+	}
 }
 
 func TestBar(t *testing.T) {
@@ -61,11 +57,25 @@ func TestBar(t *testing.T) {
 	assert.NotEqual(t, ok, bad, "the two must render differently, not just read differently")
 }
 
-func TestDurTokens(t *testing.T) {
-	assert.Equal(t, "412ms", Dur(412*time.Millisecond))
-	assert.Equal(t, "3.2s", Dur(3200*time.Millisecond))
-	assert.Equal(t, "2m10s", Dur(130*time.Second))
-	assert.Equal(t, "847", Tokens(847))
-	assert.Equal(t, "9.4k", Tokens(9400))
-	assert.Equal(t, "2.1M", Tokens(2100000))
+func TestDur(t *testing.T) {
+	for in, want := range map[time.Duration]string{
+		412 * time.Millisecond:    "412ms",
+		3200 * time.Millisecond:   "3.2s",
+		59_960 * time.Millisecond: "1m0s",
+		130 * time.Second:         "2m10s",
+	} {
+		assert.Equal(t, want, Dur(in), "%v", in)
+	}
+}
+
+func TestTokens(t *testing.T) {
+	for in, want := range map[int]string{
+		847:       "847",
+		9400:      "9.4k",
+		999_949:   "999.9k",
+		999_950:   "1.0M",
+		2_100_000: "2.1M",
+	} {
+		assert.Equal(t, want, Tokens(in), "%d", in)
+	}
 }

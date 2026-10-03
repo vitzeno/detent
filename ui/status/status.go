@@ -5,6 +5,7 @@ package status
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"charm.land/lipgloss/v2"
@@ -109,8 +110,6 @@ func KindLabel(k string) string {
 		return "file"
 	case "file_listing":
 		return "files"
-	case "plain_text":
-		return "output"
 	default:
 		return "output"
 	}
@@ -142,6 +141,10 @@ func Bar(spinner, phase, keys string, n Notice, waiting bool) string {
 
 // Dur compacts a duration for status lines: 412ms, 3.2s, 2m10s.
 func Dur(d time.Duration) string {
+	if d >= time.Second {
+		// Rounded first, so 59.96s reads 1m0s rather than 60.0s.
+		d = d.Round(100 * time.Millisecond)
+	}
 	if d < time.Second {
 		return fmt.Sprintf("%dms", d.Milliseconds())
 	}
@@ -156,8 +159,8 @@ func Dur(d time.Duration) string {
 func Tokens(n int) string {
 	switch {
 	case n < 1000:
-		return fmt.Sprintf("%d", n)
-	case n < 1000*1000:
+		return strconv.Itoa(n)
+	case n < 1000*1000-50: // past that it would print 1000.0k
 		return fmt.Sprintf("%.1fk", float64(n)/1000)
 	default:
 		return fmt.Sprintf("%.1fM", float64(n)/1000000)
