@@ -38,6 +38,7 @@ import (
 	"github.com/vitzeno/detent/internal/sandbox"
 	"github.com/vitzeno/detent/internal/store"
 	"github.com/vitzeno/detent/internal/tool"
+	"github.com/vitzeno/detent/internal/trust"
 	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/ui"
@@ -62,10 +63,6 @@ func main() {
 }
 
 func run() error {
-	if err := loadDotenv(".env"); err != nil {
-		return err
-	}
-
 	baseURL := flag.String("url", "", "OpenAI-compatible base URL (default: env, else config file, else "+config.DefaultBaseURL+")")
 	modelName := flag.String("model", "", "model name (default: env, else config file, else "+config.DefaultModel+")")
 	apiKey := flag.String("key", "", "API key, better set as DETENT_API_KEY since a flag shows in ps (default: env, else config file; empty for a local endpoint)")
@@ -82,6 +79,7 @@ func run() error {
 	prune := flag.Bool("prune", false, "remove what abandoned sessions left in containerd, and exit")
 	listMCP := flag.Bool("mcp", false, "list the configured MCP servers and their tools, and exit")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	trustDir := flag.Bool("trust", false, "read this directory's .detent.yaml, .env and .mcp.json for this run without asking or recording it")
 	flag.Parse()
 
 	if *showVersion {
@@ -98,7 +96,18 @@ func run() error {
 		return fmt.Errorf("-unattended and -approve-all only apply with -prompt: the TUI always asks")
 	}
 
-	fileCfg, err := config.Load(*configPath)
+	// Before anything the repo carries is read, since it can redirect the key or start programs.
+	trusted, err := trust.Decide(trust.Options{Dir: ".", State: trust.DefaultDir(),
+		Flag: *trustDir, Ask: askTrust(*prompt == ""), Out: os.Stderr})
+	if err != nil {
+		return err
+	}
+	if trusted.Trusted {
+		if err := loadDotenv(".env"); err != nil {
+			return err
+		}
+	}
+	fileCfg, err := config.Load(*configPath, trusted.Trusted)
 	if err != nil {
 		return err
 	}
@@ -114,7 +123,7 @@ func run() error {
 		return pruneSandbox(resolved.SandboxSocket)
 	}
 	if *listMCP {
-		return listServers()
+		return listServers(trusted.Trusted)
 	}
 
 	// Validated even for -prompt, so a typo fails fast either way.
@@ -268,7 +277,7 @@ func run() error {
 	// Connected before the engine, which takes the registry by value.
 	// Headless reads none: config expands secrets, servers start processes.
 	tools := tool.Standard(found.skillTools()...)
-	configured, err := loadMCPConfig(*prompt == "", mcppkg.Files())
+	configured, err := loadMCPConfig(*prompt == "", mcppkg.Files(trusted.Trusted))
 	if err != nil {
 		return err
 	}
@@ -404,6 +413,19 @@ func defaultSandboxSocket() string {
 	default:
 		return ""
 	}
+}
+
+// askTrust asks on the terminal, or is nil when nobody is there to answer.
+func askTrust(tui bool) func() bool {
+	if !tui || !isTerminal(os.Stdin) || !isTerminal(os.Stderr) {
+		return nil
+	}
+	return trust.Reader(os.Stdin)
+}
+
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // loadDotenv fills gaps from .env in the working directory. Real

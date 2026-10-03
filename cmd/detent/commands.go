@@ -45,13 +45,13 @@ func listSessions() error {
 
 // listServers connects, says what each offers, and exits. Worth its
 // own flag: a server that answers here is one the model will see.
-func listServers() error {
-	cfg, err := mcppkg.Load(mcppkg.Files()...)
+func listServers(project bool) error {
+	cfg, err := mcppkg.Load(mcppkg.Files(project)...)
 	if err != nil {
 		return err
 	}
 	if len(cfg) == 0 {
-		fmt.Printf("no mcp servers configured, looked in %s\n", strings.Join(mcppkg.Files(), " and "))
+		fmt.Printf("no mcp servers configured, looked in %s\n", strings.Join(mcppkg.Files(project), " and "))
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
