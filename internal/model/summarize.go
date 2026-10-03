@@ -84,6 +84,8 @@ func transcriptText(msgs []event.Message) string {
 			}
 		case event.RoleTool:
 			fmt.Fprintf(&b, "Result: %s\n", clip(m.Content, maxResultBytes))
+		case event.RoleSystem:
+			// The prompt is not part of what happened.
 		}
 	}
 	return b.String()

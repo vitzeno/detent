@@ -197,6 +197,8 @@ func withLargest(p part, msgs []event.Message) part {
 			p.Largest, p.largest = calls[m.CallID], len(m.Content)
 		case event.RoleAssistant:
 			p.Largest, p.largest = "a reply", len(m.Content)
+		case event.RoleSystem, event.RoleUser:
+			// Only what a command printed or the model said is named.
 		}
 	}
 	return p

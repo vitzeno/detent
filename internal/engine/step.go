@@ -76,6 +76,7 @@ serial:
 		}
 		if p.risk.Dangerous {
 			switch e.approve(ctx, t, p) {
+			case approved:
 			case declined:
 				p.finish("The human declined this call. Do not repeat it; try something else.")
 				continue
