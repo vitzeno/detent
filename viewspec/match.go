@@ -36,15 +36,34 @@ func (m matcher) match(r Row) bool {
 	return r[m.field] == m.value
 }
 
-// count reports how many rows match.
-func (m matcher) count(rows []Row) int {
-	n := 0
+// countOf counts the rows of matches and how many of those hit, so a
+// hit outside the denominator can never make n exceed total.
+func countOf(hit, of matcher, rows []Row) (n, total int) {
 	for _, r := range rows {
-		if m.match(r) {
-			n++
+		if of.match(r) {
+			total++
+			if hit.match(r) {
+				n++
+			}
 		}
 	}
-	return n
+	return n, total
+}
+
+// checkCount validates count_where and of, each naming a parsed field.
+func checkCount(b Block, fields []string) error {
+	for _, expr := range []string{b.CountWhere, b.Of} {
+		m, err := parseMatch(expr)
+		if err != nil {
+			return err
+		}
+		if !m.all {
+			if err := needField(m.field, fields); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // placeholder is the only templating there is: a field name in braces,

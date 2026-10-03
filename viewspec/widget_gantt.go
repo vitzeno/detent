@@ -33,11 +33,13 @@ func (ganttWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		starts[i], _ = instant(r[startF])
 		lengths[i], _ = instant(r[lenF])
 		labels[i], notes[i] = r[label], r[lenF]
+		end := starts[i] + lengths[i]
 		if i == 0 {
-			lo = starts[i]
+			lo, hi = starts[i], end
 		}
-		lo = min(lo, starts[i])
-		hi = max(hi, starts[i]+lengths[i])
+		// A negative length ends before it starts, so both ends widen the axis.
+		lo = min(lo, starts[i], end)
+		hi = max(hi, starts[i], end)
 	}
 	lay, err := layOutBars(labels, notes, f)
 	if err != nil {
@@ -45,7 +47,7 @@ func (ganttWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	}
 	lines := titleLine(b, f)
 	for i := range d.Rows {
-		at := int(fraction(starts[i], lo, hi) * float64(lay.bar))
+		at := min(int(fraction(starts[i], lo, hi)*float64(lay.bar)), lay.bar-1)
 		width := 1
 		if hi > lo {
 			width = max(1, int(lengths[i]/(hi-lo)*float64(lay.bar)))

@@ -6,8 +6,9 @@ import (
 	"strings"
 )
 
-// number reads a quantity the way a shell prints one: 45%, 1,024 or
-// 1.2G. Unreadable is 0, never a failed view.
+// number reads a quantity the way a shell prints one: 45%, 1,024, 1.2G
+// or 1e5. A comma separates thousands, so 1,5 is 15. Unreadable or
+// infinite is 0, never a failed view.
 func number(s string) float64 {
 	digits, unit := splitNumber(strings.TrimSpace(s))
 	if digits == "" {
@@ -17,7 +18,11 @@ func number(s string) float64 {
 	if err != nil {
 		return 0
 	}
-	return f * scale(unit)
+	f *= scale(unit)
+	if math.IsInf(f, 0) || math.IsNaN(f) {
+		return 0
+	}
+	return f
 }
 
 // splitNumber cuts s into its leading numeric prefix and whatever
@@ -30,6 +35,20 @@ func splitNumber(s string) (digits, unit string) {
 	for ; i < len(s); i++ {
 		if c := s[i]; (c < '0' || c > '9') && c != '.' && c != ',' {
 			break
+		}
+	}
+	// An exponent only when digits follow it, so 1E stays an exabyte.
+	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
+		j := i + 1
+		if j < len(s) && (s[j] == '-' || s[j] == '+') {
+			j++
+		}
+		k := j
+		for k < len(s) && s[k] >= '0' && s[k] <= '9' {
+			k++
+		}
+		if k > j {
+			i = k
 		}
 	}
 	return s[:i], strings.TrimSpace(s[i:])

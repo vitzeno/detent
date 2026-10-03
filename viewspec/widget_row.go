@@ -85,9 +85,15 @@ func paneWidths(panes []Pane, total int) []int {
 		out[0] += avail - used
 		used = avail
 	}
-	for i := 0; used > avail; i, used = (i+1)%n, used-1 {
-		if out[i] > floor {
-			out[i]--
+	// Stops once every pane is at its floor, and Draw clips the rest.
+	for shrunk := true; used > avail && shrunk; {
+		shrunk = false
+		for i := 0; i < n && used > avail; i++ {
+			if out[i] > floor {
+				out[i]--
+				used--
+				shrunk = true
+			}
 		}
 	}
 	return out

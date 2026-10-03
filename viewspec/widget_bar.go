@@ -50,7 +50,7 @@ func (barWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	for i, r := range d.Rows {
 		n := 0
 		if hi > 0 {
-			n = int(number(r[value]) / hi * float64(barW))
+			n = min(max(int(number(r[value])/hi*float64(barW)), 0), barW)
 		}
 		role := accentOr(b, r, RoleAccent)
 		if f.Focused && i == f.Cursor {

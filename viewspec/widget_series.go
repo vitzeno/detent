@@ -22,6 +22,9 @@ func (seriesWidget) Validate(b Block, fields []string) error {
 }
 
 func (seriesWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
+	if len(d.Rows) == 0 {
+		return titleLine(b, f), nil
+	}
 	groups, order := groupValues(b, d)
 	all := make([]float64, 0, len(d.Rows))
 	for _, g := range order {

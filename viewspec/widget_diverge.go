@@ -47,8 +47,8 @@ func (divergeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	for _, r := range d.Rows {
 		l, rt := 0, 0
 		if hi > 0 {
-			l = int(number(r[left]) / hi * float64(wing))
-			rt = int(number(r[right]) / hi * float64(wing))
+			l = min(max(int(number(r[left])/hi*float64(wing)), 0), wing)
+			rt = min(max(int(number(r[right])/hi*float64(wing)), 0), wing)
 		}
 		lines = append(lines,
 			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(r[label], labelW), labelW, f.Paint))+" "+

@@ -46,10 +46,15 @@ func (heatmapWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		} else {
 			cell[key]++
 		}
-		hi = max(hi, cell[key])
+	}
+	for _, v := range cell {
+		hi = max(hi, v)
 	}
 	rows := slices.Sorted(maps.Keys(rowKeys))
 	cols := slices.Sorted(maps.Keys(colKeys))
+	if len(cols) == 0 {
+		return titleLine(b, f), nil
+	}
 
 	labelW := 0
 	for _, k := range rows {

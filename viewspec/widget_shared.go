@@ -131,9 +131,15 @@ func fitColumns(cols []Column, rows []Row, total int, p Painter) []int {
 			rest--
 		}
 	}
-	for i := 0; rest < 0; i, rest = (i+1)%n, rest+1 {
-		if out[i] > floor {
-			out[i]--
+	// Stops once every column is at its floor, and Draw clips the rest.
+	for shrunk := true; rest < 0 && shrunk; {
+		shrunk = false
+		for i := 0; i < n && rest < 0; i++ {
+			if out[i] > floor {
+				out[i]--
+				rest++
+				shrunk = true
+			}
 		}
 	}
 	return out
@@ -186,6 +192,7 @@ func layOutBars(labels, notes []string, f Frame) (barLayout, error) {
 }
 
 func (l barLayout) row(label string, filled int, role Role, note string, f Frame) string {
+	filled = min(max(filled, 0), l.bar)
 	return f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(label, l.label), l.label, f.Paint)) + " " +
 		f.Paint.Paint(role, strings.Repeat("█", filled)) +
 		strings.Repeat(" ", l.bar-filled) + " " +
@@ -200,7 +207,15 @@ func titleLine(b Block, f Frame) []string {
 	return []string{f.Paint.Paint(RoleFaint, f.Paint.Truncate(b.Title, f.Width))}
 }
 
+// repeat is strings.Repeat that draws nothing for a negative count,
+// which any scaled negative number gives.
+func repeat(s string, n int) string { return strings.Repeat(s, max(n, 0)) }
+
+// bounds is the span of v, and 0..0 when there is nothing in it.
 func bounds(v []float64) (lo, hi float64) {
+	if len(v) == 0 {
+		return 0, 0
+	}
 	lo, hi = v[0], v[0]
 	for _, x := range v {
 		lo, hi = min(lo, x), max(hi, x)

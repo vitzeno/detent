@@ -29,12 +29,9 @@ func (sparklineWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		values = append(values, number(r[b.Field]))
 	}
 	if len(values) == 0 {
-		return nil, fmt.Errorf("no values to plot")
+		return titleLine(b, f), nil
 	}
-	lo, hi := values[0], values[0]
-	for _, v := range values {
-		lo, hi = min(lo, v), max(hi, v)
-	}
+	lo, hi := bounds(values)
 	var strip strings.Builder
 	for _, v := range values {
 		i := 0

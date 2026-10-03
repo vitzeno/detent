@@ -1,9 +1,6 @@
 package viewspec
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 // meter draws a proportion counted from rows, so a Title containing a
 // number cannot change what the bar says.
@@ -21,14 +18,7 @@ func (meterWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows
 	}
-	m, err := parseMatch(b.CountWhere)
-	if err != nil {
-		return err
-	}
-	if !m.all {
-		return needField(m.field, fields)
-	}
-	return nil
+	return checkCount(b, fields)
 }
 
 // meterFloor keeps a meter legible in a narrow pane rather than
@@ -41,7 +31,7 @@ func (meterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	n, total := hit.count(d.Rows), of.count(d.Rows)
+	n, total := countOf(hit, of, d.Rows)
 	label := b.Title
 	if label == "" {
 		label = b.CountWhere
@@ -59,8 +49,8 @@ func (meterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		role = RoleCaution
 	}
 	return []string{f.Paint.Paint(RoleFaint, label+" ") +
-		f.Paint.Paint(role, strings.Repeat("█", filled)) +
-		f.Paint.Paint(RoleFaint, strings.Repeat("░", cells-filled)) +
+		f.Paint.Paint(role, repeat("█", filled)) +
+		f.Paint.Paint(RoleFaint, repeat("░", cells-filled)) +
 		f.Paint.Paint(RoleDefault, note)}, nil
 }
 

@@ -46,7 +46,7 @@ func (scatterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		xs[i], ys[i] = number(r[xf]), number(r[yf])
 	}
 	if len(xs) == 0 {
-		return nil, fmt.Errorf("no points to plot")
+		return titleLine(b, f), nil
 	}
 	xlo, xhi := bounds(xs)
 	ylo, yhi := bounds(ys)

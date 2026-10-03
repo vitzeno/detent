@@ -349,15 +349,24 @@ func drawBlocks(blocks []boundBlock, f Frame, sel int) ([]string, int, error) {
 		if bb.panes != nil {
 			out, at, err = drawContainer(bb, f, sel)
 		} else {
-			out, err = bb.w.Draw(bb.block, bb.data, f)
+			// Only the block the cursor addresses may highlight a row.
+			lf := f
+			lf.Focused = f.Focused && bb.seq == sel
+			out, err = bb.w.Draw(bb.block, bb.data, lf)
 			if bb.seq == sel {
 				if s, ok := bb.w.(Selector); ok {
-					at = s.CursorLine(bb.block, bb.data, f)
+					at = s.CursorLine(bb.block, bb.data, lf)
 				}
 			}
 		}
 		if err != nil {
 			return nil, -1, &BindError{Block: i, Kind: bb.block.Kind, Err: err}
+		}
+		// No line is wider than the frame, whatever a widget drew.
+		for j, l := range out {
+			if f.Paint.Width(l) > f.Width {
+				out[j] = f.Paint.Truncate(l, f.Width)
+			}
 		}
 		if at >= 0 && cursor < 0 {
 			cursor = len(lines) + at

@@ -1,6 +1,9 @@
 package viewspec
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 // stat is one number drawn large in three rows of box glyphs, since a
 // terminal has one cell size and size has to come from the glyphs.
@@ -15,15 +18,8 @@ func (statWidget) Validate(b Block, fields []string) error {
 	if b.Title == "" {
 		return fmt.Errorf("stat needs a title to label the number")
 	}
-	if b.CountWhere == "" {
-		return checkShared(b, fields)
-	}
-	m, err := parseMatch(b.CountWhere)
-	if err != nil {
-		return err
-	}
-	if !m.all {
-		if err := needField(m.field, fields); err != nil {
+	if b.CountWhere != "" {
+		if err := checkCount(b, fields); err != nil {
 			return err
 		}
 	}
@@ -31,26 +27,32 @@ func (statWidget) Validate(b Block, fields []string) error {
 }
 
 func (statWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
-	value := fmt.Sprintf("%d", len(d.Rows))
+	value := strconv.Itoa(len(d.Rows))
 	if b.CountWhere != "" {
 		hit, err := parseMatch(b.CountWhere)
 		if err != nil {
 			return nil, err
 		}
-		value = fmt.Sprintf("%d", hit.count(d.Rows))
+		of, err := parseMatch(b.Of)
+		if err != nil {
+			return nil, err
+		}
+		n, total := countOf(hit, of, d.Rows)
+		value = strconv.Itoa(n)
 		if b.Of != "" {
-			of, err := parseMatch(b.Of)
-			if err != nil {
-				return nil, err
-			}
-			value += "/" + fmt.Sprintf("%d", of.count(d.Rows))
+			value += "/" + strconv.Itoa(total)
 		}
 	}
 	label := f.Paint.Paint(RoleFaint, f.Paint.Truncate(b.Title, f.Width))
 	big, ok := bigNumber(value)
 	// Paint.Width, not len: a box glyph is three bytes and one cell.
 	if !ok || f.Paint.Width(big[0]) > f.Width {
-		return []string{label + " " + f.Paint.Paint(RoleAccent, value)}, nil
+		// The number keeps its room and the label takes what is left.
+		short := f.Paint.Truncate(b.Title, f.Width-f.Paint.Width(value)-1)
+		if short == "" {
+			return []string{f.Paint.Paint(RoleAccent, value)}, nil
+		}
+		return []string{f.Paint.Paint(RoleFaint, short) + " " + f.Paint.Paint(RoleAccent, value)}, nil
 	}
 	out := make([]string, 0, 4)
 	for _, line := range big {

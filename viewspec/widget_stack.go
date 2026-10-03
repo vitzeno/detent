@@ -33,6 +33,9 @@ func (stackWidget) Validate(b Block, fields []string) error {
 var stackRoles = []Role{RoleAccent, RoleSafe, RoleCaution, RoleDanger, RoleMuted}
 
 func (stackWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
+	if len(d.Rows) == 0 {
+		return titleLine(b, f), nil
+	}
 	label, value := b.Columns[0].Field, b.Columns[1].Field
 	total := 0.0
 	for _, r := range d.Rows {

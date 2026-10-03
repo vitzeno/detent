@@ -25,21 +25,26 @@ func (timelineWidget) Validate(b Block, fields []string) error {
 }
 
 func (timelineWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
+	if len(d.Rows) == 0 {
+		return titleLine(b, f), nil
+	}
 	label, at := b.Columns[0].Field, b.Columns[1].Field
 	labels := make([]string, len(d.Rows))
 	notes := make([]string, len(d.Rows))
 	points := make([]float64, len(d.Rows))
-	known := false
+	known := make([]bool, len(d.Rows))
+	var read []float64
 	for i, r := range d.Rows {
 		labels[i], notes[i] = r[label], r[at]
-		if v, ok := instant(r[at]); ok {
-			points[i], known = v, true
+		if points[i], known[i] = instant(r[at]); known[i] {
+			read = append(read, points[i])
 		}
 	}
-	if !known {
+	if len(read) == 0 {
 		return nil, fmt.Errorf("no readable times in %q", at)
 	}
-	lo, hi := bounds(points)
+	// Only readable times span the axis, so one bad row cannot pin it to zero.
+	lo, hi := bounds(read)
 	lay, err := layOutBars(labels, notes, f)
 	if err != nil {
 		return nil, err
@@ -53,12 +58,13 @@ func (timelineWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		if f.Focused && i == f.Cursor {
 			role = RoleAccent
 		}
+		mark := f.Paint.Paint(RoleFaint, repeat("·", x)) + f.Paint.Paint(role, "●") + repeat(" ", lay.bar-x-1)
+		if !known[i] {
+			mark = repeat(" ", lay.bar)
+		}
 		lines = append(lines,
 			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(labels[i], lay.label), lay.label, f.Paint))+" "+
-				f.Paint.Paint(RoleFaint, strings.Repeat("·", x))+
-				f.Paint.Paint(role, "●")+
-				strings.Repeat(" ", lay.bar-x-1)+" "+
-				f.Paint.Paint(RoleFaint, pad(notes[i], lay.note, f.Paint)))
+				mark+" "+f.Paint.Paint(RoleFaint, pad(notes[i], lay.note, f.Paint)))
 	}
 	return lines, nil
 }
@@ -107,7 +113,8 @@ func instant(s string) (float64, bool) {
 	}
 	for _, layout := range timeLayouts {
 		if t, err := time.Parse(layout, s); err == nil {
-			return float64(t.UnixNano()) / 1e9, true
+			// Not UnixNano, which is undefined for the year 0 a clock-only layout gives.
+			return float64(t.Unix()) + float64(t.Nanosecond())/1e9, true
 		}
 	}
 	if d, err := time.ParseDuration(s); err == nil {

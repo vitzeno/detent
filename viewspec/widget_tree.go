@@ -31,7 +31,8 @@ func (treeWidget) Validate(b Block, fields []string) error {
 }
 
 func (treeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
-	depths := treeDepths(b, d.Rows)
+	depths := treeDepths(b, d.Rows, f)
+	stems := treeStems(depths)
 	lines := make([]string, 0, len(d.Rows))
 	for i, r := range d.Rows {
 		role := accentRole(b, r)
@@ -42,9 +43,8 @@ func (treeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		if b.Depth == "" {
 			label = leaf(label)
 		}
-		stem := f.Paint.Paint(RoleFaint, treeStem(depths, i))
-		lines = append(lines, stem+f.Paint.Paint(role,
-			f.Paint.Truncate(label, max(1, f.Width-2*depths[i]-2))))
+		lines = append(lines, f.Paint.Paint(RoleFaint, stems[i])+f.Paint.Paint(role,
+			f.Paint.Truncate(label, max(1, f.Width-3*depths[i]))))
 	}
 	return lines, nil
 }
@@ -62,52 +62,52 @@ func (treeWidget) Describe() Description {
 	}
 }
 
-func treeDepths(b Block, rows []Row) []int {
+// treeDepths caps each depth at what the frame can indent, since a depth
+// field comes from output and a huge one would allocate without bound.
+func treeDepths(b Block, rows []Row, f Frame) []int {
+	deepest := max(0, (f.Width-1)/3)
 	out := make([]int, len(rows))
 	for i, r := range rows {
+		n := strings.Count(strings.Trim(r[b.Field], "/"), "/")
 		if b.Depth != "" {
-			n, _ := strconv.Atoi(r[b.Depth])
-			out[i] = max(0, n)
-			continue
+			n, _ = strconv.Atoi(r[b.Depth])
 		}
-		out[i] = strings.Count(strings.Trim(r[b.Field], "/"), "/")
+		out[i] = min(max(0, n), deepest)
 	}
 	return out
 }
 
-// treeStem is row i's connector: a branch for its own level, and for
+// treeStems is each row's connector: a branch for its own level, and for
 // each ancestor a bar only where that ancestor still has rows to come.
-func treeStem(depths []int, i int) string {
-	d := depths[i]
-	if d == 0 {
-		return ""
-	}
-	var b strings.Builder
-	for level := 1; level < d; level++ {
-		if hasLaterSibling(depths, i, level) {
-			b.WriteString("│  ")
-			continue
+func treeStems(depths []int) []string {
+	out := make([]string, len(depths))
+	// later[level] is whether a row at level follows before something shallower does.
+	var later []bool
+	for i := len(depths) - 1; i >= 0; i-- {
+		d := depths[i]
+		if d > 0 {
+			var b strings.Builder
+			for level := 1; level < d; level++ {
+				if level < len(later) && later[level] {
+					b.WriteString("│  ")
+				} else {
+					b.WriteString("   ")
+				}
+			}
+			if d < len(later) && later[d] {
+				b.WriteString("├─ ")
+			} else {
+				b.WriteString("└─ ")
+			}
+			out[i] = b.String()
 		}
-		b.WriteString("   ")
-	}
-	if hasLaterSibling(depths, i, d) {
-		return b.String() + "├─ "
-	}
-	return b.String() + "└─ "
-}
-
-// hasLaterSibling reports whether another row at level appears before
-// the tree returns to something shallower.
-func hasLaterSibling(depths []int, i, level int) bool {
-	for j := i + 1; j < len(depths); j++ {
-		if depths[j] < level {
-			return false
+		for len(later) <= d {
+			later = append(later, false)
 		}
-		if depths[j] == level {
-			return true
-		}
+		later[d] = true
+		clear(later[d+1:])
 	}
-	return false
+	return out
 }
 
 func leaf(path string) string {
