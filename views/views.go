@@ -3,7 +3,12 @@
 // and viewgen can both read it without importing each other.
 package views
 
-import "github.com/vitzeno/detent/viewspec"
+import (
+	"maps"
+	"slices"
+
+	"github.com/vitzeno/detent/viewspec"
+)
 
 // ForCommand is the spec detent ships for a command, by its normalised
 // name. A floor, not a default: a saved or composed spec beats it.
@@ -12,6 +17,7 @@ func ForCommand(name string) (*viewspec.Spec, bool) {
 	if !ok {
 		return nil, false
 	}
+	spec = spec.Clone()
 	return &spec, true
 }
 
@@ -19,29 +25,18 @@ func ForCommand(name string) (*viewspec.Spec, bool) {
 // strings are spelled out rather than imported, since ui reads this package.
 func ForKind(kind string) (viewspec.Spec, bool) {
 	spec, ok := byKind[kind]
-	return spec, ok
+	return spec.Clone(), ok
 }
 
-// Kinds lists every shape with a spec of its own.
-func Kinds() []string {
-	out := make([]string, 0, len(byKind))
-	for k := range byKind {
-		out = append(out, k)
-	}
-	return out
-}
+// Kinds lists every shape with a spec of its own, sorted.
+func Kinds() []string { return slices.Sorted(maps.Keys(byKind)) }
 
-// Commands lists every command with a shipped spec.
-func Commands() []string {
-	out := make([]string, 0, len(byCommand))
-	for c := range byCommand {
-		out = append(out, c)
-	}
-	return out
-}
+// Commands lists every command with a shipped spec, sorted.
+func Commands() []string { return slices.Sorted(maps.Keys(byCommand)) }
 
 // Raw draws the output as it came, through one widget. The floor of
-// every fallback chain, and what most shapes want.
+// every fallback chain, and what most shapes want. The widget must exist
+// in whatever registry compiles the result, which nothing here can check.
 func Raw(widget string) viewspec.Spec {
 	return viewspec.Spec{
 		Version: viewspec.Version,
@@ -126,14 +121,14 @@ var byCommand = map[string]viewspec.Spec{
 				Sort:    &viewspec.Sort{Field: "key"}},
 		},
 	},
+	// No sort: find already prints depth first, and a byte order puts
+	// src-old between src and src/a, re-parenting a.
 	"find": {
 		Version: viewspec.Version,
 		Match:   "find",
 		Parse:   viewspec.Parse{Kind: "lines", Pattern: `^(?P<path>\S.*)$`},
 		Blocks: []viewspec.Block{
-			{Kind: "tree", Field: "path",
-				Sort:    &viewspec.Sort{Field: "path"},
-				OnEnter: "cat {path}"},
+			{Kind: "tree", Field: "path", OnEnter: "cat {path}"},
 		},
 	},
 	"tree": {
@@ -144,6 +139,8 @@ var byCommand = map[string]viewspec.Spec{
 			{Kind: "tree", Field: "text", Depth: "depth"},
 		},
 	},
+	// Bare ps only: ps aux heads its last column COMMAND, not CMD, so this
+	// fails to bind there and the row falls through to a composed view.
 	"ps": {
 		Version: viewspec.Version,
 		Match:   "ps",
