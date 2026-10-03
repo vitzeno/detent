@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +12,36 @@ import (
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/model"
+	"github.com/vitzeno/detent/internal/store"
 )
+
+func TestResolveSession_ReadsAnIdThenLastThenAName(t *testing.T) {
+	events, err := store.Open(filepath.Join(t.TempDir(), "events.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = events.Close() })
+
+	_, err = resolveSession(events, "last")
+	require.ErrorContains(t, err, "no sessions")
+
+	older, newer := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	for i, id := range []uuid.UUID{older, newer} {
+		require.NoError(t, events.Append(id, event.Record{
+			Ordinal: 1, At: time.Now().Add(time.Duration(i) * time.Second), Event: event.SessionStarted{Session: id}}))
+	}
+	require.NoError(t, events.Rename(older, "Mine"))
+
+	for want, got := range map[uuid.UUID]string{older: "mine", newer: "LAST"} {
+		id, err := resolveSession(events, got)
+		require.NoError(t, err, got)
+		assert.Equal(t, want, id, got)
+	}
+	id, err := resolveSession(events, newer.String())
+	require.NoError(t, err)
+	assert.Equal(t, newer, id)
+
+	_, err = resolveSession(events, "nobody")
+	assert.ErrorContains(t, err, `no session named "nobody"`)
+}
 
 // The note exists because the prompt tells the model its earlier
 // steps are still on disk, and after a resume only some of them are.

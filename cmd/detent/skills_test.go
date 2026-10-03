@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/internal/skills"
 )
 
 // Each skill must be where the runner looks: the container sees the
@@ -38,6 +40,15 @@ func TestFindSkills_PathsAreWhereTheRunnerSeesThem(t *testing.T) {
 	}
 	require.Len(t, box.skillTools(), 1)
 	assert.Empty(t, findSkills(t.TempDir(), "", "/workspace", true).skillTools(), "no skills, no tool")
+}
+
+// A directory called ..foo is under cwd, not above it.
+func TestSandboxDir_ReadsDotDotAsAParentOnly(t *testing.T) {
+	cwd := t.TempDir()
+	mounts := map[string]string{}
+	got := sandboxDir(skills.Skill{Dir: filepath.Join(cwd, "..foo", "s")}, cwd, "/workspace", nil, mounts)
+	assert.Equal(t, "/workspace/..foo/s", got)
+	assert.Empty(t, mounts)
 }
 
 func dirOf(f foundSkills, name string) string {
