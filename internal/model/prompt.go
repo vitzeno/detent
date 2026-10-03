@@ -8,6 +8,17 @@ import (
 	"time"
 )
 
+// The shells Environment.Shell names.
+const (
+	ShellSh      = "sh"
+	ShellPwsh    = "pwsh"
+	ShellGitBash = "gitbash"
+)
+
+// ResumeMarker opens the note a resumed session leaves in the
+// transcript, and point 4 names it. Exported so both can be asserted.
+const ResumeMarker = "[session resumed]"
+
 // Environment is where the tools actually run, filled in by the harness.
 // Describing this process instead puts BSD flags in a Linux container.
 type Environment struct {
@@ -26,13 +37,6 @@ type Environment struct {
 	Shell string
 }
 
-// The shells Environment.Shell names.
-const (
-	ShellSh      = "sh"
-	ShellPwsh    = "pwsh"
-	ShellGitBash = "gitbash"
-)
-
 // LocalEnvironment describes this process's own machine: right when
 // unsandboxed, and the fallback when the harness says nothing.
 func LocalEnvironment() Environment {
@@ -44,10 +48,6 @@ func LocalEnvironment() Environment {
 	// human's files is their choice at undo time, so the model treats edits as real.
 	return Environment{OS: runtime.GOOS, Arch: runtime.GOARCH, Dir: dir, Network: true}
 }
-
-// ResumeMarker opens the note a resumed session leaves in the
-// transcript, and point 4 names it. Exported so both can be asserted.
-const ResumeMarker = "[session resumed]"
 
 // Brief is a duration as a person writes it: 10m, 90s, 1h30m.
 func Brief(d time.Duration) string {
@@ -62,31 +62,6 @@ func Brief(d time.Duration) string {
 }
 
 func systemPrompt(env Environment) string { return env.preamble() + env.rules() }
-
-// pwshRules are rules 9 and 10 for PowerShell, which names its own tool and its own ways to write a file.
-var pwshRules = strings.NewReplacer(
-	"over bash when", "over powershell when",
-	"Never through bash with echo, printf, cat, tee, sed -i or a > redirect",
-	"Never through powershell with Set-Content, Add-Content, Out-File, New-Item or a > redirect",
-)
-
-func (e Environment) rules() string {
-	if e.Shell == ShellPwsh {
-		return pwshRules.Replace(agentPrompt)
-	}
-	return agentPrompt
-}
-
-// shellLine says what each command runs through.
-func (e Environment) shellLine() string {
-	switch e.Shell {
-	case ShellPwsh:
-		return "Each command runs through a fresh PowerShell 7 (`pwsh`) starting in that directory, so write PowerShell, not POSIX sh. "
-	case ShellGitBash:
-		return "Each command runs through a fresh Git Bash `bash -c` starting in that directory, on Windows. "
-	}
-	return "Each command runs through a fresh `sh -c` starting in that directory. "
-}
 
 // preamble states the facts a command depends on: whose flags, where
 // it starts, what survives, what can be undone.
@@ -119,6 +94,31 @@ func (e Environment) preamble() string {
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+// shellLine says what each command runs through.
+func (e Environment) shellLine() string {
+	switch e.Shell {
+	case ShellPwsh:
+		return "Each command runs through a fresh PowerShell 7 (`pwsh`) starting in that directory, so write PowerShell, not POSIX sh. "
+	case ShellGitBash:
+		return "Each command runs through a fresh Git Bash `bash -c` starting in that directory, on Windows. "
+	}
+	return "Each command runs through a fresh `sh -c` starting in that directory. "
+}
+
+// pwshRules are rules 9 and 10 for PowerShell, which names its own tool and its own ways to write a file.
+var pwshRules = strings.NewReplacer(
+	"over bash when", "over powershell when",
+	"Never through bash with echo, printf, cat, tee, sed -i or a > redirect",
+	"Never through powershell with Set-Content, Add-Content, Out-File, New-Item or a > redirect",
+)
+
+func (e Environment) rules() string {
+	if e.Shell == ShellPwsh {
+		return pwshRules.Replace(agentPrompt)
+	}
+	return agentPrompt
 }
 
 const agentPrompt = `You are an agent working a human's request at their terminal, using the tools you have been given.

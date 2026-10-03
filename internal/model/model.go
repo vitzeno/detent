@@ -9,6 +9,10 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
+// finished are the stop reasons an answer ends with. An endpoint that sends
+// none is taken at its word, and anything else, "error" included, is not an answer.
+var finished = map[string]bool{"": true, "stop": true, "end_turn": true}
+
 // Reply is one Step's result. No tool calls means the model stopped asking
 // for tools, which ends the Turn unless the reply is Unfinished.
 type Reply struct {
@@ -26,7 +30,3 @@ type Reply struct {
 func (r Reply) Unfinished() bool {
 	return len(r.Requests) == 0 && (!finished[r.Stop] || r.Thinking || strings.TrimSpace(r.Text) == "")
 }
-
-// finished are the stop reasons an answer ends with. An endpoint that sends
-// none is taken at its word, and anything else, "error" included, is not an answer.
-var finished = map[string]bool{"": true, "stop": true, "end_turn": true}

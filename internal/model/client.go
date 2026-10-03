@@ -22,6 +22,22 @@ const (
 	DefaultModel   = "openai/gpt-6-luna"
 )
 
+// retryWaits is the pause before each retry of a transient failure, a
+// var so a test need not wait.
+var retryWaits = []time.Duration{2 * time.Second, 8 * time.Second}
+
+// maxRetryWait caps a Retry-After, so an endpoint cannot park a Turn.
+const maxRetryWait = 30 * time.Second
+
+// maxResponseBytes bounds a reply. A Step's answer is kilobytes.
+const maxResponseBytes = 32 << 20
+
+// instructionsSep sits between the built-in prompt and the project's own.
+const instructionsSep = "\n\n"
+
+// defaultHTTPClient bounds a Step that never answers.
+var defaultHTTPClient = &http.Client{Timeout: 5 * time.Minute}
+
 // Client is one OpenAI-compatible endpoint. Covers OpenRouter and a
 // local LM Studio alike.
 type Client struct {
@@ -38,12 +54,6 @@ type Client struct {
 	// and InstructionFiles name where they came from.
 	Instructions     string
 	InstructionFiles []string
-}
-
-// PromptPart is one named piece of the system prompt, for /context.
-type PromptPart struct {
-	Name, Detail string
-	Bytes        int
 }
 
 // Complete is one Step. tools is the registry's schemas, and nil asks
@@ -84,6 +94,26 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
+// PromptPart is one named piece of the system prompt, for /context.
+type PromptPart struct {
+	Name, Detail string
+	Bytes        int
+}
+
+// PromptParts names each piece of the system prompt and its size. A new
+// piece belongs here, so /context labels it without being told.
+func (c *Client) PromptParts() []PromptPart {
+	if c.SystemPrompt != "" {
+		return []PromptPart{{Name: "system prompt", Detail: "set by the caller", Bytes: len(c.SystemPrompt)}}
+	}
+	parts := []PromptPart{{Name: "detent", Detail: "environment and rules", Bytes: len(systemPrompt(c.env()))}}
+	if c.Instructions != "" {
+		parts = append(parts, PromptPart{Name: "instructions", Detail: strings.Join(c.InstructionFiles, ", "),
+			Bytes: len(c.Instructions) + len(instructionsSep)})
+	}
+	return parts
+}
+
 // StatusError is a reply other than 200, typed so a transient failure
 // can be told from a bad request without reading the message.
 type StatusError struct {
@@ -101,16 +131,6 @@ func (e *StatusError) Error() string {
 func (e *StatusError) Temporary() bool {
 	return e.Code == http.StatusTooManyRequests || e.Code >= http.StatusInternalServerError
 }
-
-// retryWaits is the pause before each retry of a transient failure, a
-// var so a test need not wait.
-var retryWaits = []time.Duration{2 * time.Second, 8 * time.Second}
-
-// maxRetryWait caps a Retry-After, so an endpoint cannot park a Turn.
-const maxRetryWait = 30 * time.Second
-
-// maxResponseBytes bounds a reply. A Step's answer is kilobytes.
-const maxResponseBytes = 32 << 20
 
 // send posts one request, retrying a 429 or 5xx a bounded number of
 // times so one transient failure does not end a Turn.
@@ -202,47 +222,6 @@ func retryAfter(v string) time.Duration {
 	return time.Duration(n) * time.Second
 }
 
-func (c *Client) baseURL() string {
-	if c.BaseURL != "" {
-		return strings.TrimSuffix(c.BaseURL, "/")
-	}
-	return DefaultBaseURL
-}
-
-func (c *Client) model() string {
-	if c.Model != "" {
-		return c.Model
-	}
-	return DefaultModel
-}
-
-// defaultHTTPClient bounds a Step that never answers.
-var defaultHTTPClient = &http.Client{Timeout: 5 * time.Minute}
-
-func (c *Client) httpClient() *http.Client {
-	if c.HTTPClient != nil {
-		return c.HTTPClient
-	}
-	return defaultHTTPClient
-}
-
-// PromptParts names each piece of the system prompt and its size. A new
-// piece belongs here, so /context labels it without being told.
-func (c *Client) PromptParts() []PromptPart {
-	if c.SystemPrompt != "" {
-		return []PromptPart{{Name: "system prompt", Detail: "set by the caller", Bytes: len(c.SystemPrompt)}}
-	}
-	parts := []PromptPart{{Name: "detent", Detail: "environment and rules", Bytes: len(systemPrompt(c.env()))}}
-	if c.Instructions != "" {
-		parts = append(parts, PromptPart{Name: "instructions", Detail: strings.Join(c.InstructionFiles, ", "),
-			Bytes: len(c.Instructions) + len(instructionsSep)})
-	}
-	return parts
-}
-
-// instructionsSep sits between the built-in prompt and the project's own.
-const instructionsSep = "\n\n"
-
 func (c *Client) systemPrompt() string {
 	if c.SystemPrompt != "" {
 		return c.SystemPrompt
@@ -259,6 +238,27 @@ func (c *Client) env() Environment {
 		return LocalEnvironment()
 	}
 	return c.Env
+}
+
+func (c *Client) baseURL() string {
+	if c.BaseURL != "" {
+		return strings.TrimSuffix(c.BaseURL, "/")
+	}
+	return DefaultBaseURL
+}
+
+func (c *Client) model() string {
+	if c.Model != "" {
+		return c.Model
+	}
+	return DefaultModel
+}
+
+func (c *Client) httpClient() *http.Client {
+	if c.HTTPClient != nil {
+		return c.HTTPClient
+	}
+	return defaultHTTPClient
 }
 
 // snippet bounds an error body so a 2MB HTML error page cannot become
