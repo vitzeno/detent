@@ -84,11 +84,15 @@ const (
 
 // path guards a path awk or find would read as something else, since
 // macOS's awk takes no "--": a flag, a find operator or an awk assignment.
-func path(p string) string {
+func path(p string) string { return quote(guard(p)) }
+
+// guard is p spelled so awk and find read it as a path, which is also
+// how find prints what it finds under it.
+func guard(p string) string {
 	if strings.HasPrefix(p, "-") || strings.HasPrefix(p, "!") || strings.HasPrefix(p, "(") || awkAssignment.MatchString(p) {
-		p = "./" + p
+		return "./" + p
 	}
-	return quote(p)
+	return p
 }
 
 // awkAssignment is an operand awk takes as name=value rather than a file.
