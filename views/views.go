@@ -1,12 +1,13 @@
 // Package views holds every spec detent ships, keyed by a command's
-// name or by the shape of its output. It imports only viewspec, so ui
-// and viewgen can both read it without importing each other.
+// name or by the shape of its output. It imports only viewspec and event,
+// so ui and viewgen can both read it without importing each other.
 package views
 
 import (
 	"maps"
 	"slices"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -21,15 +22,14 @@ func ForCommand(name string) (*viewspec.Spec, bool) {
 	return &spec, true
 }
 
-// ForKind is the spec for output judged to have a given shape. The kind
-// strings are spelled out rather than imported, since ui reads this package.
-func ForKind(kind string) (viewspec.Spec, bool) {
+// ForKind is the spec for output judged to have a given shape.
+func ForKind(kind event.RenderKind) (viewspec.Spec, bool) {
 	spec, ok := byKind[kind]
 	return spec.Clone(), ok
 }
 
 // Kinds lists every shape with a spec of its own, sorted.
-func Kinds() []string { return slices.Sorted(maps.Keys(byKind)) }
+func Kinds() []event.RenderKind { return slices.Sorted(maps.Keys(byKind)) }
 
 // Commands lists every command with a shipped spec, sorted.
 func Commands() []string { return slices.Sorted(maps.Keys(byCommand)) }
@@ -47,18 +47,18 @@ func Raw(widget string) viewspec.Spec {
 
 // byKind is what a render kind draws with when no spec is keyed to the
 // command.
-var byKind = map[string]viewspec.Spec{
-	"plain_text":      Raw("log"),
-	"error_text":      Raw("errors"),
-	"diff":            Raw("diff"),
-	"structured_json": Raw("json"),
-	"file_content":    Raw("code"),
-	"table": {
+var byKind = map[event.RenderKind]viewspec.Spec{
+	event.RendersText:    Raw("log"),
+	event.RendersError:   Raw("errors"),
+	event.RendersDiff:    Raw("diff"),
+	event.RendersJSON:    Raw("json"),
+	event.RendersContent: Raw("code"),
+	event.RendersTable: {
 		Version: viewspec.Version,
 		Parse:   viewspec.Parse{Kind: "columns", Header: true},
 		Blocks:  []viewspec.Block{{Kind: "table"}},
 	},
-	"file_listing": {
+	event.RendersFiles: {
 		Version: viewspec.Version,
 		Parse:   viewspec.Parse{Kind: "lines", Pattern: `^(?P<path>\S.*)$`},
 		Blocks:  []viewspec.Block{{Kind: "list", Field: "path"}},

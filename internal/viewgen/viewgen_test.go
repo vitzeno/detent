@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/ui"
@@ -86,14 +87,14 @@ func TestCompose_DrawsOutputWithNothingToExtractAsItCame(t *testing.T) {
 	g, _ := composer(t, map[string]string{"header_line": "none", "parse_kind": "none", "body": "markdown"})
 	g.Registry = ui.Registry()
 	req := request()
-	req.Kind, req.Output = viewgen.KindContent, "# Notes\n\n- one\n- two\n\n## More\n\nText.\n"
+	req.Kind, req.Output = event.RendersContent, "# Notes\n\n- one\n- two\n\n## More\n\nText.\n"
 	got, err := g.Compose(context.Background(), req)
 	require.NoError(t, err)
 	assert.Equal(t, "markdown", got.Spec.Blocks[0].Kind)
 
 	// With one such kind offered, the fallback already draws it.
 	g, _ = composer(t, map[string]string{"header_line": "none", "parse_kind": "none"})
-	req.Kind, req.Output = viewgen.KindJSON, strings.Repeat("{not json}\n", 9)
+	req.Kind, req.Output = event.RendersJSON, strings.Repeat("{not json}\n", 9)
 	_, err = g.Compose(context.Background(), req)
 	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
 }
@@ -138,7 +139,7 @@ func TestCompose_AViewThatCannotBeSavedStillDraws(t *testing.T) {
 
 func TestKinds_IsACopy(t *testing.T) {
 	viewgen.Kinds()[0].Name = "changed"
-	assert.NotEqual(t, "changed", viewgen.Kinds()[0].Name)
+	assert.NotEqual(t, event.RenderKind("changed"), viewgen.Kinds()[0].Name)
 }
 
 // A judge deciding shape needs a sample, not the whole thing.
@@ -210,7 +211,7 @@ func TestCompose_EveryOfferedWidgetCanBeComposed(t *testing.T) {
 				// one this kind actually offers.
 				role, other = "summary", firstBody(guide, k.Widgets)
 			}
-			t.Run(k.Name+"/"+w, func(t *testing.T) {
+			t.Run(string(k.Name)+"/"+w, func(t *testing.T) {
 				say := map[string]string{
 					"header_line": "0", "parse_kind": "columns",
 					"body": other, "summary": "none", role: w,
@@ -218,7 +219,7 @@ func TestCompose_EveryOfferedWidgetCanBeComposed(t *testing.T) {
 				output := columnar
 				// A list of one column from three hides the other two,
 				// so a listing is composed from a listing.
-				if w == "list" || w == "tree" || w == "flow" || k.Name == viewgen.KindFiles {
+				if w == "list" || w == "tree" || w == "flow" || k.Name == event.RendersFiles {
 					say["header_line"], say["parse_kind"] = "none", "lines"
 					output = strings.Repeat("cmd/detent/main.go\nui/view.go\n", 5)
 				}
@@ -249,7 +250,7 @@ func TestCompose_AListOfOneFieldOfSeveralIsRefused(t *testing.T) {
 	g, _ := composer(t, map[string]string{
 		"header_line": "none", "parse_kind": "prefix", "body": "list", "summary": "none", "field": "first"})
 	req := request()
-	req.Kind = viewgen.KindFiles
+	req.Kind = event.RendersFiles
 	req.Output = strings.Repeat("abseil 20250127.1\naom 3.12.1\n", 5)
 	_, err := g.Compose(context.Background(), req)
 	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
@@ -260,7 +261,7 @@ func TestCompose_ATreeOverAnOutlineReadsItsDepth(t *testing.T) {
 	g, _ := composer(t, map[string]string{
 		"header_line": "none", "parse_kind": "indent", "body": "tree", "summary": "none", "field": "text"})
 	req := request()
-	req.Kind = viewgen.KindFiles
+	req.Kind = event.RendersFiles
 	req.Output = strings.Repeat("cmd\n  detent\n    main.go\nui\n  view.go\n", 2)
 	got, err := g.Compose(context.Background(), req)
 	require.NoError(t, err)
@@ -384,7 +385,7 @@ func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
 		assert.NotEmpty(t, k.What, k.Name)
 		assert.NotEmpty(t, k.NotFor, "%s names what it is confused with", k.Name)
 		assert.NotEmpty(t, k.Examples, k.Name)
-		assert.Contains(t, criteria, k.Name)
+		assert.Contains(t, criteria, string(k.Name))
 
 		require.NotEmpty(t, k.Widgets, "%s has something able to draw it", k.Name)
 		for _, w := range k.Widgets {
@@ -409,7 +410,7 @@ func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
 // Text offers a tree for kubectl describe, and file content a table for
 // a cat of /etc/hosts.
 func TestKinds_OfferWhatTheirOutputsHold(t *testing.T) {
-	offered := func(kind string) []string {
+	offered := func(kind event.RenderKind) []string {
 		for _, k := range viewgen.Kinds() {
 			if k.Name == kind {
 				return k.Widgets
@@ -417,8 +418,8 @@ func TestKinds_OfferWhatTheirOutputsHold(t *testing.T) {
 		}
 		return nil
 	}
-	assert.Subset(t, offered(viewgen.KindText), []string{"tree", "keyvalue", "list"})
-	assert.Subset(t, offered(viewgen.KindContent), []string{"table", "keyvalue", "list"})
+	assert.Subset(t, offered(event.RendersText), []string{"tree", "keyvalue", "list"})
+	assert.Subset(t, offered(event.RendersContent), []string{"table", "keyvalue", "list"})
 }
 
 func TestKey_SharesAShapeButNotAKind(t *testing.T) {

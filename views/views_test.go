@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/views"
 	"github.com/vitzeno/detent/viewspec"
 )
@@ -64,25 +65,25 @@ func TestForCommand_HandsBackACopy(t *testing.T) {
 // Every shape's spec binds a sample of that shape, so a spec that compiles
 // but reads nothing is caught here rather than in viewgen.
 func TestShipped_KindSpecsBindTheirShape(t *testing.T) {
-	samples := map[string]string{
-		"plain_text":      "starting\nready\n",
-		"error_text":      "panic: boom\n",
-		"diff":            "--- a\n+++ b\n@@ -1 +1 @@\n-x\n+y\n",
-		"structured_json": `{"a":1}`,
-		"file_content":    "package main\n",
-		"table":           "NAME  SIZE\na     1\nb     2\n",
-		"file_listing":    "./main.go\n./ui/keys.go\n",
+	samples := map[event.RenderKind]string{
+		event.RendersText:    "starting\nready\n",
+		event.RendersError:   "panic: boom\n",
+		event.RendersDiff:    "--- a\n+++ b\n@@ -1 +1 @@\n-x\n+y\n",
+		event.RendersJSON:    `{"a":1}`,
+		event.RendersContent: "package main\n",
+		event.RendersTable:   "NAME  SIZE\na     1\nb     2\n",
+		event.RendersFiles:   "./main.go\n./ui/keys.go\n",
 	}
 	assert.ElementsMatch(t, views.Kinds(), keys(samples), "a sample for every kind")
 	for kind, output := range samples {
 		spec, _ := views.ForKind(kind)
 		c, err := viewspec.Compile(spec)
-		require.NoError(t, err, kind)
+		require.NoError(t, err, string(kind))
 		b, err := c.Bind(output)
-		require.NoError(t, err, kind)
+		require.NoError(t, err, string(kind))
 		r, err := b.Draw(viewspec.Frame{Width: 40, Paint: viewspec.Plain()})
-		require.NoError(t, err, kind)
-		assert.NotEmpty(t, r.Lines, kind)
+		require.NoError(t, err, string(kind))
+		assert.NotEmpty(t, r.Lines, string(kind))
 	}
 }
 
@@ -100,8 +101,8 @@ func TestFind_KeepsTheTreeFindPrinted(t *testing.T) {
 	assert.Equal(t, []string{"src", "└─ a", "src-old"}, r.Lines)
 }
 
-func keys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
+func keys[K comparable](m map[K]string) []K {
+	out := make([]K, 0, len(m))
 	for k := range m {
 		out = append(out, k)
 	}

@@ -77,7 +77,7 @@ type historyRow struct {
 	prose   string
 	// renders is the shape the tool declared, which beats a judged
 	// guess because the tool knows and the judge is estimating.
-	renders string
+	renders event.RenderKind
 	// executor is empty for a shell command. Anything else ran outside
 	// the sandbox, so no checkpoint can take it back.
 	executor string
@@ -106,8 +106,8 @@ type historyRow struct {
 
 // verdict is the post-execution read, when one arrived.
 type verdict struct {
-	status     string
-	renderKind string
+	status     event.Status
+	renderKind event.RenderKind
 	attention  float64
 	fromJudge  bool
 }
@@ -130,7 +130,7 @@ func (r *historyRow) drawable() bool {
 }
 
 // kind is the judged render kind, or "" while pending.
-func (r *historyRow) kind() string {
+func (r *historyRow) kind() event.RenderKind {
 	if r == nil || r.running || r.post == nil {
 		return ""
 	}

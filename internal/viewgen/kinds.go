@@ -3,30 +3,18 @@ package viewgen
 import (
 	"slices"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/viewspec"
-)
-
-// Kind* name the shapes a command's output can take. One table defines
-// each one's criteria, widgets and worth, so the three cannot drift.
-const (
-	// KindText is any unstructured text read top to bottom, whatever its
-	// length: the viewport scrolls, so length never decides how to draw it.
-	KindText    = "plain_text"
-	KindTable   = "table"
-	KindFiles   = "file_listing"
-	KindContent = "file_content"
-	KindError   = "error_text"
-	KindDiff    = "diff"
-	KindJSON    = "structured_json"
 )
 
 // meter, stat, text and dots are in no list: each needs a filter, a
 // title or an accent map that a field choice cannot supply.
 
-// Kind describes one output shape.
+// Kind describes one output shape. One table defines each one's criteria,
+// widgets and worth, so the three cannot drift.
 type Kind struct {
-	Name string
+	Name event.RenderKind
 	// What, NotFor and Examples are Jev's criteria. A many-way choice
 	// loses its calibration without a stated counter-case.
 	What     string
@@ -50,7 +38,7 @@ func Kinds() []Kind { return slices.Clone(kinds) }
 func RenderKindCriteria() map[string]any {
 	out := make(map[string]any, len(kinds))
 	for _, k := range kinds {
-		out[k.Name] = map[string]any{
+		out[string(k.Name)] = map[string]any{
 			"what": k.What, "not_for": k.NotFor, "examples": k.Examples,
 		}
 	}
@@ -68,7 +56,7 @@ func RenderKindQuestion() classify.Question {
 
 var kinds = []Kind{
 	{
-		Name:     KindText,
+		Name:     event.RendersText,
 		What:     "unstructured text, read top to bottom: logs, build output, a few lines of status",
 		NotFor:   "text with a shape worth drawing: aligned columns, a listing, a diff, JSON, or a failure",
 		Examples: []string{"go test ./... output", "a docker build log", "pwd", "npm install"},
@@ -79,7 +67,7 @@ var kinds = []Kind{
 		Generate: true,
 	},
 	{
-		Name:     KindTable,
+		Name:     event.RendersTable,
 		What:     "aligned columns with a header row, one record per row",
 		NotFor:   "a bare list of paths or names with no header or columns, which is file_listing",
 		Examples: []string{"ps aux", "df -h", "ls -la", "docker ps"},
@@ -90,7 +78,7 @@ var kinds = []Kind{
 		Records:  true,
 	},
 	{
-		Name:     KindFiles,
+		Name:     event.RendersFiles,
 		What:     "a list of paths or items to pick from, one per line, with no header or aligned columns",
 		NotFor:   "the same listing with a header row and aligned columns, which is table",
 		Examples: []string{"find . -name '*.go'", "git diff --name-only", "plain ls"},
@@ -100,7 +88,7 @@ var kinds = []Kind{
 		Records:  true,
 	},
 	{
-		Name:     KindContent,
+		Name:     event.RendersContent,
 		What:     "a file's own prose or code body, read in full like a document",
 		NotFor:   "well-formed JSON even when it came from cat, which is structured_json",
 		Examples: []string{"cat main.go", "cat README.md"},
@@ -109,7 +97,7 @@ var kinds = []Kind{
 		Generate: true,
 	},
 	{
-		Name:     KindError,
+		Name:     event.RendersError,
 		What:     "an error, traceback or compiler complaint that is the command's whole point",
 		NotFor:   "text that merely contains some warnings among normal output, which is plain_text",
 		Examples: []string{"a failed build's compiler error", "a stack trace", "command not found"},
@@ -117,14 +105,14 @@ var kinds = []Kind{
 		Generate: true,
 	},
 	{
-		Name:     KindDiff,
+		Name:     event.RendersDiff,
 		What:     "a unified diff: +/- lines with @@ hunk headers",
 		NotFor:   "output that merely describes changes in prose; this needs the literal diff format",
 		Examples: []string{"git diff", "diff -u a.txt b.txt"},
 		Widgets:  []string{"diff"},
 	},
 	{
-		Name:     KindJSON,
+		Name:     event.RendersJSON,
 		What:     "JSON or other structured data, read as data",
 		NotFor:   "a file's prose or code body that merely happens not to be JSON",
 		Examples: []string{"curl returning a JSON body", "kubectl get pod -o json"},
@@ -135,8 +123,8 @@ var kinds = []Kind{
 	},
 }
 
-var byName = func() map[string]Kind {
-	out := make(map[string]Kind, len(kinds))
+var byName = func() map[event.RenderKind]Kind {
+	out := make(map[event.RenderKind]Kind, len(kinds))
 	for _, k := range kinds {
 		out[k.Name] = k
 	}
@@ -145,14 +133,14 @@ var byName = func() map[string]Kind {
 
 // worthGenerating reports whether this shape earns asking. A kind nobody
 // recognises is worth asking about, since the zero Kind's false means nothing.
-func worthGenerating(kind string) bool {
+func worthGenerating(kind event.RenderKind) bool {
 	k, ok := byName[kind]
 	return !ok || k.Generate
 }
 
 // prune returns the registry a view for this shape may be built from. An
 // unknown kind gets the whole vocabulary, since the zero Kind has no widgets.
-func prune(reg *viewspec.Registry, kind string) *viewspec.Registry {
+func prune(reg *viewspec.Registry, kind event.RenderKind) *viewspec.Registry {
 	k, ok := byName[kind]
 	if !ok || len(k.Widgets) == 0 {
 		return reg

@@ -1,6 +1,5 @@
 // Package status renders run status: history-row badges and the bottom
-// status bar. Inputs are plain primitives, and the judge's status and
-// kind values are duplicated as literals to stay decoupled from event.
+// status bar. Inputs are plain values, the judge's verdict in event's types.
 package status
 
 import (
@@ -10,6 +9,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/theme"
 )
 
@@ -42,7 +42,7 @@ type Row struct {
 	LiveLines int
 	Dropped   int
 	Judged    bool
-	Status    string // the judge's status, or ""
+	Status    event.Status // the judge's status, or ""
 	Attention float64
 	Err       bool // it could not run, as opposed to ran and failed
 	NoVerdict bool // nothing will ever judge it
@@ -72,40 +72,46 @@ func Badge(s Row, spinner string) (icon, detail string) {
 		}
 		return icon, s.Summary + " · judging…"
 	}
-	detail = statusWord(s.Status)
+	v, ok := verdicts[s.Status]
+	if !ok {
+		v = verdict{"done", "○", &muted}
+	}
 	if s.Attention >= AttentionThreshold {
-		return caution.Render("⚠"), detail + fmt.Sprintf(" · attention %.2f", s.Attention)
+		return caution.Render("⚠"), v.word + fmt.Sprintf(" · attention %.2f", s.Attention)
 	}
-	switch s.Status {
-	case "clean_success":
-		return safe.Render("✓"), detail
-	case "success_with_warnings":
-		return caution.Render("⚠"), detail
-	case "failed":
-		return danger.Render("✗"), detail
-	default:
-		return muted.Render("○"), detail
-	}
+	return v.style.Render(v.glyph), v.word
+}
+
+// verdict is how one judged status reads. The style is a pointer because
+// RefreshStyles reassigns the styles after this table is built.
+type verdict struct {
+	word, glyph string
+	style       *lipgloss.Style
+}
+
+var verdicts = map[event.Status]verdict{
+	event.StatusClean:    {"clean", "✓", &safe},
+	event.StatusWarnings: {"warnings", "⚠", &caution},
+	event.StatusFailed:   {"failed", "✗", &danger},
+	event.StatusEmpty:    {"no output", "○", &muted},
+}
+
+// kindLabels names the render kinds worth naming. The rest read as output.
+var kindLabels = map[event.RenderKind]string{
+	event.RendersTable:   "table",
+	event.RendersError:   "errors",
+	event.RendersDiff:    "diff",
+	event.RendersJSON:    "json",
+	event.RendersContent: "file",
+	event.RendersFiles:   "files",
 }
 
 // KindLabel names a render kind for the viewport header.
-func KindLabel(k string) string {
-	switch k {
-	case "table":
-		return "table"
-	case "error_text":
-		return "errors"
-	case "diff":
-		return "diff"
-	case "structured_json":
-		return "json"
-	case "file_content":
-		return "file"
-	case "file_listing":
-		return "files"
-	default:
-		return "output"
+func KindLabel(k event.RenderKind) string {
+	if label, ok := kindLabels[k]; ok {
+		return label
 	}
+	return "output"
 }
 
 // Notice is the one-shot flash at the end of the bar: what just
@@ -157,20 +163,5 @@ func Tokens(n int) string {
 		return fmt.Sprintf("%.1fk", float64(n)/1000)
 	default:
 		return fmt.Sprintf("%.1fM", float64(n)/1000000)
-	}
-}
-
-func statusWord(s string) string {
-	switch s {
-	case "clean_success":
-		return "clean"
-	case "success_with_warnings":
-		return "warnings"
-	case "failed":
-		return "failed"
-	case "empty":
-		return "no output"
-	default:
-		return "done"
 	}
 }

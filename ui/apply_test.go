@@ -195,7 +195,7 @@ func TestApply_JudgementExpandsWhatNeedsAttention(t *testing.T) {
 	)...)
 	r := m.rows()[0]
 	require.NotNil(t, r.post)
-	assert.Equal(t, "errors", r.kind())
+	assert.Equal(t, event.RenderKind("errors"), r.kind())
 	assert.True(t, r.expanded, "something needing attention opens itself")
 }
 
@@ -239,7 +239,7 @@ func TestRestore_RebuildsHistoryFromTheStream(t *testing.T) {
 	assert.Equal(t, event.EndDone, b.end)
 	require.Len(t, b.rows, 2, "the call and the model's words")
 	assert.Equal(t, "ls", b.rows[0].command)
-	assert.Equal(t, "file_listing", b.rows[0].kind())
+	assert.Equal(t, event.RendersFiles, b.rows[0].kind())
 
 	assert.Equal(t, 1, m.calls)
 	assert.Equal(t, 25, m.tokens)

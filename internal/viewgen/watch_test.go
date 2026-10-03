@@ -33,7 +33,7 @@ func TestWatch_KeysOnTheCommandNotTheTool(t *testing.T) {
 	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash",
 		Args: map[string]any{"command": "go test ./..."}})
 	bus.Publish(event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: goTest}})
-	bus.Publish(event.ToolCallJudged{ToolCall: call, RenderKind: viewgen.KindText})
+	bus.Publish(event.ToolCallJudged{ToolCall: call, RenderKind: event.RendersText})
 
 	select {
 	case rec := <-views:
@@ -106,7 +106,7 @@ func TestWatch_AUserCommandIsAskedItsShapeAndNothingElse(t *testing.T) {
 func TestWatch_AUserCommandFallsBackToItsKindsView(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
-	g, _ := composer(t, map[string]string{"render_kind": viewgen.KindDiff})
+	g, _ := composer(t, map[string]string{"render_kind": string(event.RendersDiff)})
 	defer g.Watch(t.Context(), bus)()
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))

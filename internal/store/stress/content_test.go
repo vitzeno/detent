@@ -15,8 +15,8 @@ type kind struct {
 	name     string
 	runner   string
 	executor string // what ran a tool call that is not a shell command
-	render   string
-	renders  string
+	render   event.RenderKind
+	renders  event.RenderKind
 	args     func(*rand.Rand) map[string]any
 	risk     func(*rand.Rand) event.Risk
 	result   func(*rand.Rand) event.Result
@@ -25,7 +25,7 @@ type kind struct {
 // gen is the made-up half of a kind, keyed by tool name.
 type gen struct {
 	runner string
-	render string // the kind a judge would give its output
+	render event.RenderKind // the kind a judge would give its output
 	args   func(*rand.Rand) map[string]any
 	result func(*rand.Rand) event.Result
 }

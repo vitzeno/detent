@@ -3,6 +3,8 @@
 // of them. An MCP tool has none, and internal/mcp answers it instead.
 package tool
 
+import "github.com/vitzeno/detent/event"
+
 // Tool is a typed front end onto a shell command. Pure: no tool runs
 // anything, so the Runner stays the one place with I/O.
 type Tool interface {
@@ -22,7 +24,7 @@ type Spec struct {
 	// means unknown, which is bash and only bash.
 	Mutability string
 	// Renders says how to read the output. Empty leaves it to the judge.
-	Renders string
+	Renders event.RenderKind
 	// Executor names what runs this call, empty being a shell command.
 	Executor string
 	// Raw is a schema detent did not build, handed to the model as

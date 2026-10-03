@@ -78,13 +78,13 @@ tool_call.ended ToolCall uuid.UUID
 tool_call.judged Attention float64
 tool_call.judged FromJudge bool
 tool_call.judged GoalAchieved float64
-tool_call.judged RenderKind string
-tool_call.judged Status string
+tool_call.judged RenderKind event.RenderKind
+tool_call.judged Status event.Status
 tool_call.judged ToolCall uuid.UUID
 tool_call.proposed Args{} interface {}
 tool_call.proposed Executor string
 tool_call.proposed Rationale string
-tool_call.proposed Renders string
+tool_call.proposed Renders event.RenderKind
 tool_call.proposed Step uuid.UUID
 tool_call.proposed Tool string
 tool_call.proposed ToolCall uuid.UUID

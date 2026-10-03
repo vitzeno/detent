@@ -219,7 +219,7 @@ func (w *writer) emit(e event.Event) {
 	}))
 }
 
-func status(r event.Result) string {
+func status(r event.Result) event.Status {
 	switch {
 	case r.Err != "":
 		return "error"

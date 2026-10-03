@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/views"
 	"github.com/vitzeno/detent/viewspec"
 )
@@ -73,7 +74,7 @@ func TestPrune_NarrowsGenerationWithoutNarrowingWhatDraws(t *testing.T) {
 			Columns: []viewspec.Column{{Field: "x"}, {Field: "y"}}}}}
 
 	full := viewspec.Standard()
-	narrowed := prune(full, KindTable).Subset("table", "text")
+	narrowed := prune(full, event.RendersTable).Subset("table", "text")
 
 	assert.NotContains(t, narrowed.Kinds(), "scatter", "the model is no longer offered it")
 	require.NoError(t, draws(saved, full, xy), "and the spec on disk still draws")

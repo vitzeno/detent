@@ -228,19 +228,13 @@ type ToolCallProposed struct {
 	Rationale string         `json:"Rationale"`
 	// Renders is how the tool says its output should be read, which beats
 	// a judged guess.
-	Renders string `json:"Renders"`
+	Renders RenderKind `json:"Renders"`
 	// Executor is empty for a shell command, and otherwise names what
 	// runs it. Nothing a checkpoint can undo.
 	Executor string `json:"Executor"`
 }
 
 func (ToolCallProposed) Kind() Kind { return ToolCallProposedKind }
-
-// RendersMarkdown says a tool's output is a markdown document.
-const RendersMarkdown = "markdown"
-
-// RendersDiff says a tool's output is a unified diff, as an edit prints.
-const RendersDiff = "diff"
 
 // ToolCallAssessed is the hook chain's verdict on a tool call.
 type ToolCallAssessed struct {
@@ -317,12 +311,12 @@ type Result struct {
 // ToolCallJudged is how it went and how to draw it. Async: may land late.
 type ToolCallJudged struct {
 	fact
-	ToolCall     uuid.UUID `json:"ToolCall"`
-	Status       string    `json:"Status"`
-	RenderKind   string    `json:"RenderKind"`
-	Attention    float64   `json:"Attention"`
-	GoalAchieved float64   `json:"GoalAchieved"`
-	FromJudge    bool      `json:"FromJudge"`
+	ToolCall     uuid.UUID  `json:"ToolCall"`
+	Status       Status     `json:"Status"`
+	RenderKind   RenderKind `json:"RenderKind"`
+	Attention    float64    `json:"Attention"`
+	GoalAchieved float64    `json:"GoalAchieved"`
+	FromJudge    bool       `json:"FromJudge"`
 }
 
 func (ToolCallJudged) Kind() Kind { return ToolCallJudgedKind }

@@ -42,7 +42,7 @@ func (g *Generator) Watch(ctx context.Context, bus *event.Bus) func() {
 type pending struct {
 	command string
 	result  *event.Result
-	kind    string
+	kind    event.RenderKind
 }
 
 // maxComposing caps concurrent composition.

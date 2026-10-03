@@ -36,7 +36,7 @@ type Request struct {
 	ExitCode int
 	// Kind is Jev's render_kind for this output, which prunes the
 	// vocabulary before the judge chooses from it.
-	Kind string
+	Kind event.RenderKind
 }
 
 // Result is a spec and where it came from: shipped is detent's own,
@@ -95,7 +95,7 @@ func (g *Generator) Existing(ctx context.Context, req Request) (Result, bool) {
 
 // Shape asks the judge only which shape output has, for output nothing
 // else judged. "" with no judge, or too little to draw.
-func (g *Generator) Shape(ctx context.Context, command, output string) string {
+func (g *Generator) Shape(ctx context.Context, command, output string) event.RenderKind {
 	if len(nonBlank(output)) < MinRecordsToCompose && !isJSON(output) {
 		return ""
 	}
@@ -105,7 +105,7 @@ func (g *Generator) Shape(ctx context.Context, command, output string) string {
 	if !ok {
 		return ""
 	}
-	return answers["render_kind"].Choice
+	return event.RenderKind(answers["render_kind"].Choice)
 }
 
 // forKind is the spec detent ships for an output shape, when it draws.
@@ -179,7 +179,7 @@ func draws(spec *viewspec.Spec, reg *viewspec.Registry, output string) error {
 }
 
 // enough reports whether output is long enough for its shape to earn a view.
-func enough(kind, output string) bool {
+func enough(kind event.RenderKind, output string) bool {
 	if k, ok := byName[kind]; ok && k.Records {
 		return len(nonBlank(output)) >= MinRecordsToCompose || isJSON(output)
 	}

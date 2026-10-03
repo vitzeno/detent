@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"regexp"
 	"strings"
+
+	"github.com/vitzeno/detent/event"
 )
 
 // multiplexers are the programs whose second word names a real subcommand.
@@ -42,9 +44,9 @@ var unsafeName = regexp.MustCompile(`[^a-z0-9]+`)
 
 // Key identifies a saved view. The judged kind is part of it because
 // "ls" is a file_listing and "ls -la" a table, which cannot share a parse.
-func Key(command, kind string) string {
+func Key(command string, kind event.RenderKind) string {
 	shape := Normalise(command)
-	sum := sha256.Sum256([]byte(shape + "\x00" + kind))
-	name := unsafeName.ReplaceAllString(strings.ToLower(shape+"-"+kind), "-")
+	sum := sha256.Sum256([]byte(shape + "\x00" + string(kind)))
+	name := unsafeName.ReplaceAllString(strings.ToLower(shape+"-"+string(kind)), "-")
 	return strings.Trim(name, "-") + "-" + hex.EncodeToString(sum[:4])
 }

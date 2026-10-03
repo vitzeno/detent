@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/viewspec"
 )
@@ -45,7 +46,8 @@ func TestCorpus_ReadsWhatTheOutputHolds(t *testing.T) {
 // corpus is real output with the answers Jev gave, wrong ones included.
 // Each case says what must be read, never which parse reads it.
 var corpus = []struct {
-	file, kind   string
+	file         string
+	kind         event.RenderKind
 	say          map[string]string
 	rows, fields int
 	// each is a pattern every row's value in a field must match, which

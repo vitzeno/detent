@@ -103,10 +103,12 @@ func fallbackChain(r *historyRow, output string) []*viewspec.Compiled {
 	case event.RendersMarkdown:
 		return []*viewspec.Compiled{compiledMarkdown, compiledPlain}
 	case event.RendersDiff:
-		return []*viewspec.Compiled{compiledFallback["diff"], compiledPlain}
+		return []*viewspec.Compiled{compiledFallback[event.RendersDiff], compiledPlain}
+	default:
+		// Any other declared shape defers to the judged kind.
 	}
 	kind := r.kind()
-	if kind == "file_content" && markdown.Wants(r.command, output) {
+	if kind == event.RendersContent && markdown.Wants(r.command, output) {
 		chain = append(chain, compiledMarkdown)
 	}
 	if c, ok := compiledFallback[kind]; ok {
@@ -184,8 +186,8 @@ var (
 )
 
 // byKind is the shipped spec per judged output shape.
-func byKind() map[string]viewspec.Spec {
-	out := map[string]viewspec.Spec{}
+func byKind() map[event.RenderKind]viewspec.Spec {
+	out := map[event.RenderKind]viewspec.Spec{}
 	for _, kind := range views.Kinds() {
 		if spec, ok := views.ForKind(kind); ok {
 			out[kind] = spec

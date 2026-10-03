@@ -18,7 +18,7 @@ import (
 
 func TestJudge_ReadsWhatTheJudgeSaid(t *testing.T) {
 	j := ResultJudge{Asker: fakeAsker{answers: classify.Answers{
-		"result_status": {Choice: StatusWarnings},
+		"result_status": {Choice: string(event.StatusWarnings)},
 		"render_kind":   {Choice: "file_listing"},
 		"attention":     {Noul: 0.7},
 		"goal_achieved": {Noul: 0.95},
@@ -26,8 +26,8 @@ func TestJudge_ReadsWhatTheJudgeSaid(t *testing.T) {
 	got := j.Judge(context.Background(), "bash", event.Result{Stdout: "a.go\n"})
 
 	assert.True(t, got.FromJudge)
-	assert.Equal(t, StatusWarnings, got.Status)
-	assert.Equal(t, "file_listing", got.RenderKind)
+	assert.Equal(t, event.StatusWarnings, got.Status)
+	assert.Equal(t, event.RendersFiles, got.RenderKind)
 	assert.InDelta(t, 0.7, got.Attention, 1e-9)
 	assert.InDelta(t, 0.95, got.GoalAchieved, 1e-9)
 }
@@ -39,14 +39,14 @@ func TestJudge_FallsBackWithoutClaimingToBeAVerdict(t *testing.T) {
 		name   string
 		asker  classify.Asker
 		res    event.Result
-		status string
+		status event.Status
 	}{
-		{"no judge at all", nil, event.Result{Stdout: "ok\n"}, StatusClean},
-		{"judge unreachable", fakeAsker{err: errors.New("down")}, event.Result{Stdout: "ok\n"}, StatusClean},
-		{"non-zero exit", nil, event.Result{ExitCode: 2, Stderr: "boom"}, StatusFailed},
-		{"could not run", nil, event.Result{Err: "no such file"}, StatusFailed},
-		{"silent", nil, event.Result{}, StatusEmpty},
-		{"whitespace only", nil, event.Result{Stdout: "  \n\n"}, StatusEmpty},
+		{"no judge at all", nil, event.Result{Stdout: "ok\n"}, event.StatusClean},
+		{"judge unreachable", fakeAsker{err: errors.New("down")}, event.Result{Stdout: "ok\n"}, event.StatusClean},
+		{"non-zero exit", nil, event.Result{ExitCode: 2, Stderr: "boom"}, event.StatusFailed},
+		{"could not run", nil, event.Result{Err: "no such file"}, event.StatusFailed},
+		{"silent", nil, event.Result{}, event.StatusEmpty},
+		{"whitespace only", nil, event.Result{Stdout: "  \n\n"}, event.StatusEmpty},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -64,7 +64,7 @@ func TestWatch_AHighScoreAsksTheTurnToStop(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	stop := Watch(t.Context(), bus, fakeAsker{answers: classify.Answers{
-		"result_status": {Choice: StatusClean},
+		"result_status": {Choice: string(event.StatusClean)},
 		"goal_achieved": {Noul: 0.97},
 	}})
 	defer stop()
@@ -92,7 +92,7 @@ func TestWatch_ALowScoreLetsItCarryOn(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	stop := Watch(t.Context(), bus, fakeAsker{answers: classify.Answers{
-		"result_status": {Choice: StatusClean},
+		"result_status": {Choice: string(event.StatusClean)},
 		"goal_achieved": {Noul: 0.2},
 	}})
 	defer stop()

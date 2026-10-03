@@ -17,14 +17,6 @@ import (
 	"github.com/vitzeno/detent/internal/viewgen"
 )
 
-// Result status, as the UI's own status package spells them.
-const (
-	StatusClean    = "clean_success"
-	StatusWarnings = "success_with_warnings"
-	StatusFailed   = "failed"
-	StatusEmpty    = "empty"
-)
-
 // GoalMet is where the judge's goal-achieved score stops being an
 // opinion and becomes a reason to stop asking for tools.
 const GoalMet = 0.9
@@ -59,10 +51,10 @@ func (j ResultJudge) Judge(ctx context.Context, command string, res event.Result
 	}
 	out.FromJudge = true
 	if a, has := answers["result_status"]; has && a.Choice != "" {
-		out.Status = a.Choice
+		out.Status = event.Status(a.Choice)
 	}
 	if a, has := answers["render_kind"]; has && a.Choice != "" {
-		out.RenderKind = a.Choice
+		out.RenderKind = event.RenderKind(a.Choice)
 	}
 	if a, has := answers["attention"]; has {
 		out.Attention = a.Noul
@@ -184,14 +176,14 @@ func (w *watcher) publish(j ResultJudge, turn uuid.UUID, done event.ToolCallEnde
 // heuristic is what a row reads as with no judge wired. It never claims
 // a shape, only that something failed or was silent.
 func heuristic(res event.Result) event.ToolCallJudged {
-	out := event.ToolCallJudged{RenderKind: viewgen.KindText, GoalAchieved: -1}
+	out := event.ToolCallJudged{RenderKind: event.RendersText, GoalAchieved: -1}
 	switch {
 	case res.Err != "" || res.ExitCode != 0:
-		out.Status, out.RenderKind, out.Attention = StatusFailed, viewgen.KindError, 0.9
+		out.Status, out.RenderKind, out.Attention = event.StatusFailed, event.RendersError, 0.9
 	case strings.TrimSpace(res.Stdout+res.Stderr) == "":
-		out.Status, out.Attention = StatusEmpty, 0.1
+		out.Status, out.Attention = event.StatusEmpty, 0.1
 	default:
-		out.Status, out.Attention = StatusClean, 0.1
+		out.Status, out.Attention = event.StatusClean, 0.1
 	}
 	return out
 }
@@ -202,10 +194,10 @@ func resultQuestions() classify.Questions {
 			Instructions: "Given the tool call and its captured output, how did it go? " +
 				"Warnings means it succeeded but the output contains errors, retries or deprecations worth noticing.",
 			Choice: &classify.ChoiceQuestion{Criteria: map[string]any{
-				StatusClean:    "succeeded with clean, expected output",
-				StatusWarnings: "succeeded but output contains warnings, errors or retries worth noticing",
-				StatusFailed:   "failed: non-zero exit, or output showing it did not do its job",
-				StatusEmpty:    "ran fine but produced no useful output",
+				string(event.StatusClean):    "succeeded with clean, expected output",
+				string(event.StatusWarnings): "succeeded but output contains warnings, errors or retries worth noticing",
+				string(event.StatusFailed):   "failed: non-zero exit, or output showing it did not do its job",
+				string(event.StatusEmpty):    "ran fine but produced no useful output",
 			}},
 		},
 		"render_kind": viewgen.RenderKindQuestion(),

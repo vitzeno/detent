@@ -344,7 +344,7 @@ func writeOutput(b *strings.Builder, r event.Result) {
 
 // renders asks the tool how its output should be read. Advisory: a
 // front-end may ignore it.
-func (e *Engine) renders(name string) string {
+func (e *Engine) renders(name string) event.RenderKind {
 	t, ok := e.tools.Lookup(name)
 	if !ok {
 		return ""
