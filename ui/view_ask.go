@@ -101,8 +101,8 @@ func (m Model) questionBox() string {
 		return styleCaution.Render(fmt.Sprintf("⚠ %d steps and still going", n)) + "\n" +
 			styleFaint.Render("  [y/enter] keep going   [n] stop here")
 	case modeUndo:
-		return styleCaution.Render("⚠ undo — your own files") + "\n" +
-			styleFaint.Render("  [n/enter] container only   [y] revert your files too   [esc] cancel")
+		return styleCaution.Render("⚠ undo") + "\n" +
+			styleFaint.Render("  "+m.undoKeys("   "))
 	case modeForget:
 		return styleDanger.Render("⚠ delete — this cannot be undone") + "\n" +
 			styleFaint.Render("  [y] delete   [n/enter/esc] cancel")

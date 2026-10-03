@@ -105,10 +105,32 @@ func (m *Model) undoLines() []string {
 			out = append(out, "  "+styleDanger.Render(truncCell(r.command, width)))
 		}
 	}
+	if !b.files {
+		return append(out, "",
+			styleFaint.Render("  The container goes back."),
+			styleFaint.Render("  Your own files were not checkpointed, so they stay as they are."))
+	}
+	first := "  The container goes back either way."
+	if !b.container {
+		first = "  The conversation goes back either way."
+	}
 	return append(out, "",
-		styleFaint.Render("  The container goes back either way."),
-		styleFaint.Render("  Your own files only go back if you say so — this"),
-		styleFaint.Render("  request may have touched work detent never made."))
+		styleFaint.Render(first),
+		styleFaint.Render("  Your own files only go back if you say so, and"),
+		styleFaint.Render("  anything changed after the request ended stays."))
+}
+
+// undoKeys names the answers the target allows, joined by sep.
+func (m Model) undoKeys(sep string) string {
+	b := m.undo.target
+	keep := "[n/enter] container only"
+	switch {
+	case b == nil || !b.files:
+		return strings.Join([]string{"[y/enter] undo", "[n/esc] cancel"}, sep)
+	case !b.container:
+		keep = "[n/enter] conversation only"
+	}
+	return strings.Join([]string{keep, "[y] revert your files too", "[esc] cancel"}, sep)
 }
 
 // split separates what a checkpoint covers from what it does not.

@@ -159,6 +159,15 @@ func (m Model) confirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // undoKey owns every key while the undo question is up: three
 // outcomes, none of them implicit.
 func (m Model) undoKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// With no files to revert there is one question, not two.
+	if b := m.undo.target; b != nil && !b.files {
+		switch msg.String() {
+		case "y", "Y", "enter":
+			return m.confirmUndo(false)
+		case "n", "N":
+			return m.cancelUndo()
+		}
+	}
 	switch msg.String() {
 	case "y", "Y":
 		return m.confirmUndo(true)

@@ -29,7 +29,9 @@ type turnBlock struct {
 	// undoable is set once a checkpoint lands, so /undo offers
 	// only what it can actually restore.
 	undoable bool
-	err      string
+	// files and container say what that checkpoint covers.
+	files, container bool
+	err              string
 
 	// rev moves whenever anything this block draws does, and its cache
 	// is keyed on it, so one live line redraws one block.

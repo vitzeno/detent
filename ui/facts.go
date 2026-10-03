@@ -61,6 +61,7 @@ func (m *Model) apply(ev event.Event) {
 	case event.CheckpointTaken:
 		if b := m.block(v.Turn); b != nil {
 			b.undoable = true
+			b.files, b.container = v.Tree != "", v.Snapshot != ""
 		}
 
 	case event.TurnEnded:

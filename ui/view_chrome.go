@@ -197,7 +197,7 @@ func (m Model) statusBar() string {
 // first, then owner(), so the hint names what the key will do.
 func (m Model) statusHint() string {
 	if m.mode == modeUndo {
-		return "[n/enter] container only · [y] revert your files too · [esc] cancel"
+		return m.undoKeys(" · ")
 	}
 	if m.mode == modeBound {
 		return "[y/enter] keep going · [n] stop here"
