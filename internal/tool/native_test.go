@@ -58,6 +58,7 @@ func TestReadFile_NativeMatchesTheSandbox(t *testing.T) {
 		"a window":            {Args{"path": "a.txt", "offset": 2, "max_lines": 2}, map[string]string{"a.txt": "1\n2\n3\n4\n5\n"}},
 		"the byte budget":     {Args{"path": "a.txt"}, map[string]string{"a.txt": many}},
 		"a line over budget":  {Args{"path": "a.txt"}, map[string]string{"a.txt": "short\n" + long + "\nafter\n"}},
+		"a line over a read":  {Args{"path": "a.txt", "offset": 2}, map[string]string{"a.txt": "short\n" + strings.Repeat("z", 3*readChunk) + "\nafter\n"}},
 		"a path awk misreads": {Args{"path": "year=2024.csv"}, map[string]string{"year=2024.csv": "a,b\n"}},
 	} {
 		t.Run(name, func(t *testing.T) { parity(t, ReadFile{}, c.args, c.files) })

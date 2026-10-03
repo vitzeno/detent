@@ -56,6 +56,8 @@ func TestGrep_NativeMatchesTheSandbox(t *testing.T) {
 		"a missing path":        {Args{"pattern": "Alpha", "path": "nope"}, searchTree},
 		"a bad regex":           {Args{"pattern": "("}, searchTree},
 		"a line over budget":    {Args{"pattern": "hit"}, long},
+		"a line over a read":    {Args{"pattern": "hit$|^z"}, map[string]string{"l.txt": "hit\n" + strings.Repeat("z", 3*readChunk) + "hit\nhit\n"}},
+		"many matches":          {Args{"pattern": "a", "max_results": 900}, map[string]string{"m/1.txt": numbered(700), "m/2.txt": numbered(700), "m.txt": numbered(50)}},
 	} {
 		t.Run(name, func(t *testing.T) { cParity(t, Grep{}, c.args, c.files) })
 	}
