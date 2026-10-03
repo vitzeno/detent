@@ -12,24 +12,15 @@ import (
 // Watch writes one record per fact and returns a stop func. Correlation
 // ids come off the event, so no call site has to thread them.
 func Watch(bus *event.Bus) func() {
-	facts, unsub := bus.Subscribe(worthKeeping)
 	// Bus, not the publisher: the bus does not know who that was.
 	log := For(Bus)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for rec := range facts {
-			level, fields := describe(rec.Event)
-			log.Log(context.Background(), level, string(rec.Event.Kind()),
-				append([]any{KeyEvent, string(rec.Event.Kind()), KeyOrdinal, rec.Ordinal}, fields...)...)
-		}
-	}()
 	// The stop waits for the last record to be written, not merely
 	// received: a log that loses its tail at exit is worse than a slow one.
-	return func() {
-		unsub()
-		<-done
-	}
+	return bus.Handle(worthKeeping, func(rec event.Record) {
+		level, fields := describe(rec.Event)
+		log.Log(context.Background(), level, string(rec.Event.Kind()),
+			append([]any{KeyEvent, string(rec.Event.Kind()), KeyOrdinal, rec.Ordinal}, fields...)...)
+	})
 }
 
 // worthKeeping takes every fact but live output, which is too noisy and

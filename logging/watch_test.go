@@ -33,8 +33,8 @@ func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 		Took: 12 * time.Millisecond})
 	bus.Publish(event.TurnEnded{Turn: turn, Reason: event.EndDone})
 
-	require.Eventually(t, func() bool { return len(records(t, dir, "w1")) == 5 },
-		2*time.Second, 10*time.Millisecond)
+	bus.Settle(2 * time.Second)
+	require.Len(t, records(t, dir, "w1"), 5)
 	stop()
 	require.NoError(t, closer())
 
@@ -76,8 +76,8 @@ func TestWatch_LogsAHumanCommand(t *testing.T) {
 	bus.Publish(event.UserCommandEnded{UserCommand: shell, Took: 8 * time.Millisecond,
 		Result: event.Result{ExitCode: 1, Stderr: "boom"}})
 
-	require.Eventually(t, func() bool { return len(records(t, dir, "w5")) == 2 },
-		2*time.Second, 10*time.Millisecond)
+	bus.Settle(2 * time.Second)
+	require.Len(t, records(t, dir, "w5"), 2)
 	stop()
 	require.NoError(t, closer())
 
@@ -112,8 +112,8 @@ func TestWatch_SkipsLiveOutput(t *testing.T) {
 	}
 	bus.Publish(event.Notice{Level: "info", Text: "done"})
 
-	require.Eventually(t, func() bool { return len(records(t, dir, "w2")) >= 1 },
-		2*time.Second, 10*time.Millisecond)
+	bus.Settle(2 * time.Second)
+	require.Len(t, records(t, dir, "w2"), 1)
 	stop()
 	require.NoError(t, closer())
 
@@ -134,8 +134,8 @@ func TestWatch_WithholdsBodiesUnlessAsked(t *testing.T) {
 		stop := logging.Watch(bus)
 		bus.Publish(event.TurnStarted{Turn: testID("t"), N: 1, Prompt: "the secret prompt"})
 
-		require.Eventually(t, func() bool { return len(records(t, dir, "b")) == 1 },
-			2*time.Second, 10*time.Millisecond)
+		bus.Settle(2 * time.Second)
+		require.Len(t, records(t, dir, "b"), 1)
 		stop()
 		require.NoError(t, closer())
 
@@ -162,8 +162,8 @@ func TestWatch_RecordsTheCommand(t *testing.T) {
 	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: args})
 	bus.Publish(event.ApprovalAsked{ToolCall: call, Tool: "bash", Args: args, Rationale: "recursive delete"})
 
-	require.Eventually(t, func() bool { return len(records(t, dir, "c")) == 2 },
-		2*time.Second, 10*time.Millisecond)
+	bus.Settle(2 * time.Second)
+	require.Len(t, records(t, dir, "c"), 2)
 	stop()
 	require.NoError(t, closer())
 
@@ -188,8 +188,8 @@ func TestWatch_NeverWritesTwoLevelKeys(t *testing.T) {
 	stop := logging.Watch(bus)
 	bus.Publish(event.Notice{Level: "info", Text: "named test"})
 
-	require.Eventually(t, func() bool { return len(records(t, dir, "n")) == 1 },
-		2*time.Second, 10*time.Millisecond)
+	bus.Settle(2 * time.Second)
+	require.Len(t, records(t, dir, "n"), 1)
 	stop()
 	require.NoError(t, closer())
 
