@@ -136,7 +136,16 @@ var buildDir string
 // running counts live processes started from bin.
 func running(t *testing.T, bin string) int {
 	t.Helper()
-	out, err := exec.Command("pgrep", "-f", bin).Output()
+	if runtime.GOOS == "windows" {
+		// Windows has no pgrep: tasklist lists each process of that image on its own line.
+		name := filepath.Base(bin)
+		out, err := exec.CommandContext(t.Context(), "tasklist", "/FI", "IMAGENAME eq "+name, "/NH").Output()
+		if err != nil {
+			return 0
+		}
+		return strings.Count(strings.ToLower(string(out)), strings.ToLower(name))
+	}
+	out, err := exec.CommandContext(t.Context(), "pgrep", "-f", bin).Output()
 	if err != nil {
 		return 0 // pgrep exits non-zero when nothing matches
 	}
