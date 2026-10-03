@@ -1,11 +1,15 @@
 package status
 
 import (
+	"maps"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/vitzeno/detent/event"
 )
 
 func TestBadge(t *testing.T) {
@@ -77,5 +81,14 @@ func TestTokens(t *testing.T) {
 		2_100_000: "2.1M",
 	} {
 		assert.Equal(t, want, Tokens(in), "%d", in)
+	}
+}
+
+// Every status the judge can publish reads as itself rather than "done",
+// and every labelled kind is one event has.
+func TestVocabulary_AgreesWithEvent(t *testing.T) {
+	assert.ElementsMatch(t, event.Statuses(), slices.Collect(maps.Keys(verdicts)))
+	for k := range kindLabels {
+		assert.Contains(t, event.RenderKinds(), k)
 	}
 }

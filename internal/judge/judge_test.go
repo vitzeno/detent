@@ -345,3 +345,13 @@ func TestWatch_AToolCallThatNeverRanIsNotJudged(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	}
 }
+
+// The judge is offered exactly the statuses event declares, so ui labels
+// whatever it can answer.
+func TestResultQuestions_OfferEveryStatus(t *testing.T) {
+	var offered []event.Status
+	for s := range resultQuestions()["result_status"].Choice.Criteria {
+		offered = append(offered, event.Status(s))
+	}
+	assert.ElementsMatch(t, event.Statuses(), offered)
+}

@@ -20,6 +20,7 @@ import (
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/ui"
+	"github.com/vitzeno/detent/views"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -373,6 +374,24 @@ func TestExisting_AShippedViewThatHidesTheOutputIsNotUsed(t *testing.T) {
 
 // One table defines a kind's criteria and what may draw it, so a kind
 // cannot be judged into existence with nothing able to render it.
+// event owns the render kinds, so a shape added here or in views fails
+// until it exists there, and one added there fails until it is judged.
+func TestKinds_AgreeWithEvent(t *testing.T) {
+	var judged []event.RenderKind
+	for _, k := range viewgen.Kinds() {
+		judged = append(judged, k.Name)
+		assert.Contains(t, event.RenderKinds(), k.Name)
+	}
+	for _, k := range event.RenderKinds() {
+		if k != event.RendersMarkdown { // only ever declared by a tool
+			assert.Contains(t, judged, k, "nothing can judge output to be %s", k)
+		}
+	}
+	for _, k := range views.Kinds() {
+		assert.Contains(t, judged, k, "views ships a spec for %s, which nothing judges", k)
+	}
+}
+
 func TestKinds_CriteriaAndWidgetsComeFromOneTable(t *testing.T) {
 	criteria := viewgen.RenderKindCriteria()
 	require.Len(t, criteria, len(viewgen.Kinds()))
