@@ -31,6 +31,7 @@ func extract(e Extractor, output string) ([]Row, []Column, error) {
 	return rows, nil, err
 }
 
+// skipping wraps e to drop the parse's leading Skip lines first.
 func skipping(p Parse, e Extractor) Extractor {
 	if p.Skip <= 0 {
 		return e

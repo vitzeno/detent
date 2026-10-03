@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+// tableWidget draws rows in aligned columns under a header row.
 type tableWidget struct{}
 
 var (

@@ -1,5 +1,6 @@
 package viewspec
 
+// listWidget draws one field per line.
 type listWidget struct{}
 
 var (

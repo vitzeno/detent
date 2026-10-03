@@ -34,9 +34,8 @@ func Kinds() []event.RenderKind { return slices.Sorted(maps.Keys(byKind)) }
 // Commands lists every command with a shipped spec, sorted.
 func Commands() []string { return slices.Sorted(maps.Keys(byCommand)) }
 
-// Raw draws the output as it came, through one widget. The floor of
-// every fallback chain, and what most shapes want. The widget must exist
-// in whatever registry compiles the result, which nothing here can check.
+// Raw draws the output as it came through one widget, the floor of every
+// fallback chain. Nothing here can check the widget is in the compiling registry.
 func Raw(widget string) viewspec.Spec {
 	return viewspec.Spec{
 		Version: viewspec.Version,

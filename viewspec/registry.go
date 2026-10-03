@@ -7,9 +7,8 @@ import (
 	"slices"
 )
 
-// Registry is the vocabulary a spec is compiled against, and the
-// extension point for a consumer's own widgets and parse kinds. The zero
-// value is an empty registry.
+// Registry is the vocabulary a spec is compiled against, and where a consumer
+// adds widgets and parse kinds of its own. The zero value is empty.
 type Registry struct {
 	widgets    map[string]Widget
 	extractors map[string]func(Parse) (Extractor, error)
