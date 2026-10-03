@@ -76,6 +76,19 @@ func configure(o options) (trust.Decision, config.Config, error) {
 	return trusted, cfg, err
 }
 
+// askTrust asks on the terminal, or is nil when nobody is there to answer.
+func askTrust(tui bool) func() bool {
+	if !tui || !isTerminal(os.Stdin) || !isTerminal(os.Stderr) {
+		return nil
+	}
+	return trust.Reader(os.Stdin)
+}
+
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
 // layer reads the bytes trust hashed rather than the disk, so a file
 // changed since it asked cannot slip in.
 func layer(o options, trusted trust.Decision) (config.Config, error) {
@@ -93,37 +106,6 @@ func layer(o options, trusted trust.Decision) (config.Config, error) {
 	cfg := config.Resolve(file, flags, o.steps)
 	cfg.SandboxSocket = cmp.Or(cfg.SandboxSocket, defaultSandboxSocket())
 	return cfg, nil
-}
-
-// defaultSandboxSocket returns the OS-conventional containerd socket,
-// or "" when there is no safe default and run() needs an override.
-func defaultSandboxSocket() string {
-	switch runtime.GOOS {
-	case "linux":
-		return "/run/containerd/containerd.sock"
-	case "darwin":
-		// colima's default profile, whichever runtime it was started with.
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
-		return filepath.Join(home, ".colima", "default", "containerd.sock")
-	default:
-		return ""
-	}
-}
-
-// askTrust asks on the terminal, or is nil when nobody is there to answer.
-func askTrust(tui bool) func() bool {
-	if !tui || !isTerminal(os.Stdin) || !isTerminal(os.Stderr) {
-		return nil
-	}
-	return trust.Reader(os.Stdin)
-}
-
-func isTerminal(f *os.File) bool {
-	info, err := f.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // loadDotenv fills gaps from the working directory's .env, as approved.
@@ -168,4 +150,22 @@ func dotenvLine(line string) (key, value string, ok bool) {
 		value = strings.TrimSpace(value[:i])
 	}
 	return key, value, true
+}
+
+// defaultSandboxSocket returns the OS-conventional containerd socket,
+// or "" when there is no safe default and run() needs an override.
+func defaultSandboxSocket() string {
+	switch runtime.GOOS {
+	case "linux":
+		return "/run/containerd/containerd.sock"
+	case "darwin":
+		// colima's default profile, whichever runtime it was started with.
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		return filepath.Join(home, ".colima", "default", "containerd.sock")
+	default:
+		return ""
+	}
 }

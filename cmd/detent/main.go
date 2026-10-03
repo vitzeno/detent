@@ -9,19 +9,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/google/uuid"
-
 	"github.com/vitzeno/detent/event"
-	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/config"
-	"github.com/vitzeno/detent/internal/engine"
-	"github.com/vitzeno/detent/internal/forget"
-	mcppkg "github.com/vitzeno/detent/internal/mcp"
 	"github.com/vitzeno/detent/internal/model"
-	"github.com/vitzeno/detent/internal/sandbox"
-	"github.com/vitzeno/detent/internal/store"
-	"github.com/vitzeno/detent/internal/tool"
-	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/ui"
 	"github.com/vitzeno/detent/ui/theme"
@@ -128,6 +118,16 @@ func applyLook(cfg config.Config) error {
 	return nil
 }
 
+// ping checks the endpoint in the background. Waited for after the
+// sandbox, so startup still fails fast but the two overlap.
+func ping(cfg config.Config) <-chan error {
+	pinged := make(chan error, 1)
+	go func() {
+		pinged <- (&model.Client{BaseURL: cfg.BaseURL, APIKey: cfg.APIKey, Headers: cfg.Headers}).Ping(context.Background())
+	}()
+	return pinged
+}
+
 // endedError is a headless request that ended other than done, so a
 // script driving -prompt can tell finished from gave up.
 type endedError event.EndReason
@@ -152,162 +152,3 @@ func (e endedError) code() int {
 		return 1
 	}
 }
-
-// composer wires the view composer. Only views: generate hands it the
-// judge, and Validate refuses that mode without a jev key.
-func composer(mode string, judge *classify.JevJudge) *viewgen.Generator {
-	g := &viewgen.Generator{
-		Registry: ui.Registry(),
-		Store:    &viewgen.Store{Dir: viewgen.DefaultDir()},
-		// Without a key nothing publishes CallJudged.
-		Unjudged: judge == nil,
-	}
-	if mode == config.ViewsGenerate && judge != nil {
-		g.Judge = judge
-	}
-	return g
-}
-
-// openSession picks a stored session to continue, or a new one, and
-// returns the records the engine and UI rebuild themselves from.
-func openSession(resume string) (uuid.UUID, []event.Record, error) {
-	if resume == "" {
-		return uuid.Must(uuid.NewV7()), nil, nil
-	}
-	events, err := store.Open(store.DefaultPath())
-	if err != nil {
-		return uuid.Nil, nil, err
-	}
-	defer func() { _ = events.Close() }()
-
-	id, err := resolveSession(events, resume)
-	if err != nil {
-		return uuid.Nil, nil, err
-	}
-	records, err := events.Replay(id)
-	if err != nil {
-		return uuid.Nil, nil, err
-	}
-	if len(records) == 0 {
-		return uuid.Nil, nil, fmt.Errorf("session %s has nothing recorded", id)
-	}
-	return id, records, nil
-}
-
-// resolveSession reads an id, then "last", then a name. store.Rename
-// refuses a name shaped like the first two, since it would never be read.
-func resolveSession(events *store.Store, want string) (uuid.UUID, error) {
-	if id, err := uuid.Parse(want); err == nil {
-		return id, nil
-	}
-	all, err := events.Sessions()
-	if err != nil {
-		return uuid.Nil, err
-	}
-	if len(all) == 0 {
-		return uuid.Nil, fmt.Errorf("no sessions recorded yet")
-	}
-	if strings.EqualFold(want, store.ReservedName) {
-		return all[0].ID, nil
-	}
-	for _, s := range all {
-		if strings.EqualFold(s.Name, want) {
-			return s.ID, nil
-		}
-	}
-	return uuid.Nil, fmt.Errorf("no session named %q, try -sessions or -resume %s", want, store.ReservedName)
-}
-
-// judgeName is what the session says classified it, empty when no key
-// was set and nothing did.
-func judgeName(c config.Config) string {
-	if c.JevAPIKey == "" {
-		return ""
-	}
-	return c.JevModel
-}
-
-// sessionStore avoids handing forget a non-nil interface holding a
-// nil pointer, which is not nil and would panic on the first call.
-func sessionStore(s *store.Store) forget.Sessions {
-	if s == nil {
-		return nil
-	}
-	return s
-}
-
-// containerRemover is how a deleted session's container goes, or nil
-// when this run has no sandbox and so nothing to remove.
-func containerRemover(socket string) func(context.Context, string) error {
-	if socket == "" {
-		return nil
-	}
-	return func(ctx context.Context, id string) error {
-		err := sandbox.Forget(ctx, socket, sandbox.DefaultNamespace, id)
-		if errors.Is(err, sandbox.ErrSessionLive) {
-			return fmt.Errorf("%w: %w", forget.ErrLive, err)
-		}
-		return err
-	}
-}
-
-// sandboxSocketFor is the socket a deleted session's container would
-// be on, or "" when this run never had one to speak of.
-func sandboxSocketFor(c config.Config) string {
-	if c.SandboxMode != config.SandboxAuto {
-		return ""
-	}
-	return c.SandboxSocket
-}
-
-// loadMCPConfig keeps MCP configuration out of headless runs entirely.
-// It is enabled for the TUI, where users can inspect and invoke servers.
-func loadMCPConfig(enabled bool, project []byte, files []string) (map[string]mcppkg.Config, error) {
-	if !enabled {
-		return map[string]mcppkg.Config{}, nil
-	}
-	return mcppkg.Load(project, files...)
-}
-
-// connectServers dials MCP without holding up the first frame, publishing
-// each server as it settles. The channel closes when done, for shutdown.
-func connectServers(ctx context.Context, bus *event.Bus, tools *tool.Registry,
-	servers *mcppkg.Invokers, configured map[string]mcppkg.Config, signins *mcppkg.SignIns) <-chan struct{} {
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		connectAll(ctx, bus, tools, servers, configured, signins)
-	}()
-	return done
-}
-
-func connectAll(ctx context.Context, bus *event.Bus, tools *tool.Registry,
-	servers *mcppkg.Invokers, configured map[string]mcppkg.Config, signins *mcppkg.SignIns) {
-	if len(configured) == 0 {
-		return
-	}
-	errs := mcppkg.ConnectAll(ctx, tools, servers, configured, func(s event.ServerSummary) {
-		if s.Err != "" {
-			bus.Publish(event.Notice{Level: "error", Text: s.Err})
-		}
-		bus.Publish(event.ServersListed{Servers: servers.Status()})
-	}, mcppkg.WithSignIns(signins))
-	if n := len(servers.Servers()); n > 0 && len(errs) == 0 {
-		bus.Publish(event.Notice{Level: "info", Text: fmt.Sprintf("%d mcp server(s) ready", n)})
-	}
-}
-
-// runEngine starts the loop and says when it has stopped, which is what
-// shutdown waits on before closing the bus out from under it.
-func runEngine(ctx context.Context, eng *engine.Engine) <-chan struct{} {
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		eng.Run(ctx)
-	}()
-	return done
-}
-
-// The engine finds PromptSizer by type assertion, so a renamed method
-// would empty the context page's prompt rows rather than fail the build.
-var _ engine.PromptSizer = (*model.Client)(nil)

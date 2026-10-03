@@ -10,9 +10,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/engine"
 	"github.com/vitzeno/detent/internal/headless"
 	mcppkg "github.com/vitzeno/detent/internal/mcp"
 	"github.com/vitzeno/detent/internal/model"
+	"github.com/vitzeno/detent/internal/tool"
 	"github.com/vitzeno/detent/internal/usercommand"
 	"github.com/vitzeno/detent/ui"
 )
@@ -79,4 +81,43 @@ func (s *session) runTUI(ctx context.Context) error {
 	go func() { <-hup.Done(); p.Quit() }()
 	_, err := p.Run()
 	return err
+}
+
+// runEngine starts the loop and says when it has stopped, which is what
+// shutdown waits on before closing the bus out from under it.
+func runEngine(ctx context.Context, eng *engine.Engine) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		eng.Run(ctx)
+	}()
+	return done
+}
+
+// connectServers dials MCP without holding up the first frame, publishing
+// each server as it settles. The channel closes when done, for shutdown.
+func connectServers(ctx context.Context, bus *event.Bus, tools *tool.Registry,
+	servers *mcppkg.Invokers, configured map[string]mcppkg.Config, signins *mcppkg.SignIns) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		connectAll(ctx, bus, tools, servers, configured, signins)
+	}()
+	return done
+}
+
+func connectAll(ctx context.Context, bus *event.Bus, tools *tool.Registry,
+	servers *mcppkg.Invokers, configured map[string]mcppkg.Config, signins *mcppkg.SignIns) {
+	if len(configured) == 0 {
+		return
+	}
+	errs := mcppkg.ConnectAll(ctx, tools, servers, configured, func(s event.ServerSummary) {
+		if s.Err != "" {
+			bus.Publish(event.Notice{Level: "error", Text: s.Err})
+		}
+		bus.Publish(event.ServersListed{Servers: servers.Status()})
+	}, mcppkg.WithSignIns(signins))
+	if n := len(servers.Servers()); n > 0 && len(errs) == 0 {
+		bus.Publish(event.Notice{Level: "info", Text: fmt.Sprintf("%d mcp server(s) ready", n)})
+	}
 }

@@ -26,7 +26,9 @@ import (
 	"github.com/vitzeno/detent/internal/store"
 	"github.com/vitzeno/detent/internal/tool"
 	"github.com/vitzeno/detent/internal/trust"
+	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/logging"
+	"github.com/vitzeno/detent/ui"
 )
 
 // session is what one run opens, filled in phase by phase. sd closes it.
@@ -68,16 +70,6 @@ func (s *session) warnTrust() {
 	if !s.trusted.Trusted && len(s.trusted.Present) > 0 && s.o.prompt == "" {
 		s.warnings = append(s.warnings, "ignoring "+strings.Join(s.trusted.Present, ", ")+": this directory is not trusted")
 	}
-}
-
-// ping checks the endpoint in the background. Waited for after the
-// sandbox, so startup still fails fast but the two overlap.
-func ping(cfg config.Config) <-chan error {
-	pinged := make(chan error, 1)
-	go func() {
-		pinged <- (&model.Client{BaseURL: cfg.BaseURL, APIKey: cfg.APIKey, Headers: cfg.Headers}).Ping(context.Background())
-	}()
-	return pinged
 }
 
 // openSandbox decides where commands run and starts the container if
@@ -213,13 +205,9 @@ func (s *session) buildEngine() error {
 	return nil
 }
 
-// shellTool is what the model runs commands with, named for the shell they run in.
-func shellTool(env model.Environment) tool.Tool {
-	if env.Shell == model.ShellPwsh {
-		return tool.PowerShell{}
-	}
-	return tool.Bash{}
-}
+// The engine finds PromptSizer by type assertion, so a renamed method
+// would empty the context page's prompt rows rather than fail the build.
+var _ engine.PromptSizer = (*model.Client)(nil)
 
 // wire connects the subscribers every run has and returns the session's
 // ctx, which shutdown cancels first.
@@ -244,4 +232,78 @@ func (s *session) wire() context.Context {
 	// After the watchers, so what this records is recorded too.
 	announceResume(s.bus, s.id, s.restore, s.env)
 	return ctx
+}
+
+// shellTool is what the model runs commands with, named for the shell they run in.
+func shellTool(env model.Environment) tool.Tool {
+	if env.Shell == model.ShellPwsh {
+		return tool.PowerShell{}
+	}
+	return tool.Bash{}
+}
+
+// judgeName is what the session says classified it, empty when no key
+// was set and nothing did.
+func judgeName(c config.Config) string {
+	if c.JevAPIKey == "" {
+		return ""
+	}
+	return c.JevModel
+}
+
+// loadMCPConfig keeps MCP configuration out of headless runs entirely.
+// It is enabled for the TUI, where users can inspect and invoke servers.
+func loadMCPConfig(enabled bool, project []byte, files []string) (map[string]mcppkg.Config, error) {
+	if !enabled {
+		return map[string]mcppkg.Config{}, nil
+	}
+	return mcppkg.Load(project, files...)
+}
+
+// composer wires the view composer. Only views: generate hands it the
+// judge, and Validate refuses that mode without a jev key.
+func composer(mode string, judge *classify.JevJudge) *viewgen.Generator {
+	g := &viewgen.Generator{
+		Registry: ui.Registry(),
+		Store:    &viewgen.Store{Dir: viewgen.DefaultDir()},
+		// Without a key nothing publishes CallJudged.
+		Unjudged: judge == nil,
+	}
+	if mode == config.ViewsGenerate && judge != nil {
+		g.Judge = judge
+	}
+	return g
+}
+
+// sessionStore avoids handing forget a non-nil interface holding a
+// nil pointer, which is not nil and would panic on the first call.
+func sessionStore(s *store.Store) forget.Sessions {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
+// containerRemover is how a deleted session's container goes, or nil
+// when this run has no sandbox and so nothing to remove.
+func containerRemover(socket string) func(context.Context, string) error {
+	if socket == "" {
+		return nil
+	}
+	return func(ctx context.Context, id string) error {
+		err := sandbox.Forget(ctx, socket, sandbox.DefaultNamespace, id)
+		if errors.Is(err, sandbox.ErrSessionLive) {
+			return fmt.Errorf("%w: %w", forget.ErrLive, err)
+		}
+		return err
+	}
+}
+
+// sandboxSocketFor is the socket a deleted session's container would
+// be on, or "" when this run never had one to speak of.
+func sandboxSocketFor(c config.Config) string {
+	if c.SandboxMode != config.SandboxAuto {
+		return ""
+	}
+	return c.SandboxSocket
 }

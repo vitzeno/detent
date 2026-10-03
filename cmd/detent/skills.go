@@ -42,6 +42,14 @@ func findSkills(cwd, home, mountPoint string, sandboxed bool) foundSkills {
 	return out
 }
 
+// skillTools is the skill tool when there is a skill to load, else nothing.
+func (f foundSkills) skillTools() []tool.Tool {
+	if len(f.entries) == 0 {
+		return nil
+	}
+	return []tool.Tool{tool.Skill{Entries: f.entries}}
+}
+
 // sandboxDir is s.Dir as the container sees it, adding its folder to mounts when it is outside cwd.
 func sandboxDir(s skills.Skill, cwd, mountPoint string, roots []skills.Root, mounts map[string]string) string {
 	if rel, err := filepath.Rel(cwd, s.Dir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -56,12 +64,4 @@ func sandboxDir(s skills.Skill, cwd, mountPoint string, roots []skills.Root, mou
 		}
 	}
 	return s.Dir
-}
-
-// skillTools is the skill tool when there is a skill to load, else nothing.
-func (f foundSkills) skillTools() []tool.Tool {
-	if len(f.entries) == 0 {
-		return nil
-	}
-	return []tool.Tool{tool.Skill{Entries: f.entries}}
 }
