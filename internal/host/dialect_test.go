@@ -13,31 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeSystem is a machine with exactly the programs and files named.
-func fakeSystem(goos string, onPath map[string]string, files ...string) system {
-	return system{
-		goos: goos,
-		lookPath: func(name string) (string, error) {
-			if p, ok := onPath[name]; ok {
-				return p, nil
-			}
-			return "", exec.ErrNotFound
-		},
-		getenv: func(k string) string {
-			return map[string]string{"ProgramFiles": "C:/Program Files", "LocalAppData": "C:/Users/me/AppData/Local"}[k]
-		},
-		exists: func(p string) bool {
-			for _, f := range files {
-				if filepath.FromSlash(f) == p {
-					return true
-				}
-			}
-			return false
-		},
-		gitExecPath: func() string { return onPath["git --exec-path"] },
-	}
-}
-
 func TestFind_PicksAShellPerOS(t *testing.T) {
 	gitBash := filepath.Join("C:/Program Files", "Git", "bin", "bash.exe")
 	tests := []struct {
@@ -88,18 +63,6 @@ func TestFind_PicksAShellPerOS(t *testing.T) {
 	}
 }
 
-func decodeUTF16(t *testing.T, enc string) string {
-	t.Helper()
-	raw, err := base64.StdEncoding.DecodeString(enc)
-	require.NoError(t, err)
-	require.Zero(t, len(raw)%2)
-	units := make([]uint16, len(raw)/2)
-	for i := range units {
-		units[i] = binary.LittleEndian.Uint16(raw[2*i:])
-	}
-	return string(utf16.Decode(units))
-}
-
 func TestPwshArgs_EncodesThePreludeTheScriptAndTheStatus(t *testing.T) {
 	script := `Write-Output "naïve 'quotes' ✓ 𝄞"`
 	args, err := pwshArgs(script)
@@ -138,16 +101,6 @@ func TestShell_ArgvPerDialect(t *testing.T) {
 
 func TestShell_DialectDefaultsToSh(t *testing.T) {
 	assert.Equal(t, Sh, NewShell().Dialect())
-}
-
-// pwshShell runs the real thing, wherever PowerShell 7 is installed.
-func pwshShell(t *testing.T) *Shell {
-	t.Helper()
-	s, err := Find(Pwsh)
-	if err != nil {
-		t.Skip("PowerShell 7 is not installed")
-	}
-	return s
 }
 
 func TestPwsh_ExitStatusMatchesSh(t *testing.T) {
@@ -197,4 +150,51 @@ func TestGitBash_RunsLikeSh(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 4, res.ExitCode)
 	assert.Equal(t, "3\n", res.Stdout)
+}
+
+// fakeSystem is a machine with exactly the programs and files named.
+func fakeSystem(goos string, onPath map[string]string, files ...string) system {
+	return system{
+		goos: goos,
+		lookPath: func(name string) (string, error) {
+			if p, ok := onPath[name]; ok {
+				return p, nil
+			}
+			return "", exec.ErrNotFound
+		},
+		getenv: func(k string) string {
+			return map[string]string{"ProgramFiles": "C:/Program Files", "LocalAppData": "C:/Users/me/AppData/Local"}[k]
+		},
+		exists: func(p string) bool {
+			for _, f := range files {
+				if filepath.FromSlash(f) == p {
+					return true
+				}
+			}
+			return false
+		},
+		gitExecPath: func() string { return onPath["git --exec-path"] },
+	}
+}
+
+func decodeUTF16(t *testing.T, enc string) string {
+	t.Helper()
+	raw, err := base64.StdEncoding.DecodeString(enc)
+	require.NoError(t, err)
+	require.Zero(t, len(raw)%2)
+	units := make([]uint16, len(raw)/2)
+	for i := range units {
+		units[i] = binary.LittleEndian.Uint16(raw[2*i:])
+	}
+	return string(utf16.Decode(units))
+}
+
+// pwshShell runs the real thing, wherever PowerShell 7 is installed.
+func pwshShell(t *testing.T) *Shell {
+	t.Helper()
+	s, err := Find(Pwsh)
+	if err != nil {
+		t.Skip("PowerShell 7 is not installed")
+	}
+	return s
 }

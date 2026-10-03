@@ -78,24 +78,6 @@ func TestShell_ContextTimeoutWins(t *testing.T) {
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
-// runCollect runs command and drains events on a separate goroutine, so
-// a full channel never blocks the scanners mid-command.
-func runCollect(ctx context.Context, command string) (capture.Result, []capture.StreamEvent, error) {
-	ch := make(chan capture.StreamEvent, 64)
-	var events []capture.StreamEvent
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for e := range ch {
-			events = append(events, e)
-		}
-	}()
-	res, err := NewShell().Run(ctx, command, ch)
-	close(ch)
-	<-done
-	return res, events, err
-}
-
 func TestShell_CommandsDoNotSeeDetentsSecrets(t *testing.T) {
 	t.Setenv("DETENT_API_KEY", "sk-detent")
 	t.Setenv("TYPESAFE_API_KEY", "sk-jev")
@@ -117,4 +99,22 @@ func TestShell_ZeroValueUsesTheDefaultLimit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "hi\n", res.Stdout)
 	assert.False(t, res.Truncated)
+}
+
+// runCollect runs command and drains events on a separate goroutine, so
+// a full channel never blocks the scanners mid-command.
+func runCollect(ctx context.Context, command string) (capture.Result, []capture.StreamEvent, error) {
+	ch := make(chan capture.StreamEvent, 64)
+	var events []capture.StreamEvent
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for e := range ch {
+			events = append(events, e)
+		}
+	}()
+	res, err := NewShell().Run(ctx, command, ch)
+	close(ch)
+	<-done
+	return res, events, err
 }
