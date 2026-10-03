@@ -44,26 +44,6 @@ func TestResolve_EmptyIsDefault(t *testing.T) {
 	assert.Equal(t, Default(), Resolve(Config{}, Config{}, -1))
 }
 
-// clearEnv blanks every variable envConfig reads, so a developer's own
-// DETENT_* cannot change what a test sees.
-func clearEnv(t *testing.T) {
-	t.Helper()
-	for _, k := range envKeys {
-		t.Setenv(k, "")
-	}
-}
-
-// clearEnv is only as good as envKeys, so the two must name the same variables.
-func TestEnvConfig_ReadsExactlyEnvKeys(t *testing.T) {
-	read := map[string]bool{}
-	envConfig(func(k string) string { read[k] = true; return "" })
-	want := map[string]bool{}
-	for _, k := range envKeys {
-		want[k] = true
-	}
-	assert.Equal(t, want, read)
-}
-
 // A field merge forgets is loaded from the file and then silently dropped.
 func TestResolve_EveryFieldSurvives(t *testing.T) {
 	clearEnv(t)
@@ -87,16 +67,6 @@ func TestResolve_EveryFieldSurvives(t *testing.T) {
 		}
 		got := reflect.ValueOf(Resolve(file, Config{}, -1)).Field(i)
 		assert.Equal(t, v.Interface(), got.Interface(), "%s was dropped by merge", name)
-	}
-}
-
-func TestEnvBool_ReadsTheUsualSpellings(t *testing.T) {
-	for in, want := range map[string]*bool{
-		"true": new(true), "1": new(true), "yes": new(true), "ON": new(true),
-		"false": new(false), "0": new(false), "no": new(false), "Off": new(false),
-		"": nil, "maybe": nil,
-	} {
-		assert.Equal(t, want, envBool(in), in)
 	}
 }
 
@@ -191,6 +161,39 @@ func TestResolve_ContextTokensDefaultsWhenUnset(t *testing.T) {
 	assert.Equal(t, DefaultContextTokens, Resolve(Config{}, Config{}, -1).ContextTokens)
 }
 
+// Unset is on, and either the file or the environment can turn it off.
+func TestResolve_FinishCheckIsOnUnlessTurnedOff(t *testing.T) {
+	t.Setenv("DETENT_FINISH_CHECK", "")
+	assert.True(t, Resolve(Config{}, Config{}, -1).FinishChecks())
+
+	off := false
+	assert.False(t, Resolve(Config{FinishCheck: &off}, Config{}, -1).FinishChecks())
+
+	t.Setenv("DETENT_FINISH_CHECK", "false")
+	assert.False(t, Resolve(Config{}, Config{}, -1).FinishChecks())
+}
+
+// clearEnv is only as good as envKeys, so the two must name the same variables.
+func TestEnvConfig_ReadsExactlyEnvKeys(t *testing.T) {
+	read := map[string]bool{}
+	envConfig(func(k string) string { read[k] = true; return "" })
+	want := map[string]bool{}
+	for _, k := range envKeys {
+		want[k] = true
+	}
+	assert.Equal(t, want, read)
+}
+
+func TestEnvBool_ReadsTheUsualSpellings(t *testing.T) {
+	for in, want := range map[string]*bool{
+		"true": new(true), "1": new(true), "yes": new(true), "ON": new(true),
+		"false": new(false), "0": new(false), "no": new(false), "Off": new(false),
+		"": nil, "maybe": nil,
+	} {
+		assert.Equal(t, want, envBool(in), in)
+	}
+}
+
 func TestTimeout_ReadsADurationOrTakesTheBuiltIn(t *testing.T) {
 	for in, want := range map[string]time.Duration{"": engine.DefaultCommandTimeout, "30m": 30 * time.Minute, "90s": 90 * time.Second} {
 		got, err := Config{CommandTimeout: in}.Timeout()
@@ -203,14 +206,11 @@ func TestTimeout_ReadsADurationOrTakesTheBuiltIn(t *testing.T) {
 	}
 }
 
-// Unset is on, and either the file or the environment can turn it off.
-func TestResolve_FinishCheckIsOnUnlessTurnedOff(t *testing.T) {
-	t.Setenv("DETENT_FINISH_CHECK", "")
-	assert.True(t, Resolve(Config{}, Config{}, -1).FinishChecks())
-
-	off := false
-	assert.False(t, Resolve(Config{FinishCheck: &off}, Config{}, -1).FinishChecks())
-
-	t.Setenv("DETENT_FINISH_CHECK", "false")
-	assert.False(t, Resolve(Config{}, Config{}, -1).FinishChecks())
+// clearEnv blanks every variable envConfig reads, so a developer's own
+// DETENT_* cannot change what a test sees.
+func clearEnv(t *testing.T) {
+	t.Helper()
+	for _, k := range envKeys {
+		t.Setenv(k, "")
+	}
 }

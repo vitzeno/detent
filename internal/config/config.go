@@ -26,6 +26,51 @@ import (
 	"github.com/vitzeno/detent/internal/sandbox"
 )
 
+// Defaults: OpenRouter and a large-window model, pinned Jev. Aliased
+// from model rather than redeclared, so the two can't silently drift.
+const (
+	DefaultBaseURL = model.DefaultBaseURL
+	DefaultModel   = model.DefaultModel
+)
+
+// DefaultContextTokens is aliased for the same reason. 0 means nothing
+// here, since an unbounded transcript is what compaction prevents.
+const DefaultContextTokens = engine.DefaultContextTokens
+
+// DefaultSandboxWorkspace is the in-container mount point. The host
+// source is always the working directory (see sandbox.Container).
+const DefaultSandboxWorkspace = "/workspace"
+
+// DefaultTheme mirrors theme.DefaultName, duplicated to avoid the same
+// dependency.
+const DefaultTheme = "dark"
+
+// The sandbox modes: a container when one can be had, or this machine.
+const (
+	SandboxAuto = "auto"
+	SandboxHost = "host"
+)
+
+// The Views modes. There is no "off": the pane draws from a spec either
+// way, and the only question is whether a new one may be written.
+const (
+	// ViewsSaved draws only from specs that exist (built in, shipped
+	// for known commands, or saved on disk) and never calls a model.
+	ViewsSaved = "saved"
+	// ViewsGenerate also asks the judge to compose a spec when nothing
+	// covers an output, and saves it so the next run is free.
+	ViewsGenerate = "generate"
+)
+
+// DefaultViews spends nothing. Generation is opt-in because it costs judge calls.
+const DefaultViews = ViewsSaved
+
+// DefaultLogLevel records what happened without recording everything.
+const DefaultLogLevel = "info"
+
+// LogLevels are the levels logging knows, quietest last.
+var LogLevels = []string{"debug", "info", "warn", "error"}
+
 // Config selects what the proposer and judge talk to, plus loop behavior.
 type Config struct {
 	BaseURL string            `yaml:"base_url"`
@@ -74,88 +119,6 @@ type Config struct {
 	// the containerd daemon's host, which on macOS is the colima VM.
 	SandboxNetwork   string `yaml:"sandbox_network"`
 	SandboxWorkspace string `yaml:"sandbox_workspace"`
-}
-
-// FinishChecks is FinishCheck with its default, on.
-func (c Config) FinishChecks() bool { return c.FinishCheck == nil || *c.FinishCheck }
-
-// LogsBodies is LogBodies with its default, off.
-func (c Config) LogsBodies() bool { return c.LogBodies != nil && *c.LogBodies }
-
-// LogValue masks the two keys, so logging a Config cannot leak them.
-func (c Config) LogValue() slog.Value {
-	masked := c
-	masked.APIKey, masked.JevAPIKey = mask(c.APIKey), mask(c.JevAPIKey)
-	masked.Headers = nil
-	return slog.AnyValue(plain(masked))
-}
-
-// plain drops LogValue, or logging one would recurse.
-type plain Config
-
-func mask(key string) string {
-	if key == "" {
-		return ""
-	}
-	return "***"
-}
-
-// Validate reports every value no part of detent can act on. Theme is
-// checked by main, which can import ui.
-func (c Config) Validate() error { return c.validate(runtime.GOOS) }
-
-func (c Config) validate(goos string) error {
-	var errs []error
-	bad := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
-	switch {
-	case c.SandboxMode != SandboxAuto && c.SandboxMode != SandboxHost:
-		bad("unknown sandbox mode %q, choose one of: %s, %s", c.SandboxMode, SandboxAuto, SandboxHost)
-	case c.SandboxMode == SandboxAuto && goos == "windows":
-		bad("sandbox_mode auto needs containerd on a unix socket, which Windows has not got: use sandbox_mode host")
-	}
-	if c.HostShell != "" && !slices.Contains(host.Dialects, c.HostShell) {
-		bad("unknown host_shell %q, choose one of: %s, or leave it empty to pick per OS", c.HostShell, strings.Join(host.Dialects, ", "))
-	}
-	if c.SandboxNetwork != sandbox.NetworkHost && c.SandboxNetwork != sandbox.NetworkNone {
-		bad("unknown sandbox_network %q, choose one of: %s, %s", c.SandboxNetwork, sandbox.NetworkHost, sandbox.NetworkNone)
-	}
-	switch c.Views {
-	case ViewsSaved:
-	case ViewsGenerate:
-		if c.JevAPIKey == "" {
-			bad("views: generate composes a view by asking the judge, so it needs jev_api_key (or TYPESAFE_API_KEY). Set one, or use views: saved")
-		}
-	default:
-		bad("unknown views %q, choose one of: %s, %s", c.Views, ViewsSaved, ViewsGenerate)
-	}
-	if !slices.Contains(LogLevels, strings.ToLower(c.LogLevel)) {
-		bad("unknown log_level %q, choose one of: %s", c.LogLevel, strings.Join(LogLevels, ", "))
-	}
-	if c.RiskThreshold < 0 || c.RiskThreshold > 1 {
-		bad("risk_threshold %v: want a number from 0 to 1", c.RiskThreshold)
-	}
-	if c.Steps < 0 {
-		bad("steps %d: want 0 for the built-in, or more", c.Steps)
-	}
-	if c.ContextTokens < 0 {
-		bad("context_tokens %d: want 0 for the built-in, or more", c.ContextTokens)
-	}
-	if _, err := c.Timeout(); err != nil {
-		errs = append(errs, err)
-	}
-	return errors.Join(errs...)
-}
-
-// Timeout is CommandTimeout as a duration, the built-in when it is empty.
-func (c Config) Timeout() (time.Duration, error) {
-	if c.CommandTimeout == "" {
-		return engine.DefaultCommandTimeout, nil
-	}
-	d, err := time.ParseDuration(c.CommandTimeout)
-	if err != nil || d <= 0 {
-		return 0, fmt.Errorf("command_timeout %q: want a duration such as 30m", c.CommandTimeout)
-	}
-	return d, nil
 }
 
 // Default returns the built-in configuration.
@@ -207,50 +170,77 @@ func Load(path string, local map[string][]byte) (Config, error) {
 	return Default(), nil
 }
 
-// Defaults: OpenRouter and a large-window model, pinned Jev. Aliased
-// from model rather than redeclared, so the two can't silently drift.
-const (
-	DefaultBaseURL = model.DefaultBaseURL
-	DefaultModel   = model.DefaultModel
-)
+// Validate reports every value no part of detent can act on. Theme is
+// checked by main, which can import ui.
+func (c Config) Validate() error { return c.validate(runtime.GOOS) }
 
-// DefaultContextTokens is aliased for the same reason. 0 means nothing
-// here, since an unbounded transcript is what compaction prevents.
-const DefaultContextTokens = engine.DefaultContextTokens
+// Timeout is CommandTimeout as a duration, the built-in when it is empty.
+func (c Config) Timeout() (time.Duration, error) {
+	if c.CommandTimeout == "" {
+		return engine.DefaultCommandTimeout, nil
+	}
+	d, err := time.ParseDuration(c.CommandTimeout)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("command_timeout %q: want a duration such as 30m", c.CommandTimeout)
+	}
+	return d, nil
+}
 
-// DefaultSandboxWorkspace is the in-container mount point. The host
-// source is always the working directory (see sandbox.Container).
-const DefaultSandboxWorkspace = "/workspace"
+// FinishChecks is FinishCheck with its default, on.
+func (c Config) FinishChecks() bool { return c.FinishCheck == nil || *c.FinishCheck }
 
-// DefaultTheme mirrors theme.DefaultName, duplicated to avoid the same
-// dependency.
-const DefaultTheme = "dark"
+// LogsBodies is LogBodies with its default, off.
+func (c Config) LogsBodies() bool { return c.LogBodies != nil && *c.LogBodies }
 
-// The Views modes. There is no "off": the pane draws from a spec either
-// way, and the only question is whether a new one may be written.
-const (
-	// ViewsSaved draws only from specs that exist (built in, shipped
-	// for known commands, or saved on disk) and never calls a model.
-	ViewsSaved = "saved"
-	// ViewsGenerate also asks the judge to compose a spec when nothing
-	// covers an output, and saves it so the next run is free.
-	ViewsGenerate = "generate"
-)
+// LogValue masks the two keys, so logging a Config cannot leak them.
+func (c Config) LogValue() slog.Value {
+	masked := c
+	masked.APIKey, masked.JevAPIKey = mask(c.APIKey), mask(c.JevAPIKey)
+	masked.Headers = nil
+	return slog.AnyValue(plain(masked))
+}
 
-// DefaultViews spends nothing. Generation is opt-in because it costs judge calls.
-const DefaultViews = ViewsSaved
-
-// DefaultLogLevel records what happened without recording everything.
-const DefaultLogLevel = "info"
-
-// LogLevels are the levels logging knows, quietest last.
-var LogLevels = []string{"debug", "info", "warn", "error"}
-
-// The sandbox modes: a container when one can be had, or this machine.
-const (
-	SandboxAuto = "auto"
-	SandboxHost = "host"
-)
+func (c Config) validate(goos string) error {
+	var errs []error
+	bad := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
+	switch {
+	case c.SandboxMode != SandboxAuto && c.SandboxMode != SandboxHost:
+		bad("unknown sandbox mode %q, choose one of: %s, %s", c.SandboxMode, SandboxAuto, SandboxHost)
+	case c.SandboxMode == SandboxAuto && goos == "windows":
+		bad("sandbox_mode auto needs containerd on a unix socket, which Windows has not got: use sandbox_mode host")
+	}
+	if c.HostShell != "" && !slices.Contains(host.Dialects, c.HostShell) {
+		bad("unknown host_shell %q, choose one of: %s, or leave it empty to pick per OS", c.HostShell, strings.Join(host.Dialects, ", "))
+	}
+	if c.SandboxNetwork != sandbox.NetworkHost && c.SandboxNetwork != sandbox.NetworkNone {
+		bad("unknown sandbox_network %q, choose one of: %s, %s", c.SandboxNetwork, sandbox.NetworkHost, sandbox.NetworkNone)
+	}
+	switch c.Views {
+	case ViewsSaved:
+	case ViewsGenerate:
+		if c.JevAPIKey == "" {
+			bad("views: generate composes a view by asking the judge, so it needs jev_api_key (or TYPESAFE_API_KEY). Set one, or use views: saved")
+		}
+	default:
+		bad("unknown views %q, choose one of: %s, %s", c.Views, ViewsSaved, ViewsGenerate)
+	}
+	if !slices.Contains(LogLevels, strings.ToLower(c.LogLevel)) {
+		bad("unknown log_level %q, choose one of: %s", c.LogLevel, strings.Join(LogLevels, ", "))
+	}
+	if c.RiskThreshold < 0 || c.RiskThreshold > 1 {
+		bad("risk_threshold %v: want a number from 0 to 1", c.RiskThreshold)
+	}
+	if c.Steps < 0 {
+		bad("steps %d: want 0 for the built-in, or more", c.Steps)
+	}
+	if c.ContextTokens < 0 {
+		bad("context_tokens %d: want 0 for the built-in, or more", c.ContextTokens)
+	}
+	if _, err := c.Timeout(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
 
 func read(path string) (Config, error) {
 	raw, err := os.ReadFile(path)
@@ -269,4 +259,14 @@ func decode(path string, raw []byte) (Config, error) {
 		return Config{}, fmt.Errorf("config %s: %w", path, err)
 	}
 	return cfg, nil
+}
+
+// plain drops LogValue, or logging one would recurse.
+type plain Config
+
+func mask(key string) string {
+	if key == "" {
+		return ""
+	}
+	return "***"
 }

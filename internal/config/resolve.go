@@ -98,34 +98,6 @@ func merge(c *Config, o Config) {
 	}
 }
 
-// A risk_threshold of 0 cannot be told from an omitted key. A flag for
-// it would need the -1 sentinel steps uses.
-
-// envInt reads a numeric variable. Unset and unparseable both give 0,
-// which merge skips.
-func envInt(v string) int {
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return 0
-	}
-	return n
-}
-
-// envBool reads a true or false variable, in any of the spellings people
-// use for one. Unset and unparseable both give nil, which merge skips.
-func envBool(v string) *bool {
-	var b bool
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "1", "t", "true", "y", "yes", "on":
-		b = true
-	case "0", "f", "false", "n", "no", "off":
-		b = false
-	default:
-		return nil
-	}
-	return &b
-}
-
 // envKeys are every variable envConfig reads.
 var envKeys = []string{
 	"DETENT_BASE_URL", "DETENT_MODEL", "DETENT_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY",
@@ -161,4 +133,32 @@ func envConfig(getenv func(string) string) Config {
 		SandboxRuntime: getenv("DETENT_SANDBOX_RUNTIME"),
 		SandboxNetwork: getenv("DETENT_SANDBOX_NETWORK"),
 	}
+}
+
+// A risk_threshold of 0 cannot be told from an omitted key. A flag for
+// it would need the -1 sentinel steps uses.
+
+// envInt reads a numeric variable. Unset and unparseable both give 0,
+// which merge skips.
+func envInt(v string) int {
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// envBool reads a true or false variable, in any of the spellings people
+// use for one. Unset and unparseable both give nil, which merge skips.
+func envBool(v string) *bool {
+	var b bool
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "t", "true", "y", "yes", "on":
+		b = true
+	case "0", "f", "false", "n", "no", "off":
+		b = false
+	default:
+		return nil
+	}
+	return &b
 }
