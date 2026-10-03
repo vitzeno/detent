@@ -46,7 +46,7 @@ func (keyvalueWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		if f.Focused && i == f.Cursor {
 			role = RoleAccent
 		}
-		label := f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(r[key], w), w, f.Paint))
+		label := labelCell(r[key], w, f)
 		lines = append(lines, label+"  "+
 			f.Paint.Paint(role, f.Paint.Truncate(r[val], max(1, f.Width-w-2))))
 	}

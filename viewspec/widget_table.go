@@ -33,13 +33,13 @@ func (tableWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	widths := fitColumns(cols, d.Rows, f.Width, f.Paint)
 	head := make([]string, len(cols))
 	for i, c := range cols {
-		head[i] = pad(f.Paint.Truncate(c.title(), widths[i]), widths[i], f.Paint)
+		head[i] = fit(c.title(), widths[i], f.Paint)
 	}
 	lines := []string{f.Paint.Paint(RoleHeading, strings.Join(head, " "))}
 	for i, r := range d.Rows {
 		cells := make([]string, len(cols))
 		for j, c := range cols {
-			cells[j] = pad(f.Paint.Truncate(r[c.Field], widths[j]), widths[j], f.Paint)
+			cells[j] = fit(r[c.Field], widths[j], f.Paint)
 		}
 		line := strings.Join(cells, " ")
 		role := accentRole(b, r)

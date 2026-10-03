@@ -76,7 +76,7 @@ func (timelineWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 			mark = repeat(" ", lay.bar)
 		}
 		lines = append(lines,
-			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(labels[i], lay.label), lay.label, f.Paint))+" "+
+			labelCell(labels[i], lay.label, f)+" "+
 				mark+" "+f.Paint.Paint(RoleFaint, pad(notes[i], lay.note, f.Paint)))
 	}
 	return lines, nil

@@ -56,7 +56,7 @@ func (seriesWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 			strip.WriteRune(sparkCells[int(fraction(v, lo, hi)*float64(len(sparkCells)-1))])
 		}
 		lines = append(lines,
-			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(g, labelW), labelW, f.Paint))+" "+
+			labelCell(g, labelW, f)+" "+
 				f.Paint.Paint(RoleAccent, f.Paint.Truncate(strip.String(), f.Width-labelW-1)))
 	}
 	return append(lines, f.Paint.Paint(RoleFaint, fmt.Sprintf("%g..%g on one scale", lo, hi))), nil

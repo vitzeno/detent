@@ -58,7 +58,7 @@ func (gaugeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 			role = RoleAccent
 		}
 		lines = append(lines,
-			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(r[label], labelW), labelW, f.Paint))+" "+
+			labelCell(r[label], labelW, f)+" "+
 				f.Paint.Paint(role, strings.Repeat("█", n))+
 				f.Paint.Paint(RoleFaint, strings.Repeat("░", cells-n))+
 				f.Paint.Paint(RoleDefault, fmt.Sprintf(" %3.0f%%", v)))

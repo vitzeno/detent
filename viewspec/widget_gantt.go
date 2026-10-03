@@ -71,7 +71,7 @@ func (ganttWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 			role = RoleAccent
 		}
 		lines = append(lines,
-			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(labels[i], lay.label), lay.label, f.Paint))+" "+
+			labelCell(labels[i], lay.label, f)+" "+
 				strings.Repeat(" ", at)+f.Paint.Paint(role, strings.Repeat("█", width))+
 				strings.Repeat(" ", lay.bar-at-width)+" "+
 				f.Paint.Paint(RoleFaint, pad(notes[i], lay.note, f.Paint)))

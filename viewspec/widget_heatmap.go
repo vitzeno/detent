@@ -86,7 +86,7 @@ func (heatmapWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 			band.WriteString(strings.Repeat(string(shadeFor(cell[rk+"\x00"+ck], hi)), cw))
 		}
 		lines = append(lines,
-			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(rk, labelW), labelW, f.Paint))+" "+
+			labelCell(rk, labelW, f)+" "+
 				f.Paint.Paint(RoleAccent, band.String()))
 	}
 	return lines, nil

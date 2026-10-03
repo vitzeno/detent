@@ -61,7 +61,7 @@ func (barWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 			role = RoleAccent
 		}
 		lines = append(lines,
-			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(r[label], labelW), labelW, f.Paint))+" "+
+			labelCell(r[label], labelW, f)+" "+
 				f.Paint.Paint(role, strings.Repeat("█", n))+
 				strings.Repeat(" ", barW-n)+" "+
 				f.Paint.Paint(RoleFaint, r[value]))

@@ -69,7 +69,7 @@ func (boxplotWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		fill(box, cell(quantile(v, 0.25)), cell(quantile(v, 0.75)), '▒')
 		box[cell(quantile(v, 0.5))] = '█'
 		lines = append(lines,
-			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(g, lay.label), lay.label, f.Paint))+" "+
+			labelCell(g, lay.label, f)+" "+
 				f.Paint.Paint(RoleAccent, string(box))+" "+
 				f.Paint.Paint(RoleFaint, pad(notes[i], lay.note, f.Paint)))
 	}

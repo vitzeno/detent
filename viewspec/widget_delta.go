@@ -61,7 +61,7 @@ func (deltaWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 			role = RoleAccent
 		}
 		lines = append(lines,
-			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(r[label], labelW), labelW, f.Paint))+" "+
+			labelCell(r[label], labelW, f)+" "+
 				f.Paint.Paint(RoleDefault, pad(r[to], valueW, f.Paint))+" "+
 				f.Paint.Paint(role, arrow+" "+move)+
 				f.Paint.Paint(RoleFaint, " from "+r[from]))

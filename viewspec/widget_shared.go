@@ -165,6 +165,14 @@ func fairLimit(widest []int, avail int) int {
 	return lo
 }
 
+// labelCell is a row's label, cut or padded to exactly w and drawn muted.
+func labelCell(s string, w int, f Frame) string {
+	return f.Paint.Paint(RoleMuted, fit(s, w, f.Paint))
+}
+
+// fit cuts or pads s to exactly w cells.
+func fit(s string, w int, p Painter) string { return pad(p.Truncate(s, w), w, p) }
+
 func pad(s string, w int, p Painter) string {
 	if n := p.Width(s); n < w {
 		return s + strings.Repeat(" ", w-n)
@@ -196,7 +204,7 @@ func layOutBars(labels, notes []string, f Frame) (barLayout, error) {
 
 func (l barLayout) row(label string, filled int, role Role, note string, f Frame) string {
 	filled = min(max(filled, 0), l.bar)
-	return f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(label, l.label), l.label, f.Paint)) + " " +
+	return labelCell(label, l.label, f) + " " +
 		f.Paint.Paint(role, strings.Repeat("█", filled)) +
 		strings.Repeat(" ", l.bar-filled) + " " +
 		f.Paint.Paint(RoleFaint, pad(note, l.note, f.Paint))

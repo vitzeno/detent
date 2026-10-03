@@ -56,7 +56,7 @@ func (divergeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 			rt = min(max(int(number(r[right])/hi*float64(wing)), 0), wing)
 		}
 		lines = append(lines,
-			f.Paint.Paint(RoleMuted, pad(f.Paint.Truncate(r[label], labelW), labelW, f.Paint))+" "+
+			labelCell(r[label], labelW, f)+" "+
 				strings.Repeat(" ", wing-l)+f.Paint.Paint(RoleDanger, strings.Repeat("█", l))+
 				f.Paint.Paint(RoleFaint, "│")+
 				f.Paint.Paint(RoleSafe, strings.Repeat("█", rt))+strings.Repeat(" ", wing-rt)+" "+

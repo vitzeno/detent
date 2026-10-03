@@ -43,7 +43,7 @@ func (dotsWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	}
 	labelW = min(labelW, f.Width-4)
 	for i, r := range d.Rows {
-		label := pad(f.Paint.Truncate(r[b.Field], labelW), labelW, f.Paint)
+		label := fit(r[b.Field], labelW, f.Paint)
 		role := RoleDefault
 		if f.Focused && i == f.Cursor {
 			role = RoleAccent

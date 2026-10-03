@@ -57,7 +57,7 @@ func (rowWidget) Arrange(cols [][]string, widths []int, _ Block, f Frame) ([]str
 			if row < len(col) {
 				cell = col[row]
 			}
-			line.WriteString(pad(f.Paint.Truncate(cell, widths[i]), widths[i], f.Paint))
+			line.WriteString(fit(cell, widths[i], f.Paint))
 		}
 		lines[row] = strings.TrimRight(line.String(), " ")
 	}
