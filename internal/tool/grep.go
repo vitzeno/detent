@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -70,18 +69,23 @@ func (Grep) Run(ctx context.Context, a Args) capture.Result {
 	if err != nil {
 		return capture.Result{ExitCode: 2, Stdout: footer(grepEmpty, 0), Stderr: "grep: " + err.Error() + "\n"}
 	}
-	var hits []string
+	hits := topLines(g.limit, sortedByPathThenLine)
 	var stderr strings.Builder
 	fail := func(p string, err error) { stderr.WriteString("grep: " + osReason(p, err) + "\n") }
+	var stop error
 	search := func(p string) {
-		if g.include != "" && !fnmatch(g.include, filepath.Base(p)) {
+		if stop != nil || g.include != "" && !fnmatch(g.include, filepath.Base(p)) {
 			return
 		}
-		h, err := grepFile(p, re)
-		if err != nil {
+		found := topLines(g.limit, sortedByPathThenLine)
+		err := grepFile(ctx, p, re, found)
+		switch {
+		case ctx.Err() != nil:
+			stop = ctx.Err()
+		case err != nil:
 			fail(p, err)
 		}
-		hits = append(hits, h...)
+		hits.merge(found)
 	}
 
 	switch info, err := os.Stat(g.where); {
@@ -89,16 +93,19 @@ func (Grep) Run(ctx context.Context, a Args) capture.Result {
 		fail(g.where, err)
 	case info.IsDir():
 		if filepath.Base(g.where) != ".git" {
-			if err := walkFiles(ctx, g.where, func(name string) bool { return name == ".git" }, search, fail); err != nil {
-				return failed(1, "grep: %v", err)
-			}
+			stop = cmp.Or(walkFiles(ctx, g.where, func(name string) bool { return name == ".git" }, search, fail), stop)
 		}
 	case info.Mode().IsRegular():
 		search(g.where)
+	default:
+		fail(g.where, regular(g.where, info))
 	}
 
-	slices.SortFunc(hits, sortedByPathThenLine)
-	res := capture.Result{Stdout: windowOf(hits, g.limit, grepMore, grepEmpty), Stderr: stderr.String()}
+	out := windowTop(hits.kept, hits.total, g.limit, grepMore, grepEmpty)
+	if stop != nil {
+		return stopped("grep", out, stop)
+	}
+	res := capture.Result{Stdout: out, Stderr: stderr.String()}
 	if res.Stderr != "" {
 		res.ExitCode = 2
 	}
@@ -157,34 +164,91 @@ func (g grepQuery) regexp() string {
 	return b.String()
 }
 
-// grepFile is the lines of p that re matches, as path:line:text, and none
-// at all for a file holding a NUL, which grep -I calls binary.
-func grepFile(p string, re *regexp.Regexp) ([]string, error) {
-	f, err := os.Open(p)
+// grepFile adds the lines of p that re matches to hits, as path:line:text, and
+// none for a file holding a NUL. A line longer than a read is matched streaming.
+func grepFile(ctx context.Context, p string, re *regexp.Regexp, hits *top[string]) error {
+	f, err := openRegular(p)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer func() { _ = f.Close() }() // read only, so closing cannot lose anything
-	var hits []string
-	r := bufio.NewReader(f)
+	br := bufio.NewReaderSize(f, readChunk)
 	for n := 1; ; n++ {
-		line, err := r.ReadBytes('\n')
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		line, err := br.ReadSlice('\n')
 		if len(line) == 0 && err != nil {
 			if errors.Is(err, io.EOF) {
-				return hits, nil
+				return nil
 			}
-			return hits, err
+			return err
 		}
-		line = bytes.TrimSuffix(line, []byte("\n"))
-		if bytes.IndexByte(line, 0) >= 0 {
-			return nil, nil
+		var match, binary bool
+		if errors.Is(err, bufio.ErrBufferFull) {
+			line = bytes.Clone(line) // the next read reuses ReadSlice's buffer
+			rest := &lineRest{ctx: ctx, br: br}
+			binary = bytes.IndexByte(line, 0) >= 0
+			if !binary {
+				match = re.MatchReader(bufio.NewReader(io.MultiReader(bytes.NewReader(line), rest)))
+			}
+			if _, err := io.Copy(io.Discard, rest); err != nil {
+				return err
+			}
+			binary = binary || rest.nul
+		} else {
+			line = bytes.TrimSuffix(line, []byte("\n"))
+			binary = bytes.IndexByte(line, 0) >= 0
+			match = !binary && re.Match(line)
 		}
-		if re.Match(line) {
+		if binary {
+			hits.kept, hits.bytes, hits.total = nil, 0, 0
+			return nil
+		}
+		if match {
 			// The window cuts a line past outputBudget anyway, so more is never shown.
-			hit := p + ":" + strconv.Itoa(n) + ":" + string(line)
-			hits = append(hits, hit[:min(len(hit), outputBudget+1)])
+			hit := p + ":" + strconv.Itoa(n) + ":" + string(line[:min(len(line), outputBudget+1)])
+			hits.add(hit[:min(len(hit), outputBudget+1)])
 		}
 	}
+}
+
+// lineRest reads the rest of a line from br, stopping before its newline
+// and noting a NUL on the way.
+type lineRest struct {
+	ctx       context.Context
+	br        *bufio.Reader
+	done, nul bool
+}
+
+func (l *lineRest) Read(p []byte) (int, error) {
+	if l.done {
+		return 0, io.EOF
+	}
+	if err := l.ctx.Err(); err != nil {
+		return 0, err
+	}
+	if l.br.Buffered() == 0 {
+		if _, err := l.br.Peek(1); err != nil {
+			l.done = true
+			if errors.Is(err, io.EOF) {
+				return 0, io.EOF
+			}
+			return 0, err
+		}
+	}
+	buf, _ := l.br.Peek(min(len(p), l.br.Buffered())) // already buffered, so it cannot fail
+	skip := 0
+	if i := bytes.IndexByte(buf, '\n'); i >= 0 {
+		buf, skip, l.done = buf[:i], 1, true
+	}
+	n := copy(p, buf)
+	l.nul = l.nul || bytes.IndexByte(buf, 0) >= 0
+	_, _ = l.br.Discard(n + skip)
+	if n == 0 && l.done {
+		return 0, io.EOF
+	}
+	return n, nil
 }
 
 // sortedByPathThenLine orders grep's output as sort -t: -k1,1 -k2,2n does

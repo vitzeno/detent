@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,7 +19,7 @@ func changeShown(p, before, after string) string {
 	if path(p) != quote(p) {
 		label = "./" + p
 	}
-	out, _ := windowLines(strings.NewReader(unifiedDiff(label, before, after)), 1, diffWindow, diffMore, diffEmpty)
+	out, _ := windowLines(context.Background(), strings.NewReader(unifiedDiff(label, before, after)), 1, diffWindow, diffMore, diffEmpty)
 	return out // a strings.Reader cannot fail
 }
 

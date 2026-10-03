@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/vitzeno/detent/event"
@@ -54,7 +53,7 @@ func (FindFiles) Run(ctx context.Context, a Args) capture.Result {
 		return failed(1, "find_files: %v", err)
 	}
 	root := guard(f.where)
-	var files []string
+	files := topLines(f.limit, strings.Compare)
 	var stderr strings.Builder
 	fail := func(p string, err error) { stderr.WriteString("find: " + osReason(p, err) + "\n") }
 	visit := func(p string) {
@@ -63,7 +62,7 @@ func (FindFiles) Run(ctx context.Context, a Args) capture.Result {
 			return
 		}
 		if f.byPath() && fnmatch(f.pattern, p) || !f.byPath() && fnmatch(f.pattern, name) {
-			files = append(files, p)
+			files.add(p)
 		}
 	}
 
@@ -73,15 +72,14 @@ func (FindFiles) Run(ctx context.Context, a Args) capture.Result {
 	case info.IsDir():
 		if filepath.Base(root) != ".git" {
 			if err := walkFiles(ctx, root, func(name string) bool { return name == ".git" }, visit, fail); err != nil {
-				return failed(1, "find_files: %v", err)
+				return stopped("find_files", windowTop(files.kept, files.total, f.limit, findMore, findEmpty), err)
 			}
 		}
 	case info.Mode().IsRegular():
 		visit(root)
 	}
 
-	slices.Sort(files)
-	res := capture.Result{Stdout: windowOf(files, f.limit, findMore, findEmpty), Stderr: stderr.String()}
+	res := capture.Result{Stdout: windowTop(files.kept, files.total, f.limit, findMore, findEmpty), Stderr: stderr.String()}
 	if res.Stderr != "" {
 		res.ExitCode = 1
 	}

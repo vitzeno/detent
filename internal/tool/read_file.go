@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/capture"
@@ -38,17 +37,20 @@ func (ReadFile) Lower(a Args) (string, error) {
 }
 
 // Run reads the file here, in the same window and with the same footers.
-func (ReadFile) Run(_ context.Context, a Args) capture.Result {
+func (ReadFile) Run(ctx context.Context, a Args) capture.Result {
 	p, from, n, err := readArgs(a)
 	if err != nil {
 		return failed(2, "read_file: %v", err)
 	}
-	f, err := os.Open(p)
+	f, err := openRegular(p)
 	if err != nil {
 		return failed(1, "read_file: %v", err)
 	}
 	defer func() { _ = f.Close() }() // read only, so closing cannot lose anything
-	out, err := windowLines(f, from, n, readMore, readEmpty)
+	out, err := windowLines(ctx, f, from, n, readMore, readEmpty)
+	if ctx.Err() != nil {
+		return stopped("read_file", out, err)
+	}
 	if err != nil {
 		return capture.Result{ExitCode: 1, Stdout: out, Stderr: "read_file: " + err.Error() + "\n"}
 	}

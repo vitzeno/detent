@@ -3,9 +3,7 @@ package tool
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -72,29 +70,31 @@ func (s Skill) Run(ctx context.Context, a Args) capture.Result {
 		return failed(2, "skill: %v", err)
 	}
 	file := e.Dir + "/SKILL.md"
-	f, err := os.Open(file)
+	f, err := openRegular(file)
 	if err != nil {
 		return failed(2, "skill: %v", err)
 	}
 	defer func() { _ = f.Close() }() // read only, so closing cannot lose anything
-	out, err := windowLines(f, 1, 500, skillMore(file), skillEmpty)
+	out, err := windowLines(ctx, f, 1, 500, skillMore(file), skillEmpty)
+	if ctx.Err() != nil {
+		return stopped("skill", out, err)
+	}
 	if err != nil {
 		return capture.Result{ExitCode: 2, Stdout: out, Stderr: "skill: " + err.Error() + "\n"}
 	}
 
-	var others []string
+	others := &top[string]{cmp: strings.Compare, limit: skillFiles}
 	other := func(p string) {
 		if filepath.Base(p) != "SKILL.md" {
-			others = append(others, p)
+			others.add(p)
 		}
 	}
 	// The listing is a courtesy, so a directory it cannot read is left out as the command leaves it.
 	if err := walkFiles(ctx, guard(e.Dir), nil, other, func(string, error) {}); err != nil {
-		return failed(1, "skill: %v", err)
+		return stopped("skill", out, err)
 	}
-	if len(others) > 0 {
-		slices.Sort(others)
-		out += "\n" + skillOthers + "\n" + strings.Join(others[:min(len(others), skillFiles)], "\n") + "\n"
+	if len(others.kept) > 0 {
+		out += "\n" + skillOthers + "\n" + strings.Join(others.kept, "\n") + "\n"
 	}
 	return capture.Result{Stdout: out}
 }

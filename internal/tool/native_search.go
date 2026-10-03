@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"strings"
@@ -17,30 +18,41 @@ func found(root, name string) string {
 	return root + "/" + name
 }
 
-// walkFiles visits each regular file under dir but not symlinks, as find
-// and grep -r do, and goes on past a directory it cannot read.
+// walkFiles visits each regular file under dir but not symlinks, as find and
+// grep -r do, in no order, going on past a directory it cannot read.
 func walkFiles(ctx context.Context, dir string, skip func(name string) bool, visit func(p string), fail func(p string, err error)) error {
-	entries, err := os.ReadDir(dir)
+	d, err := os.Open(dir)
 	if err != nil {
 		fail(dir, err)
+		return nil
 	}
-	for _, e := range entries {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		p := found(dir, e.Name())
-		switch {
-		case e.IsDir():
-			if skip == nil || !skip(e.Name()) {
-				if err := walkFiles(ctx, p, skip, visit, fail); err != nil {
-					return err
-				}
+	defer func() { _ = d.Close() }() // read only, so closing cannot lose anything
+	for {
+		entries, err := d.ReadDir(256)
+		for _, e := range entries {
+			if err := ctx.Err(); err != nil {
+				return err
 			}
-		case e.Type().IsRegular():
-			visit(p)
+			p := found(dir, e.Name())
+			switch {
+			case e.IsDir():
+				if skip == nil || !skip(e.Name()) {
+					if err := walkFiles(ctx, p, skip, visit, fail); err != nil {
+						return err
+					}
+				}
+			case e.Type().IsRegular():
+				visit(p)
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			fail(dir, err)
+			return nil
 		}
 	}
-	return nil
 }
 
 // osReason is err without the operation Go puts in front of it, so a
@@ -188,13 +200,4 @@ var posixClasses = map[string]func(rune) bool{
 	"print":  unicode.IsPrint,
 	"graph":  func(r rune) bool { return unicode.IsPrint(r) && r != ' ' },
 	"xdigit": func(r rune) bool { return strings.ContainsRune("0123456789abcdefABCDEF", r) },
-}
-
-// windowOf windows lines as window would their output, one per line.
-func windowOf(lines []string, limit int, more, empty string) string {
-	if len(lines) == 0 {
-		return footer(empty, 0)
-	}
-	out, _ := windowLines(strings.NewReader(strings.Join(lines, "\n")+"\n"), 1, limit, more, empty) // a string reader cannot fail
-	return out
 }

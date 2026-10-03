@@ -2,7 +2,9 @@ package tool
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"strconv"
@@ -42,36 +44,52 @@ func (ListDir) Lower(a Args) (string, error) {
 
 // Run lists here in a format of its own, since ls -l differs by OS: mode,
 // size, modified time and name, with a directory ending in a slash.
-func (ListDir) Run(_ context.Context, a Args) capture.Result {
+func (ListDir) Run(ctx context.Context, a Args) capture.Result {
 	p := listPath(a)
 	info, err := os.Stat(p)
 	if err != nil {
 		return failed(2, "list_dir: %s", osReason(p, err))
 	}
 	if !info.IsDir() {
-		return capture.Result{Stdout: listing([]listed{{p, info, ""}})}
+		return capture.Result{Stdout: listing([]listed{{p, info, ""}}, 1)}
 	}
-	entries, err := os.ReadDir(p)
+	d, err := os.Open(p)
 	if err != nil {
 		return failed(2, "list_dir: %s", osReason(p, err))
 	}
+	defer func() { _ = d.Close() }() // read only, so closing cannot lose anything
 	all := a.Bool("all", false)
-	var rows []listed
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".") && !all {
-			continue
+	names := &top[string]{cmp: strings.Compare, limit: listEntries}
+	for {
+		if err := ctx.Err(); err != nil {
+			return stopped("list_dir", "", err)
 		}
-		fi, err := e.Info()
+		chunk, err := d.Readdirnames(256)
+		for _, name := range chunk {
+			if all || !strings.HasPrefix(name, ".") {
+				names.add(name)
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return failed(2, "list_dir: %s", osReason(p, err))
+		}
+	}
+	var rows []listed
+	for _, name := range names.kept {
+		fi, err := os.Lstat(found(p, name))
 		if err != nil {
 			continue // gone since it was listed
 		}
 		target := ""
 		if fi.Mode()&fs.ModeSymlink != 0 {
-			target, _ = os.Readlink(found(p, e.Name())) // an unreadable link shows no target
+			target, _ = os.Readlink(found(p, name)) // an unreadable link shows no target
 		}
-		rows = append(rows, listed{e.Name(), fi, target})
+		rows = append(rows, listed{name, fi, target})
 	}
-	return capture.Result{Stdout: listing(rows)}
+	return capture.Result{Stdout: listing(rows, names.total-len(names.kept)+len(rows))}
 }
 
 func listPath(a Args) string {
@@ -88,9 +106,12 @@ type listed struct {
 	target string
 }
 
+// listEntries is the most entries a listing shows.
+const listEntries = 1000
+
 // listing draws one line per entry with sizes aligned, through the same
 // window as a read so a huge directory still ends in a footer.
-func listing(rows []listed) string {
+func listing(rows []listed, total int) string {
 	sizes := make([]string, len(rows))
 	width := 0
 	for i, r := range rows {
@@ -112,7 +133,7 @@ func listing(rows []listed) string {
 		lines[i] = fmt.Sprintf("%s  %*s  %s  %s", modeString(r.info.Mode()), width, sizes[i],
 			r.info.ModTime().Format("2006-01-02 15:04"), name)
 	}
-	return windowOf(lines, 1000, "[%d more entries, list a narrower path]", "[the directory is empty]")
+	return windowTop(lines, total, listEntries, "[%d more entries, list a narrower path]", "[the directory is empty]")
 }
 
 // modeString is the mode as ls -l spells it: a type letter, then rwx.
