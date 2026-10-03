@@ -13,14 +13,14 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
+// growthSamples is how many recent Steps the growth rate averages over.
+const growthSamples = 6
+
 // PromptSizer names the system prompt's pieces. model.Client satisfies it,
 // and without one the prompt is left out of the fixed parts.
 type PromptSizer interface {
 	PromptParts() []model.PromptPart
 }
-
-// growthSamples is how many recent Steps the growth rate averages over.
-const growthSamples = 6
 
 // gauge is the bytes-to-tokens ratio the last Step showed, and the last
 // exact measurement, which nothing since has changed.

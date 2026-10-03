@@ -11,6 +11,16 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
+// unfinishedNote answers a reply that ended with neither a call nor an answer.
+const unfinishedNote = "[your last reply ended with no answer and no tool call] " +
+	"Carry on with the request: call a tool, or give your final answer."
+
+// finishNote is sent once, the first time a Turn that changed something
+// would end, since a model tends to check its own reading of a request.
+const finishNote = "[before you finish] Re-read the request and check each thing it asks for against what you " +
+	"actually produced: run it, test it or measure it. If anything is missing, wrong or unchecked, carry on. " +
+	"Otherwise give your final answer again."
+
 // turnState is one Turn in flight. The Turn goroutine owns the
 // transcript while this exists, and the dispatcher only forwards to it.
 type turnState struct {
@@ -140,23 +150,6 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 	}
 }
 
-// unfinishedNote answers a reply that ended with neither a call nor an answer.
-const unfinishedNote = "[your last reply ended with no answer and no tool call] " +
-	"Carry on with the request: call a tool, or give your final answer."
-
-// finishNote is sent once, the first time a Turn that changed something
-// would end, since a model tends to check its own reading of a request.
-const finishNote = "[before you finish] Re-read the request and check each thing it asks for against what you " +
-	"actually produced: run it, test it or measure it. If anything is missing, wrong or unchecked, carry on. " +
-	"Otherwise give your final answer again."
-
-func stopReason(s string) string {
-	if s == "" {
-		return "no reason given"
-	}
-	return "stop: " + s
-}
-
 // endTurn flushes queued notes before closing, or a correction typed
 // as the last Step finished never reaches the next Turn.
 func (e *Engine) endTurn(ctx context.Context, t *turnState, why event.EndReason, summary string, used event.Usage) {
@@ -275,4 +268,11 @@ func (t *turnState) takeStop() string {
 	out := t.stop
 	t.stop = ""
 	return out
+}
+
+func stopReason(s string) string {
+	if s == "" {
+		return "no reason given"
+	}
+	return "stop: " + s
 }

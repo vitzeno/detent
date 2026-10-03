@@ -16,6 +16,9 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
+// hostMode is what routing names this machine.
+const hostMode = "host"
+
 // toolCallPlan is one tool call's journey. answer is always set by the end,
 // which is what keeps the transcript well formed.
 type toolCallPlan struct {
@@ -145,6 +148,26 @@ func (e *Engine) plan(ctx context.Context, step uuid.UUID, reply model.Reply) []
 	return out
 }
 
+// renders asks the tool how its output should be read. Advisory: a
+// front-end may ignore it.
+func (e *Engine) renders(name string) event.RenderKind {
+	t, ok := e.tools.Lookup(name)
+	if !ok {
+		return ""
+	}
+	return t.Describe().Renders
+}
+
+// executor names what runs a tool, empty for a shell command. A
+// front-end needs it to say what a rollback cannot take back.
+func (e *Engine) executor(name string) string {
+	t, ok := e.tools.Lookup(name)
+	if !ok {
+		return ""
+	}
+	return t.Describe().Executor
+}
+
 // runParallel runs read-only tool calls together. They change nothing, so
 // nothing depends on their order.
 func (e *Engine) runParallel(ctx context.Context, plans []*toolCallPlan) {
@@ -228,9 +251,6 @@ func (e *Engine) execute(ctx context.Context, p *toolCallPlan) {
 	e.repeat.ran(p.cmd, p.answer)
 }
 
-// hostMode is what routing names this machine.
-const hostMode = "host"
-
 // runNative runs a native tool in this process, bounded like a command.
 func (e *Engine) runNative(ctx context.Context, p *toolCallPlan, n tool.Native) {
 	p.ended = true
@@ -246,16 +266,6 @@ func (e *Engine) runNative(ctx context.Context, p *toolCallPlan, n tool.Native) 
 	e.bus.Publish(event.ToolCallEnded{ToolCall: p.id, Result: out, Took: time.Since(start)})
 	p.finish(formatResult(event.Command(p.prepared.Tool, p.prepared.Args), out))
 	e.repeat.ran(p.cmd, p.answer)
-}
-
-// nativeSafely turns a panicking native tool into a failed one, as runSafely does for a Runner.
-func nativeSafely(ctx context.Context, n tool.Native, args tool.Args) (res capture.Result) {
-	defer func() {
-		if v := recover(); v != nil {
-			res = capture.Result{ExitCode: 1, Stderr: fmt.Sprintf("%s panicked: %v\n", n.Name(), v)}
-		}
-	}()
-	return n.Run(ctx, args)
 }
 
 // invoke runs a tool call with no command. Runner names the executor, so
@@ -291,6 +301,16 @@ func runSafely(ctx context.Context, r Runner, cmd string, lines chan<- capture.S
 		}
 	}()
 	return r.Run(ctx, cmd, lines)
+}
+
+// nativeSafely turns a panicking native tool into a failed one, as runSafely does for a Runner.
+func nativeSafely(ctx context.Context, n tool.Native, args tool.Args) (res capture.Result) {
+	defer func() {
+		if v := recover(); v != nil {
+			res = capture.Result{ExitCode: 1, Stderr: fmt.Sprintf("%s panicked: %v\n", n.Name(), v)}
+		}
+	}()
+	return n.Run(ctx, args)
 }
 
 // invokeSafely turns a panicking Invoker into a failed tool call, the way
@@ -343,24 +363,4 @@ func writeOutput(b *strings.Builder, r event.Result) {
 	if r.Truncated {
 		b.WriteString("\n[output truncated at capture]")
 	}
-}
-
-// renders asks the tool how its output should be read. Advisory: a
-// front-end may ignore it.
-func (e *Engine) renders(name string) event.RenderKind {
-	t, ok := e.tools.Lookup(name)
-	if !ok {
-		return ""
-	}
-	return t.Describe().Renders
-}
-
-// executor names what runs a tool, empty for a shell command. A
-// front-end needs it to say what a rollback cannot take back.
-func (e *Engine) executor(name string) string {
-	t, ok := e.tools.Lookup(name)
-	if !ok {
-		return ""
-	}
-	return t.Describe().Executor
 }

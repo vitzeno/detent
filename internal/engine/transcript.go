@@ -25,6 +25,12 @@ const (
 	minCompactShare = 10
 )
 
+// The notes compaction leaves at the front, which measure tells apart from a request.
+const (
+	summaryMarker = "[earlier steps, summarised]"
+	droppedMarker = " were dropped to stay in budget]"
+)
+
 // Summarizer condenses dropped Steps. Nil means they become a note
 // saying they are gone.
 type Summarizer interface {
@@ -44,12 +50,6 @@ type transcript struct {
 	// starts mark where each request began, oldest first.
 	starts []start
 }
-
-// The notes compaction leaves at the front, which measure tells apart from a request.
-const (
-	summaryMarker = "[earlier steps, summarised]"
-	droppedMarker = " were dropped to stay in budget]"
-)
 
 // start is one request's first message, as a mark, with its number and prompt.
 type start struct {
