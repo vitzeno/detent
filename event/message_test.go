@@ -23,6 +23,8 @@ func TestCommand(t *testing.T) {
 			map[string]any{"path": "main.go", "limit": 20}, "read_file limit=20 path=main.go"},
 		{"absent optionals are left out", "read_file",
 			map[string]any{"path": "main.go", "limit": nil}, "read_file path=main.go"},
+		{"powershell is its own command too", "powershell",
+			map[string]any{"command": "Remove-Item -Recurse build"}, "Remove-Item -Recurse build"},
 		{"bash without its argument still names itself", "bash",
 			map[string]any{}, "bash"},
 		{"a value with a space cannot pass for a second argument", "srv__send",

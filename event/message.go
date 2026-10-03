@@ -59,11 +59,11 @@ func RequestIDs(calls []ToolRequest) []string {
 	return out
 }
 
-// Command renders a call the way a human is shown it: bash as its own
-// command, anything else as tool k=v, which truncates better than JSON.
+// Command renders a call the way a human is shown it: a shell tool as its
+// own command, anything else as tool k=v, which truncates better than JSON.
 // A value that could be misread is quoted, so k=v pairs never run together.
 func Command(tool string, args map[string]any) string {
-	if tool == "bash" {
+	if tool == "bash" || tool == "powershell" {
 		if c, ok := args["command"].(string); ok {
 			return c
 		}

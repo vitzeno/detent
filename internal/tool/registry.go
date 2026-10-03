@@ -19,9 +19,12 @@ type Registry struct {
 }
 
 // Standard is what detent ships, plus extra built-ins such as skill.
-func Standard(extra ...Tool) *Registry {
+func Standard(extra ...Tool) *Registry { return StandardFor(Bash{}, extra...) }
+
+// StandardFor is Standard with shell in bash's place, such as PowerShell.
+func StandardFor(shell Tool, extra ...Tool) *Registry {
 	r := &Registry{tools: map[string]Tool{}}
-	builtins := append([]Tool{Bash{}, ReadFile{}, WriteFile{}, EditFile{}, ListDir{}, Grep{}, FindFiles{}, WebSearch{}}, extra...)
+	builtins := append([]Tool{shell, ReadFile{}, WriteFile{}, EditFile{}, ListDir{}, Grep{}, FindFiles{}, WebSearch{}}, extra...)
 	for _, t := range builtins {
 		if _, dup := r.tools[t.Name()]; !dup {
 			r.order = append(r.order, t.Name())

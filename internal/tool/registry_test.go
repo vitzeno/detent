@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/event"
 )
 
 // A bad call must come back as something the model can
@@ -197,6 +199,26 @@ func TestRegistry_KeepsBuiltInsInTheirOwnOrder(t *testing.T) {
 		"bash", "read_file", "write_file", "edit_file", "list_dir", "grep", "find_files", "web_search", "skill",
 		"aa__first", "zz__last",
 	}, r.Names())
+}
+
+// PowerShell takes bash's place, so the model is never offered a shell it is not in.
+func TestStandardFor_PutsTheShellInBashsPlace(t *testing.T) {
+	r := StandardFor(PowerShell{}, Skill{})
+	names := r.Names()
+	assert.Equal(t, PowerShellName, names[0])
+	assert.NotContains(t, names, "bash")
+	assert.Len(t, names, len(Standard(Skill{}).Names()))
+
+	call, err := r.Prepare(PowerShellName, map[string]any{"command": "Get-ChildItem"})
+	require.NoError(t, err)
+	assert.Equal(t, "Get-ChildItem", call.Command)
+	assert.Empty(t, call.Mutability, "unknown, as bash's is")
+	_, err = r.Prepare(PowerShellName, map[string]any{"command": ""})
+	require.Error(t, err)
+
+	// The approval box shows the command itself, which event spells by name.
+	assert.Equal(t, "Get-ChildItem", event.Command(PowerShellName, map[string]any{"command": "Get-ChildItem"}))
+	assert.Contains(t, PowerShell{}.Describe().Description, "not a POSIX shell")
 }
 
 // A server dialled again takes its old tools with it, so the model is
