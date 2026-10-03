@@ -11,11 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// plain drops the ANSI styling lipgloss v2 emits even off-TTY.
-func plain(s string) string {
-	return ansi.Strip(s)
-}
-
 func TestRender_Structure(t *testing.T) {
 	out := Render("title", lipgloss.Color("#ff0000"), []string{"a", "b"}, 20, 4)
 	lines := strings.Split(out, "\n")
@@ -80,4 +75,9 @@ func TestRender_SplitsALineHoldingNewlines(t *testing.T) {
 	lines := strings.Split(plain(out), "\n")
 	assert.Contains(t, lines[1], "a")
 	assert.Contains(t, lines[2], "b")
+}
+
+// plain drops the ANSI styling lipgloss v2 emits even off-TTY.
+func plain(s string) string {
+	return ansi.Strip(s)
 }

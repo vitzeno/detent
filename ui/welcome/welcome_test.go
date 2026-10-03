@@ -11,24 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testFacts() Facts {
-	return Facts{
-		Model: "test-model", Judge: "jev", RunMode: "sandbox",
-		Image: "docker.io/library/buildpack-deps:24.04-scm", Mount: "/workspace", Network: "host",
-	}
-}
-
-func plain(s string) string { return ansi.Strip(s) }
-
-// displayCol is where sub starts on screen, in columns not bytes.
-func displayCol(line, sub string) int {
-	before, _, ok := strings.Cut(line, sub)
-	if !ok {
-		return -1
-	}
-	return lipgloss.Width(before)
-}
-
 func TestWelcome_DetentAnimationSteps(t *testing.T) {
 	seatedAt := func(frame int) int {
 		return displayCol(plain(Track(frame)[0]), "◆")
@@ -126,4 +108,22 @@ func TestWelcome_ReportsTheMachineItIsHanded(t *testing.T) {
 	got := plain(strings.Join(Lines(f, 90, 40, 0), "\n"))
 	assert.Contains(t, got, "linux/arm64 · 8 cpu")
 	assert.Contains(t, got, "~/src/detent")
+}
+
+func testFacts() Facts {
+	return Facts{
+		Model: "test-model", Judge: "jev", RunMode: "sandbox",
+		Image: "docker.io/library/buildpack-deps:24.04-scm", Mount: "/workspace", Network: "host",
+	}
+}
+
+func plain(s string) string { return ansi.Strip(s) }
+
+// displayCol is where sub starts on screen, in columns not bytes.
+func displayCol(line, sub string) int {
+	before, _, ok := strings.Cut(line, sub)
+	if !ok {
+		return -1
+	}
+	return lipgloss.Width(before)
 }
