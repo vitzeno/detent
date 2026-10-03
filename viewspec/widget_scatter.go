@@ -68,7 +68,7 @@ func (scatterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	for _, row := range cells {
 		var line strings.Builder
 		for _, bits := range row {
-			line.WriteRune(rune(0x2800 + int(bits)))
+			line.WriteRune(0x2800 + rune(bits))
 		}
 		lines = append(lines, f.Paint.Paint(RoleAccent, line.String()))
 	}

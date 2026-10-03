@@ -14,7 +14,7 @@ type rawWidget struct{ mode string }
 
 var _ Described = rawWidget{}
 
-func (w rawWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
+func (w rawWidget) Draw(_ Block, d Data, f Frame) ([]string, error) {
 	body := d.Raw
 	if w.mode == "json" {
 		if pretty, ok := indentJSON(body); ok {

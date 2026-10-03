@@ -4,6 +4,7 @@
 package logging
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -41,8 +42,7 @@ func Setup(session string, opts ...Option) (func() error, error) {
 	}
 	// OpenFile keeps an existing file's mode, which may predate this.
 	if err := f.Chmod(0o600); err != nil {
-		f.Close()
-		return disable(fmt.Errorf("logging: %w", err))
+		return disable(fmt.Errorf("logging: %w", errors.Join(err, f.Close())))
 	}
 	lvl, lvlErr := parseLevel(o.level)
 	bodies.Store(o.bodies)

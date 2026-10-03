@@ -474,7 +474,7 @@ func extract(e Extractor, output string) ([]Row, []Column, error) {
 // so a truncated stream fails rather than drawing the half it liked.
 func jsonLines(s string) ([]map[string]any, error) {
 	var out []map[string]any
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
