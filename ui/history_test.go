@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -181,6 +182,37 @@ func TestNavUp_PinsTheOffsetOnLeavingFollow(t *testing.T) {
 
 	all, _ := m.historyAll()
 	assert.Equal(t, len(all)-20, got.nav.histOffset)
+}
+
+// Reading back through history, new tool calls must not pull the human away.
+// end goes back to the newest and follows again, and so does a new request.
+func TestHistory_NewRowsDoNotStealABrowsingCursor(t *testing.T) {
+	turn, evs := aTurn("look around")
+	call := func() event.Event {
+		return event.ToolCallProposed{ToolCall: uuid.Must(uuid.NewV7()), Step: uuid.Must(uuid.NewV7()),
+			Tool: "bash", Args: map[string]any{"command": "ls"}}
+	}
+	m := feed(t, append(evs, call(), call(), call())...)
+	require.True(t, m.nav.follow, "a fresh session follows")
+
+	m, _ = m.navUp()
+	m, _ = m.navUp()
+	browsing := m.nav.cursor
+	require.False(t, m.nav.follow)
+
+	m.apply(call())
+	m.apply(call())
+	assert.Equal(t, browsing, m.nav.cursor, "new calls left the cursor where the human put it")
+	assert.False(t, m.nav.follow)
+
+	m, _ = m.historyKey(tea.KeyPressMsg{Code: tea.KeyEnd})
+	assert.True(t, m.nav.follow, "end follows again")
+	assert.Equal(t, len(m.rows())-1, m.nav.cursor, "and lands on the newest")
+
+	m, _ = m.navUp()
+	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 2, Prompt: "next"})
+	assert.True(t, m.nav.follow, "a new request is the human's own, so it follows")
 }
 
 // markedLine is which rendered line carries the cursor mark, or -1.

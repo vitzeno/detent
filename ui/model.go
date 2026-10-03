@@ -326,12 +326,18 @@ func (m *Model) raise(q mode) {
 // asked for, which a fact must not pull out from under them.
 func (m Model) askingOwn() bool { return m.mode == modeUndo || m.mode == modeForget }
 
-// trackNewest scrolls history whatever the human was doing, but moves
-// the cursor only when nobody is reading the output pane.
+// trackNewest keeps up with a new row only while following, so a human reading
+// back through history is never pulled away by what the model does next.
 func (m *Model) trackNewest() {
-	m.nav.follow = true
-	if m.nav.focus == focusOutput {
+	if !m.nav.follow || m.nav.focus == focusOutput {
 		return
 	}
 	m.nav.cursor = len(m.rows()) - 1
+}
+
+// followNewest goes back to following, for what the human started: a request,
+// a resumed session, or end.
+func (m *Model) followNewest() {
+	m.nav.follow = true
+	m.trackNewest()
 }

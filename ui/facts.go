@@ -27,7 +27,7 @@ func (m Model) Restore(records []event.Record) Model {
 	}
 	m.replaying = false
 	m.staleSignIns()
-	m.trackNewest()
+	m.followNewest()
 	// Nothing waits on a question the old process asked.
 	m.asking, m.bound = nil, nil
 	m.backToInput()
@@ -60,7 +60,8 @@ func (m *Model) apply(ev event.Event) {
 		m.blocks = append(m.blocks, b)
 		m.setCur(b)
 		m.waiting = true
-		m.trackNewest()
+		// The human just asked, so they are looking for the answer.
+		m.followNewest()
 
 	case event.CheckpointTaken:
 		if b := m.block(v.Turn); b != nil {

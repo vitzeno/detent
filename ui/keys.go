@@ -319,6 +319,9 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m.navUp()
 	case "down":
 		return m.navDown()
+	case "end":
+		m.followNewest()
+		return m, nil
 	case "pgup", "pgdown":
 		return m.scrollViewport(msg.String())
 	case "enter":

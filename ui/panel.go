@@ -110,6 +110,7 @@ func (m *Model) helpLines() []string {
 	return append(out, "", styleGoal.Render("keys"), "",
 		"  "+styleFaint.Render("tab       move between input, history and output"),
 		"  "+styleFaint.Render("↑ ↓       move the cursor, or scroll the output"),
+		"  "+styleFaint.Render("end       jump to the newest row and follow it again"),
 		"  "+styleFaint.Render("space     expand a tool call's output inline"),
 		"  "+styleFaint.Render("enter     seed the prompt from a view's selection"),
 		"  "+styleFaint.Render("esc       back out, or abort a running request"),

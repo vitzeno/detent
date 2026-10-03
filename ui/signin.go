@@ -45,7 +45,7 @@ func (m *Model) addSignIn(v event.AuthorizationWaiting) {
 		signin: &signInState{server: v.Server, url: v.URL, until: v.Until},
 	})
 	m.trackNewest()
-	// Following, the cursor is on it now, so the pane already shows the link.
+	// The notice says where the link is, whether or not the cursor followed it.
 	m.noteOK(v.Server + " wants you to sign in · the link is in the output pane")
 }
 
