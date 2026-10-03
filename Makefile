@@ -1,12 +1,13 @@
 .PHONY: help build install uninstall run run-headless test test-fast vet lint vuln tidy-check fmt fmt-check clean
 .DEFAULT_GOAL := help
 
-BINARY := bin/detent
+# .exe on Windows, nothing elsewhere.
+EXE := $(shell go env GOEXE)
+BINARY := bin/detent$(EXE)
 PROMPT ?= what files are in this directory?
 
-# Where install puts it. Go's own bin directory by default, which is
-# already on PATH and needs no sudo, override for a system-wide one:
-#   sudo make install PREFIX=/usr/local/bin
+# Where install puts it: Go's own bin directory by default, already on PATH
+# with no sudo. Override for a system-wide one: sudo make install PREFIX=/usr/local/bin
 PREFIX ?= $(shell go env GOBIN)
 ifeq ($(PREFIX),)
 PREFIX := $(shell go env GOPATH)/bin
@@ -30,19 +31,23 @@ help:
 	@echo "make fmt           gofmt -w every tracked .go file"
 	@echo "make fmt-check     fail if any tracked file isn't gofmt'd"
 	@echo "make clean         remove bin/"
+	@echo ""
+	@echo "On Windows, build, install, run and test work from any shell; the rest need Git Bash."
 
 build:
 	go build -o $(BINARY) ./cmd/detent
 
-install: build
-	@mkdir -p $(PREFIX)
-	install -m 755 $(BINARY) $(PREFIX)/detent
-	@echo "installed $(PREFIX)/detent"
-	@command -v detent >/dev/null || echo "note: $(PREFIX) is not on your PATH"
+# go install, not cp: it adds .exe, makes the directory and needs no shell, so it
+# works from cmd and PowerShell too. Exported per target, since VAR=x cmd is sh only.
+install: export GOBIN := $(PREFIX)
+install:
+	go install ./cmd/detent
+	@echo "installed detent$(EXE) in $(PREFIX)"
 
+uninstall: export GOBIN := $(PREFIX)
 uninstall:
-	rm -f $(PREFIX)/detent
-	@echo "removed $(PREFIX)/detent"
+	go clean -i ./cmd/detent
+	@echo "removed detent$(EXE) from $(PREFIX)"
 
 run:
 	@go run ./cmd/detent
