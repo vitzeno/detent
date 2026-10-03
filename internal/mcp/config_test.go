@@ -103,17 +103,6 @@ func TestExpand_ABraceBeforeAReferenceIsText(t *testing.T) {
 	}
 }
 
-func FuzzExpand(f *testing.F) {
-	f.Add("a}b${DETENT_FUZZ}c")
-	f.Add("${DETENT_FUZZ:-x}${")
-	f.Fuzz(func(t *testing.T, s string) {
-		got := expand(s)
-		if !strings.Contains(s, "${") {
-			assert.Equal(t, s, got, "text with no reference changed")
-		}
-	})
-}
-
 func TestLoad_MissingFilesAreNotAnError(t *testing.T) {
 	got, err := Load(nil, filepath.Join(t.TempDir(), "nope.json"))
 	require.NoError(t, err)
@@ -231,6 +220,17 @@ func TestLoad_AnotherClientsAuthNeverFailsTheLoad(t *testing.T) {
 			assert.Len(t, got, 2, "every other server still loads")
 		})
 	}
+}
+
+func FuzzExpand(f *testing.F) {
+	f.Add("a}b${DETENT_FUZZ}c")
+	f.Add("${DETENT_FUZZ:-x}${")
+	f.Fuzz(func(t *testing.T, s string) {
+		got := expand(s)
+		if !strings.Contains(s, "${") {
+			assert.Equal(t, s, got, "text with no reference changed")
+		}
+	})
 }
 
 func write(t *testing.T, dir, name, body string) string {

@@ -64,11 +64,6 @@ func TestTokens_ALegacyNameOnlyTokenIsDropped(t *testing.T) {
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func legacySuffix(name string) string {
-	sum := sha256.Sum256([]byte(name))
-	return hex.EncodeToString(sum[:4])
-}
-
 func TestTokens_RoundTrip(t *testing.T) {
 	tokens := Tokens{Dir: filepath.Join(t.TempDir(), "mcp")}
 	got, err := tokens.Load("notion", notionURL)
@@ -129,6 +124,11 @@ func TestTokensDir_IsBesideTheEventStore(t *testing.T) {
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(home, ".local", "state", "detent", "mcp"), TokensDir())
+}
+
+func legacySuffix(name string) string {
+	sum := sha256.Sum256([]byte(name))
+	return hex.EncodeToString(sum[:4])
 }
 
 func saved() *Saved {
