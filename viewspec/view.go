@@ -51,7 +51,7 @@ func (c *Compiled) Spec() Spec { return c.spec }
 // Bind resolves every binding against the rows that actually came
 // out. Anything unresolved fails the whole view, never one block.
 func (c *Compiled) Bind(output string) (*Bound, error) {
-	rows, err := c.ext.Extract(output)
+	rows, order, err := extract(c.ext, output)
 	if err != nil {
 		return nil, fmt.Errorf("viewspec: parse %q: %w", c.spec.Parse.Kind, err)
 	}
@@ -59,7 +59,7 @@ func (c *Compiled) Bind(output string) (*Bound, error) {
 	out := &Bound{c: c, raw: output, fields: fields, rows: len(rows), selSeq: -1}
 	seq := 0
 	out.blocks, err = c.bindBlocks(c.spec.Blocks, rows, Data{
-		Rows: nil, Raw: output, Columns: orderedColumns(c.ext, fields)}, fields, &seq)
+		Rows: nil, Raw: output, Columns: orderedColumns(order, fields)}, fields, &seq)
 	if err != nil {
 		return nil, err
 	}
@@ -478,21 +478,10 @@ func cmpFloat(a, b float64) int {
 
 // orderedColumns prefers the extractor's own order and spelling, keeping
 // only what the rows produced, and falls back to alphabetical by key.
-func orderedColumns(ext Extractor, present []string) []Column {
-	plain := func(fields []string) []Column {
-		out := make([]Column, len(fields))
-		for i, f := range fields {
-			out[i] = Column{Field: f}
-		}
-		return out
-	}
-	co, ok := ext.(ColumnOrder)
-	if !ok {
-		return plain(present)
-	}
+func orderedColumns(order []Column, present []string) []Column {
 	var out []Column
 	seen := map[string]bool{}
-	for _, c := range co.Columns() {
+	for _, c := range order {
 		if slices.Contains(present, c.Field) && !seen[c.Field] {
 			out, seen[c.Field] = append(out, c), true
 		}

@@ -3,6 +3,7 @@ package viewspec
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"regexp"
@@ -73,25 +74,34 @@ func (e linesExtractor) Extract(output string) ([]Row, error) {
 	return rows, nil
 }
 
-// Columns is the pattern's named captures, left to right.
-func (e linesExtractor) Columns() []Column { return e.order }
+// ExtractColumns orders the fields as the pattern's named captures, left to right.
+func (e linesExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
+	rows, err := e.Extract(output)
+	return rows, e.order, err
+}
 
 // columnsExtractor splits whitespace-aligned output. Trailing fields
 // join into the last column, where ps-shaped output puts free text.
 type columnsExtractor struct {
 	header bool
 	fields []string
-	order  *[]Column // filled by Extract, which is where a header is read
 }
 
 func newColumnsExtractor(p Parse) (Extractor, error) {
 	if !p.Header && len(p.Fields) == 0 {
 		return nil, fmt.Errorf("parse kind %q needs header or fields", p.Kind)
 	}
-	return skipping(p, columnsExtractor{header: p.Header, fields: p.Fields, order: new([]Column)}), nil
+	return skipping(p, columnsExtractor{header: p.Header, fields: p.Fields}), nil
 }
 
 func (e columnsExtractor) Extract(output string) ([]Row, error) {
+	rows, _, err := e.ExtractColumns(output)
+	return rows, err
+}
+
+// ExtractColumns returns the header it read rather than keeping it, so
+// one Compiled can bind on two goroutines at once.
+func (e columnsExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
 	var grid [][]string
 	lines := splitLines(output)
 	if e.header {
@@ -104,7 +114,7 @@ func (e columnsExtractor) Extract(output string) ([]Row, error) {
 		grid = append(grid, strings.Fields(line))
 	}
 	if len(grid) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	names := e.fields
 	titles := names
@@ -115,15 +125,9 @@ func (e columnsExtractor) Extract(output string) ([]Row, error) {
 	}
 	// Keys lowercase so a spec can name them predictably. Titles keep
 	// the output's own spelling.
-	if e.order != nil {
-		cols := make([]Column, len(names))
-		for i, n := range names {
-			cols[i] = Column{Field: n, Title: titles[i]}
-		}
-		*e.order = cols
-	}
+	cols := titledColumns(names, titles)
 	if len(names) < 1 {
-		return nil, fmt.Errorf("no column names")
+		return nil, nil, errors.New("no column names")
 	}
 	var rows []Row
 	for _, f := range grid {
@@ -143,21 +147,10 @@ func (e columnsExtractor) Extract(output string) ([]Row, error) {
 	// Most lines short of the header means the header was misread: df's
 	// "Mounted on" names one column too many, and the rows kept are wrong.
 	if len(rows)*2 < len(grid) {
-		return nil, fmt.Errorf("%d of %d lines have fewer fields than the %d columns named",
+		return nil, nil, fmt.Errorf("%d of %d lines have fewer fields than the %d columns named",
 			len(grid)-len(rows), len(grid), len(names))
 	}
-	return rows, nil
-}
-
-func (e columnsExtractor) Columns() []Column {
-	if e.order != nil && len(*e.order) > 0 {
-		return *e.order
-	}
-	out := make([]Column, len(e.fields))
-	for i, f := range e.fields {
-		out[i] = Column{Field: f}
-	}
-	return out
+	return rows, cols, nil
 }
 
 // jsonExtractor reads an array of flat objects, one object, or one
@@ -189,16 +182,21 @@ func (jsonExtractor) Extract(output string) ([]Row, error) {
 
 // fixedExtractor slices rows between the values they line up, which
 // reads "CONTAINER ID" as one column where whitespace fields see two.
-type fixedExtractor struct{ order *[]Column }
+type fixedExtractor struct{}
 
 func newFixedExtractor(p Parse) (Extractor, error) {
-	return skipping(p, fixedExtractor{order: new([]Column)}), nil
+	return skipping(p, fixedExtractor{}), nil
 }
 
 func (e fixedExtractor) Extract(output string) ([]Row, error) {
+	rows, _, err := e.ExtractColumns(output)
+	return rows, err
+}
+
+func (fixedExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
 	lines := headed(splitLines(output))
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	var body [][]rune
 	for _, line := range lines[1:] {
@@ -208,14 +206,11 @@ func (e fixedExtractor) Extract(output string) ([]Row, error) {
 	}
 	spans := gutterSpans([]rune(lines[0]), body)
 	if len(spans) < 2 {
-		return nil, fmt.Errorf("header has fewer than two columns")
+		return nil, nil, errors.New("header has fewer than two columns")
 	}
-	if e.order != nil {
-		cols := make([]Column, len(spans))
-		for i, s := range spans {
-			cols[i] = Column{Field: strings.ToLower(s.title), Title: s.title}
-		}
-		*e.order = cols
+	cols := make([]Column, len(spans))
+	for i, s := range spans {
+		cols[i] = Column{Field: strings.ToLower(s.title), Title: s.title}
 	}
 	rows := make([]Row, 0, len(body))
 	for _, runes := range body {
@@ -225,14 +220,7 @@ func (e fixedExtractor) Extract(output string) ([]Row, error) {
 		}
 		rows = append(rows, row)
 	}
-	return rows, nil
-}
-
-func (e fixedExtractor) Columns() []Column {
-	if e.order == nil {
-		return nil
-	}
-	return *e.order
+	return rows, cols, nil
 }
 
 // pairsExtractor reads "key<sep>value" lines: env, git config, any
@@ -258,8 +246,9 @@ func (e pairsExtractor) Extract(output string) ([]Row, error) {
 	return rows, nil
 }
 
-func (pairsExtractor) Columns() []Column {
-	return []Column{{Field: "key"}, {Field: "value"}}
+func (e pairsExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
+	rows, err := e.Extract(output)
+	return rows, []Column{{Field: "key"}, {Field: "value"}}, err
 }
 
 // delimitedExtractor splits on a separator rather than whitespace:
@@ -268,7 +257,6 @@ type delimitedExtractor struct {
 	sep    string
 	header bool
 	fields []string
-	order  *[]Column
 }
 
 func newDelimitedExtractor(p Parse) (Extractor, error) {
@@ -278,11 +266,15 @@ func newDelimitedExtractor(p Parse) (Extractor, error) {
 	if !p.Header && len(p.Fields) == 0 {
 		return nil, fmt.Errorf("parse kind %q needs header or fields", p.Kind)
 	}
-	return skipping(p, delimitedExtractor{sep: p.Sep, header: p.Header,
-		fields: p.Fields, order: new([]Column)}), nil
+	return skipping(p, delimitedExtractor{sep: p.Sep, header: p.Header, fields: p.Fields}), nil
 }
 
 func (e delimitedExtractor) Extract(output string) ([]Row, error) {
+	rows, _, err := e.ExtractColumns(output)
+	return rows, err
+}
+
+func (e delimitedExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
 	var grid [][]string
 	lines := splitLines(output)
 	if e.header {
@@ -299,7 +291,7 @@ func (e delimitedExtractor) Extract(output string) ([]Row, error) {
 		grid = append(grid, parts)
 	}
 	if len(grid) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	names, titles := e.fields, e.fields
 	if e.header {
@@ -307,13 +299,7 @@ func (e delimitedExtractor) Extract(output string) ([]Row, error) {
 		names = lower(titles)
 		grid = grid[1:]
 	}
-	if e.order != nil {
-		cols := make([]Column, len(names))
-		for i, n := range names {
-			cols[i] = Column{Field: n, Title: titles[i]}
-		}
-		*e.order = cols
-	}
+	cols := titledColumns(names, titles)
 	var rows []Row
 	for _, parts := range grid {
 		row := Row{}
@@ -324,14 +310,7 @@ func (e delimitedExtractor) Extract(output string) ([]Row, error) {
 		}
 		rows = append(rows, row)
 	}
-	return rows, nil
-}
-
-func (e delimitedExtractor) Columns() []Column {
-	if e.order != nil && len(*e.order) > 0 {
-		return *e.order
-	}
-	return plainColumns(e.fields)
+	return rows, cols, nil
 }
 
 // indentExtractor turns leading whitespace into a depth. Levels come
@@ -381,8 +360,9 @@ func (indentExtractor) Extract(output string) ([]Row, error) {
 	return rows, nil
 }
 
-func (indentExtractor) Columns() []Column {
-	return []Column{{Field: "depth"}, {Field: "text"}}
+func (e indentExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
+	rows, err := e.Extract(output)
+	return rows, []Column{{Field: "depth"}, {Field: "text"}}, err
 }
 
 // prefixExtractor splits each line at the first run of whitespace, the
@@ -403,21 +383,27 @@ func (prefixExtractor) Extract(output string) ([]Row, error) {
 	return rows, nil
 }
 
-func (prefixExtractor) Columns() []Column {
-	return []Column{{Field: "first"}, {Field: "rest"}}
+func (e prefixExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
+	rows, err := e.Extract(output)
+	return rows, []Column{{Field: "first"}, {Field: "rest"}}, err
 }
 
 // boxExtractor reads a table drawn with borders: mysql, psql, sqlite
 // -box, markdown.
-type boxExtractor struct{ order *[]Column }
+type boxExtractor struct{}
 
 func newBoxExtractor(p Parse) (Extractor, error) {
-	return skipping(p, boxExtractor{order: new([]Column)}), nil
+	return skipping(p, boxExtractor{}), nil
 }
 
-// Extract takes the first bordered line as the header. A line with no
-// border is a title or a footer, like psql's "(12 rows)".
 func (e boxExtractor) Extract(output string) ([]Row, error) {
+	rows, _, err := e.ExtractColumns(output)
+	return rows, err
+}
+
+// ExtractColumns takes the first bordered line as the header. A line
+// with no border is a title or a footer, like psql's "(12 rows)".
+func (boxExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
 	var grid [][]string
 	for _, line := range headed(splitLines(output)) {
 		if isRule(line) {
@@ -428,14 +414,10 @@ func (e boxExtractor) Extract(output string) ([]Row, error) {
 		}
 	}
 	if len(grid) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	titles, names := grid[0], lower(grid[0])
-	cols := make([]Column, len(names))
-	for i, n := range names {
-		cols[i] = Column{Field: n, Title: titles[i]}
-	}
-	*e.order = cols
+	cols := titledColumns(names, titles)
 	rows := make([]Row, 0, len(grid)-1)
 	for _, cells := range grid[1:] {
 		row := Row{}
@@ -446,10 +428,8 @@ func (e boxExtractor) Extract(output string) ([]Row, error) {
 		}
 		rows = append(rows, row)
 	}
-	return rows, nil
+	return rows, cols, nil
 }
-
-func (e boxExtractor) Columns() []Column { return *e.order }
 
 // noneExtractor produces no rows, for a view drawn from raw text only.
 type noneExtractor struct{}
@@ -473,18 +453,25 @@ func skipping(p Parse, e Extractor) Extractor {
 }
 
 func (e skipExtractor) Extract(output string) ([]Row, error) {
-	lines := splitLines(output)
-	if e.n >= len(lines) {
-		return nil, nil
-	}
-	return e.inner.Extract(strings.Join(lines[e.n:], "\n"))
+	rows, _, err := e.ExtractColumns(output)
+	return rows, err
 }
 
-func (e skipExtractor) Columns() []Column {
-	if c, ok := e.inner.(ColumnOrder); ok {
-		return c.Columns()
+func (e skipExtractor) ExtractColumns(output string) ([]Row, []Column, error) {
+	lines := splitLines(output)
+	if e.n >= len(lines) {
+		return nil, nil, nil
 	}
-	return nil
+	return extract(e.inner, strings.Join(lines[e.n:], "\n"))
+}
+
+// extract reads rows and, from an extractor that knows it, their order.
+func extract(e Extractor, output string) ([]Row, []Column, error) {
+	if co, ok := e.(ColumnOrder); ok {
+		return co.ExtractColumns(output)
+	}
+	rows, err := e.Extract(output)
+	return rows, nil, err
 }
 
 // jsonLines reads newline-delimited objects. Every line must be one,
@@ -782,10 +769,10 @@ func splitQuoted(line, sep string) []string {
 	return cells
 }
 
-func plainColumns(fields []string) []Column {
-	out := make([]Column, len(fields))
-	for i, f := range fields {
-		out[i] = Column{Field: f}
+func titledColumns(names, titles []string) []Column {
+	out := make([]Column, len(names))
+	for i, n := range names {
+		out[i] = Column{Field: n, Title: titles[i]}
 	}
 	return out
 }

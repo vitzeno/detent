@@ -167,10 +167,10 @@ type Slot struct {
 	What string `json:"what"`
 }
 
-// ColumnOrder is an optional Extractor extension reporting the fields'
-// order and spelling. Without it they sort alphabetically.
+// ColumnOrder is an optional Extractor extension that also returns the
+// fields' order and spelling. Without it they sort alphabetically.
 type ColumnOrder interface {
-	Columns() []Column
+	ExtractColumns(output string) ([]Row, []Column, error)
 }
 
 func (r *Registry) widget(kind string) (Widget, bool) {
