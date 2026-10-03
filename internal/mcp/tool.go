@@ -11,6 +11,16 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
+// maxDescription bounds what one tool adds to every request.
+const maxDescription = 2048
+
+// maxToolName is what the endpoints accept. MCP allows 128 and a dot,
+// and neither survives a chat-completions request.
+const maxToolName = 64
+
+// maxServerPrefix leaves room for the tool's own name after the server's.
+const maxServerPrefix = 24
+
 // Tool is one MCP tool, wearing the registry's interface. It lowers to
 // a description rather than a command: nothing about it runs in a shell.
 type Tool struct {
@@ -54,61 +64,6 @@ func (t Tool) Remote() string { return t.remote }
 
 // Server is who answers this call.
 func (t Tool) Server() *Server { return t.server }
-
-func specOf(server string, t *sdk.Tool) tool.Spec {
-	return tool.Spec{
-		Description: describeTool(t),
-		Executor:    server,
-		Raw:         rawSchema(t.InputSchema),
-		Group:       "mcp · " + server,
-	}
-}
-
-// maxDescription bounds what one tool adds to every request.
-const maxDescription = 2048
-
-// describeTool prefers a title when the server gave one, since that is
-// what it wanted shown.
-func describeTool(t *sdk.Tool) string {
-	d := t.Title
-	switch {
-	case t.Title != "" && t.Description != "":
-		d = t.Title + ": " + t.Description
-	case t.Description != "":
-		d = t.Description
-	}
-	if len(d) <= maxDescription {
-		return d
-	}
-	return cut(d, maxDescription) + " [truncated]"
-}
-
-// cut shortens s to at most n bytes without splitting a rune.
-func cut(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n]
-}
-
-// rawSchema keeps the server's schema as it came. One that is not an object,
-// which an endpoint refuses outright, becomes "no parameters" instead.
-func rawSchema(in any) map[string]any {
-	if m, ok := in.(map[string]any); ok && m["type"] == "object" {
-		return m
-	}
-	return map[string]any{"type": "object", "additionalProperties": false}
-}
-
-// maxToolName is what the endpoints accept. MCP allows 128 and a dot,
-// and neither survives a chat-completions request.
-const maxToolName = 64
-
-// maxServerPrefix leaves room for the tool's own name after the server's.
-const maxServerPrefix = 24
 
 // toolName namespaces a server's tool, because two servers offering
 // "search" is the collision the spec warns aggregators about.
@@ -159,4 +114,49 @@ func free(reg *tool.Registry, name string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func specOf(server string, t *sdk.Tool) tool.Spec {
+	return tool.Spec{
+		Description: describeTool(t),
+		Executor:    server,
+		Raw:         rawSchema(t.InputSchema),
+		Group:       "mcp · " + server,
+	}
+}
+
+// describeTool prefers a title when the server gave one, since that is
+// what it wanted shown.
+func describeTool(t *sdk.Tool) string {
+	d := t.Title
+	switch {
+	case t.Title != "" && t.Description != "":
+		d = t.Title + ": " + t.Description
+	case t.Description != "":
+		d = t.Description
+	}
+	if len(d) <= maxDescription {
+		return d
+	}
+	return cut(d, maxDescription) + " [truncated]"
+}
+
+// rawSchema keeps the server's schema as it came. One that is not an object,
+// which an endpoint refuses outright, becomes "no parameters" instead.
+func rawSchema(in any) map[string]any {
+	if m, ok := in.(map[string]any); ok && m["type"] == "object" {
+		return m
+	}
+	return map[string]any{"type": "object", "additionalProperties": false}
+}
+
+// cut shortens s to at most n bytes without splitting a rune.
+func cut(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }

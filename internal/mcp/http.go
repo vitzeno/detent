@@ -10,6 +10,10 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// authTimeout bounds each request a sign-in makes: discovery, registration
+// and the token exchange, none of which waits on a human.
+const authTimeout = 30 * time.Second
+
 // HTTP is a server detent reaches rather than launches, over
 // Streamable HTTP. Headers is where a bearer token goes.
 type HTTP struct {
@@ -34,14 +38,6 @@ func (h HTTP) client() *http.Client {
 	return &http.Client{Transport: headers{origin: origin(h.URL), set: h.Headers}}
 }
 
-// authTimeout bounds each request a sign-in makes: discovery, registration
-// and the token exchange, none of which waits on a human.
-const authTimeout = 30 * time.Second
-
-// authClient is what signing in uses. It carries no configured header,
-// since its requests go to hosts the server's 401 names.
-func authClient() *http.Client { return &http.Client{Timeout: authTimeout} }
-
 // headers adds the configured headers to requests for one origin, so a
 // redirect or a discovery request elsewhere never carries them.
 type headers struct {
@@ -64,6 +60,10 @@ func (h headers) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	return http.DefaultTransport.RoundTrip(r)
 }
+
+// authClient is what signing in uses. It carries no configured header,
+// since its requests go to hosts the server's 401 names.
+func authClient() *http.Client { return &http.Client{Timeout: authTimeout} }
 
 // origin is a URL's scheme and host, or "" when it has none.
 func origin(raw string) string {

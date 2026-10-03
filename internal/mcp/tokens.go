@@ -18,9 +18,21 @@ import (
 	"github.com/vitzeno/detent/internal/private"
 )
 
+var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
+
 // Tokens keeps each sign-in on disk, one 0600 file per name and URL, not
 // the keychain: that costs cgo or a shell-out per platform.
 type Tokens struct{ Dir string }
+
+// TokensDir is beside the event store: secrets nobody authored belong
+// in state, not in ~/.config.
+func TokensDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".local", "state", "detent", "mcp")
+}
 
 // Saved is what a sign-in leaves: the client registered for it and the
 // endpoints a refresh needs, since the SDK writes none of it down.
@@ -35,16 +47,6 @@ type Saved struct {
 	AuthStyle oauth2.AuthStyle `json:"auth_style,omitempty"`
 	Scopes    []string         `json:"scopes,omitempty"`
 	Token     *oauth2.Token    `json:"token"`
-}
-
-// TokensDir is beside the event store: secrets nobody authored belong
-// in state, not in ~/.config.
-func TokensDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".local", "state", "detent", "mcp")
 }
 
 // Load returns the sign-in for server at resource, or nil when it has none.
@@ -125,24 +127,6 @@ func (t Tokens) Forget(server, resource string) error {
 	return t.dropLegacy(server)
 }
 
-// dropLegacy removes a token an older detent saved under the name alone.
-// Nothing says which server it was issued by, so it is never read.
-func (t Tokens) dropLegacy(server string) error {
-	if t.Dir == "" {
-		return nil
-	}
-	sum := sha256.Sum256([]byte(server))
-	path := filepath.Join(t.Dir, safeName(server)+"-"+hex.EncodeToString(sum[:4])+".json")
-	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("mcp: %s token: %w", server, err)
-	}
-	return nil
-}
-
-var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
-
-func safeName(server string) string { return unsafeChars.ReplaceAllString(server, "_") }
-
 // path names a file by the server's name made safe, then a hash of the
 // name and URL: "../x" cannot leave the directory, and "a/b" is not "a_b".
 func (t Tokens) path(server, resource string) (string, error) {
@@ -162,3 +146,19 @@ func canonical(raw string) string {
 	}
 	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host) + strings.TrimSuffix(u.EscapedPath(), "/")
 }
+
+// dropLegacy removes a token an older detent saved under the name alone.
+// Nothing says which server it was issued by, so it is never read.
+func (t Tokens) dropLegacy(server string) error {
+	if t.Dir == "" {
+		return nil
+	}
+	sum := sha256.Sum256([]byte(server))
+	path := filepath.Join(t.Dir, safeName(server)+"-"+hex.EncodeToString(sum[:4])+".json")
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("mcp: %s token: %w", server, err)
+	}
+	return nil
+}
+
+func safeName(server string) string { return unsafeChars.ReplaceAllString(server, "_") }

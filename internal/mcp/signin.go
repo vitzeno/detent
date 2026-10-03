@@ -64,13 +64,6 @@ func (s *SignIns) Open(server string) error {
 	return s.open(link)
 }
 
-// wasAsked reports whether the last sign-in for server showed a link.
-func (s *SignIns) wasAsked(server string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.asked[server]
-}
-
 // claim reserves a server for one dial, so a redial cannot race the
 // startup dial or another redial. False means one is under way.
 func (s *SignIns) claim(server string) bool {
@@ -111,31 +104,6 @@ func (s *SignIns) retire(server, resource string) error {
 	defer s.saving.Unlock()
 	s.gen[server]++
 	return s.tokens.Forget(server, resource)
-}
-
-// publish is a no-op with no bus, as for the -mcp listing.
-func (s *SignIns) publish(e event.Event) {
-	if s.bus != nil {
-		s.bus.Publish(e)
-	}
-}
-
-// openable allows https, or http to this machine. The address comes
-// from the server's own metadata, and "open" launches whatever it names.
-func openable(link string) error {
-	u, err := url.Parse(link)
-	if err != nil {
-		return fmt.Errorf("the sign-in link: %w", err)
-	}
-	host := u.Hostname()
-	ip := net.ParseIP(host)
-	switch {
-	case u.Scheme == "https":
-		return nil
-	case u.Scheme == "http" && (host == "localhost" || (ip != nil && ip.IsLoopback())):
-		return nil
-	}
-	return fmt.Errorf("refusing a sign-in link to %s://%s: only https is opened", u.Scheme, host)
 }
 
 // fetcher is the SDK's browser leg: publish the link, then wait for
@@ -258,6 +226,13 @@ func (s *SignIns) end(server string, err error) {
 	s.publish(event.ServerAuthorized{Server: server})
 }
 
+// wasAsked reports whether the last sign-in for server showed a link.
+func (s *SignIns) wasAsked(server string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.asked[server]
+}
+
 func (s *SignIns) status(server, auth string) {
 	if s.in == nil {
 		return
@@ -266,14 +241,29 @@ func (s *SignIns) status(server, auth string) {
 	s.publish(event.ServersListed{Servers: s.in.Status()})
 }
 
-func reason(err error) string {
-	switch {
-	case errors.Is(err, errSignInExpired):
-		return "the link expired"
-	case errors.Is(err, context.Canceled):
-		return "stopped"
+// publish is a no-op with no bus, as for the -mcp listing.
+func (s *SignIns) publish(e event.Event) {
+	if s.bus != nil {
+		s.bus.Publish(e)
 	}
-	return err.Error()
+}
+
+// openable allows https, or http to this machine. The address comes
+// from the server's own metadata, and "open" launches whatever it names.
+func openable(link string) error {
+	u, err := url.Parse(link)
+	if err != nil {
+		return fmt.Errorf("the sign-in link: %w", err)
+	}
+	host := u.Hostname()
+	ip := net.ParseIP(host)
+	switch {
+	case u.Scheme == "https":
+		return nil
+	case u.Scheme == "http" && (host == "localhost" || (ip != nil && ip.IsLoopback())):
+		return nil
+	}
+	return fmt.Errorf("refusing a sign-in link to %s://%s: only https is opened", u.Scheme, host)
 }
 
 // stateOf is the state the redirect must carry back.
@@ -287,4 +277,14 @@ func stateOf(link string) (string, error) {
 		return "", errors.New("the sign-in link carries no state")
 	}
 	return state, nil
+}
+
+func reason(err error) string {
+	switch {
+	case errors.Is(err, errSignInExpired):
+		return "the link expired"
+	case errors.Is(err, context.Canceled):
+		return "stopped"
+	}
+	return err.Error()
 }

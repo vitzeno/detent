@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+// Project is the working directory's own file. The name and shape are
+// what every MCP client reads.
+const Project = ".mcp.json"
+
 // Config is one server, launched or reached, as the config file describes it.
 type Config struct {
 	Command string            `json:"command"`
@@ -28,9 +32,35 @@ type Config struct {
 	Auth foreignAuth `json:"auth"`
 }
 
-// Project is the working directory's own file. The name and shape are
-// what every MCP client reads.
-const Project = ".mcp.json"
+// OAuth is Claude Code's "oauth" object, for a sign-in discovery cannot
+// settle alone. A remote server signs in on a 401 whether or not it is set.
+type OAuth struct {
+	// A client registered by hand, for a provider with no registration of its own.
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+	// CallbackPort fixes the redirect's port for a provider that whitelists it. 0 is any.
+	CallbackPort int    `json:"callbackPort"`
+	Scopes       Scopes `json:"scopes"`
+}
+
+// Scopes reads "a b c", as Claude Code writes them, or ["a", "b"], as
+// Gemini CLI does.
+type Scopes []string
+
+// UnmarshalJSON accepts either form.
+func (s *Scopes) UnmarshalJSON(b []byte) error {
+	var spaced string
+	if json.Unmarshal(b, &spaced) == nil {
+		*s = strings.Fields(spaced)
+		return nil
+	}
+	var list []string
+	if err := json.Unmarshal(b, &list); err != nil {
+		return errors.New(`scopes must be "a b" or ["a", "b"]`)
+	}
+	*s = list
+	return nil
+}
 
 // Files are the user's own config files, nearest last.
 func Files() []string {
@@ -65,6 +95,11 @@ func Load(project []byte, paths ...string) (map[string]Config, error) {
 	return out, nil
 }
 
+// file is the shape on disk. mcpServers is the key every client uses.
+type file struct {
+	Servers map[string]Config `json:"mcpServers"`
+}
+
 func merge(into map[string]Config, path string, raw []byte) error {
 	var f file
 	if err := json.Unmarshal(raw, &f); err != nil {
@@ -73,36 +108,6 @@ func merge(into map[string]Config, path string, raw []byte) error {
 	for name, c := range f.Servers {
 		into[name] = c.expanded()
 	}
-	return nil
-}
-
-// OAuth is Claude Code's "oauth" object, for a sign-in discovery cannot
-// settle alone. A remote server signs in on a 401 whether or not it is set.
-type OAuth struct {
-	// A client registered by hand, for a provider with no registration of its own.
-	ClientID     string `json:"clientId"`
-	ClientSecret string `json:"clientSecret"`
-	// CallbackPort fixes the redirect's port for a provider that whitelists it. 0 is any.
-	CallbackPort int    `json:"callbackPort"`
-	Scopes       Scopes `json:"scopes"`
-}
-
-// Scopes reads "a b c", as Claude Code writes them, or ["a", "b"], as
-// Gemini CLI does.
-type Scopes []string
-
-// UnmarshalJSON accepts either form.
-func (s *Scopes) UnmarshalJSON(b []byte) error {
-	var spaced string
-	if json.Unmarshal(b, &spaced) == nil {
-		*s = strings.Fields(spaced)
-		return nil
-	}
-	var list []string
-	if err := json.Unmarshal(b, &list); err != nil {
-		return errors.New(`scopes must be "a b" or ["a", "b"]`)
-	}
-	*s = list
 	return nil
 }
 
@@ -120,11 +125,6 @@ func (a *foreignAuth) UnmarshalJSON(b []byte) error {
 		a.cursor = &OAuth{ClientID: c.ClientID, ClientSecret: c.ClientSecret, Scopes: c.Scopes}
 	}
 	return nil
-}
-
-// file is the shape on disk. mcpServers is the key every client uses.
-type file struct {
-	Servers map[string]Config `json:"mcpServers"`
 }
 
 // expanded resolves ${VAR} through the environment, so a file safe to

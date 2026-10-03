@@ -18,6 +18,10 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
+// passThrough is what a process needs to run at all. Everything else
+// is named in config, so detent's own keys do not follow a server in.
+var passThrough = []string{"PATH", "HOME", "TMPDIR", "LANG", "USER"}
+
 // ConnectOption adds to how ConnectAll dials.
 type ConnectOption func(*connecting)
 
@@ -127,44 +131,13 @@ func Redialer(reg *tool.Registry, in *Invokers, servers map[string]Config,
 	}
 }
 
-// transport is how this server is reached, and says so when the
-// config describes no server at all or two of them. oauth signs in.
-func (c Config) transport(oauth auth.OAuthHandler) (sdk.Transport, error) {
-	switch {
-	case c.Command != "" && c.URL != "":
-		return nil, errors.New("set command or url, not both")
-
-	case c.URL != "":
-		// Absent type means stdio everywhere else, so a url without
-		// one is a remote server that forgot to say which kind.
-		switch c.Type {
-		case "", "http", "streamable-http":
-			return HTTP{URL: c.URL, Headers: c.Headers, Auth: oauth}.Transport(), nil
-		}
-		return nil, fmt.Errorf("transport %q is not supported; use http", c.Type)
-
-	case c.Command != "":
-		if c.Type != "" && c.Type != "stdio" {
-			return nil, fmt.Errorf("type %q takes a url, not a command", c.Type)
-		}
-		return Stdio{Command: c.Command, Args: c.Args, Env: environ(c.Env)}.Transport(), nil
+// describeConfig is what /mcp shows under a server's name: the thing
+// it launches, or the thing it reaches without what may hold a key.
+func describeConfig(c Config) string {
+	if c.URL != "" {
+		return redactURL(c.URL)
 	}
-	return nil, errors.New("no command or url configured")
-}
-
-// summarise is what /mcp shows of a server once dialling it settled.
-func summarise(st event.ServerSummary, got result) event.ServerSummary {
-	st.Connected, st.Tools = got.err == nil, len(got.tools)
-	if got.err != nil {
-		st.Err = got.err.Error()
-	}
-	if got.oauth {
-		st.Auth = event.AuthSignedOut
-		if got.err == nil {
-			st.Auth = event.AuthSignedIn
-		}
-	}
-	return st
+	return c.Command
 }
 
 // result is one server's answer.
@@ -226,9 +199,30 @@ func connect(ctx context.Context, name string, c Config, oauth auth.OAuthHandler
 	return result{server: s, tools: tools}
 }
 
-// passThrough is what a process needs to run at all. Everything else
-// is named in config, so detent's own keys do not follow a server in.
-var passThrough = []string{"PATH", "HOME", "TMPDIR", "LANG", "USER"}
+// transport is how this server is reached, and says so when the
+// config describes no server at all or two of them. oauth signs in.
+func (c Config) transport(oauth auth.OAuthHandler) (sdk.Transport, error) {
+	switch {
+	case c.Command != "" && c.URL != "":
+		return nil, errors.New("set command or url, not both")
+
+	case c.URL != "":
+		// Absent type means stdio everywhere else, so a url without
+		// one is a remote server that forgot to say which kind.
+		switch c.Type {
+		case "", "http", "streamable-http":
+			return HTTP{URL: c.URL, Headers: c.Headers, Auth: oauth}.Transport(), nil
+		}
+		return nil, fmt.Errorf("transport %q is not supported; use http", c.Type)
+
+	case c.Command != "":
+		if c.Type != "" && c.Type != "stdio" {
+			return nil, fmt.Errorf("type %q takes a url, not a command", c.Type)
+		}
+		return Stdio{Command: c.Command, Args: c.Args, Env: environ(c.Env)}.Transport(), nil
+	}
+	return nil, errors.New("no command or url configured")
+}
 
 func environ(env map[string]string) []string {
 	out := make([]string, 0, len(passThrough)+len(env))
@@ -243,27 +237,19 @@ func environ(env map[string]string) []string {
 	return out
 }
 
-// describeConfig is what /mcp shows under a server's name: the thing
-// it launches, or the thing it reaches without what may hold a key.
-func describeConfig(c Config) string {
-	if c.URL != "" {
-		return redactURL(c.URL)
+// summarise is what /mcp shows of a server once dialling it settled.
+func summarise(st event.ServerSummary, got result) event.ServerSummary {
+	st.Connected, st.Tools = got.err == nil, len(got.tools)
+	if got.err != nil {
+		st.Err = got.err.Error()
 	}
-	return c.Command
-}
-
-// redactURL drops the parts of a URL a key travels in: a user and a query.
-func redactURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "(a url that does not parse)"
+	if got.oauth {
+		st.Auth = event.AuthSignedOut
+		if got.err == nil {
+			st.Auth = event.AuthSignedIn
+		}
 	}
-	u.User = nil
-	u.Fragment, u.RawFragment = "", ""
-	if u.RawQuery != "" {
-		u.RawQuery = "…"
-	}
-	return u.String()
+	return st
 }
 
 // redact takes out of err what the config may have filled from the
@@ -308,3 +294,17 @@ type redacted struct {
 
 func (r redacted) Error() string { return r.msg }
 func (r redacted) Unwrap() error { return r.err }
+
+// redactURL drops the parts of a URL a key travels in: a user and a query.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "(a url that does not parse)"
+	}
+	u.User = nil
+	u.Fragment, u.RawFragment = "", ""
+	if u.RawQuery != "" {
+		u.RawQuery = "…"
+	}
+	return u.String()
+}

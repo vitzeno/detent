@@ -18,6 +18,13 @@ import (
 	"github.com/vitzeno/detent/version"
 )
 
+// maxPages bounds following a cursor, against a server that never ends its list.
+const maxPages = 100
+
+// stderrTail is how much of a server's stderr is kept: enough for the
+// line that says why it stopped.
+const stderrTail = 1024
+
 // Server is one connected MCP server. Name is detent's key for it, not
 // the server's own, which the spec says may collide.
 type Server struct {
@@ -42,9 +49,6 @@ func Connect(ctx context.Context, name string, t sdk.Transport) (*Server, error)
 	}
 	return &Server{Name: name, session: session}, nil
 }
-
-// maxPages bounds following a cursor, against a server that never ends its list.
-const maxPages = 100
 
 // Tools is everything the server offers, following the cursor: a
 // server with more tools than one page is not unusual.
@@ -141,10 +145,6 @@ func (c groupConn) Close() error {
 	c.end()
 	return err
 }
-
-// stderrTail is how much of a server's stderr is kept: enough for the
-// line that says why it stopped.
-const stderrTail = 1024
 
 // tail keeps the last max bytes written to it.
 type tail struct {

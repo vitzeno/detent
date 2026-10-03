@@ -34,48 +34,6 @@ func NewInvokers() *Invokers {
 	return &Invokers{tools: map[string]Tool{}, servers: map[string]*Server{}}
 }
 
-// Add records what Register returned, which carries its own routing.
-func (i *Invokers) Add(tools ...Tool) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	for _, t := range tools {
-		i.tools[t.name] = t
-		i.servers[t.server.Name] = t.server
-	}
-}
-
-// register adds a server and its tools, so a server with none is still closed.
-func (i *Invokers) register(reg *tool.Registry, s *Server, tools []*sdk.Tool) {
-	i.registering.Lock()
-	defer i.registering.Unlock()
-	i.keep(s)
-	i.Add(Register(reg, s, tools)...)
-}
-
-// swap replaces a server's session and tools, handing back the old session to close.
-func (i *Invokers) swap(reg *tool.Registry, s *Server, tools []*sdk.Tool) *Server {
-	i.registering.Lock()
-	defer i.registering.Unlock()
-	old, names := i.drop(s.Name)
-	reg.Unregister(names...)
-	i.keep(s)
-	i.Add(Register(reg, s, tools)...)
-	return old
-}
-
-func (i *Invokers) keep(s *Server) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	i.servers[s.Name] = s
-}
-
-// connected reports whether a session for server is open.
-func (i *Invokers) connected(server string) bool {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-	return i.servers[server] != nil
-}
-
 // Invoke answers one tool call. A tool nothing owns comes back as a result
 // saying so, never a Go error the Turn would end on.
 func (i *Invokers) Invoke(ctx context.Context, c tool.Call) capture.Result {
@@ -86,6 +44,16 @@ func (i *Invokers) Invoke(ctx context.Context, c tool.Call) capture.Result {
 		return capture.Result{ExitCode: 1, Stderr: fmt.Sprintf("no connected server offers %q", c.Tool)}
 	}
 	return t.server.Call(ctx, t.remote, c.Args)
+}
+
+// Add records what Register returned, which carries its own routing.
+func (i *Invokers) Add(tools ...Tool) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	for _, t := range tools {
+		i.tools[t.name] = t
+		i.servers[t.server.Name] = t.server
+	}
 }
 
 // Status is what /mcp draws, sorted by name the way they connect.
@@ -126,17 +94,23 @@ func (i *Invokers) seed(s []event.ServerSummary) {
 	i.status = s
 }
 
-// settle replaces a seeded entry with what dialling found.
-func (i *Invokers) settle(s event.ServerSummary) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	for n, old := range i.status {
-		if old.Name == s.Name {
-			i.status[n] = s
-			return
-		}
-	}
-	i.status = append(i.status, s)
+// register adds a server and its tools, so a server with none is still closed.
+func (i *Invokers) register(reg *tool.Registry, s *Server, tools []*sdk.Tool) {
+	i.registering.Lock()
+	defer i.registering.Unlock()
+	i.keep(s)
+	i.Add(Register(reg, s, tools)...)
+}
+
+// swap replaces a server's session and tools, handing back the old session to close.
+func (i *Invokers) swap(reg *tool.Registry, s *Server, tools []*sdk.Tool) *Server {
+	i.registering.Lock()
+	defer i.registering.Unlock()
+	old, names := i.drop(s.Name)
+	reg.Unregister(names...)
+	i.keep(s)
+	i.Add(Register(reg, s, tools)...)
+	return old
 }
 
 // drop removes a server's tools, handing back their names and the
@@ -156,6 +130,25 @@ func (i *Invokers) drop(server string) (*Server, []string) {
 	return old, names
 }
 
+func (i *Invokers) keep(s *Server) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.servers[s.Name] = s
+}
+
+// settle replaces a seeded entry with what dialling found.
+func (i *Invokers) settle(s event.ServerSummary) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	for n, old := range i.status {
+		if old.Name == s.Name {
+			i.status[n] = s
+			return
+		}
+	}
+	i.status = append(i.status, s)
+}
+
 // setAuth records where a server's sign-in stands, for /mcp to draw.
 func (i *Invokers) setAuth(server, auth string) {
 	i.mu.Lock()
@@ -165,4 +158,11 @@ func (i *Invokers) setAuth(server, auth string) {
 			i.status[n].Auth = auth
 		}
 	}
+}
+
+// connected reports whether a session for server is open.
+func (i *Invokers) connected(server string) bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.servers[server] != nil
 }
