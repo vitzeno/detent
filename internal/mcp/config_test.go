@@ -130,9 +130,10 @@ func TestLoad_BadJSONSaysWhichFile(t *testing.T) {
 }
 
 func TestFiles_UserThenProject(t *testing.T) {
-	paths := Files()
+	paths := Files(true)
 	require.NotEmpty(t, paths)
 	assert.Equal(t, ".mcp.json", paths[len(paths)-1], "the project file has to win")
+	assert.NotContains(t, Files(false), ".mcp.json", "an untrusted directory's file is never read")
 }
 
 // Absent type means stdio, so type only names a remote transport. One

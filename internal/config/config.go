@@ -164,13 +164,16 @@ func Default() Config {
 	}
 }
 
-// Load reads path, or else the first of ./.detent.y(a)ml and
-// ~/.config/detent/config.y(a)ml, or else returns Default.
-func Load(path string) (Config, error) {
+// Load reads path, or else the first of ./.detent.y(a)ml (only when local)
+// and ~/.config/detent/config.y(a)ml, or else returns Default.
+func Load(path string, local bool) (Config, error) {
 	if path != "" {
 		return read(path)
 	}
-	candidates := []string{".detent.yaml", ".detent.yml"}
+	var candidates []string
+	if local {
+		candidates = append(candidates, ".detent.yaml", ".detent.yml")
+	}
 	if home, err := os.UserHomeDir(); err == nil {
 		candidates = append(candidates,
 			filepath.Join(home, ".config", "detent", "config.yaml"),

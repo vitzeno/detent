@@ -47,7 +47,7 @@ func TestExample_CopiedWholesaleChangesNothing(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".detent.yaml")
 	require.NoError(t, os.WriteFile(path, raw, 0o644))
 
-	file, err := Load(path)
+	file, err := Load(path, true)
 	require.NoError(t, err)
 
 	clearEnv(t)

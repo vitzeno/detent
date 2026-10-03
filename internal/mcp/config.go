@@ -28,14 +28,17 @@ type Config struct {
 	Auth foreignAuth `json:"auth"`
 }
 
-// Files are where servers are configured, nearest last. The name and
-// shape are what every MCP client reads, so one file serves both.
-func Files() []string {
+// Files are where servers are configured, nearest last, and project adds
+// ./.mcp.json. The name and shape are what every MCP client reads.
+func Files(project bool) []string {
 	var out []string
 	if home, err := os.UserHomeDir(); err == nil {
 		out = append(out, filepath.Join(home, ".config", "detent", "mcp.json"))
 	}
-	return append(out, ".mcp.json")
+	if project {
+		out = append(out, ".mcp.json")
+	}
+	return out
 }
 
 // Load merges the files that exist, later winning. An entry is
