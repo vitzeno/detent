@@ -51,3 +51,19 @@ func TestDiff_InlineWhenTooNarrowToSplit(t *testing.T) {
 	got := draw(t, diffSpec, edit, 60)
 	assert.Equal(t, strings.Split(strings.TrimSuffix(edit, "\n"), "\n"), got)
 }
+
+// Inside a hunk, a removed "-- note" is a removed line, not a file header.
+func TestDiff_ContentStartingWithDashesStaysInItsHunk(t *testing.T) {
+	const sql = "--- a/q.sql\n+++ b/q.sql\n@@ -1,2 +1,2 @@\n--- old note\n+++ new note\n select 1;\n"
+	got := draw(t, diffSpec, sql, 101)
+	require.Len(t, got, 5)
+	left, right, ok := strings.Cut(got[3], " │ ")
+	require.True(t, ok, got[3])
+	assert.Equal(t, "   1 -- old note", strings.TrimRight(left, " "))
+	assert.Equal(t, "   1 ++ new note", strings.TrimRight(right, " "))
+
+	painted := drawPainted(t, diffSpec, sql, 60)
+	assert.True(t, strings.HasPrefix(painted[3], "danger:"), painted[3])
+	assert.True(t, strings.HasPrefix(painted[4], "safe:"), painted[4])
+	assert.True(t, strings.HasPrefix(painted[0], "muted:"), painted[0])
+}

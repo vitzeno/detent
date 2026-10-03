@@ -26,10 +26,11 @@ func (w rawWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		return splitDiff(src, f), nil
 	}
 	out := make([]string, 0, len(src))
+	var h hunk
 	for i, l := range src {
 		switch w.mode {
 		case "diff":
-			out = append(out, f.Paint.Paint(diffRole(l), f.Paint.Truncate(l, f.Width)))
+			out = append(out, f.Paint.Paint(diffRole(&h, l), f.Paint.Truncate(l, f.Width)))
 		case "errors":
 			out = append(out, f.Paint.Paint(severityRole(l), f.Paint.Truncate(l, f.Width)))
 		case "code":
@@ -82,9 +83,21 @@ func (w rawWidget) describe() Description {
 	}
 }
 
-// diffRole classifies one unified-diff line. Which colour a role
-// becomes is the consumer's business.
-func diffRole(l string) Role {
+// diffRole classifies one unified-diff line, h tracking the hunk it
+// falls in. Which colour a role becomes is the consumer's business.
+func diffRole(h *hunk, l string) Role {
+	if h.open() && !strings.HasPrefix(l, "\\") {
+		switch removed, added := h.take(l); {
+		case removed:
+			return RoleDanger
+		case added:
+			return RoleSafe
+		}
+		return RoleDefault
+	}
+	if _, _, ok := h.start(l); ok {
+		return RoleFaint
+	}
 	switch {
 	case strings.HasPrefix(l, "+++") || strings.HasPrefix(l, "---"):
 		return RoleMuted
