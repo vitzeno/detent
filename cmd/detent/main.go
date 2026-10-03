@@ -313,7 +313,6 @@ func run() error {
 		for _, w := range warnings {
 			fmt.Fprintln(os.Stderr, w)
 		}
-		sd.engine = runEngine(ctx, eng)
 		approve := headless.Approver(nil)
 		switch {
 		case *unattended:
@@ -321,7 +320,10 @@ func run() error {
 		case *approveAll:
 			approve = headless.AutoApprove
 		}
-		reason := headless.Run(ctx, bus, *prompt, approve)
+		// Subscribed before the engine runs, or SessionStarted is missed.
+		printer := headless.New(bus, approve, os.Stdout, os.Stderr)
+		sd.engine = runEngine(ctx, eng)
+		reason := printer.Run(ctx, *prompt)
 		fmt.Printf("\nrequest ended: %s\n", reason)
 		if reason == event.EndDone {
 			return nil

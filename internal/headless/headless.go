@@ -1,10 +1,12 @@
 // Package headless runs one prompt on a terminal with no TUI. A bus
 // subscriber like any front-end, which is what makes it a fair test.
+// What happened goes to out, notices go to errOut.
 package headless
 
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,36 +15,51 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Run submits prompt, prints what happens, and returns when the Turn
-// ends. approve decides the dangerous calls, and nil reads stdin.
-func Run(ctx context.Context, bus *event.Bus, prompt string, approve Approver) event.EndReason {
+// Approver answers one dangerous call.
+type Approver func(event.ApprovalAsked) bool
+
+// Printer is one headless Turn, subscribed from New so nothing published
+// before Run is missed.
+type Printer struct {
+	bus     *event.Bus
+	facts   <-chan event.Record
+	unsub   func()
+	approve Approver
+	out     io.Writer
+	errOut  io.Writer
+}
+
+// New subscribes to facts. approve decides the dangerous calls, and nil
+// reads stdin.
+func New(bus *event.Bus, approve Approver, out, errOut io.Writer) *Printer {
 	if approve == nil {
-		approve = Ask(os.Stdin, os.Stdout)
+		approve = Ask(os.Stdin, out)
 	}
 	facts, unsub := bus.Subscribe(event.Facts())
-	defer unsub()
+	return &Printer{bus: bus, facts: facts, unsub: unsub, approve: approve, out: out, errOut: errOut}
+}
 
-	bus.Publish(event.SubmitPrompt{Text: prompt})
+// Run submits prompt, prints what happens, and returns when the Turn ends.
+func (p *Printer) Run(ctx context.Context, prompt string) event.EndReason {
+	defer p.unsub()
+	p.bus.Publish(event.SubmitPrompt{Text: prompt})
 	for {
 		select {
 		case <-ctx.Done():
 			return event.EndAborted
-		case rec, ok := <-facts:
+		case rec, ok := <-p.facts:
 			if !ok {
 				return event.EndError
 			}
-			if r, done := handle(bus, rec.Event, approve); done {
+			if r, done := p.handle(rec.Event); done {
 				return r
 			}
 		}
 	}
 }
 
-// Approver answers one dangerous call.
-type Approver func(event.ApprovalAsked) bool
-
-// Ask reads y/n, and treats anything else as no. Unreadable stdin is a
-// decline that says so: this is the gate for dangerous commands.
+// Ask reads y/n, and treats anything else as no. Unreadable or closed
+// stdin is a decline that says so: this is the gate for dangerous commands.
 func Ask(in io.Reader, out io.Writer) Approver {
 	r := bufio.NewReader(in)
 	return func(a event.ApprovalAsked) bool {
@@ -53,7 +70,11 @@ func Ask(in io.Reader, out io.Writer) Approver {
 		}
 		fmt.Fprint(out, "[y] run   [n] skip: ")
 		line, err := r.ReadString('\n')
-		if err != nil && err != io.EOF {
+		switch {
+		case errors.Is(err, io.EOF) && line == "":
+			fmt.Fprintln(out, "\nstdin is closed; skipping (use -unattended or -approve-all)")
+			return false
+		case err != nil && !errors.Is(err, io.EOF):
 			fmt.Fprintf(out, "\ncould not read a decision (%v); skipping\n", err)
 			return false
 		}
@@ -69,38 +90,45 @@ func AutoApprove(event.ApprovalAsked) bool { return true }
 // should do rather than run something flagged.
 func AutoDecline(event.ApprovalAsked) bool { return false }
 
-func handle(bus *event.Bus, ev event.Event, approve Approver) (event.EndReason, bool) {
+func (p *Printer) handle(ev event.Event) (event.EndReason, bool) {
 	switch v := ev.(type) {
+	case event.SessionStarted:
+		where := "host"
+		if v.Sandbox {
+			where = "sandbox"
+		}
+		fmt.Fprintf(p.errOut, "detent: model %s, commands run on the %s\n", v.Model, where)
 	case event.CallProposed:
-		fmt.Printf("  → %s %s\n", v.Tool, args(v.Args))
+		fmt.Fprintf(p.out, "  → %s\n", clip(event.Command(v.Tool, v.Args), 120))
 	case event.CallEnded:
-		fmt.Println("    " + outcome(v.Result))
+		fmt.Fprintln(p.out, "    "+outcome(v.Result))
 	case event.ModelText:
-		fmt.Printf("\n%s\n", v.Text)
+		fmt.Fprintf(p.out, "\n%s\n", v.Text)
 	case event.ApprovalAsked:
-		bus.Publish(event.ResolveApproval{Call: v.Call, Approved: approve(v)})
+		p.bus.Publish(event.ResolveApproval{Call: v.Call, Approved: p.approve(v)})
 	case event.BoundReached:
 		// Unattended, the bound is where it stops.
-		fmt.Printf("\nstopped after %d steps\n", v.Steps)
-		bus.Publish(event.Continue{Turn: v.Turn, Approved: false})
+		fmt.Fprintf(p.out, "\nstopped after %d steps\n", v.Steps)
+		p.bus.Publish(event.Continue{Turn: v.Turn, Approved: false})
 	case event.Notice:
-		fmt.Fprintf(os.Stderr, "detent: %s: %s\n", v.Level, v.Text)
+		fmt.Fprintf(p.errOut, "detent: %s: %s\n", v.Level, v.Text)
 	case event.TurnEnded:
 		return v.Reason, true
 	}
 	return "", false
 }
 
-func args(a map[string]any) string {
-	parts := make([]string, 0, len(a))
-	for k, v := range a {
-		s := fmt.Sprint(v)
-		if len(s) > 60 {
-			s = s[:60] + "…"
-		}
-		parts = append(parts, k+"="+s)
+// clip keeps a Call to one line of at most n runes.
+func clip(s string, n int) string {
+	first, _, more := strings.Cut(s, "\n")
+	r := []rune(first)
+	if len(r) > n {
+		return string(r[:n]) + "…"
 	}
-	return strings.Join(parts, " ")
+	if more {
+		return first + " …"
+	}
+	return first
 }
 
 // outcome is how a Call ended: its exit code, or why it has none.
