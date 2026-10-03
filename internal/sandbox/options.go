@@ -2,28 +2,10 @@ package sandbox
 
 import (
 	"maps"
-
-	"github.com/vitzeno/detent/internal/capture"
 )
 
 // Option configures a Container.
 type Option func(*Container)
-
-// NewContainer builds a Container. Call Start before Run.
-func NewContainer(opts ...Option) *Container {
-	c := &Container{
-		namespace:  DefaultNamespace,
-		image:      DefaultImage,
-		mountPoint: DefaultMountPoint,
-		network:    DefaultNetwork,
-		limit:      capture.MaxOutputBytes,
-		slot:       make(chan struct{}, 1),
-	}
-	for _, opt := range opts {
-		opt(c)
-	}
-	return c
-}
 
 // WithReadOnly mounts each host directory at its destination, unwritable
 // from inside, as skills are.

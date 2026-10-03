@@ -114,6 +114,22 @@ type Container struct {
 	slot chan struct{}
 }
 
+// NewContainer builds a Container. Call Start before Run.
+func NewContainer(opts ...Option) *Container {
+	c := &Container{
+		namespace:  DefaultNamespace,
+		image:      DefaultImage,
+		mountPoint: DefaultMountPoint,
+		network:    DefaultNetwork,
+		limit:      capture.MaxOutputBytes,
+		slot:       make(chan struct{}, 1),
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
+}
+
 // Start connects to the daemon and creates the session's container,
 // named from sessionID. Must be called once before Run.
 func (c *Container) Start(ctx context.Context, sessionID string) error {
@@ -303,67 +319,6 @@ func (c *Container) Run(ctx context.Context, command string, events chan<- captu
 	return res, delErr
 }
 
-// await waits on bg, not ctx, for the task to exit, since a cancelled wait
-// returns at once and leaves the task running. A cancel or a flood kills it.
-func await(ctx, bg context.Context, task containerd.Task, exitCh <-chan containerd.ExitStatus, files ...string) (code uint32, overflow bool, err error) {
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-	for {
-		select {
-		case st := <-exitCh:
-			code, _, err = st.Result()
-			return code, false, err
-		case <-ctx.Done():
-			kill(bg, task, exitCh)
-			return 0, false, nil
-		case <-tick.C:
-			if tooBig(files) {
-				kill(bg, task, exitCh)
-				return 0, true, nil
-			}
-		}
-	}
-}
-
-func kill(bg context.Context, task containerd.Task, exitCh <-chan containerd.ExitStatus) {
-	_ = task.Kill(bg, syscall.SIGKILL)
-	select {
-	case <-exitCh:
-	case <-time.After(killWait):
-	}
-}
-
-func tooBig(files []string) bool {
-	for _, f := range files {
-		if st, err := os.Stat(f); err == nil && st.Size() > maxOutputFile {
-			return true
-		}
-	}
-	return false
-}
-
-// deleteTask removes a finished or stuck task, killing it if it still
-// runs: one left behind fails every later NewTask with "already exists".
-func deleteTask(bg context.Context, task containerd.Task) error {
-	ctx, cancel := context.WithTimeout(bg, cleanupWait)
-	defer cancel()
-	if _, err := task.Delete(ctx, containerd.WithProcessKill); err != nil && !errdefs.IsNotFound(err) {
-		return fmt.Errorf("sandbox: delete task: %w", err)
-	}
-	return nil
-}
-
-// acquire takes the container, giving up when ctx does: a tool call queued
-// behind a long human command must still honour its own bound.
-func (c *Container) acquire(ctx context.Context) (func(), error) {
-	select {
-	case c.slot <- struct{}{}:
-		return func() { <-c.slot }, nil
-	case <-ctx.Done():
-		return nil, fmt.Errorf("sandbox: waiting for the container: %w", ctx.Err())
-	}
-}
-
 // Close tears down the container, its current snapshot, and the
 // client connection. Safe to call even if Start failed partway, and twice.
 func (c *Container) Close(ctx context.Context) error {
@@ -416,23 +371,6 @@ func (c *Container) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// closeSlot takes the container from whatever still runs in it, killing
-// that rather than waiting out a long command.
-func (c *Container) closeSlot(ctx context.Context) (func(), error) {
-	quick, cancel := context.WithTimeout(ctx, killWait)
-	release, err := c.acquire(quick)
-	cancel()
-	if err == nil {
-		return release, nil
-	}
-	if c.container != nil {
-		if task, err := c.container.Task(ctx, nil); err == nil {
-			_ = deleteTask(ctx, task)
-		}
-	}
-	return c.acquire(ctx)
-}
-
 // writeIgnore gives the output directory its own .gitignore, so a commit
 // made inside the sandbox never takes the file its output is going to.
 func writeIgnore(dir string) error {
@@ -444,99 +382,6 @@ func writeIgnore(dir string) error {
 	}
 	return nil
 }
-
-// removeOutputDir removes the shared directory once only its .gitignore is left.
-func removeOutputDir(dir string) {
-	entries, err := os.ReadDir(dir)
-	if err != nil || len(entries) != 1 || entries[0].Name() != ".gitignore" {
-		return
-	}
-	_ = os.Remove(filepath.Join(dir, ".gitignore"))
-	_ = os.Remove(dir)
-}
-
-// clearStale removes what a killed process left behind, since its ids
-// are per session and resuming it would otherwise collide with them.
-func clearStale(ctx context.Context, client *containerd.Client, sessionID string) error {
-	cont, err := client.LoadContainer(ctx, containerID(sessionID))
-	switch {
-	case errdefs.IsNotFound(err):
-	case err != nil:
-		return fmt.Errorf("sandbox: look for a stale container: %w", err)
-	default:
-		if err := dropContainer(ctx, cont, sessionID); err != nil {
-			return err
-		}
-	}
-	// The checkpoints it rooted died with the container's snapshot, so
-	// the lease goes too and the GC can reclaim them.
-	return dropLease(ctx, client, sessionID)
-}
-
-// dropContainer deletes a container and its snapshot, refusing one a live
-// session holds: between tool calls only its holder label says so. Doubt refuses.
-func dropContainer(ctx context.Context, cont containerd.Container, sessionID string) error {
-	labels, err := cont.Labels(ctx)
-	if err != nil {
-		return fmt.Errorf("sandbox: labels of %s: %w", sessionID, err)
-	}
-	if heldElsewhere(labels[holderLabel]) {
-		return fmt.Errorf("sandbox: session %s is %w", sessionID, ErrSessionLive)
-	}
-	task, err := cont.Task(ctx, nil)
-	switch {
-	case errdefs.IsNotFound(err):
-	case err != nil:
-		return fmt.Errorf("sandbox: task of %s: %w", sessionID, err)
-	default:
-		st, err := task.Status(ctx)
-		if err != nil {
-			return fmt.Errorf("sandbox: status of %s: %w", sessionID, err)
-		}
-		if st.Status == containerd.Running {
-			return fmt.Errorf("sandbox: session %s is %w", sessionID, ErrSessionLive)
-		}
-		if _, err := task.Delete(ctx, containerd.WithProcessKill); err != nil && !errdefs.IsNotFound(err) {
-			return fmt.Errorf("sandbox: delete stale task: %w", err)
-		}
-	}
-	if err := cont.Delete(ctx, containerd.WithSnapshotCleanup); err != nil && !errdefs.IsNotFound(err) {
-		return fmt.Errorf("sandbox: delete stale container: %w", err)
-	}
-	return nil
-}
-
-func dropLease(ctx context.Context, client *containerd.Client, sessionID string) error {
-	err := client.LeasesService().Delete(ctx, leases.Lease{ID: leaseID(sessionID)})
-	if err != nil && !errdefs.IsNotFound(err) {
-		return fmt.Errorf("sandbox: delete stale lease: %w", err)
-	}
-	return nil
-}
-
-func holder() string {
-	host, _ := os.Hostname()
-	return strconv.Itoa(os.Getpid()) + "@" + host
-}
-
-// heldElsewhere reports whether another live process on this machine holds
-// a container. One elsewhere cannot be asked, so only a running task keeps it.
-func heldElsewhere(label string) bool {
-	pidText, host, ok := strings.Cut(label, "@")
-	pid, err := strconv.Atoi(pidText)
-	if !ok || err != nil || pid <= 0 {
-		return false
-	}
-	if self, _ := os.Hostname(); host != self || pid == os.Getpid() {
-		return false
-	}
-	return processAlive(pid)
-}
-
-// containerID names a container after the session that owns it.
-func containerID(sessionID string) string { return containerPrefix + sessionID }
-
-func leaseID(sessionID string) string { return containerID(sessionID) + leaseSuffix }
 
 // resolveImage returns the local image if present, pulling it
 // (unpacked) otherwise.
@@ -555,11 +400,6 @@ func resolveImage(ctx context.Context, client *containerd.Client, ref string) (c
 	return img, nil
 }
 
-// shellQuote single-quotes s for safe interpolation into a sh -c string.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
 // mounts is the workspace, writable, then each read-only directory in a
 // stable order so the spec is the same from run to run.
 func (c *Container) mounts(workspace string) []specs.Mount {
@@ -568,4 +408,97 @@ func (c *Container) mounts(workspace string) []specs.Mount {
 		out = append(out, specs.Mount{Type: "bind", Source: src, Destination: c.readOnly[src], Options: []string{"rbind", "ro"}})
 	}
 	return out
+}
+
+// acquire takes the container, giving up when ctx does: a tool call queued
+// behind a long human command must still honour its own bound.
+func (c *Container) acquire(ctx context.Context) (func(), error) {
+	select {
+	case c.slot <- struct{}{}:
+		return func() { <-c.slot }, nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("sandbox: waiting for the container: %w", ctx.Err())
+	}
+}
+
+// await waits on bg, not ctx, for the task to exit, since a cancelled wait
+// returns at once and leaves the task running. A cancel or a flood kills it.
+func await(ctx, bg context.Context, task containerd.Task, exitCh <-chan containerd.ExitStatus, files ...string) (code uint32, overflow bool, err error) {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case st := <-exitCh:
+			code, _, err = st.Result()
+			return code, false, err
+		case <-ctx.Done():
+			kill(bg, task, exitCh)
+			return 0, false, nil
+		case <-tick.C:
+			if tooBig(files) {
+				kill(bg, task, exitCh)
+				return 0, true, nil
+			}
+		}
+	}
+}
+
+func kill(bg context.Context, task containerd.Task, exitCh <-chan containerd.ExitStatus) {
+	_ = task.Kill(bg, syscall.SIGKILL)
+	select {
+	case <-exitCh:
+	case <-time.After(killWait):
+	}
+}
+
+func tooBig(files []string) bool {
+	for _, f := range files {
+		if st, err := os.Stat(f); err == nil && st.Size() > maxOutputFile {
+			return true
+		}
+	}
+	return false
+}
+
+// deleteTask removes a finished or stuck task, killing it if it still
+// runs: one left behind fails every later NewTask with "already exists".
+func deleteTask(bg context.Context, task containerd.Task) error {
+	ctx, cancel := context.WithTimeout(bg, cleanupWait)
+	defer cancel()
+	if _, err := task.Delete(ctx, containerd.WithProcessKill); err != nil && !errdefs.IsNotFound(err) {
+		return fmt.Errorf("sandbox: delete task: %w", err)
+	}
+	return nil
+}
+
+// closeSlot takes the container from whatever still runs in it, killing
+// that rather than waiting out a long command.
+func (c *Container) closeSlot(ctx context.Context) (func(), error) {
+	quick, cancel := context.WithTimeout(ctx, killWait)
+	release, err := c.acquire(quick)
+	cancel()
+	if err == nil {
+		return release, nil
+	}
+	if c.container != nil {
+		if task, err := c.container.Task(ctx, nil); err == nil {
+			_ = deleteTask(ctx, task)
+		}
+	}
+	return c.acquire(ctx)
+}
+
+// removeOutputDir removes the shared directory once only its .gitignore is left.
+func removeOutputDir(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 || entries[0].Name() != ".gitignore" {
+		return
+	}
+	_ = os.Remove(filepath.Join(dir, ".gitignore"))
+	_ = os.Remove(dir)
+}
+
+// shellQuote single-quotes s for safe interpolation into a sh -c string.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

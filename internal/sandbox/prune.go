@@ -4,12 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
 	containerd "github.com/containerd/containerd"
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/leases"
 )
+
+// Pruned is what a prune removed, by session id, and what it left
+// alone because something was still running in it.
+type Pruned struct {
+	Containers []string
+	Leases     []string
+	Kept       []string
+}
+
+// Empty reports whether nothing was removed.
+func (p Pruned) Empty() bool { return len(p.Containers) == 0 && len(p.Leases) == 0 }
 
 // Prune removes what abandoned sessions left in containerd. Anything no
 // live process holds goes, since starting a session never adopts one.
@@ -41,17 +54,6 @@ func Prune(ctx context.Context, socket, namespace string) (Pruned, error) {
 	}
 	return out, pruneLeases(ctx, client, &out)
 }
-
-// Pruned is what a prune removed, by session id, and what it left
-// alone because something was still running in it.
-type Pruned struct {
-	Containers []string
-	Leases     []string
-	Kept       []string
-}
-
-// Empty reports whether nothing was removed.
-func (p Pruned) Empty() bool { return len(p.Containers) == 0 && len(p.Leases) == 0 }
 
 // Forget removes one session's container, snapshot and lease.
 // Refuses one a live process still holds.
@@ -89,3 +91,86 @@ func pruneLeases(ctx context.Context, client *containerd.Client, out *Pruned) er
 	}
 	return nil
 }
+
+// clearStale removes what a killed process left behind, since its ids
+// are per session and resuming it would otherwise collide with them.
+func clearStale(ctx context.Context, client *containerd.Client, sessionID string) error {
+	cont, err := client.LoadContainer(ctx, containerID(sessionID))
+	switch {
+	case errdefs.IsNotFound(err):
+	case err != nil:
+		return fmt.Errorf("sandbox: look for a stale container: %w", err)
+	default:
+		if err := dropContainer(ctx, cont, sessionID); err != nil {
+			return err
+		}
+	}
+	// The checkpoints it rooted died with the container's snapshot, so
+	// the lease goes too and the GC can reclaim them.
+	return dropLease(ctx, client, sessionID)
+}
+
+// dropContainer deletes a container and its snapshot, refusing one a live
+// session holds: between tool calls only its holder label says so. Doubt refuses.
+func dropContainer(ctx context.Context, cont containerd.Container, sessionID string) error {
+	labels, err := cont.Labels(ctx)
+	if err != nil {
+		return fmt.Errorf("sandbox: labels of %s: %w", sessionID, err)
+	}
+	if heldElsewhere(labels[holderLabel]) {
+		return fmt.Errorf("sandbox: session %s is %w", sessionID, ErrSessionLive)
+	}
+	task, err := cont.Task(ctx, nil)
+	switch {
+	case errdefs.IsNotFound(err):
+	case err != nil:
+		return fmt.Errorf("sandbox: task of %s: %w", sessionID, err)
+	default:
+		st, err := task.Status(ctx)
+		if err != nil {
+			return fmt.Errorf("sandbox: status of %s: %w", sessionID, err)
+		}
+		if st.Status == containerd.Running {
+			return fmt.Errorf("sandbox: session %s is %w", sessionID, ErrSessionLive)
+		}
+		if _, err := task.Delete(ctx, containerd.WithProcessKill); err != nil && !errdefs.IsNotFound(err) {
+			return fmt.Errorf("sandbox: delete stale task: %w", err)
+		}
+	}
+	if err := cont.Delete(ctx, containerd.WithSnapshotCleanup); err != nil && !errdefs.IsNotFound(err) {
+		return fmt.Errorf("sandbox: delete stale container: %w", err)
+	}
+	return nil
+}
+
+func dropLease(ctx context.Context, client *containerd.Client, sessionID string) error {
+	err := client.LeasesService().Delete(ctx, leases.Lease{ID: leaseID(sessionID)})
+	if err != nil && !errdefs.IsNotFound(err) {
+		return fmt.Errorf("sandbox: delete stale lease: %w", err)
+	}
+	return nil
+}
+
+func holder() string {
+	host, _ := os.Hostname()
+	return strconv.Itoa(os.Getpid()) + "@" + host
+}
+
+// heldElsewhere reports whether another live process on this machine holds
+// a container. One elsewhere cannot be asked, so only a running task keeps it.
+func heldElsewhere(label string) bool {
+	pidText, host, ok := strings.Cut(label, "@")
+	pid, err := strconv.Atoi(pidText)
+	if !ok || err != nil || pid <= 0 {
+		return false
+	}
+	if self, _ := os.Hostname(); host != self || pid == os.Getpid() {
+		return false
+	}
+	return processAlive(pid)
+}
+
+// containerID names a container after the session that owns it.
+func containerID(sessionID string) string { return containerPrefix + sessionID }
+
+func leaseID(sessionID string) string { return containerID(sessionID) + leaseSuffix }
