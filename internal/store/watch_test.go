@@ -115,6 +115,35 @@ func TestWatch_AnUnwritableStoreDoesNotBlockTheSession(t *testing.T) {
 	stop()
 }
 
+// Only the log heard about a failed write, so the human resumed a
+// session with holes. The first failure is said on screen, once.
+func TestWatch_AFailedWriteIsSaidOnce(t *testing.T) {
+	s := open(t)
+	bus := event.New()
+	notices, unsub := bus.Subscribe(event.Only(event.NoticeKind))
+	defer unsub()
+	stop := store.Watch(bus, s, uuid.Must(uuid.NewV7()))
+	require.NoError(t, s.Close())
+
+	for range 5 {
+		bus.Publish(event.TurnEnded{Reason: event.EndDone})
+	}
+	var warned int
+	timeout := time.After(time.Second)
+	for done := false; !done; {
+		select {
+		case r := <-notices:
+			if r.Event.(event.Notice).Level == "warn" {
+				warned++
+			}
+		case <-timeout:
+			done = true
+		}
+	}
+	stop()
+	assert.Equal(t, 1, warned)
+}
+
 // A second process must continue the ordinals rather than mint 1 again,
 // or INSERT OR REPLACE overwrites what the first recorded.
 func TestWatch_AResumedSessionDoesNotOverwriteTheFirst(t *testing.T) {

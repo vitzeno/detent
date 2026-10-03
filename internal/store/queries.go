@@ -21,8 +21,6 @@ const (
 	  FROM sessions s LEFT JOIN events e ON e.session = s.id
 	  GROUP BY s.id ORDER BY s.started DESC`
 
-	deleteAfter = `DELETE FROM events WHERE session = ? AND ordinal > ?`
-
 	// The events go with it, since the foreign key cascades.
 	deleteSession = `DELETE FROM sessions WHERE id = ?`
 )

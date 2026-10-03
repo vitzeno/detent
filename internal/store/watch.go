@@ -23,11 +23,14 @@ func Watch(bus *event.Bus, s *Store, session uuid.UUID) func() {
 				if failed == 0 {
 					logging.For(logging.Store).Error("this session is not being recorded",
 						logging.KeyReason, err.Error(), logging.KeyOrdinal, rec.Ordinal)
+					// Said once on screen too, since resume will be missing whatever follows.
+					bus.Publish(event.Notice{Level: "warn",
+						Text: "this session stopped being recorded, so resuming it will be incomplete: " + err.Error()})
 				}
 				failed++
 			}
 		}
-		if failed > 1 {
+		if failed > 0 {
 			logging.For(logging.Store).Error("records were lost", "lost", failed)
 		}
 	}()

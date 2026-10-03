@@ -4,6 +4,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,32 +12,43 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	_ "modernc.org/sqlite" // pure Go, because CGO_ENABLED=0 is the cross-build
+	"modernc.org/sqlite" // pure Go, because CGO_ENABLED=0 is the cross-build
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/vitzeno/detent/event"
 )
 
+// ReservedName is the one word -resume reads as an instruction.
+const ReservedName = "last"
+
 // Store is one database, safe for concurrent use.
 type Store struct{ db *sql.DB }
+
+// pragmas are per connection, so the DSN carries them. The busy wait and
+// WAL make a second writer wait, and immediate transactions let it.
+const pragmas = "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_txlock=immediate"
 
 // Open creates the database if it is not there. ":memory:" works, for
 // a test that wants no file.
 func Open(path string) (*Store, error) {
+	switch {
+	case path == "":
+		return nil, errors.New("store: no path, so nothing is recorded")
+	case strings.Contains(path, "?"):
+		return nil, fmt.Errorf("store: %s: a path cannot contain ?", path)
+	}
 	if dir := filepath.Dir(path); dir != "." && path != ":memory:" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, fmt.Errorf("store: %w", err)
 		}
 	}
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", path+pragmas)
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
-	// Off by default in SQLite, and per connection, so the pool has
-	// to be told rather than the database.
-	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("store: enable foreign keys: %w", err)
-	}
+	// SQLite has one writer anyway, and one connection is also what
+	// keeps ":memory:" a single database.
+	db.SetMaxOpenConns(1)
 	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, err
@@ -141,17 +153,20 @@ func (s *Store) Rename(session uuid.UUID, name string) error {
 	if err := usableName(name); err != nil {
 		return err
 	}
-	if _, err := s.db.Exec(renameSession, name, session.String()); err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") {
+	res, err := s.db.Exec(renameSession, name, session.String())
+	if err != nil {
+		var se *sqlite.Error
+		if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
 			return fmt.Errorf("another session is already called %q", name)
 		}
 		return fmt.Errorf("store: rename: %w", err)
 	}
+	// Said rather than reported as named, since the header may not be written yet.
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return fmt.Errorf("no session %s to name", session)
+	}
 	return nil
 }
-
-// ReservedName is the one word -resume reads as an instruction.
-const ReservedName = "last"
 
 // Delete forgets a session and its events, reporting whether there
 // was anything to forget.
@@ -165,15 +180,6 @@ func (s *Store) Delete(session uuid.UUID) (bool, error) {
 		return false, fmt.Errorf("store: delete: %w", err)
 	}
 	return n > 0, nil
-}
-
-// Truncate drops everything after an ordinal: undo, on disk.
-func (s *Store) Truncate(session uuid.UUID, after uint64) error {
-	_, err := s.db.Exec(deleteAfter, session.String(), after)
-	if err != nil {
-		return fmt.Errorf("store: truncate: %w", err)
-	}
-	return nil
 }
 
 // DefaultPath is where a session's events go, beside the logs.

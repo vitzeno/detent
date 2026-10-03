@@ -1,7 +1,9 @@
 package store_test
 
 import (
+	"database/sql"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -98,22 +100,6 @@ func TestStore_AppendIsIdempotent(t *testing.T) {
 	assert.Len(t, got, 2)
 }
 
-// Undoing a Turn is truncating the log, the same as in memory.
-func TestStore_TruncateDropsWhatCameAfter(t *testing.T) {
-	s := open(t)
-	session := uuid.Must(uuid.NewV7())
-	begin(t, s, session)
-	for n := uint64(2); n <= 6; n++ {
-		require.NoError(t, s.Append(session, rec(n, event.Notice{Text: "x"})))
-	}
-	require.NoError(t, s.Truncate(session, 3))
-
-	got, err := s.Replay(session)
-	require.NoError(t, err)
-	require.Len(t, got, 3)
-	assert.EqualValues(t, 3, got[len(got)-1].Ordinal)
-}
-
 func TestStore_ListsSessionsNewestFirst(t *testing.T) {
 	s := open(t)
 	older, newer := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
@@ -191,14 +177,64 @@ func TestStore_ResumingKeepsTheOriginalStart(t *testing.T) {
 // A header and its first event go in together, so a failure cannot
 // leave a session listed with nothing in it.
 func TestStore_AFailedAppendLeavesNoHeader(t *testing.T) {
-	s := open(t)
-	session := uuid.Must(uuid.NewV7())
-	// Ordinal 1 twice in one call is impossible, so force the failure
-	// after the header write by closing the database mid-flight.
-	require.NoError(t, s.Close())
+	path := filepath.Join(t.TempDir(), "events.db")
+	s, err := store.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
 
-	err := s.Append(session, rec(1, event.SessionStarted{Session: session}))
-	require.Error(t, err)
+	// A trigger refuses the event row, so the failure lands after the header.
+	raw, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+	_, err = raw.Exec(`CREATE TRIGGER refuse BEFORE INSERT ON events BEGIN SELECT RAISE(ABORT, 'refused'); END`)
+	require.NoError(t, err)
+	require.NoError(t, raw.Close())
+
+	session := uuid.Must(uuid.NewV7())
+	require.ErrorContains(t, s.Append(session, rec(1, event.SessionStarted{Session: session})), "refused")
+	got, err := s.Sessions()
+	require.NoError(t, err)
+	assert.Empty(t, got, "the header went back with the event")
+}
+
+// Two detents on one file is the ordinary case, so a second writer
+// waits its turn rather than losing records to SQLITE_BUSY.
+func TestStore_TwoProcessesWriteOneFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "events.db")
+	stores := make([]*store.Store, 2)
+	for i := range stores {
+		s, err := store.Open(path)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = s.Close() })
+		stores[i] = s
+	}
+	sessions := []uuid.UUID{uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())}
+
+	const each = 100
+	var wg sync.WaitGroup
+	errs := make(chan error, 2*each)
+	for i, s := range stores {
+		wg.Go(func() {
+			if err := s.Append(sessions[i], rec(1, event.SessionStarted{Session: sessions[i]})); err != nil {
+				errs <- err
+				return
+			}
+			for n := uint64(2); n <= each; n++ {
+				if err := s.Append(sessions[i], rec(n, event.Notice{Text: "x"})); err != nil {
+					errs <- err
+				}
+			}
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	for i, session := range sessions {
+		got, err := stores[1-i].Replay(session)
+		require.NoError(t, err)
+		assert.Len(t, got, each, "every record of session %d arrived", i)
+	}
 }
 
 // -resume resolves an id, then "last", then a name, so a name colliding
@@ -281,6 +317,42 @@ func TestDelete_TakesTheEventsWithIt(t *testing.T) {
 	kept, err := s.Replay(keep)
 	require.NoError(t, err)
 	assert.Len(t, kept, 2, "the wrong session lost records")
+}
+
+// The cascade rests on foreign keys, which SQLite enables per connection,
+// so a delete through a fresh one must still take the events with it.
+func TestDelete_CascadesThroughAnyConnection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "events.db")
+	writer, err := store.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = writer.Close() })
+	session := uuid.Must(uuid.NewV7())
+	begin(t, writer, session)
+	require.NoError(t, writer.Append(session, rec(2, event.Notice{Text: "x"})))
+
+	deleter, err := store.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = deleter.Close() })
+	gone, err := deleter.Delete(session)
+	require.NoError(t, err)
+	require.True(t, gone)
+
+	raw, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+	defer raw.Close()
+	var left int
+	require.NoError(t, raw.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&left))
+	assert.Zero(t, left, "no event outlives its session")
+}
+
+func TestRename_SaysWhenThereIsNoSuchSession(t *testing.T) {
+	s := open(t)
+	assert.ErrorContains(t, s.Rename(uuid.Must(uuid.NewV7()), "a name"), "no session")
+}
+
+func TestOpen_RefusesNoPath(t *testing.T) {
+	_, err := store.Open("")
+	assert.Error(t, err, "an empty path would record into a temporary database nobody can resume")
 }
 
 // Not an error, but worth saying: a typo should not read as success.
