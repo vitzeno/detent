@@ -28,23 +28,17 @@ const (
 // where is "host" or "sandbox". Cancelling ctx stops a running command.
 func Watch(ctx context.Context, bus *event.Bus, runner Runner, where string) func() {
 	s := &commands{ctx: ctx, bus: bus, runner: runner, where: where}
-	intents, unsub := bus.Subscribe(event.Only(event.RunCommandKind, event.CancelCommandKind))
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for rec := range intents {
-			switch v := rec.Event.(type) {
-			case event.RunCommand:
-				s.start(v.Text)
-			case event.CancelCommand:
-				s.cancel(v.UserCommand)
-			}
+	unhandle := bus.Handle(event.Only(event.RunCommandKind, event.CancelCommandKind), func(rec event.Record) {
+		switch v := rec.Event.(type) {
+		case event.RunCommand:
+			s.start(v.Text)
+		case event.CancelCommand:
+			s.cancel(v.UserCommand)
 		}
-	}()
+	})
 	// Waits for the last facts, so a caller can order this before the drain.
 	return func() {
-		unsub()
-		<-done
+		unhandle()
 		s.cancel(uuid.Nil)
 		s.wg.Wait()
 	}

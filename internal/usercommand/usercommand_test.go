@@ -158,7 +158,10 @@ func TestWatch_EmptyCommandDoesNothing(t *testing.T) {
 	stop := Watch(t.Context(), bus, r, "host")
 
 	bus.Publish(event.RunCommand{Text: "   "})
+	// Settled before the stop, or the intent can be abandoned unread and the test proves nothing.
+	bus.Settle(2 * time.Second)
 	stop()
+	bus.Settle(2 * time.Second)
 	// The intent itself is on the bus, but no fact saying a command ran.
 	assert.Empty(t, c.of(event.UserCommandStartedKind))
 	assert.Empty(t, c.of(event.UserCommandEndedKind))
@@ -305,15 +308,13 @@ type collector struct {
 func collect(t *testing.T, bus *event.Bus) *collector {
 	t.Helper()
 	c := &collector{}
-	records, unsub := bus.Subscribe(nil)
-	go func() {
-		for rec := range records {
-			c.mu.Lock()
-			c.got = append(c.got, rec)
-			c.mu.Unlock()
-		}
-	}()
-	t.Cleanup(func() { unsub(); bus.Close() })
+	// Handled rather than subscribed, so Settle means kept and not just received.
+	unhandle := bus.Handle(nil, func(rec event.Record) {
+		c.mu.Lock()
+		c.got = append(c.got, rec)
+		c.mu.Unlock()
+	})
+	t.Cleanup(func() { unhandle(); bus.Close() })
 	return c
 }
 
