@@ -31,6 +31,7 @@ type Options struct {
 	Flag bool
 	// Ask puts the question and reads the answer, nil when nobody can answer.
 	Ask func() bool
+	// Out is where the summary and question go. It must not be nil.
 	Out io.Writer
 }
 
