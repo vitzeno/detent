@@ -101,14 +101,6 @@ func TestFind_KeepsTheTreeFindPrinted(t *testing.T) {
 	assert.Equal(t, []string{"src", "└─ a", "src-old"}, r.Lines)
 }
 
-func keys[K comparable](m map[K]string) []K {
-	out := make([]K, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
-}
-
 // Raw is the floor of every fallback chain: the bytes as they came,
 // through one widget, parsing nothing.
 func TestRaw_DrawsTheOutputAsItCame(t *testing.T) {
@@ -133,4 +125,12 @@ func TestGoTest_ReadsCachedPackages(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, b.Sample(10), 3)
 	assert.False(t, b.Hides())
+}
+
+func keys[K comparable](m map[K]string) []K {
+	out := make([]K, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

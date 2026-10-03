@@ -10,19 +10,6 @@ import (
 	"github.com/vitzeno/detent/viewspec"
 )
 
-const edit = `--- a/main.go
-+++ b/main.go
-@@ -10,4 +10,4 @@
- func main() {
--	fmt.Println("hi")
-+	fmt.Println("hello")
- 	os.Exit(0)
-+	// done
-`
-
-var diffSpec = viewspec.Spec{Version: viewspec.Version, Parse: viewspec.Parse{Kind: "none"},
-	Blocks: []viewspec.Block{{Kind: "diff"}}}
-
 // Wide enough, the old file is on the left and the new on the right, a
 // changed line beside what replaced it, each numbered as in its own file.
 func TestDiff_SideBySideWhenThereIsRoom(t *testing.T) {
@@ -67,3 +54,16 @@ func TestDiff_ContentStartingWithDashesStaysInItsHunk(t *testing.T) {
 	assert.True(t, strings.HasPrefix(painted[4], "safe:"), painted[4])
 	assert.True(t, strings.HasPrefix(painted[0], "muted:"), painted[0])
 }
+
+const edit = `--- a/main.go
++++ b/main.go
+@@ -10,4 +10,4 @@
+ func main() {
+-	fmt.Println("hi")
++	fmt.Println("hello")
+ 	os.Exit(0)
++	// done
+`
+
+var diffSpec = viewspec.Spec{Version: viewspec.Version, Parse: viewspec.Parse{Kind: "none"},
+	Blocks: []viewspec.Block{{Kind: "diff"}}}
