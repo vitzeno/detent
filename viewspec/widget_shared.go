@@ -1,6 +1,7 @@
 package viewspec
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -47,7 +48,7 @@ func checkColumns(b Block, fields []string) error {
 
 func needField(name string, fields []string) error {
 	if name == "" {
-		return &BindError{Err: fmt.Errorf("needs a field")}
+		return &BindError{Err: errors.New("needs a field")}
 	}
 	if slices.Contains(fields, name) {
 		return nil
@@ -171,6 +172,8 @@ func pad(s string, w int, p Painter) string {
 	return s
 }
 
+var errNoWidth = errors.New("no width to chart in")
+
 // barLayout is the label, bar and value columns every row-per-bar
 // widget shares, so stacking two of them in one view lines them up.
 type barLayout struct{ label, bar, note int }
@@ -186,7 +189,7 @@ func layOutBars(labels, notes []string, f Frame) (barLayout, error) {
 	l.label = min(l.label, f.Width/3)
 	l.bar = f.Width - l.label - l.note - 2
 	if l.bar < 1 {
-		return l, fmt.Errorf("no width to chart in")
+		return l, errNoWidth
 	}
 	return l, nil
 }

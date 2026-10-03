@@ -1,6 +1,7 @@
 package viewspec
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -16,7 +17,7 @@ var (
 
 func (seriesWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
-		return fmt.Errorf("series needs a group column and a value column")
+		return errors.New("series needs a group column and a value column")
 	}
 	return checkColumns(b, fields)
 }

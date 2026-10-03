@@ -1,6 +1,7 @@
 package viewspec
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -32,7 +33,7 @@ type Widget interface {
 // same name, so a consumer can swap in its own without forking.
 func (r *Registry) Widget(kind string, w Widget) error {
 	if kind == "" {
-		return fmt.Errorf("viewspec: widget kind must not be empty")
+		return errors.New("viewspec: widget kind must not be empty")
 	}
 	if w == nil {
 		return fmt.Errorf("viewspec: widget %q must not be nil", kind)
@@ -51,7 +52,7 @@ type Extractor interface {
 // an extractor can do its own setup, such as compiling a pattern.
 func (r *Registry) Extractor(kind string, mk func(Parse) (Extractor, error)) error {
 	if kind == "" {
-		return fmt.Errorf("viewspec: parse kind must not be empty")
+		return errors.New("viewspec: parse kind must not be empty")
 	}
 	if mk == nil {
 		return fmt.Errorf("viewspec: parse kind %q must not be nil", kind)

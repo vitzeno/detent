@@ -1,6 +1,7 @@
 package viewspec
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -17,7 +18,7 @@ var (
 
 func (gaugeWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
-		return fmt.Errorf("gauge needs a label column and a percentage column")
+		return errors.New("gauge needs a label column and a percentage column")
 	}
 	if len(fields) == 0 {
 		return ErrNoRows
@@ -39,7 +40,7 @@ func (gaugeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	labelW = min(labelW, f.Width/3)
 	cells := f.Width - labelW - 7
 	if cells < 1 {
-		return nil, fmt.Errorf("no width to chart in")
+		return nil, errNoWidth
 	}
 	lines := titleLine(b, f)
 	for i, r := range d.Rows {

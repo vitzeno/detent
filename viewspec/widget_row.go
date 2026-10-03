@@ -2,7 +2,6 @@ package viewspec
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 )
 
@@ -16,7 +15,7 @@ var (
 )
 
 func (rowWidget) Draw(Block, Data, Frame) ([]string, error) {
-	return nil, fmt.Errorf("a row is arranged by the interpreter, not drawn")
+	return nil, errors.New("a row is arranged by the interpreter, not drawn")
 }
 
 func (rowWidget) Accept(panes []Pane) error {

@@ -1,6 +1,6 @@
 package viewspec
 
-import "fmt"
+import "errors"
 
 // keyvalue reads the first two columns as label and value, one pair
 // per row, aligned on the widest label.
@@ -14,7 +14,7 @@ var (
 
 func (keyvalueWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
-		return fmt.Errorf("keyvalue needs exactly two columns")
+		return errors.New("keyvalue needs exactly two columns")
 	}
 	if len(fields) == 0 {
 		return ErrNoRows

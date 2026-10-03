@@ -1,6 +1,7 @@
 package viewspec
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -19,7 +20,7 @@ var (
 
 func (timelineWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
-		return fmt.Errorf("timeline needs a label column and a time column")
+		return errors.New("timeline needs a label column and a time column")
 	}
 	return checkColumns(b, fields)
 }

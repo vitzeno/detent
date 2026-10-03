@@ -1,7 +1,7 @@
 package viewspec
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 )
 
@@ -28,7 +28,7 @@ func (tableWidget) Validate(b Block, fields []string) error {
 func (tableWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	cols := tableColumns(b, d)
 	if len(cols) == 0 {
-		return nil, fmt.Errorf("no columns to draw")
+		return nil, errors.New("no columns to draw")
 	}
 	widths := fitColumns(cols, d.Rows, f.Width, f.Paint)
 	head := make([]string, len(cols))

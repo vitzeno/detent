@@ -1,7 +1,7 @@
 package viewspec
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 )
 
@@ -17,7 +17,7 @@ var (
 
 func (divergeWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 3 {
-		return fmt.Errorf("diverge needs a label column and two value columns")
+		return errors.New("diverge needs a label column and two value columns")
 	}
 	if len(fields) == 0 {
 		return ErrNoRows
@@ -41,7 +41,7 @@ func (divergeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	labelW = min(labelW, f.Width/3)
 	wing := (f.Width - labelW - noteW - 4) / 2
 	if wing < 1 {
-		return nil, fmt.Errorf("no width to chart in")
+		return nil, errNoWidth
 	}
 	lines := titleLine(b, f)
 	for _, r := range d.Rows {

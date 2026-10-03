@@ -1,6 +1,9 @@
 package viewspec
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // meter draws a proportion counted from rows, so a Title containing a
 // number cannot change what the bar says.
@@ -13,7 +16,7 @@ var (
 
 func (meterWidget) Validate(b Block, fields []string) error {
 	if b.CountWhere == "" {
-		return fmt.Errorf("meter needs count_where")
+		return errors.New("meter needs count_where")
 	}
 	if len(fields) == 0 {
 		return ErrNoRows

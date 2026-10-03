@@ -1,7 +1,7 @@
 package viewspec
 
 import (
-	"fmt"
+	"errors"
 	"strconv"
 )
 
@@ -16,7 +16,7 @@ var (
 
 func (statWidget) Validate(b Block, fields []string) error {
 	if b.Title == "" {
-		return fmt.Errorf("stat needs a title to label the number")
+		return errors.New("stat needs a title to label the number")
 	}
 	if b.CountWhere != "" {
 		if err := checkCount(b, fields); err != nil {

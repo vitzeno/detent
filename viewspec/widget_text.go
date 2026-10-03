@@ -1,6 +1,6 @@
 package viewspec
 
-import "fmt"
+import "errors"
 
 // text is model-authored framing, so it renders faint. A generated
 // heading must not be able to read as a finding.
@@ -13,7 +13,7 @@ var (
 
 func (textWidget) Validate(b Block, _ []string) error {
 	if b.Title == "" {
-		return fmt.Errorf("text needs a title")
+		return errors.New("text needs a title")
 	}
 	return nil
 }

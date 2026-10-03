@@ -1,6 +1,7 @@
 package viewspec
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 )
@@ -16,7 +17,7 @@ var (
 
 func (boxplotWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
-		return fmt.Errorf("boxplot needs a group column and a value column")
+		return errors.New("boxplot needs a group column and a value column")
 	}
 	return checkColumns(b, fields)
 }

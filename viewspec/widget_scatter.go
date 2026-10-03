@@ -1,6 +1,7 @@
 package viewspec
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -16,7 +17,7 @@ var (
 
 func (scatterWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
-		return fmt.Errorf("scatter needs an x column and a y column")
+		return errors.New("scatter needs an x column and a y column")
 	}
 	if len(fields) == 0 {
 		return ErrNoRows
@@ -51,7 +52,7 @@ func (scatterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	xlo, xhi := bounds(xs)
 	ylo, yhi := bounds(ys)
 	if f.Width < 4 {
-		return nil, fmt.Errorf("no width to plot in")
+		return nil, errors.New("no width to plot in")
 	}
 	rows := scatterRows(f)
 	cells := make([][]byte, rows)

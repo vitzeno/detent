@@ -51,7 +51,7 @@ func newLinesExtractor(p Parse) (Extractor, error) {
 		}
 	}
 	if len(order) == 0 {
-		return nil, fmt.Errorf("pattern has no named captures")
+		return nil, errors.New("pattern has no named captures")
 	}
 	return skipping(p, linesExtractor{re: re, order: order}), nil
 }

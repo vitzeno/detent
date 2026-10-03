@@ -1,7 +1,7 @@
 package viewspec
 
 import (
-	"fmt"
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -18,7 +18,7 @@ var (
 
 func (heatmapWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 && len(b.Columns) != 3 {
-		return fmt.Errorf("heatmap needs a row column, a column column, and optionally a value")
+		return errors.New("heatmap needs a row column, a column column, and optionally a value")
 	}
 	if len(fields) == 0 {
 		return ErrNoRows
@@ -63,7 +63,7 @@ func (heatmapWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	labelW = min(labelW, f.Width/3)
 	if width := f.Width - labelW - 1; len(cols) > width {
 		if width < 1 {
-			return nil, fmt.Errorf("no width to chart in")
+			return nil, errNoWidth
 		}
 		cols = cols[:width]
 	}

@@ -2,7 +2,6 @@ package viewspec
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 )
 
@@ -16,7 +15,7 @@ var (
 )
 
 func (panelWidget) Draw(Block, Data, Frame) ([]string, error) {
-	return nil, fmt.Errorf("a panel is arranged by the interpreter, not drawn")
+	return nil, errors.New("a panel is arranged by the interpreter, not drawn")
 }
 
 func (panelWidget) Accept(panes []Pane) error {

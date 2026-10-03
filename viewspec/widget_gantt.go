@@ -1,7 +1,7 @@
 package viewspec
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 )
 
@@ -17,7 +17,7 @@ var (
 
 func (ganttWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 3 {
-		return fmt.Errorf("gantt needs a label column, a start column and a length column")
+		return errors.New("gantt needs a label column, a start column and a length column")
 	}
 	return checkColumns(b, fields)
 }

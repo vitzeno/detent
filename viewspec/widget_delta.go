@@ -1,6 +1,9 @@
 package viewspec
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // delta shows what a number moved to and how far. Direction is drawn
 // but never judged, since only the spec's accent knows which way is better.
@@ -14,7 +17,7 @@ var (
 
 func (deltaWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 3 {
-		return fmt.Errorf("delta needs a label column, a from column and a to column")
+		return errors.New("delta needs a label column, a from column and a to column")
 	}
 	return checkColumns(b, fields)
 }

@@ -1,6 +1,6 @@
 package viewspec
 
-import "fmt"
+import "errors"
 
 // dots leads each row with a status glyph, giving the state its own
 // column so the left edge says which rows are healthy.
@@ -17,7 +17,7 @@ func (dotsWidget) Validate(b Block, fields []string) error {
 		return ErrNoRows
 	}
 	if b.Accent == nil {
-		return fmt.Errorf("dots needs an accent to colour the glyph by")
+		return errors.New("dots needs an accent to colour the glyph by")
 	}
 	if err := needField(b.Field, fields); err != nil {
 		return err

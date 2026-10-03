@@ -1,7 +1,7 @@
 package viewspec
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 )
 
@@ -17,7 +17,7 @@ var (
 
 func (barWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
-		return fmt.Errorf("bar needs a label column and a value column")
+		return errors.New("bar needs a label column and a value column")
 	}
 	if len(fields) == 0 {
 		return ErrNoRows
@@ -44,7 +44,7 @@ func (barWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	}
 	barW := f.Width - labelW - numW - 3
 	if barW < 1 {
-		return nil, fmt.Errorf("no width to chart in")
+		return nil, errNoWidth
 	}
 	lines := make([]string, 0, len(d.Rows))
 	for i, r := range d.Rows {
