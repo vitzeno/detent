@@ -44,7 +44,7 @@ func (s *Store) Save(key string, spec *viewspec.Spec) error {
 	if s == nil || s.Dir == "" {
 		return nil
 	}
-	if err := os.MkdirAll(s.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return fmt.Errorf("viewgen: spec dir: %w", err)
 	}
 	raw, err := json.MarshalIndent(spec, "", "  ")

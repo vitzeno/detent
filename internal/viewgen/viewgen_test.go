@@ -111,6 +111,36 @@ func TestCompose_AJudgeThatFailsComposesNothing(t *testing.T) {
 	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
 }
 
+// A judge that did not answer the first question is not asked a second.
+func TestCompose_ASilentJudgeIsAskedOnce(t *testing.T) {
+	g, judge := composer(t, nil)
+	judge.err = errors.New("jev unreachable")
+	_, err := g.Compose(context.Background(), request())
+	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
+	assert.Len(t, judge.asked, 1)
+}
+
+// The cache is an optimisation: a view composed and checked still draws
+// when it cannot be written down.
+func TestCompose_AViewThatCannotBeSavedStillDraws(t *testing.T) {
+	g, _ := composer(t, map[string]string{
+		"header_line": "none", "parse_kind": "prefix", "body": "table", "summary": "none",
+	})
+	file := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+	g.Store = &viewgen.Store{Dir: filepath.Join(file, "views")}
+
+	got, err := g.Compose(context.Background(), request())
+	require.NoError(t, err)
+	assert.Equal(t, viewgen.SourceGenerated, got.Source)
+	require.NotNil(t, got.Spec)
+}
+
+func TestKinds_IsACopy(t *testing.T) {
+	viewgen.Kinds()[0].Name = "changed"
+	assert.NotEqual(t, "changed", viewgen.Kinds()[0].Name)
+}
+
 // A judge deciding shape needs a sample, not the whole thing.
 func TestCompose_TheJudgeSeesABoundedSample(t *testing.T) {
 	g, judge := composer(t, map[string]string{"header_line": "none", "parse_kind": "prefix"})
@@ -472,18 +502,19 @@ type scriptedJudge struct {
 	seen  []classify.State
 	// asked is each batch's question names, sorted.
 	asked [][]string
-	err   error
+	// err fails every batch after recording it.
+	err error
 }
 
 func (j *scriptedJudge) Ask(_ context.Context, state classify.State,
 	qs classify.Questions) (classify.Answers, classify.Usage, error) {
-	if j.err != nil {
-		return nil, classify.Usage{}, j.err
-	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.seen = append(j.seen, state)
 	j.asked = append(j.asked, slices.Sorted(maps.Keys(qs)))
+	if j.err != nil {
+		return nil, classify.Usage{}, j.err
+	}
 	out := classify.Answers{}
 	given := map[string]bool{}
 	for _, name := range slices.Sorted(maps.Keys(qs)) {

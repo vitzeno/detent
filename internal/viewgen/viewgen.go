@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/classify"
@@ -23,6 +24,9 @@ type Generator struct {
 	Judge    Judge
 	Registry *viewspec.Registry
 	Store    *Store
+	// Unjudged says nothing publishes CallJudged, so Watch resolves a Call
+	// when it ends rather than waiting for a verdict that never comes.
+	Unjudged bool
 }
 
 // Request is one command's outcome, as the generator sees it.
@@ -49,8 +53,11 @@ type Result struct {
 type Source string
 
 const (
-	SourceShipped   Source = "shipped"
-	SourceSaved     Source = "saved"
+	// SourceShipped is a spec from views, detent's own.
+	SourceShipped Source = "shipped"
+	// SourceSaved is a spec on disk, which a human may have edited.
+	SourceSaved Source = "saved"
+	// SourceGenerated was composed by the judge just now.
 	SourceGenerated Source = "generated"
 )
 
@@ -129,7 +136,7 @@ func (g *Generator) usable(ctx context.Context, req Request, spec *viewspec.Spec
 
 // worthAsking reports whether this output earns a judge call. Shape
 // decides most of it, length the rest.
-func (g *Generator) worthAsking(req Request) bool {
+func worthAsking(req Request) bool {
 	if !worthGenerating(req.Kind) {
 		return false
 	}
@@ -138,7 +145,7 @@ func (g *Generator) worthAsking(req Request) bool {
 
 // skipReason says which gate refused, since "no view appeared" is
 // otherwise the same observation whatever the cause.
-func (g *Generator) skipReason(req Request) string {
+func skipReason(req Request) string {
 	if !worthGenerating(req.Kind) {
 		return "this shape draws itself"
 	}
@@ -192,10 +199,13 @@ func lines(s string) int {
 	return strings.Count(strings.TrimSuffix(s, "\n"), "\n") + 1
 }
 
-// head returns at most n bytes of s, marked where it was cut.
+// head returns at most n bytes of s, cut on a rune and marked where.
 func head(s string, n int) string {
 	if len(s) <= n {
 		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
 	}
 	return s[:n] + "\n…[truncated]"
 }

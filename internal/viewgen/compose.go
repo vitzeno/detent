@@ -16,14 +16,20 @@ import (
 // Compose builds a spec by asking the judge closed questions and
 // assembling the answers, so it cannot name anything that does not exist.
 func (g *Generator) Compose(ctx context.Context, req Request) (Result, error) {
-	log := logging.For(logging.Viewgen)
 	key := Key(req.Command, req.Kind)
 	if spec, ok := g.Store.Load(key); ok && g.usable(ctx, req, spec, SourceSaved) {
 		return Result{Spec: spec, Key: key, Source: SourceSaved}, nil
 	}
-	if !g.worthAsking(req) {
+	return g.compose(ctx, req)
+}
+
+// compose is Compose without the store, for a caller that has looked there.
+func (g *Generator) compose(ctx context.Context, req Request) (Result, error) {
+	log := logging.For(logging.Viewgen)
+	key := Key(req.Command, req.Kind)
+	if !worthAsking(req) {
 		log.InfoContext(ctx, "not asking for a view", logging.KeyEvent, logging.ViewSkipped,
-			"kind", req.Kind, "lines", lines(req.Output), logging.KeyReason, g.skipReason(req))
+			"kind", req.Kind, "lines", lines(req.Output), logging.KeyReason, skipReason(req))
 		if spec, ok := g.shipped(ctx, req, key); ok {
 			return spec, nil
 		}
@@ -46,11 +52,13 @@ func (g *Generator) Compose(ctx context.Context, req Request) (Result, error) {
 	}
 
 	spec.Version, spec.Match = viewspec.Version, Normalise(req.Command)
+	// The cache is an optimisation: a view that cannot be saved still draws.
+	attrs := []any{logging.KeyEvent, logging.ViewAccepted, "key", key, "questions", c.asked,
+		"parse", spec.Parse.Kind, "blocks", len(spec.Blocks)}
 	if err := g.Store.Save(key, spec); err != nil {
-		return Result{Usage: c.used}, err
+		attrs = append(attrs, "saved", false, logging.KeyReason, err.Error())
 	}
-	log.InfoContext(ctx, "drawing a composed view", logging.KeyEvent, logging.ViewAccepted,
-		"key", key, "questions", c.asked, "parse", spec.Parse.Kind, "blocks", len(spec.Blocks))
+	log.InfoContext(ctx, "drawing a composed view", attrs...)
 	return Result{Spec: spec, Key: key, Source: SourceGenerated, Usage: c.used}, nil
 }
 
@@ -106,7 +114,10 @@ func (c *composer) run(ctx context.Context) (*viewspec.Spec, error) {
 // parse settles where the header is, then which kind reads it, since
 // columns and fixed differ only in whether header names contain spaces.
 func (c *composer) parse(ctx context.Context) (viewspec.Parse, error) {
-	skip := c.header(ctx)
+	skip, err := c.header(ctx)
+	if err != nil {
+		return viewspec.Parse{}, err
+	}
 	kind, err := c.parseKind(ctx, headerLine(c.req.Output, skip))
 	if err != nil {
 		return viewspec.Parse{}, err
@@ -131,11 +142,12 @@ func (c *composer) parse(ctx context.Context) (viewspec.Parse, error) {
 }
 
 // header asks which line names the columns, offering the lines rather
-// than a count. -1 means no header at all, as in ls -la.
-func (c *composer) header(ctx context.Context) int {
+// than a count. -1 means no header at all, as in ls -la. A silent judge
+// ends the composition here rather than costing a second round trip.
+func (c *composer) header(ctx context.Context) (int, error) {
 	lines := strings.Split(strings.TrimRight(c.req.Output, "\n"), "\n")
 	if len(lines) < 2 {
-		return 0
+		return 0, nil
 	}
 	criteria := map[string]any{
 		"none": "None of these is a header. Every line is data, as in ls -la.",
@@ -154,16 +166,16 @@ func (c *composer) header(ctx context.Context) int {
 		},
 	})
 	if !ok {
-		return 0
+		return 0, errJudgeSilent
 	}
 	if answers["header_line"].Choice == "none" {
-		return -1
+		return -1, nil
 	}
 	n, err := strconv.Atoi(answers["header_line"].Choice)
 	if err != nil || n < 0 {
-		return 0
+		return 0, nil
 	}
-	return n
+	return n, nil
 }
 
 // parseKind chooses how to read the bytes, looking at the header the
@@ -246,7 +258,7 @@ func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 	if twice(read(body)) {
 		return nil, fmt.Errorf("%s would read one field twice", chosen)
 	}
-	if c.g.registry().Selects(chosen) && len(read(body)) < len(fields) && len(read(body)) == 1 {
+	if c.g.registry().Selects(chosen) && len(read(body)) == 1 && len(fields) > 1 {
 		return nil, fmt.Errorf("%s would show %s and hide %d other fields", chosen, body.Field, len(fields)-1)
 	}
 	var out []viewspec.Block

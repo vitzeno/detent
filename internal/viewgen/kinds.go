@@ -1,6 +1,8 @@
 package viewgen
 
 import (
+	"slices"
+
 	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/viewspec"
 )
@@ -33,15 +35,15 @@ type Kind struct {
 	// Widgets is what a composed view for this shape may use. A short
 	// list is what makes a small judge reliable.
 	Widgets []string
-	// Generate is false where there is nothing to gain: a diff and a
-	// stack trace already draw themselves.
+	// Generate is false where there is nothing to gain: a diff already
+	// draws itself.
 	Generate bool
 	// Records marks a shape made of rows, worth a view from a few of them.
 	Records bool
 }
 
 // Kinds lists every output shape, in the order they are described.
-func Kinds() []Kind { return kinds }
+func Kinds() []Kind { return slices.Clone(kinds) }
 
 // RenderKindCriteria is what Jev classifies output against, built from the
 // table that prunes the vocabulary, so every judged kind can be drawn.

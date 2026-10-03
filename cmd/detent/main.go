@@ -282,8 +282,9 @@ func run() error {
 	}
 	if judge != nil {
 		judgepkg.Watch(bus, judge)
-		views(resolved.Views, judge).Watch(bus)
 	}
+	// Without a key there is nothing to compose with, but shipped and saved views still draw.
+	views(resolved.Views, judge).Watch(bus)
 	sd.unwatch = append(sd.unwatch, forget.Watch(bus, sessionStore(events), sessionID,
 		forget.WithContainers(containerRemover(sandboxSocketFor(resolved)))))
 
@@ -392,6 +393,8 @@ func views(mode string, judge *classify.JevJudge) *viewgen.Generator {
 	g := &viewgen.Generator{
 		Registry: ui.Registry(),
 		Store:    &viewgen.Store{Dir: viewgen.DefaultDir()},
+		// Without a key nothing publishes CallJudged.
+		Unjudged: judge == nil,
 	}
 	if mode == config.ViewsGenerate && judge != nil {
 		g.Judge = judge

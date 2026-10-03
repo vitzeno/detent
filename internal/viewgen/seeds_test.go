@@ -101,6 +101,18 @@ func TestPrune_SchemaShrinksButMostOfItIsFixed(t *testing.T) {
 			"so cutting widgets moves less than it looks like it should")
 }
 
+// A parse kind is a bare string here and an extractor name in viewspec,
+// so a rename there would compile and then never bind.
+func TestParseCriteria_NamesOnlyKindsViewspecReads(t *testing.T) {
+	known := viewspec.Standard().ParseKinds()
+	for kind := range parseCriteria {
+		assert.Contains(t, known, kind)
+	}
+	for kind := range tabular {
+		assert.Contains(t, parseCriteria, kind)
+	}
+}
+
 // One sample of each shipped command's real output. A seed without a
 // sample here is a seed nobody has ever bound.
 var seedOutput = map[string]string{

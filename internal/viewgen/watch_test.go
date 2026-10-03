@@ -1,6 +1,8 @@
 package viewgen_test
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/classify"
 	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/ui"
 )
@@ -33,7 +36,8 @@ func TestWatch_KeysOnTheCommandNotTheTool(t *testing.T) {
 
 	select {
 	case rec := <-views:
-		got := rec.Event.(event.ViewReady)
+		got, ok := rec.Event.(event.ViewReady)
+		require.True(t, ok)
 		require.NotNil(t, got.Spec)
 		assert.Equal(t, "go test", got.Spec.Match)
 		assert.Equal(t, string(viewgen.SourceShipped), got.Source)
@@ -115,11 +119,106 @@ func TestWatch_AShellFallsBackToItsKindsView(t *testing.T) {
 	assert.Equal(t, "diff", got.Spec.Blocks[0].Kind)
 }
 
+// With no judge wired nothing publishes CallJudged, and a Call must not
+// wait for one: the shipped view draws as soon as it ends.
+func TestWatch_AnUnjudgedCallResolvesWhenItEnds(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	g := &viewgen.Generator{Registry: ui.Registry(), Unjudged: true}
+	defer g.Watch(bus)()
+
+	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
+	defer unsub()
+
+	call := uuid.Must(uuid.NewV7())
+	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1})
+	bus.Publish(event.CallProposed{Call: call, Tool: "bash",
+		Args: map[string]any{"command": "go test ./..."}})
+	bus.Publish(event.CallEnded{Call: call, Result: event.Result{Stdout: goTest}})
+
+	got := viewFor(t, views, call)
+	assert.Equal(t, "go test", got.Spec.Match)
+}
+
+// Shells of one shipped command resolve at once, in parallel, and share
+// nothing mutable with each other or with ui.
+func TestWatch_ParallelShellsShareNoState(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	g := &viewgen.Generator{Registry: ui.Registry()}
+	defer g.Watch(bus)()
+
+	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
+	defer unsub()
+
+	const n = 6
+	for range n {
+		shell := uuid.Must(uuid.NewV7())
+		bus.Publish(event.ShellStarted{Shell: shell, Command: "go test ./..."})
+		bus.Publish(event.ShellEnded{Shell: shell, Result: event.Result{Stdout: goTest}})
+	}
+	for range n {
+		select {
+		case rec := <-views:
+			got, ok := rec.Event.(event.ViewReady)
+			require.True(t, ok)
+			assert.Equal(t, "go test", got.Spec.Match)
+		case <-time.After(3 * time.Second):
+			t.Fatal("a view never arrived")
+		}
+	}
+}
+
+// Stopping cancels a composition waiting on the judge, rather than
+// waiting out the client's timeout, and publishes nothing for it.
+func TestWatch_StopCancelsCompositionInFlight(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	judge := &blockingJudge{asked: make(chan struct{}, 1)}
+	g := &viewgen.Generator{Judge: judge, Registry: ui.Registry()}
+	stop := g.Watch(bus)
+
+	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
+	defer unsub()
+
+	shell := uuid.Must(uuid.NewV7())
+	bus.Publish(event.ShellStarted{Shell: shell, Command: "cat stats.txt"})
+	bus.Publish(event.ShellEnded{Shell: shell, Result: event.Result{Stdout: strings.Repeat("a 1 ok\n", 10)}})
+	select {
+	case <-judge.asked:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the judge was never asked")
+	}
+
+	stopped := make(chan struct{})
+	go func() { stop(); close(stopped) }()
+	select {
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("stop waited on a composition nobody wants any more")
+	}
+	select {
+	case rec := <-views:
+		t.Fatalf("a stopped composer published %s", rec.Event.Kind())
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// blockingJudge answers nothing until its ctx is cancelled.
+type blockingJudge struct{ asked chan struct{} }
+
+func (j *blockingJudge) Ask(ctx context.Context, _ classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
+	j.asked <- struct{}{}
+	<-ctx.Done()
+	return nil, classify.Usage{}, ctx.Err()
+}
+
 func viewFor(t *testing.T, views <-chan event.Record, id uuid.UUID) event.ViewReady {
 	t.Helper()
 	select {
 	case rec := <-views:
-		got := rec.Event.(event.ViewReady)
+		got, ok := rec.Event.(event.ViewReady)
+		require.True(t, ok)
 		require.Equal(t, id, got.Call, "the view is for the Shell that ran")
 		require.NotNil(t, got.Spec)
 		return got
