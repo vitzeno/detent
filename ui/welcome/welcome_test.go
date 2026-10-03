@@ -2,33 +2,31 @@ package welcome
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func testFacts() Facts {
 	return Facts{
-		Proposer: "test-model", Judge: "jev", RunMode: "sandbox",
+		Model: "test-model", Judge: "jev", RunMode: "sandbox",
 		Image: "docker.io/library/buildpack-deps:24.04-scm", Mount: "/workspace", Network: "host",
 	}
 }
 
-var ansi = regexp.MustCompile("\x1b\\[[0-9;]*m")
-
-func plain(s string) string { return ansi.ReplaceAllString(s, "") }
+func plain(s string) string { return ansi.Strip(s) }
 
 // displayCol is where sub starts on screen, in columns not bytes.
 func displayCol(line, sub string) int {
-	i := strings.Index(line, sub)
-	if i < 0 {
+	before, _, ok := strings.Cut(line, sub)
+	if !ok {
 		return -1
 	}
-	return lipgloss.Width(line[:i])
+	return lipgloss.Width(before)
 }
 
 func TestWelcome_DetentAnimationSteps(t *testing.T) {
@@ -90,7 +88,7 @@ func TestWelcome_CentresVertically(t *testing.T) {
 // The welcome pane is where a human learns which build is running.
 func TestLines_ShowsTheVersion(t *testing.T) {
 	got := Lines(Facts{
-		Version: "9.9.9", Proposer: "m", RunMode: "host",
+		Version: "9.9.9", Model: "m", RunMode: "host",
 	}, 90, 30, 0)
 	assert.Contains(t, strings.Join(got, "\n"), "9.9.9")
 }
@@ -101,7 +99,7 @@ func TestWelcome_SaysWhatTheSessionIs(t *testing.T) {
 	const id = "01a0cf7f-dffa-7d71-b7a1-419e79eed0d2"
 
 	recorded := strings.Join(Lines(Facts{
-		Version: "v", Proposer: "m", RunMode: "host",
+		Version: "v", Model: "m", RunMode: "host",
 		Session: id, Recorded: true, Sessions: 3,
 	}, 80, 40, 0), "\n")
 	assert.Contains(t, recorded, id, "the id is what you type after -resume")
@@ -109,13 +107,23 @@ func TestWelcome_SaysWhatTheSessionIs(t *testing.T) {
 	assert.NotContains(t, recorded, "persistence pending", "that layer landed")
 
 	unrecorded := strings.Join(Lines(Facts{
-		Version: "v", Proposer: "m", RunMode: "host", Recorded: false,
+		Version: "v", Model: "m", RunMode: "host", Recorded: false,
 	}, 80, 40, 0), "\n")
 	assert.Contains(t, unrecorded, "not being recorded")
 
 	resumed := strings.Join(Lines(Facts{
-		Version: "v", Proposer: "m", RunMode: "host",
+		Version: "v", Model: "m", RunMode: "host",
 		Session: id, Recorded: true, Resumed: 12,
 	}, 80, 40, 0), "\n")
 	assert.Contains(t, resumed, "12 records")
+}
+
+// Everything the pane reports is handed in, so a test can pin the rows
+// that once read the process: the machine and the working directory.
+func TestWelcome_ReportsTheMachineItIsHanded(t *testing.T) {
+	f := testFacts()
+	f.OS, f.Arch, f.CPUs, f.WorkDir = "linux", "arm64", 8, "~/src/detent"
+	got := plain(strings.Join(Lines(f, 90, 40, 0), "\n"))
+	assert.Contains(t, got, "linux/arm64 · 8 cpu")
+	assert.Contains(t, got, "~/src/detent")
 }

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -77,6 +78,8 @@ type Model struct {
 
 	welcomeFrame int
 	viewContent  string
+	// workDir is where this process runs, read once for the welcome pane.
+	workDir string
 
 	// facts is the subscription. Re-armed by nextFact after each one,
 	// which is what keeps ordering without a second goroutine.
@@ -102,8 +105,10 @@ func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 
 	facts, stop := bus.Subscribe(event.Facts())
 	context.AfterFunc(ctx, stop)
+	wd, _ := os.Getwd()
+	home, _ := os.UserHomeDir()
 	return Model{
-		bus: bus, info: info,
+		bus: bus, info: info, workDir: tildePath(wd, home),
 		prompt:  newPrompt(),
 		output:  viewport.New(),
 		spinner: sp,

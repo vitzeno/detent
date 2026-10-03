@@ -1,23 +1,17 @@
 // Package welcome fills the output pane before anything has run: what
 // this session is wired to, and somewhere to start. It is handed facts
-// rather than reading the harness.
+// rather than reading the harness or the process.
 package welcome
 
 import (
 	"fmt"
-	"os"
-	"runtime"
 	"strings"
-	"time"
 
 	"charm.land/lipgloss/v2"
 
 	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/theme"
 )
-
-// TickRate is how often the detent animation advances.
-const TickRate = 420 * time.Millisecond
 
 const (
 	notches = 5
@@ -29,18 +23,23 @@ const (
 
 // Facts is what the pane reports about this run.
 type Facts struct {
-	Version  string
-	Proposer string
-	Judge    string // "" when no judge is wired
-	RunMode  string // "host" or "sandbox"
+	Version string
+	Model   string
+	Judge   string // "" when no judge is wired
+	RunMode string // "host" or "sandbox"
+	// Where this process runs: GOOS, GOARCH, CPU count and the working
+	// directory as it should be shown.
+	OS, Arch string
+	CPUs     int
+	WorkDir  string
 	// Sandbox wiring, empty in host mode.
 	Image   string
 	Mount   string
 	Runtime string // "" means containerd's own default
 	Network string // "host" shares the containerd daemon's network
 
-	Goals    int
-	Commands int
+	Turns int
+	Calls int
 	// Sessions is how many are on disk, 0 until a listing arrives.
 	Sessions int
 	// Session is this run's own id, and Resumed how many records it
@@ -100,7 +99,7 @@ func Track(frame int) []string {
 
 var (
 	brand   lipgloss.Style
-	goal    lipgloss.Style
+	primary lipgloss.Style
 	muted   lipgloss.Style
 	faint   lipgloss.Style
 	safe    lipgloss.Style
@@ -114,7 +113,7 @@ func init() { RefreshStyles() }
 // theme. Call it after theme.Apply.
 func RefreshStyles() {
 	brand = lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
-	goal = lipgloss.NewStyle().Foreground(theme.TextPrimary)
+	primary = lipgloss.NewStyle().Foreground(theme.TextPrimary)
 	muted = lipgloss.NewStyle().Foreground(theme.TextMuted)
 	faint = lipgloss.NewStyle().Foreground(theme.TextFaint)
 	safe = lipgloss.NewStyle().Foreground(theme.Safe)
@@ -134,26 +133,26 @@ func banner(f Facts, width, frame int, compact bool) []string {
 	for _, l := range t {
 		out = append(out, pad+l)
 	}
+	name := centreLine(brand.Render("d e t e n t")+faint.Render("  "+f.Version), width)
 	if compact {
-		return append(out, centreLine(brand.Render("d e t e n t")+faint.Render("  "+f.Version), width))
+		return append(out, name)
 	}
 	return append(out,
 		"",
-		centreLine(brand.Render("d e t e n t")+faint.Render("  "+f.Version), width),
+		name,
 		// On the host, the environment section corrects this tagline.
 		centreLine(faint.Render("an agent at your terminal, every request checkpointed and undoable"), width),
 	)
 }
 
 func environment(f Facts, width int) []string {
-	wd, err := os.Getwd()
-	if err != nil {
+	wd := f.WorkDir
+	if wd == "" {
 		wd = "unknown"
 	}
 	out := []string{
-		row("this machine", goal.Render(fmt.Sprintf("%s/%s · %d cpu",
-			runtime.GOOS, runtime.GOARCH, runtime.NumCPU()))),
-		row("working dir", goal.Render(value(shortPath(wd), width))),
+		row("this machine", primary.Render(fmt.Sprintf("%s/%s · %d cpu", f.OS, f.Arch, f.CPUs))),
+		row("working dir", primary.Render(value(wd, width))),
 	}
 	return append(out, sandboxRows(f, width)...)
 }
@@ -171,10 +170,10 @@ func sandboxRows(f Facts, width int) []string {
 	}
 	return []string{
 		row("commands run", safe.Render("● sandboxed, in containerd")),
-		row("image", goal.Render(value(f.Image, width))),
-		row("runtime", goal.Render(rt)),
+		row("image", primary.Render(value(f.Image, width))),
+		row("runtime", primary.Render(rt)),
 		row("network", networkLine(f)),
-		row("workspace", goal.Render(f.Mount)+faint.Render("  bind mount, never rolled back")),
+		row("workspace", primary.Render(f.Mount)+faint.Render("  bind mount, never rolled back")),
 	}
 }
 
@@ -182,21 +181,21 @@ func sandboxRows(f Facts, width int) []string {
 // containerd daemon's host: a VM on macOS, this machine on Linux.
 func networkLine(f Facts) string {
 	if f.Network != "host" {
-		return goal.Render("isolated") + faint.Render("  loopback only, no DNS")
+		return primary.Render("isolated") + faint.Render("  loopback only, no DNS")
 	}
-	if runtime.GOOS == "darwin" {
-		return goal.Render("the colima VM's") + faint.Render("  your Mac is behind the VM")
+	if f.OS == "darwin" {
+		return primary.Render("the colima VM's") + faint.Render("  your Mac is behind the VM")
 	}
 	return caution.Render("⚠ this machine's") + faint.Render("  localhost and LAN reachable")
 }
 
 func models(f Facts, width int) []string {
-	judge := faint.Render("none — only the regex backstop flags danger")
+	judge := faint.Render("none — mutability, regex and repeat checks still flag")
 	if f.Judge != "" {
-		judge = goal.Render(value(f.Judge, width))
+		judge = primary.Render(value(f.Judge, width))
 	}
 	return []string{
-		row("proposes", goal.Render(value(f.Proposer, width))),
+		row("proposes", primary.Render(value(f.Model, width))),
 		row("judges risk", judge),
 		row("draws output", views()),
 	}
@@ -204,18 +203,18 @@ func models(f Facts, width int) []string {
 
 // views says where the output pane's framing comes from.
 func views() string {
-	return goal.Render("built-in and shipped") +
+	return primary.Render("built-in and shipped") +
 		faint.Render("  composed views land with the judge")
 }
 
 func session(f Facts) []string {
 	out := []string{
 		row("this session", sessionID(f)),
-		row("so far", goal.Render(fmt.Sprintf("%s · %s",
-			plural(f.Goals, "request"), plural(f.Commands, "call")))),
+		row("so far", primary.Render(fmt.Sprintf("%s · %s",
+			plural(f.Turns, "request"), plural(f.Calls, "call")))),
 	}
 	if f.Resumed > 0 {
-		out = append(out, row("resumed", goal.Render(plural(f.Resumed, "record"))+
+		out = append(out, row("resumed", primary.Render(plural(f.Resumed, "record"))+
 			faint.Render("  picking up where it left off")))
 	}
 	return append(out, row("all time", allTime(f)))
@@ -228,7 +227,7 @@ func sessionID(f Facts) string {
 		return caution.Render("⚠ not being recorded") +
 			faint.Render("  this session cannot be resumed")
 	}
-	return goal.Render(f.Session)
+	return primary.Render(f.Session)
 }
 
 // examples gives a first goal to copy rather than a blank box.
@@ -239,9 +238,9 @@ func examples(width int) []string {
 		"find the biggest files in this directory and delete the logs",
 		"why does the build fail? fix it if you can",
 	} {
-		out = append(out, "  "+faint.Render("›")+" "+goal.Render(value(e, width)))
+		out = append(out, "  "+faint.Render("›")+" "+primary.Render(value(e, width)))
 	}
-	return append(out, "    "+hint.Render("or a slash command: /status, /usage, /undo, /help"))
+	return append(out, "    "+hint.Render("or a slash command: /status, /context, /undo, /help"))
 }
 
 // section titles a group. The rule is short on purpose: four
@@ -259,16 +258,6 @@ func row(label, val string) string {
 
 // value trims to what's left of the row after the label.
 func value(s string, width int) string { return layout.Truncate(s, width-labelW-4) }
-
-// shortPath trades the home prefix for ~, so a deep working directory
-// still fits the pane.
-func shortPath(p string) string {
-	home, err := os.UserHomeDir()
-	if err != nil || !strings.HasPrefix(p, home) {
-		return p
-	}
-	return "~" + p[len(home):]
-}
 
 func centreLine(s string, width int) string {
 	return strings.Repeat(" ", indentToCentre(s, width)) + s
@@ -296,7 +285,7 @@ func allTime(f Facts) string {
 	if f.Sessions == 0 {
 		return faint.Render("—")
 	}
-	return goal.Render(plural(f.Sessions, "session")) +
+	return primary.Render(plural(f.Sessions, "session")) +
 		faint.Render("  resume one with /sessions")
 }
 

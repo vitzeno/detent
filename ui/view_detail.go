@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/vitzeno/detent/logging"
@@ -175,13 +177,29 @@ func (m *Model) scrollToLine(line int) {
 // ui/welcome reaches into Model.
 func (m Model) welcomePane() []string {
 	return welcome.Lines(welcome.Facts{
-		Version:  version.String(),
-		Proposer: m.run.Model, Judge: m.run.Judge, RunMode: m.runMode(),
+		Version: version.String(),
+		Model:   m.run.Model, Judge: m.run.Judge, RunMode: m.runMode(),
+		OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), WorkDir: m.workDir,
 		Image: m.info.Image, Mount: m.info.Mount,
 		Runtime: m.info.Runtime, Network: m.info.Network,
-		Goals: len(m.blocks), Commands: m.calls, Sessions: len(m.sessions),
+		Turns: len(m.blocks), Calls: m.calls, Sessions: len(m.sessions),
 		Session: m.run.Session.String(), Resumed: m.run.Resumed, Recorded: m.run.Recorded,
 	}, paneInner(m.layout.outputColW), m.output.Height(), m.welcomeFrame)
+}
+
+// tildePath trades a home prefix for ~, so a deep working directory
+// still fits the pane. Whole path elements only.
+func tildePath(dir, home string) string {
+	if home == "" {
+		return dir
+	}
+	if dir == home {
+		return "~"
+	}
+	if rest, ok := strings.CutPrefix(dir, home+string(filepath.Separator)); ok {
+		return "~" + string(filepath.Separator) + rest
+	}
+	return dir
 }
 
 // showWelcome reports whether the output pane has nothing of its own

@@ -1025,6 +1025,30 @@ func TestRefreshStyles_ReachesEverySubpackage(t *testing.T) {
 	assert.Contains(t, pane, sgr(light.Accent), "welcome")
 }
 
+func TestTildePath_MatchesWholeElements(t *testing.T) {
+	for _, c := range []struct{ dir, home, want string }{
+		{"/Users/m/proj", "/Users/m", "~/proj"},
+		{"/Users/m", "/Users/m", "~"},
+		{"/Users/mx/proj", "/Users/m", "/Users/mx/proj"},
+		{"/tmp", "", "/tmp"},
+	} {
+		assert.Equal(t, c.want, tildePath(c.dir, c.home), "%s under %s", c.dir, c.home)
+	}
+}
+
+// The first screen a human sees must not send them to a command that
+// does not exist, and welcome cannot see the registry to check.
+func TestWelcome_OffersOnlyRealCommands(t *testing.T) {
+	m := sized(t, 160, 60)
+	pane := stripANSI(strings.Join(m.welcomePane(), "\n"))
+	cmds := regexp.MustCompile(`/[a-z]+`).FindAllString(pane[strings.Index(pane, "slash command"):], -1)
+	require.NotEmpty(t, cmds)
+	for _, c := range cmds {
+		_, ok := lookupSlash(c, nil)
+		assert.True(t, ok, "%s is not a slash command", c)
+	}
+}
+
 type panicWidget struct{}
 
 func (panicWidget) Draw(viewspec.Block, viewspec.Data, viewspec.Frame) ([]string, error) {
