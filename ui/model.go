@@ -95,6 +95,8 @@ type SessionInfo struct {
 	Mount   string
 	Runtime string
 	Network string
+	// PowerShell is true when the human's commands run in pwsh.
+	PowerShell bool
 }
 
 // New builds the TUI over bus. It subscribes immediately, so nothing
@@ -110,7 +112,7 @@ func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 	home, _ := os.UserHomeDir()
 	return Model{
 		bus: bus, info: info, workDir: tildePath(wd, home),
-		prompt:  newPrompt(),
+		prompt:  newPrompt(info.PowerShell),
 		output:  viewport.New(),
 		spinner: sp,
 		nav:     navState{follow: true},

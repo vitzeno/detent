@@ -24,9 +24,11 @@ type prompt struct { //nolint:recvcheck // readers take a value so View can call
 	// shell switches the box to commands, which closes the dropdown:
 	// /usr/bin has to be typable.
 	shell bool
+	// powershell is true when those commands are PowerShell, which prompts PS>.
+	powershell bool
 }
 
-func newPrompt() prompt {
+func newPrompt(powershell bool) prompt {
 	ta := textarea.New()
 	// No limit: a cut paste would send the model less than the human did.
 	ta.CharLimit = 0
@@ -40,7 +42,7 @@ func newPrompt() prompt {
 	ta.SetHeight(1)
 	applyInputTheme(&ta)
 	ta.Focus()
-	p := prompt{input: ta}
+	p := prompt{input: ta, powershell: powershell}
 	// Sets the glyph and the placeholder, so they have one spelling.
 	p.SetShell(false)
 	return p
@@ -50,10 +52,11 @@ func newPrompt() prompt {
 // and all: the glyph is the only thing on screen that says which.
 func (p *prompt) SetShell(on bool) {
 	p.shell = on
-	glyph, hint := "❯ ", "describe a goal, e.g. what is listening on port 3000?"
+	glyph, hint := p.glyph(), "describe a goal, e.g. what is listening on port 3000?"
 	if on {
-		glyph, hint = "$ ", "run a command, e.g. git status"
+		hint = "run a command, e.g. git status"
 	}
+	width := lipgloss.Width(glyph)
 	p.input.Placeholder = hint
 	// The glyph carries the same signal as the border around it.
 	st := p.input.Styles()
@@ -63,13 +66,24 @@ func (p *prompt) SetShell(on bool) {
 	}
 	p.input.SetStyles(st)
 	// Prompt on the first row only, wrapped rows align under it.
-	p.input.SetPromptFunc(inputPromptW, func(i textarea.PromptInfo) string {
+	p.input.SetPromptFunc(width, func(i textarea.PromptInfo) string {
 		if i.LineNumber == 0 {
 			return glyph
 		}
-		return "  "
+		return strings.Repeat(" ", width)
 	})
 	p.rematch()
+}
+
+// glyph opens the box's first row: a request, or a command as the shell prompts for one.
+func (p prompt) glyph() string {
+	switch {
+	case !p.shell:
+		return "❯ "
+	case p.powershell:
+		return "PS> "
+	}
+	return "$ "
 }
 
 func (p prompt) Value() string      { return p.input.Value() }
@@ -156,9 +170,10 @@ func (p prompt) Rows() int { return p.DropdownRows() + p.input.Height() }
 
 // Resize refits the box to the window and to what's typed in it.
 func (p *prompt) Resize(width int) {
-	outer := max(inputPromptW+1, width-inputFrameW-inputMarkW)
+	glyphW := lipgloss.Width(p.glyph())
+	outer := max(glyphW+1, width-inputFrameW-inputMarkW)
 	p.input.SetWidth(outer)
-	p.input.SetHeight(inputRows(p.input.Value(), outer-inputPromptW))
+	p.input.SetHeight(inputRows(p.input.Value(), outer-glyphW))
 }
 
 // View stacks the dropdown above the box. The pane mark gets a gutter
@@ -181,8 +196,6 @@ const (
 	// maxInputRows caps how far the input box grows. Past it the
 	// textarea scrolls its own content instead.
 	maxInputRows = 10
-	// inputPromptW is the width SetPromptFunc reserves for "❯ ".
-	inputPromptW = 2
 	// inputFrameW is the island's border and padding around the text.
 	inputFrameW = 4
 	// inputMarkW is the pane-mark gutter ("● ") to the left of the

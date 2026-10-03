@@ -369,3 +369,21 @@ func mustLines(t *testing.T, m Model) []string {
 	require.NotEmpty(t, lines)
 	return lines
 }
+
+// A PowerShell session prompts as pwsh does, so the human writes PowerShell.
+func TestShell_PromptsAsTheShellDoes(t *testing.T) {
+	for _, tt := range []struct {
+		powershell bool
+		want       string
+	}{{false, "$ "}, {true, "PS> "}} {
+		p := newPrompt(tt.powershell)
+		p.Resize(60)
+		assert.Contains(t, stripStyle(p.View("")), "❯ ", "a request looks the same either way")
+		p.SetShell(true)
+		p.Resize(60)
+		assert.Contains(t, stripStyle(p.View("")), tt.want)
+		p.SetValue(strings.Repeat("x", 200))
+		p.Resize(60)
+		assert.Greater(t, p.input.Height(), 1, "a long command still wraps")
+	}
+}
