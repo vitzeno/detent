@@ -19,21 +19,6 @@ var ErrLive = errors.New("open in another detent")
 // containerTimeout bounds removing one container, which talks to containerd.
 const containerTimeout = 30 * time.Second
 
-// Watch answers DeleteSession and reports the outcome either way.
-// current is the running session, the one thing that cannot go. The
-// stop waits for a delete in flight, and cancelling ctx abandons one.
-func Watch(ctx context.Context, bus *event.Bus, sessions Sessions, current uuid.UUID, opts ...Option) func() {
-	w := watcher{ctx: ctx, sessions: sessions, current: current}
-	for _, o := range opts {
-		o(&w)
-	}
-	return bus.Handle(event.Only(event.DeleteSessionKind), func(rec event.Record) {
-		if v, ok := rec.Event.(event.DeleteSession); ok {
-			w.forget(bus, v.Session)
-		}
-	})
-}
-
 // Sessions is the store, declared at its consumer so the one path
 // that destroys things tests without a database.
 type Sessions interface {
@@ -48,6 +33,21 @@ type Option func(*watcher)
 // it there is nothing to remove, which is the no-sandbox case.
 func WithContainers(remove func(ctx context.Context, sessionID string) error) Option {
 	return func(w *watcher) { w.containers = remove }
+}
+
+// Watch answers DeleteSession and reports the outcome either way.
+// current is the running session, the one thing that cannot go. The
+// stop waits for a delete in flight, and cancelling ctx abandons one.
+func Watch(ctx context.Context, bus *event.Bus, sessions Sessions, current uuid.UUID, opts ...Option) func() {
+	w := watcher{ctx: ctx, sessions: sessions, current: current}
+	for _, o := range opts {
+		o(&w)
+	}
+	return bus.Handle(event.Only(event.DeleteSessionKind), func(rec event.Record) {
+		if v, ok := rec.Event.(event.DeleteSession); ok {
+			w.forget(bus, v.Session)
+		}
+	})
 }
 
 type watcher struct {
