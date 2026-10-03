@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -146,17 +147,122 @@ func TestJevJudge_Ask_RequestShape(t *testing.T) {
 	assert.Equal(t, "jev-1.13.0", got["model"])
 	assert.Equal(t, map[string]any{"goal": "test"}, got["state"])
 
-	qs := got["questions"].(map[string]any)
+	qs := object(t, got["questions"])
 
-	choice := qs["next_action"].(map[string]any)
+	choice := object(t, qs["next_action"])
 	assert.Equal(t, "choice", choice["type"])
 	assert.Equal(t, map[string]any{"a": "A"}, choice["criteria"])
 
-	noul := qs["goal_achieved"].(map[string]any)
+	noul := object(t, qs["goal_achieved"])
 	assert.Equal(t, "noul", noul["type"])
 	assert.NotContains(t, noul, "criteria")
 
-	score := qs["severity"].(map[string]any)
+	score := object(t, qs["severity"])
 	assert.Equal(t, "score", score["type"])
 	assert.Equal(t, []any{"low", "high"}, score["criteria"])
+}
+
+// Every way a request can fail is an error a caller can show, never an
+// empty answer that reads as a verdict.
+func TestJevJudge_Ask_Failures(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		handler http.HandlerFunc
+		model   string
+		check   func(t *testing.T, err error)
+	}{
+		{
+			name: "a dropped connection",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if err == nil {
+					conn.Close()
+				}
+			},
+		},
+		{
+			name:    "a body that is not JSON",
+			handler: func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("{")) },
+		},
+		{
+			name: "a body too big to be an answer",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(strings.Repeat(" ", maxResponseBytes+10)))
+			},
+			check: func(t *testing.T, err error) { assert.ErrorContains(t, err, "over") },
+		},
+		{
+			name: "a status says which one it was",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error":"invalid api key"}`))
+			},
+			check: func(t *testing.T, err error) {
+				var he *HTTPError
+				require.ErrorAs(t, err, &he)
+				assert.Equal(t, http.StatusUnauthorized, he.Status)
+			},
+		},
+		{
+			name:  "no model is refused before any request",
+			model: "-",
+			check: func(t *testing.T, err error) { assert.ErrorIs(t, err, ErrNoModel) },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := tc.handler
+			if handler == nil {
+				handler = func(http.ResponseWriter, *http.Request) { t.Error("a request was sent") }
+			}
+			srv := httptest.NewServer(handler)
+			defer srv.Close()
+			j := NewJevJudge("k", WithEndpoint(srv.URL))
+			if tc.model == "-" {
+				j.Model = ""
+			}
+			_, _, err := j.Ask(context.Background(), State(nil), Questions{"x": {Noul: &NoulQuestion{}}})
+			require.Error(t, err)
+			if tc.check != nil {
+				tc.check(t, err)
+			}
+		})
+	}
+}
+
+// An answer with no value, or of another kind than asked, is absent:
+// read as zero it would show as "scope 0%", a confident verdict nobody gave.
+func TestJevJudge_Ask_LeavesOutAnAnswerWithNoValue(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"model":"jev","answers":{
+			"scope_risk":{"type":"noul"},
+			"mutability":{"type":"noul","noul":0.4},
+			"kept":{"type":"noul","noul":0.7}}}`))
+	}))
+	defer srv.Close()
+	got, _, err := NewJevJudge("k", WithEndpoint(srv.URL)).Ask(context.Background(), State(nil), Questions{
+		"scope_risk": {Noul: &NoulQuestion{}},
+		"mutability": {Choice: &ChoiceQuestion{Criteria: map[string]any{"a": "A"}}},
+		"kept":       {Noul: &NoulQuestion{}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, Answers{"kept": {Noul: 0.7}}, got)
+}
+
+// A nil judge held in an interface is not a nil interface, and must
+// still fail as an error rather than a panic.
+func TestJevJudge_Ask_ANilJudgeIsAnError(t *testing.T) {
+	var j *JevJudge
+	var asker Asker = j
+	_, _, err := asker.Ask(context.Background(), State(nil), Questions{})
+	assert.Error(t, err)
+
+	_, _, ok := AskOrFallback(context.Background(), nil, State(nil), Questions{})
+	assert.False(t, ok)
+}
+
+func object(t *testing.T, v any) map[string]any {
+	t.Helper()
+	m, ok := v.(map[string]any)
+	require.True(t, ok, "%v is not an object", v)
+	return m
 }

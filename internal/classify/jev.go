@@ -4,16 +4,40 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+	"unicode/utf8"
 )
 
 const jevEndpoint = "https://api.typesafe.ai/v1/systemone"
 
 // DefaultModel is the pinned model id, never an alias.
 const DefaultModel = "jev-1.13.0"
+
+// maxResponseBytes bounds a reply. A real one is a few KB.
+const maxResponseBytes = 1 << 20
+
+// defaultClient is what a JevJudge with no client of its own uses.
+var defaultClient = &http.Client{Timeout: 60 * time.Second}
+
+var (
+	// ErrNoModel is a JevJudge with no model to ask.
+	ErrNoModel = errors.New("classify: JevJudge.Model is empty")
+	// ErrNoKind is a Question with none of Choice, Noul or Score set.
+	ErrNoKind = errors.New("has none of Choice/Noul/Score set")
+)
+
+// HTTPError is a reply that was not 200, so a caller can tell a bad key
+// from an outage without reading the message.
+type HTTPError struct {
+	Status int
+	Body   string
+}
+
+func (e *HTTPError) Error() string { return fmt.Sprintf("classify: HTTP %d: %s", e.Status, e.Body) }
 
 // JevJudge asks TypeSafe's Jev over HTTP.
 type JevJudge struct {
@@ -23,10 +47,44 @@ type JevJudge struct {
 	HTTPClient *http.Client
 }
 
-// Ask sends every question in one request.
+// Option overrides a NewJevJudge default.
+type Option func(*JevJudge)
+
+// NewJevJudge returns a judge on DefaultModel and the public endpoint.
+func NewJevJudge(apiKey string, opts ...Option) *JevJudge {
+	j := &JevJudge{
+		Model:  DefaultModel,
+		APIKey: apiKey,
+	}
+	for _, opt := range opts {
+		opt(j)
+	}
+	return j
+}
+
+// WithModel pins a model id other than DefaultModel.
+func WithModel(model string) Option {
+	return func(j *JevJudge) { j.Model = model }
+}
+
+// WithEndpoint points the judge somewhere other than the public API.
+func WithEndpoint(endpoint string) Option {
+	return func(j *JevJudge) { j.Endpoint = endpoint }
+}
+
+// WithHTTPClient replaces the default client and its 60s timeout.
+func WithHTTPClient(client *http.Client) Option {
+	return func(j *JevJudge) { j.HTTPClient = client }
+}
+
+// Ask sends every question in one request. An answer missing its value,
+// or of another kind than asked, is left out rather than read as zero.
 func (j *JevJudge) Ask(ctx context.Context, state State, qs Questions) (Answers, Usage, error) {
+	if j == nil {
+		return nil, Usage{}, errors.New("classify: nil JevJudge")
+	}
 	if j.Model == "" {
-		return nil, Usage{}, fmt.Errorf("classify: JevJudge.Model is empty")
+		return nil, Usage{}, ErrNoModel
 	}
 
 	wireQs := make(map[string]wireQuestion, len(qs))
@@ -52,18 +110,21 @@ func (j *JevJudge) Ask(ctx context.Context, state State, qs Questions) (Answers,
 
 	t0 := time.Now()
 	resp, err := j.httpClient().Do(req)
-	latency := time.Since(t0)
 	if err != nil {
 		return nil, Usage{}, fmt.Errorf("classify: request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	latency := time.Since(t0)
 	if err != nil {
 		return nil, Usage{}, fmt.Errorf("classify: reading response: %w", err)
 	}
+	if len(respBody) > maxResponseBytes {
+		return nil, Usage{}, fmt.Errorf("classify: response is over %d bytes", maxResponseBytes)
+	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, Usage{}, fmt.Errorf("classify: HTTP %d: %s", resp.StatusCode, truncate(respBody, 500))
+		return nil, Usage{}, &HTTPError{Status: resp.StatusCode, Body: truncate(respBody, 500)}
 	}
 
 	var wireResp wireResponse
@@ -73,7 +134,9 @@ func (j *JevJudge) Ask(ctx context.Context, state State, qs Questions) (Answers,
 
 	answers := make(Answers, len(wireResp.Answers))
 	for id, wa := range wireResp.Answers {
-		answers[id] = toAnswer(wa)
+		if q, asked := wireQs[id]; asked && answered(q.Type, wa) {
+			answers[id] = toAnswer(wa)
+		}
 	}
 
 	usage := Usage{
@@ -96,7 +159,7 @@ func (j *JevJudge) httpClient() *http.Client {
 	if j.HTTPClient != nil {
 		return j.HTTPClient
 	}
-	return &http.Client{Timeout: 60 * time.Second}
+	return defaultClient
 }
 
 type wireRequest struct {
@@ -139,8 +202,24 @@ func toWireQuestion(q Question) (wireQuestion, error) {
 	case q.Score != nil:
 		return wireQuestion{Type: "score", Instructions: q.Instructions, Criteria: q.Score.Levels}, nil
 	default:
-		return wireQuestion{}, fmt.Errorf("has none of Choice/Noul/Score set")
+		return wireQuestion{}, ErrNoKind
 	}
+}
+
+// answered reports whether wa carries the value a question of kind asked for.
+func answered(kind string, wa wireAnswer) bool {
+	if wa.Type != "" && wa.Type != kind {
+		return false
+	}
+	switch kind {
+	case "choice":
+		return wa.Choice != ""
+	case "noul":
+		return wa.Noul != nil
+	case "score":
+		return wa.Score != nil
+	}
+	return false
 }
 
 func toAnswer(wa wireAnswer) Answer {
@@ -157,9 +236,13 @@ func toAnswer(wa wireAnswer) Answer {
 	return a
 }
 
+// truncate cuts b to at most n bytes without splitting a rune.
 func truncate(b []byte, n int) string {
 	if len(b) <= n {
 		return string(b)
+	}
+	for n > 0 && !utf8.RuneStart(b[n]) {
+		n--
 	}
 	return string(b[:n]) + "…"
 }

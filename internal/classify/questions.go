@@ -1,12 +1,9 @@
 // Package classify holds the question and answer vocabulary plus
-// JevJudge, an adapter to TypeSafe's Jev. Each consumer declares its own
-// Judge interface, and JevJudge satisfies them structurally.
+// JevJudge, an adapter to TypeSafe's Jev. A consumer holds an Asker, or
+// declares the same method, and JevJudge satisfies either.
 package classify
 
-import (
-	"context"
-	"time"
-)
+import "context"
 
 // State is the context handed to a Judge alongside Questions.
 type State any
@@ -62,16 +59,14 @@ type Usage struct {
 }
 
 // AskOrFallback calls j.Ask, reporting ok=false when j is nil or errors so a
-// caller's fallback is one branch. LatencyMS is wall time measured here.
+// caller's fallback is one branch. A caller that must say why calls Ask.
 func AskOrFallback(ctx context.Context, j Asker, state State, questions Questions) (Answers, Usage, bool) {
 	if j == nil {
 		return nil, Usage{}, false
 	}
-	t0 := time.Now()
 	answers, u, err := j.Ask(ctx, state, questions)
 	if err != nil {
 		return nil, Usage{}, false
 	}
-	u.LatencyMS = float64(time.Since(t0).Microseconds()) / 1000.0
 	return answers, u, true
 }
