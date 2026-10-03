@@ -9,7 +9,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Job is one process tree. A child joins it as it starts.
+// Job is one process tree. A child joins it as it starts, but only once
+// Assign has run: anything started before then is outside it.
 type Job struct {
 	mu     sync.Mutex
 	handle windows.Handle
@@ -27,6 +28,7 @@ func Assign(p *os.Process) (*Job, error) {
 		_ = windows.CloseHandle(h)
 		return nil, err
 	}
+	// p's own handle keeps its pid from being reused, so this opens the same process.
 	proc, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE, false, uint32(p.Pid)) //nolint:gosec // a pid fits
 	if err != nil {
 		_ = windows.CloseHandle(h)
@@ -40,7 +42,7 @@ func Assign(p *os.Process) (*Job, error) {
 	return j, nil
 }
 
-// Kill ends every process still in the job.
+// Kill ends every process still in the job, and does nothing once it is let go.
 func (j *Job) Kill() error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
