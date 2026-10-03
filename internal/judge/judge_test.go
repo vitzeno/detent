@@ -17,7 +17,7 @@ import (
 )
 
 func TestJudge_ReadsWhatTheJudgeSaid(t *testing.T) {
-	j := ResultJudge{Asker: fakeAsker{answers: classify.Answers{
+	j := resultJudge{Asker: fakeAsker{answers: classify.Answers{
 		"result_status": {Choice: string(event.StatusWarnings)},
 		"render_kind":   {Choice: "file_listing"},
 		"attention":     {Noul: 0.7},
@@ -50,7 +50,7 @@ func TestJudge_FallsBackWithoutClaimingToBeAVerdict(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ResultJudge{Asker: tt.asker}.Judge(context.Background(), "bash", tt.res)
+			got := resultJudge{Asker: tt.asker}.Judge(context.Background(), "bash", tt.res)
 			assert.Equal(t, tt.status, got.Status)
 			assert.False(t, got.FromJudge, "a guess must never present as a verdict")
 			assert.NotEmpty(t, got.RenderKind, "something must always be drawable")

@@ -17,24 +17,26 @@ import (
 	"github.com/vitzeno/detent/internal/viewgen"
 )
 
-// GoalMet is where the judge's goal-achieved score stops being an
-// opinion and becomes a reason to stop asking for tools.
-const GoalMet = 0.9
+const (
+	// goalMet is where the goal-achieved score stops being an opinion and
+	// becomes a reason to stop asking for tools.
+	goalMet = 0.9
 
-// maxJudging caps judgements in flight, since a Step's parallel tool calls
-// all finish together.
-const maxJudging = 4
+	// maxJudging caps judgements in flight, since a Step's parallel tool
+	// calls all finish together.
+	maxJudging = 4
 
-// judgeTimeout bounds one judgement, queueing included. A late verdict
-// is worth less than the heuristic now.
-const judgeTimeout = 20 * time.Second
+	// judgeTimeout bounds one judgement, queueing included. A late verdict
+	// is worth less than the heuristic now.
+	judgeTimeout = 20 * time.Second
 
-// stderrShare is the part of the sample kept for stderr's tail, so a long
-// stdout cannot push the error that decides the status out of view.
-const stderrShare = 1024
+	// stderrShare is the part of the sample kept for stderr's tail, so a long
+	// stdout cannot push the error that decides the status out of view.
+	stderrShare = 1024
+)
 
-// ResultJudge judges one finished tool call.
-type ResultJudge struct {
+// resultJudge judges one finished tool call.
+type resultJudge struct {
 	Asker classify.Asker
 	// Prompt is the request goal_achieved is judged against, kept per Turn by Watch.
 	Prompt string
@@ -42,7 +44,7 @@ type ResultJudge struct {
 
 // Judge asks, and falls back to a heuristic when nothing answers. FromJudge
 // tells the two apart, so the UI never presents a guess as a verdict.
-func (j ResultJudge) Judge(ctx context.Context, command string, res event.Result) event.ToolCallJudged {
+func (j resultJudge) Judge(ctx context.Context, command string, res event.Result) event.ToolCallJudged {
 	out := heuristic(res)
 	state := map[string]any{"request": j.Prompt, "command": command, "output": output(res),
 		"exit_code": res.ExitCode}
@@ -100,10 +102,11 @@ func Watch(ctx context.Context, bus *event.Bus, asker classify.Asker) func() {
 				return
 			}
 			delete(started, v.ToolCall)
-			j := ResultJudge{Asker: asker, Prompt: prompt}
-			w.wg.Add(1)
-			go w.publish(j, turn, v, cmds[v.ToolCall])
+			command := cmds[v.ToolCall]
 			delete(cmds, v.ToolCall)
+			// Copied, since the next TurnStarted rewrites prompt and turn.
+			j, ofTurn := resultJudge{Asker: asker, Prompt: prompt}, turn
+			w.wg.Go(func() { w.publish(j, ofTurn, v, command) })
 		}
 	})
 	// Stopping cancels judgements in flight and waits for them.
@@ -148,8 +151,7 @@ func (w *watcher) shouldStop(turn uuid.UUID) bool {
 
 // publish judges one tool call on its own goroutine, so one slow judgement
 // cannot hold up the others or the events behind them.
-func (w *watcher) publish(j ResultJudge, turn uuid.UUID, done event.ToolCallEnded, command string) {
-	defer w.wg.Done()
+func (w *watcher) publish(j resultJudge, turn uuid.UUID, done event.ToolCallEnded, command string) {
 	ctx, cancel := context.WithTimeout(w.ctx, judgeTimeout)
 	defer cancel()
 	var got event.ToolCallJudged
@@ -165,7 +167,7 @@ func (w *watcher) publish(j ResultJudge, turn uuid.UUID, done event.ToolCallEnde
 	}
 	got.ToolCall = done.ToolCall
 	w.bus.Publish(got)
-	if got.FromJudge && got.GoalAchieved >= GoalMet && w.shouldStop(turn) {
+	if got.FromJudge && got.GoalAchieved >= goalMet && w.shouldStop(turn) {
 		w.bus.Publish(event.RequestStop{Turn: turn,
 			Reason: "the judge reads the request as answered"})
 	}
