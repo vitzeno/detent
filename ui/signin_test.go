@@ -73,7 +73,7 @@ func TestSignIn_KeysOpenCopyAndRetry(t *testing.T) {
 	k.m.nav.focus = focusHistory
 
 	k.press(t, "o")
-	assert.Equal(t, event.OpenAuthorization{Server: "notion"}, intent(t, k, event.OpenAuthKind))
+	assert.Equal(t, event.OpenAuthorization{Server: "notion"}, k.intentOf(t, event.OpenAuthKind))
 
 	_, cmd, ok := k.m.signInKey(k.m.focused().signin, "c")
 	assert.True(t, ok)
@@ -81,7 +81,7 @@ func TestSignIn_KeysOpenCopyAndRetry(t *testing.T) {
 
 	k.m.apply(event.AuthorizationFailed{Server: "notion", Reason: "stopped"})
 	k.press(t, "enter")
-	assert.Equal(t, event.AuthorizeServer{Server: "notion"}, intent(t, k, event.AuthorizeServerKind),
+	assert.Equal(t, event.AuthorizeServer{Server: "notion"}, k.intentOf(t, event.AuthorizeServerKind),
 		"on a link that is over, enter asks for a new one")
 }
 
@@ -93,7 +93,7 @@ func TestSignIn_SlashMCPAuthAsksForANewLink(t *testing.T) {
 	next, cmd := k.m.listServers("/mcp auth notion")
 	k.m = next
 	runCmd(cmd)
-	assert.Equal(t, event.AuthorizeServer{Server: "notion"}, intent(t, k, event.AuthorizeServerKind))
+	assert.Equal(t, event.AuthorizeServer{Server: "notion"}, k.intentOf(t, event.AuthorizeServerKind))
 
 	next, _ = k.m.listServers("/mcp auth nobody")
 	assert.Contains(t, next.notice.text, "not a configured MCP server")
@@ -138,20 +138,4 @@ func TestSignIn_KeysOnASignedInRowKeepTheToken(t *testing.T) {
 func waitingFor(server string) event.AuthorizationWaiting {
 	return event.AuthorizationWaiting{Server: server, URL: signInURL,
 		Until: time.Date(2026, 10, 1, 14, 32, 0, 0, time.Local)}
-}
-
-func intent(t *testing.T, k *keyed, kind event.Kind) event.Event {
-	t.Helper()
-	deadline := time.After(time.Second)
-	for {
-		select {
-		case rec := <-k.seen:
-			if rec.Event.Kind() == kind {
-				return rec.Event
-			}
-		case <-deadline:
-			t.Fatalf("no %s was published", kind)
-			return nil
-		}
-	}
 }

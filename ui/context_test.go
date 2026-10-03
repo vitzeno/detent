@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +11,7 @@ import (
 )
 
 func TestContextPage_SaysWhatFillsItAndWhy(t *testing.T) {
-	m := measuredModel(event.New())
+	m := measuredModel(t, event.New())
 	got := stripANSI(strings.Join(m.contextLines(), "\n"))
 
 	assert.Contains(t, got, "41.2k of 200k · 20%")
@@ -30,7 +29,7 @@ func TestContextPage_SaysWhatFillsItAndWhy(t *testing.T) {
 }
 
 func TestContextPage_SaysWhenNothingIsMeasured(t *testing.T) {
-	m := New(context.Background(), event.New(), SessionInfo{})
+	m := New(t.Context(), event.New(), SessionInfo{})
 	assert.Contains(t, stripANSI(strings.Join(m.contextLines(), "\n")), "nothing measured yet")
 }
 
@@ -46,10 +45,10 @@ func TestContext_OpeningAsksForAMeasurement(t *testing.T) {
 	bus := event.New()
 	asked, unsub := bus.Subscribe(event.Only(event.MeasureContextKind))
 	defer unsub()
-	m := New(context.Background(), bus, SessionInfo{})
+	m := New(t.Context(), bus, SessionInfo{})
 
 	next, cmd := m.runSlash("/context")
-	run(cmd)
+	runCmd(cmd)
 	assert.Equal(t, panelContext, next.panel.open)
 	select {
 	case <-asked:
@@ -58,8 +57,9 @@ func TestContext_OpeningAsksForAMeasurement(t *testing.T) {
 	}
 }
 
-func measuredModel(bus *event.Bus) Model {
-	m := New(context.Background(), bus, SessionInfo{})
+func measuredModel(t *testing.T, bus *event.Bus) Model {
+	t.Helper()
+	m := New(t.Context(), bus, SessionInfo{})
 	m.layout.width, m.layout.height, m.layout.outputColW = 160, 40, 140
 	m.apply(event.ContextMeasured{
 		Budget: 200_000, Total: 41_200, Exact: true, Growth: 2_100,

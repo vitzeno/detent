@@ -264,7 +264,7 @@ func TestDetailCache_NeverGoesStale(t *testing.T) {
 		{"the focused row changes", func(m *Model) { m.nav.cursor = 2 }},
 		{"and changes back", func(m *Model) { m.nav.cursor = len(m.rows()) - 1 }},
 		{"the shown row expands", func(m *Model) { m.toggleExpand(m.focused()) }},
-		{"usage opens", func(m *Model) { m.panel.open = panelContext }},
+		{"context opens", func(m *Model) { m.panel.open = panelContext }},
 		{"help opens", func(m *Model) { m.panel.open = panelHelp }},
 		{"the panel closes", func(m *Model) { m.panel.open = panelNone }},
 		// Via layout.width: sizeViewport derives outputColW from it.

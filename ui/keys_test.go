@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -275,7 +274,7 @@ func newKeyed(t *testing.T) *keyed {
 	bus := event.New()
 	seen, stop := bus.Subscribe(event.Intents())
 	t.Cleanup(stop)
-	m := New(context.Background(), bus, SessionInfo{})
+	m := New(t.Context(), bus, SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
 	m.sizeViewport()
 	return &keyed{m: m, bus: bus, seen: seen}
@@ -299,6 +298,23 @@ func (k *keyed) intent(t *testing.T) event.Event {
 	case <-time.After(2 * time.Second):
 		t.Fatal("no intent was published")
 		return nil
+	}
+}
+
+// intentOf is the next intent of kind, skipping any other.
+func (k *keyed) intentOf(t *testing.T, kind event.Kind) event.Event {
+	t.Helper()
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case rec := <-k.seen:
+			if rec.Event.Kind() == kind {
+				return rec.Event
+			}
+		case <-deadline:
+			t.Fatalf("no %s was published", kind)
+			return nil
+		}
 	}
 }
 

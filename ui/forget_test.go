@@ -60,12 +60,8 @@ func TestForgetPage_OnlyYDeletes(t *testing.T) {
 		{"a stray letter", tea.KeyPressMsg{Code: 'q', Text: "q"}},
 	} {
 		t.Run(key.name, func(t *testing.T) {
-			bus := event.New()
-			seen, stop := bus.Subscribe(event.Only(event.DeleteSessionKind))
-			defer stop()
-
 			mine, other := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-			m := New(t.Context(), bus, SessionInfo{})
+			m := New(t.Context(), event.New(), SessionInfo{})
 			m.apply(event.SessionStarted{Session: mine, Model: "m"})
 			m.apply(event.SessionsListed{Sessions: []event.SessionSummary{
 				{ID: other, Name: "doomed", Started: time.Now(), Model: "m", Events: 3},
@@ -73,19 +69,12 @@ func TestForgetPage_OnlyYDeletes(t *testing.T) {
 
 			next, _ := m.runForget("/delete doomed")
 			after, cmd := next.forgetKey(key.msg)
-			if cmd != nil {
-				cmd()
-			}
 			assert.Nil(t, after.forget.target, "%s left it armed", key.name)
 			assert.NotEqual(t, modeForget, after.mode)
 
-			// Clearing the state is what cancel and confirm have in
-			// common. Publishing is the only thing that tells them apart.
-			select {
-			case <-seen:
-				t.Fatalf("%s deleted the session", key.name)
-			case <-time.After(300 * time.Millisecond):
-			}
+			// Clearing the state is what cancel and confirm have in common.
+			// A command to publish is the only thing that tells them apart.
+			assert.Nil(t, cmd, "%s deleted the session", key.name)
 		})
 	}
 }

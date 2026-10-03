@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -228,7 +228,7 @@ func TestRestore_RebuildsHistoryFromTheStream(t *testing.T) {
 			Usage: event.Usage{PromptTokens: 20, CompletionTokens: 5}},
 	}
 
-	m := New(context.Background(), event.New(), SessionInfo{})
+	m := New(t.Context(), event.New(), SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
 	m = m.Restore(asRecords(facts))
 
@@ -257,7 +257,7 @@ func TestRestore_HonoursAReset(t *testing.T) {
 		event.TurnStarted{Turn: after, N: 1, Prompt: "kept"},
 		event.TurnEnded{Turn: after, Reason: event.EndDone},
 	}
-	m := New(context.Background(), event.New(), SessionInfo{}).Restore(asRecords(facts))
+	m := New(t.Context(), event.New(), SessionInfo{}).Restore(asRecords(facts))
 	require.Len(t, m.blocks, 1)
 	assert.Equal(t, "kept", m.blocks[0].prompt)
 }
@@ -269,7 +269,7 @@ func TestSessions_AreAskedForAndFolded(t *testing.T) {
 	asked, unsub := bus.Subscribe(event.Only(event.ListSessionsKind))
 	defer unsub()
 
-	m := New(context.Background(), bus, SessionInfo{})
+	m := New(t.Context(), bus, SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
 	m, cmd := m.listSessions("/sessions")
 	require.NotNil(t, cmd)
@@ -298,7 +298,7 @@ func TestSessions_AreAskedForAndFolded(t *testing.T) {
 
 // The session id is the one thing you need to resume this run later.
 func TestStatus_ShowsTheSessionID(t *testing.T) {
-	m := New(context.Background(), event.New(), SessionInfo{})
+	m := New(t.Context(), event.New(), SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
 	mine := uuid.Must(uuid.NewV7())
 	m.apply(event.SessionStarted{Session: mine, MaxSteps: 50})
@@ -310,24 +310,26 @@ func TestStatus_ShowsTheSessionID(t *testing.T) {
 // that out at resume time is too late.
 func TestStatus_SaysWhenNothingIsRecording(t *testing.T) {
 	for _, recorded := range []bool{true, false} {
-		m := New(context.Background(), event.New(), SessionInfo{})
-		m.layout.width, m.layout.height = 120, 40
-		m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Recorded: recorded})
+		t.Run(fmt.Sprintf("recorded=%v", recorded), func(t *testing.T) {
+			m := New(t.Context(), event.New(), SessionInfo{})
+			m.layout.width, m.layout.height = 120, 40
+			m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Recorded: recorded})
 
-		got := stripANSI(strings.Join(m.statusLines(), "\n"))
-		if recorded {
-			assert.Contains(t, got, "resumable")
-			assert.NotContains(t, got, "cannot be resumed")
-		} else {
-			assert.Contains(t, got, "cannot be resumed")
-		}
+			got := stripANSI(strings.Join(m.statusLines(), "\n"))
+			if recorded {
+				assert.Contains(t, got, "resumable")
+				assert.NotContains(t, got, "cannot be resumed")
+			} else {
+				assert.Contains(t, got, "cannot be resumed")
+			}
+		})
 	}
 }
 
 // The description comes off the fact, so the log and the panes cannot
 // disagree about what ran.
 func TestStatus_ReadsTheRunOffTheFact(t *testing.T) {
-	m := New(context.Background(), event.New(), SessionInfo{})
+	m := New(t.Context(), event.New(), SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
 	m.apply(event.SessionStarted{
 		Session: uuid.Must(uuid.NewV7()), Model: "a-model", Sandbox: true,
@@ -351,7 +353,7 @@ func TestRename_PublishesTheIntent(t *testing.T) {
 	defer unsub()
 
 	mine := uuid.Must(uuid.NewV7())
-	m := New(context.Background(), bus, SessionInfo{})
+	m := New(t.Context(), bus, SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
 	m.apply(event.SessionStarted{Session: mine, Recorded: true})
 
@@ -372,27 +374,17 @@ func TestRename_PublishesTheIntent(t *testing.T) {
 // Naming a session nothing records would not keep, so say so rather
 // than appear to work.
 func TestRename_RefusedWhenNothingIsRecording(t *testing.T) {
-	bus := event.New()
-	asked, unsub := bus.Subscribe(event.Only(event.RenameSessionKind))
-	defer unsub()
-
-	m := New(context.Background(), bus, SessionInfo{})
+	m := New(t.Context(), event.New(), SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
 	m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Recorded: false})
 
 	next, cmd := m.renameSession("/rename doomed")
 	assert.Nil(t, cmd, "nothing is published")
 	assert.True(t, next.notice.bad, "and it says why")
-
-	select {
-	case <-asked:
-		t.Fatal("a rename was published for a session nothing records")
-	case <-time.After(200 * time.Millisecond):
-	}
 }
 
 func TestRename_NeedsAName(t *testing.T) {
-	m := New(context.Background(), event.New(), SessionInfo{})
+	m := New(t.Context(), event.New(), SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
 	m.apply(event.SessionStarted{Recorded: true})
 	next, cmd := m.renameSession("/rename   ")
@@ -403,7 +395,7 @@ func TestRename_NeedsAName(t *testing.T) {
 // The UI must not claim a rename worked: only the store knows, and
 // its reply is what the human should read.
 func TestRename_ClaimsNothing(t *testing.T) {
-	m := New(context.Background(), event.New(), SessionInfo{})
+	m := New(t.Context(), event.New(), SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
 	m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Recorded: true})
 
@@ -439,7 +431,7 @@ func TestRestore_DoesNotFlashHistoryAsNews(t *testing.T) {
 // channels, which is the whole point of the reducer.
 func feed(t *testing.T, evs ...event.Event) Model {
 	t.Helper()
-	m := New(context.Background(), event.New(), SessionInfo{})
+	m := New(t.Context(), event.New(), SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
 	for _, e := range evs {
 		m.apply(e)

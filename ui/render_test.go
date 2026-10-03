@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"regexp"
 	"strings"
 	"testing"
@@ -129,7 +128,7 @@ func stripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
 // out, so a render test measures what a human would see.
 func sized(t *testing.T, w, h int, evs ...event.Event) Model {
 	t.Helper()
-	m := New(context.Background(), event.New(), SessionInfo{})
+	m := New(t.Context(), event.New(), SessionInfo{})
 	m.layout.width, m.layout.height = w, h
 	for _, e := range evs {
 		m.apply(e)
