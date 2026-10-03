@@ -1,9 +1,10 @@
-// Package host runs commands directly on the host via sh -c and
-// captures bounded output.
+// Package host runs commands directly on the host, through sh, PowerShell 7
+// or Git Bash, and captures bounded output.
 package host
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -22,7 +23,7 @@ import (
 // engine and humanshell always set one.
 const DefaultTimeout = 30 * time.Second
 
-// waitDelay is how long output is still read after sh exits.
+// waitDelay is how long output is still read after the shell exits.
 const waitDelay = time.Second
 
 // ErrEmptyCommand is a command with nothing to run.
@@ -35,9 +36,15 @@ var secrets = []string{"DETENT_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY",
 // engine.Runner structurally.
 type Shell struct {
 	limit int
+	// dialect is Sh when empty, and path is the program that runs it.
+	dialect string
+	path    string
 }
 
-// Run executes command via sh -c, sending each output line on events as
+// Dialect is the shell commands are written for.
+func (s *Shell) Dialect() string { return cmp.Or(s.dialect, Sh) }
+
+// Run executes command in the shell, sending each output line on events as
 // it arrives. events may be nil. Run sends nothing after it returns, and
 // the caller closes events.
 func (s *Shell) Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error) {
@@ -55,14 +62,19 @@ func (s *Shell) Run(ctx context.Context, command string, events chan<- capture.S
 		defer cancel()
 	}
 
+	argv, err := s.argv(command)
+	if err != nil {
+		return capture.Result{}, err
+	}
+
 	// Writers, not StdoutPipe: Wait then waits for exec's own copy, where
 	// StdoutPipe's reader could lose output Wait closed under it.
 	outR, outW := io.Pipe()
 	errR, errW := io.Pipe()
-	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Stdout, cmd.Stderr = outW, errW
 	cmd.Env = environ(os.Environ())
-	// A backgrounded child keeps the pipes open, so stop reading soon after sh exits.
+	// A backgrounded child keeps the pipes open, so stop reading soon after the shell exits.
 	cmd.WaitDelay = waitDelay
 	g := newGroup(cmd)
 
