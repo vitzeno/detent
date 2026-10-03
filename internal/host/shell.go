@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -16,11 +18,18 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// DefaultTimeout bounds a single command.
+// DefaultTimeout bounds a command whose caller set no deadline. The
+// engine and humanshell always set one.
 const DefaultTimeout = 30 * time.Second
 
 // waitDelay is how long output is still read after sh exits.
 const waitDelay = time.Second
+
+// ErrEmptyCommand is a command with nothing to run.
+var ErrEmptyCommand = errors.New("host: empty command")
+
+// secrets are detent's own credentials, which no command it runs needs.
+var secrets = []string{"DETENT_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "TYPESAFE_API_KEY"}
 
 // Shell runs commands directly on the host, unsandboxed. It satisfies
 // engine.Runner structurally.
@@ -29,10 +38,15 @@ type Shell struct {
 }
 
 // Run executes command via sh -c, sending each output line on events as
-// it arrives. events may be nil, and Run closes it once output ends.
-func (s *Shell) Run(ctx context.Context, command string, events chan<- StreamEvent) (Result, error) {
+// it arrives. events may be nil. Run sends nothing after it returns, and
+// the caller closes events.
+func (s *Shell) Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error) {
 	if strings.TrimSpace(command) == "" {
-		return Result{}, fmt.Errorf("host: empty command")
+		return capture.Result{}, ErrEmptyCommand
+	}
+	limit := s.limit
+	if limit <= 0 {
+		limit = capture.MaxOutputBytes
 	}
 
 	if _, ok := ctx.Deadline(); !ok {
@@ -47,51 +61,63 @@ func (s *Shell) Run(ctx context.Context, command string, events chan<- StreamEve
 	errR, errW := io.Pipe()
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Stdout, cmd.Stderr = outW, errW
+	cmd.Env = environ(os.Environ())
 	// A backgrounded child keeps the pipes open, so stop reading soon after sh exits.
 	cmd.WaitDelay = waitDelay
+	killGroup(cmd)
 
 	if err := cmd.Start(); err != nil {
-		return Result{}, fmt.Errorf("host: %w", err)
+		return capture.Result{}, fmt.Errorf("host: %w", err)
 	}
 
 	var stdout, stderr bytes.Buffer
+	var outCut, errCut bool
 	var wg sync.WaitGroup
-	scan := func(pipe io.Reader, isStderr bool, buf *bytes.Buffer) {
+	scan := func(pipe io.Reader, isStderr bool, buf *bytes.Buffer, cut *bool) {
 		defer wg.Done()
-		capture.ScanCapped(pipe, isStderr, buf, s.limit, events)
+		*cut, _ = capture.ScanCapped(pipe, isStderr, buf, limit, events)
 		_, _ = io.Copy(io.Discard, pipe)
 	}
 	wg.Add(2)
-	go scan(outR, false, &stdout)
-	go scan(errR, true, &stderr)
+	go scan(outR, false, &stdout, &outCut)
+	go scan(errR, true, &stderr, &errCut)
 
 	waitErr := cmd.Wait()
 	_ = outW.Close()
 	_ = errW.Close()
 	wg.Wait()
-	if events != nil {
-		close(events)
-	}
 	if errors.Is(waitErr, exec.ErrWaitDelay) {
 		waitErr = nil
 	}
 
-	res := Result{
+	res := capture.Result{
 		Stdout:    stdout.String(),
 		Stderr:    stderr.String(),
-		Truncated: stdout.Len() >= s.limit || stderr.Len() >= s.limit,
+		Truncated: outCut || errCut,
 	}
-
+	if waitErr == nil {
+		return res, nil
+	}
 	if ctx.Err() != nil {
 		return res, fmt.Errorf("host: %w", ctx.Err())
 	}
-	if waitErr == nil {
-		res.ExitCode = 0
-		return res, nil
-	}
-	if exitErr, ok := waitErr.(*exec.ExitError); ok {
+	var exitErr *exec.ExitError
+	if errors.As(waitErr, &exitErr) {
 		res.ExitCode = exitErr.ExitCode()
 		return res, nil
 	}
 	return res, fmt.Errorf("host: %w", waitErr)
+}
+
+// environ is the parent's environment without detent's own secrets, so
+// printenv cannot put an API key in the transcript or the store.
+func environ(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		if !slices.Contains(secrets, name) {
+			out = append(out, kv)
+		}
+	}
+	return out
 }
