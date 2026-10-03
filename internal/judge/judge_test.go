@@ -110,7 +110,7 @@ func TestWatch_ALowScoreLetsItCarryOn(t *testing.T) {
 	assert.Equal(t, call, judged.ToolCall)
 
 	stop()
-	assert.Empty(t, rest(facts), "nothing else should follow")
+	assert.Empty(t, rest(bus, facts), "nothing else should follow")
 }
 
 // A heuristic must not be able to end a request: only a real verdict
@@ -131,7 +131,7 @@ func TestWatch_AGuessNeverStopsATurn(t *testing.T) {
 
 	assert.Equal(t, event.ToolCallJudgedKind, next(t, facts).Kind())
 	stop()
-	assert.Empty(t, rest(facts), "a heuristic asked a request to stop")
+	assert.Empty(t, rest(bus, facts), "a heuristic asked a request to stop")
 }
 
 // A verdict that lands after its Turn ended must not stop the next one:
@@ -167,7 +167,7 @@ func TestWatch_ALateVerdictStopsOnlyItsOwnTurn(t *testing.T) {
 		}
 	}
 	stop()
-	for _, e := range rest(facts) {
+	for _, e := range rest(bus, facts) {
 		if v, ok := e.(event.RequestStop); ok {
 			stops = append(stops, v.Turn)
 		}
@@ -197,7 +197,7 @@ func TestWatch_StopCancelsWhatIsInFlight(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("stop waited on a judgement nobody wants any more")
 	}
-	assert.Empty(t, rest(facts))
+	assert.Empty(t, rest(bus, facts))
 }
 
 // The session's ctx ending abandons a judgement without anyone calling stop.
@@ -244,14 +244,17 @@ func next(t *testing.T, ch <-chan event.Record) event.Event {
 	return nil
 }
 
-// rest is whatever else reaches ch once it goes quiet.
-func rest(ch <-chan event.Record) []event.Event {
+// rest is whatever else reaches ch once the bus settles. Call it after the
+// stop, so nothing can still be on its way.
+func rest(bus *event.Bus, ch <-chan event.Record) []event.Event {
+	settled := make(chan struct{})
+	go func() { bus.Settle(3 * time.Second); close(settled) }()
 	var out []event.Event
 	for {
 		select {
 		case rec := <-ch:
 			out = append(out, rec.Event)
-		case <-time.After(200 * time.Millisecond):
+		case <-settled:
 			return out
 		}
 	}

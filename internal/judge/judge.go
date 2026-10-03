@@ -69,49 +69,43 @@ func (j ResultJudge) Judge(ctx context.Context, command string, res event.Result
 // goal-achieved becomes a RequestStop, honoured at the next Step boundary.
 // Cancelling ctx abandons judgements in flight, as the stop does.
 func Watch(ctx context.Context, bus *event.Bus, asker classify.Asker) func() {
-	facts, unsub := bus.Subscribe(event.Only(
-		event.TurnStartedKind, event.TurnEndedKind, event.ToolCallProposedKind, event.ToolCallStartedKind,
-		event.ToolCallEndedKind))
 	ctx, cancel := context.WithCancel(ctx)
 	w := &watcher{bus: bus, ctx: ctx, slots: make(chan struct{}, maxJudging)}
-	looped := make(chan struct{})
-	go func() {
-		defer close(looped)
-		var prompt string
-		var turn uuid.UUID
-		cmds, started := map[uuid.UUID]string{}, map[uuid.UUID]bool{}
-		for rec := range facts {
-			switch v := rec.Event.(type) {
-			case event.TurnStarted:
-				prompt, turn = v.Prompt, v.Turn
-				clear(cmds)
-				clear(started)
-				w.setTurn(v.Turn)
-			case event.TurnEnded:
-				w.setTurn(uuid.Nil)
-			case event.ToolCallProposed:
-				cmds[v.ToolCall] = event.Command(v.Tool, v.Args)
-			case event.ToolCallStarted:
-				started[v.ToolCall] = true
-			case event.ToolCallEnded:
-				// A declined or abandoned tool call never ran, so there is nothing to judge.
-				if !started[v.ToolCall] {
-					delete(cmds, v.ToolCall)
-					continue
-				}
-				delete(started, v.ToolCall)
-				j := ResultJudge{Asker: asker, Prompt: prompt}
-				w.wg.Add(1)
-				go w.publish(j, turn, v, cmds[v.ToolCall])
+	var prompt string
+	var turn uuid.UUID
+	cmds, started := map[uuid.UUID]string{}, map[uuid.UUID]bool{}
+	unhandle := bus.Handle(event.Only(
+		event.TurnStartedKind, event.TurnEndedKind, event.ToolCallProposedKind, event.ToolCallStartedKind,
+		event.ToolCallEndedKind), func(rec event.Record) {
+		switch v := rec.Event.(type) {
+		case event.TurnStarted:
+			prompt, turn = v.Prompt, v.Turn
+			clear(cmds)
+			clear(started)
+			w.setTurn(v.Turn)
+		case event.TurnEnded:
+			w.setTurn(uuid.Nil)
+		case event.ToolCallProposed:
+			cmds[v.ToolCall] = event.Command(v.Tool, v.Args)
+		case event.ToolCallStarted:
+			started[v.ToolCall] = true
+		case event.ToolCallEnded:
+			// A declined or abandoned tool call never ran, so there is nothing to judge.
+			if !started[v.ToolCall] {
 				delete(cmds, v.ToolCall)
+				return
 			}
+			delete(started, v.ToolCall)
+			j := ResultJudge{Asker: asker, Prompt: prompt}
+			w.wg.Add(1)
+			go w.publish(j, turn, v, cmds[v.ToolCall])
+			delete(cmds, v.ToolCall)
 		}
-	}()
+	})
 	// Stopping cancels judgements in flight and waits for them.
 	return func() {
-		unsub()
+		unhandle()
 		cancel()
-		<-looped
 		w.wg.Wait()
 	}
 }
