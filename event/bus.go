@@ -94,10 +94,8 @@ func (b *Bus) Subscribe(f Filter) (<-chan Record, func()) {
 	}
 }
 
-// Handle calls h with each matching Record, one at a time on a
-// goroutine of its own. Unlike Subscribe, Settle then waits for h to
-// return, not just for the Record to be received. The returned func
-// stops delivery and waits for a running h, so h must never call it.
+// Handle calls h with each matching Record in turn, and Settle waits for h
+// to return. Its stop waits for a running h, so h must never call it.
 func (b *Bus) Handle(f Filter, h func(Record)) func() {
 	s := newSub(f, &b.dropped, func(r Record, _ <-chan struct{}) bool {
 		h(r)
@@ -147,9 +145,8 @@ func (b *Bus) Drain(timeout time.Duration) {
 	b.Close()
 }
 
-// Settle waits up to timeout for every subscriber to finish with what is
-// queued, without shutting anything. A Subscribe channel has finished
-// with a Record once it is received, a Handle func once it has returned.
+// Settle waits up to timeout for every subscriber to finish what is queued:
+// received for a Subscribe channel, returned from for a Handle func.
 func (b *Bus) Settle(timeout time.Duration) {
 	b.mu.Lock()
 	subs := make([]*sub, 0, len(b.subs))

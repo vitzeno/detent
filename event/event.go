@@ -5,18 +5,16 @@ package event
 
 import "time"
 
-// Event is anything the Bus carries. Every subscriber is handed the
-// same maps, slices and pointers, so an Event is immutable once
-// published: copy before changing.
+// Event is anything the Bus carries. Every subscriber shares its maps and
+// slices, so an Event is immutable once published: copy before changing.
 type Event interface {
 	Kind() Kind
 	// Lossy: a lagging subscriber may drop this. Live output only.
 	Lossy() bool
 }
 
-// Record is one Event plus what the Bus stamped on it. Ordinals are
-// gapless across the bus and arrive in order, so an unfiltered
-// subscriber can tell a lost record from one never published.
+// Record is one Event plus what the Bus stamped on it. Ordinals are gapless
+// and arrive in order, so an unfiltered subscriber can tell one was lost.
 type Record struct {
 	Ordinal uint64
 	At      time.Time
