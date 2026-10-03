@@ -34,7 +34,7 @@ func (e *Engine) assess(ctx context.Context, c tool.Call) event.Risk {
 		if err != nil {
 			// A hook that fails is skipped, not fatal. An abort is not
 			// a failure worth a warning.
-			if !errors.Is(ctx.Err(), context.Canceled) {
+			if !errors.Is(ctx.Err(), context.Canceled) && e.firstFailure(a.Name()) {
 				e.notice("warn", a.Name()+" could not assess: "+err.Error())
 			}
 			continue
@@ -42,6 +42,20 @@ func (e *Engine) assess(ctx context.Context, c tool.Call) event.Risk {
 		r = r.Widen(got)
 	}
 	return r
+}
+
+// firstFailure says whether this is the hook's first failure in the Turn.
+func (e *Engine) firstFailure(name string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.warned[name] {
+		return false
+	}
+	if e.warned == nil {
+		e.warned = map[string]bool{}
+	}
+	e.warned[name] = true
+	return true
 }
 
 // assessSafely turns a panicking hook into a failed one, as runSafely

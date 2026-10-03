@@ -51,6 +51,7 @@ func (e *Engine) startTurn(ctx context.Context, prompt string, done chan struct{
 	e.mu.Lock()
 	e.cur = t
 	e.past[t.id] = t
+	e.warned = nil
 	e.mu.Unlock()
 
 	go func() {

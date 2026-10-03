@@ -88,6 +88,21 @@ func TestAssess_APanickingHookIsSkipped(t *testing.T) {
 	assert.Contains(t, notice.Text, "panicked")
 }
 
+// An outage fails every Call, but warns once a Turn rather than once a Call.
+func TestAssess_AFailingHookWarnsOnceATurn(t *testing.T) {
+	r := rigWith(t, event.New(), &fakeModel{}, &fakeRunner{}, WithAssessor(brokenHook{}))
+	for range 3 {
+		r.eng.assess(context.Background(), tool.Call{Command: "ls"})
+	}
+	r.await(event.NoticeKind)
+	r.eng.mu.Lock()
+	r.eng.warned = nil
+	r.eng.mu.Unlock()
+	r.eng.assess(context.Background(), tool.Call{Command: "ls"})
+	r.awaitNth(event.NoticeKind, 2)
+	assert.Len(t, r.of(event.NoticeKind), 2, "one per Turn, and a new Turn warns again")
+}
+
 // The network hook goes last whatever order the options came in.
 func TestNew_TheJudgeIsLastInTheChain(t *testing.T) {
 	e := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}},

@@ -92,6 +92,8 @@ type Engine struct {
 	// cur is the Turn in flight, past is what can still be undone.
 	cur  *turnState
 	past map[uuid.UUID]*turnState
+	// warned names the hooks that already failed this Turn, so an outage warns once.
+	warned map[string]bool
 }
 
 // New builds an Engine and subscribes it to intents. Run starts it, and

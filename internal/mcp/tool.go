@@ -29,7 +29,10 @@ func Register(reg *tool.Registry, s *Server, tools []*sdk.Tool) []Tool {
 			continue
 		}
 		tl := Tool{name: name, remote: t.Name, server: s, spec: specOf(s.Name, t)}
-		reg.Register(tl)
+		// free checked the name, so a refusal means a built-in got there first.
+		if reg.Register(tl) != nil {
+			continue
+		}
 		added = append(added, tl)
 	}
 	return added
