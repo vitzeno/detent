@@ -1,6 +1,8 @@
 package views_test
 
 import (
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,7 +26,7 @@ func TestShipped_EverySpecCompiles(t *testing.T) {
 		spec, ok := views.ForCommand(command)
 		require.True(t, ok, command)
 		_, err := viewspec.Compile(*spec)
-		assert.NoError(t, err, "the spec shipped for %s", command)
+		require.NoError(t, err, "the spec shipped for %s", command)
 	}
 }
 
@@ -74,7 +76,7 @@ func TestShipped_KindSpecsBindTheirShape(t *testing.T) {
 		event.RendersTable:   "NAME  SIZE\na     1\nb     2\n",
 		event.RendersFiles:   "./main.go\n./ui/keys.go\n",
 	}
-	assert.ElementsMatch(t, views.Kinds(), keys(samples), "a sample for every kind")
+	assert.ElementsMatch(t, views.Kinds(), slices.Collect(maps.Keys(samples)), "a sample for every kind")
 	for kind, output := range samples {
 		spec, _ := views.ForKind(kind)
 		c, err := viewspec.Compile(spec)
@@ -125,12 +127,4 @@ func TestGoTest_ReadsCachedPackages(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, b.Sample(10), 3)
 	assert.False(t, b.Hides())
-}
-
-func keys[K comparable](m map[K]string) []K {
-	out := make([]K, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
 }
