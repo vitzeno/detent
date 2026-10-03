@@ -58,17 +58,6 @@ func TestTailFile(t *testing.T) {
 	}
 }
 
-func appendTo(t *testing.T, path, s string) {
-	t.Helper()
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
-	if !assert.NoError(t, err) { //nolint:testifylint // called off the test goroutine
-		return
-	}
-	_, err = f.WriteString(s)
-	assert.NoError(t, err)
-	assert.NoError(t, f.Close())
-}
-
 func TestHeldElsewhere(t *testing.T) {
 	host, err := os.Hostname()
 	require.NoError(t, err)
@@ -122,4 +111,15 @@ func TestWithReadOnly_CopiesTheMap(t *testing.T) {
 	c := NewContainer(WithReadOnly(dirs))
 	dirs["/c"] = "/d"
 	assert.Len(t, c.readOnly, 1)
+}
+
+func appendTo(t *testing.T, path, s string) {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if !assert.NoError(t, err) { //nolint:testifylint // called off the test goroutine
+		return
+	}
+	_, err = f.WriteString(s)
+	assert.NoError(t, err)
+	assert.NoError(t, f.Close())
 }
