@@ -11,10 +11,8 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// Native is a Tool that also runs itself in this process, which is how it
-// runs on the host: one implementation on every OS and no shell dialect to
-// match. The sandbox still runs what Lower returns, and both must print the
-// same shape, since the model reads one or the other.
+// Native is a Tool that also runs in this process, which is how it runs on the
+// host on every OS. The sandbox still runs Lower, and both must print the same.
 type Native interface {
 	Tool
 	Run(ctx context.Context, args Args) capture.Result

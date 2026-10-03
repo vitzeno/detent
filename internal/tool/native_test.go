@@ -12,9 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// parity runs a tool both ways in one directory: the sh command the sandbox
-// would run, and Run as the host does. The model reads whichever ran, so
-// they must print the same thing and exit the same way.
+// parity runs a tool as the sandbox would (its sh command) and as the host does
+// (Run) in one directory, since the model reads whichever ran.
 func parity(t *testing.T, tl Native, args Args, files map[string]string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
