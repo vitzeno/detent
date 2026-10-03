@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/termsafe"
 	"github.com/vitzeno/detent/ui/layout"
 )
 
@@ -52,7 +53,7 @@ func (m Model) confirmLines() (lines []string, room int) {
 	if a == nil {
 		return nil, 0
 	}
-	lines = wrapPlain(layout.Printable(event.Command(a.Tool, a.Args)), m.layout.width-4)
+	lines = wrapPlain(termsafe.Printable(event.Command(a.Tool, a.Args)), m.layout.width-4)
 	chrome := 2 // the warning and the keys
 	if a.Rationale != "" {
 		chrome++

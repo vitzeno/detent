@@ -1,15 +1,15 @@
 // Package layout provides small arrangement primitives: Split divides a
 // budget of cells among weighted regions, Row joins pre-rendered blocks,
-// Truncate fits a string to one line and Printable defuses it.
+// Truncate fits a string to one line and defuses it.
 package layout
 
 import (
-	"fmt"
 	"strings"
-	"unicode"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/vitzeno/detent/termsafe"
 )
 
 // Split divides total proportionally to weights, each share at least
@@ -87,7 +87,7 @@ const MinTruncate = 4
 // Truncate fits s into one line of at most w cells, so no tail lands
 // outside the caller's frame. It cuts graphemes, never mid-character.
 func Truncate(s string, w int) string {
-	return ansi.Truncate(Printable(flatten(s)), max(w, MinTruncate), "…")
+	return ansi.Truncate(termsafe.Printable(flatten(s)), max(w, MinTruncate), "…")
 }
 
 // flatten collapses a multi-line string into one, indentation and all.
@@ -100,34 +100,3 @@ func flatten(s string) string {
 }
 
 func isBreak(r rune) bool { return r == '\n' || r == '\r' || r == '\v' || r == '\f' }
-
-// Printable shows control characters and bidi overrides as escapes rather
-// than letting them act on the terminal. Newlines stay, tabs become spaces.
-func Printable(s string) string {
-	if strings.IndexFunc(s, unsafe) < 0 {
-		return s
-	}
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case !unsafe(r):
-			b.WriteRune(r)
-		case r == '\t':
-			b.WriteString("    ")
-		case r < 0x20 || r == 0x7f:
-			b.WriteString("^" + string(r^0x40))
-		default:
-			fmt.Fprintf(&b, `\u%04x`, r)
-		}
-	}
-	return b.String()
-}
-
-// unsafe is a rune that moves the cursor, opens an escape sequence or
-// reorders the text drawn around it.
-func unsafe(r rune) bool {
-	if r == '\n' {
-		return false
-	}
-	return unicode.IsControl(r) || (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069)
-}

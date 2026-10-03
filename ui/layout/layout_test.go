@@ -96,28 +96,6 @@ func TestTruncate_FitsCells(t *testing.T) {
 	assert.Equal(t, "日本…", Truncate("日本語日本語", 6))
 }
 
-// A proposed command is model text, so nothing in it may drive the
-// terminal on the very row a human reads to approve it.
-func TestPrintable_DefusesControls(t *testing.T) {
-	tests := []struct {
-		name, in, want string
-	}{
-		{"plain text is untouched", "ls -la", "ls -la"},
-		{"newlines stay", "a\nb", "a\nb"},
-		{"tabs become spaces", "a\tb", "a    b"},
-		{"escape is shown, not sent", "\x1b[31mred\x1b[0m", "^[[31mred^[[0m"},
-		{"carriage return cannot overwrite", "rm -rf ~\rls", "rm -rf ~^Mls"},
-		{"delete", "a\x7fb", "a^?b"},
-		{"C1 introducer", "a\u009bb", `a\u009bb`},
-		{"bidi override", "a\u202eb", `a\u202eb`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, Printable(tt.in))
-		})
-	}
-}
-
 func TestTruncate_NeverPassesAnEscapeThrough(t *testing.T) {
 	got := Truncate("\x1b[31mredredredred\x1b[0m", 6)
 	assert.NotContains(t, got, "\x1b")
