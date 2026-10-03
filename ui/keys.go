@@ -37,12 +37,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.mode == modeBound {
 		return m.boundKey(msg)
 	}
-	if m.mode == modeFind {
-		return m.findKey(msg)
+	if m.mode == modeFinder {
+		return m.finderKey(msg)
 	}
 	switch msg.String() {
 	case "ctrl+r":
-		return m.openFind("")
+		return m.openFinder("")
 	case "esc":
 		return m.onEscape()
 	case "tab":
@@ -68,9 +68,9 @@ func (m Model) handlePaste(text string) (Model, tea.Cmd) {
 	if text == "" {
 		return m, nil
 	}
-	if m.mode == modeFind {
-		m.find.query += oneLine(text)
-		m.refind()
+	if m.mode == modeFinder {
+		m.finder.query += oneLine(text)
+		m.refreshFinder()
 		return m, nil
 	}
 	if m.mode != modeInput {

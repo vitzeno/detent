@@ -70,7 +70,7 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	quitArmed bool
 	undo      undoState
 	forget    forgetState
-	find      findState
+	finder    finderState
 
 	// Counters for /context and /status, folded from the stream rather
 	// than read back from anywhere.
@@ -326,7 +326,7 @@ func (m *Model) raise(q mode) {
 // askingOwn is whether the human is in something they opened, which a fact
 // must not pull out from under them: a key typed there must never answer it.
 func (m Model) askingOwn() bool {
-	return m.mode == modeUndo || m.mode == modeForget || m.mode == modeFind
+	return m.mode == modeUndo || m.mode == modeForget || m.mode == modeFinder
 }
 
 // trackNewest keeps up with a new row only while following, so a human reading

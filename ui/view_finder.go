@@ -13,46 +13,76 @@ import (
 )
 
 // The finder's box: hits on the left, the selected one drawn on the right,
-// laid over the panes so the bars above and below stay where they were.
+// floated over the panes, which stay in view round it, dimmed.
 
-// findChrome is the box's lines that are not hits: title, query, two
+// finderChrome is the box's lines that are not hits: title, query, two
 // rules and the key line, inside the island's border.
-const findChrome = 5
+const finderChrome = 5
 
-// withFinder lays the box over base while the finder is up.
+// The box keeps at least this much room, so a small terminal gives up its
+// padding before the box gives up its list.
+const (
+	finderMinWidth = 60
+	finderMinBody  = 4
+)
+
+// withFinder floats the box over base, with the panes behind it dimmed.
 func (m Model) withFinder(base string) string {
-	if m.mode != modeFind {
+	if m.mode != modeFinder {
 		return base
 	}
-	box := m.findBox()
+	lines := strings.Split(base, "\n")
+	// The panes start under the session bar and fill finderArea's height.
+	for i := 1; i <= m.finderArea() && i < len(lines); i++ {
+		lines[i] = styleFaint.Render(ansi.Strip(lines[i]))
+	}
+	x, y := m.finderPadding()
 	return lipgloss.NewCompositor(
-		lipgloss.NewLayer(base),
-		lipgloss.NewLayer(box).Y(1).Z(1),
+		lipgloss.NewLayer(strings.Join(lines, "\n")),
+		lipgloss.NewLayer(m.finderBox()).X(x).Y(1+y).Z(1),
 	).Render()
 }
 
-// The box covers the panes exactly.
-func (m Model) findWidth() int      { return max(minPaneWidth, m.layout.width) }
-func (m Model) findHeight() int     { return m.nav.histHeight + islandOverhead }
-func (m Model) findBodyHeight() int { return max(1, m.findHeight()-2-findChrome) }
-func (m Model) findListWidth() int  { return island.Inner(m.findWidth()) * 2 / 5 }
-func (m Model) findPreviewWidth() int {
-	return max(1, island.Inner(m.findWidth())-m.findListWidth()-3)
+// finderArea is the height of the panes the box floats over.
+func (m Model) finderArea() int { return m.nav.histHeight + islandOverhead }
+
+// finderPadding is the gap on each side and above and below: an eighth of
+// the width and a sixth of the height, less when the box would get too small.
+func (m Model) finderPadding() (x, y int) {
+	x = min(m.layout.width/8, max(0, (m.layout.width-finderMinWidth)/2))
+	y = min(m.finderArea()/6, max(0, (m.finderArea()-2-finderChrome-finderMinBody)/2))
+	return x, y
 }
 
-func (m Model) findBox() string {
-	inner := island.Inner(m.findWidth())
+func (m Model) finderWidth() int {
+	x, _ := m.finderPadding()
+	return max(minPaneWidth, m.layout.width-2*x)
+}
+
+func (m Model) finderHeight() int {
+	_, y := m.finderPadding()
+	return m.finderArea() - 2*y
+}
+
+func (m Model) finderBodyHeight() int { return max(1, m.finderHeight()-2-finderChrome) }
+func (m Model) finderListWidth() int  { return island.Inner(m.finderWidth()) * 2 / 5 }
+func (m Model) finderPreviewWidth() int {
+	return max(1, island.Inner(m.finderWidth())-m.finderListWidth()-3)
+}
+
+func (m Model) finderBox() string {
+	inner := island.Inner(m.finderWidth())
 	rule := styleFaint.Render(strings.Repeat("─", inner))
-	lines := []string{m.findQueryLine(inner), rule}
-	lines = append(lines, m.findBodyLines()...)
+	lines := []string{m.finderQueryLine(inner), rule}
+	lines = append(lines, m.finderBodyLines()...)
 	lines = append(lines, rule, styleFaint.Render(layout.Truncate(
-		"enter jump · ctrl+r "+findKindNames[(m.find.kind+1)%findKind(len(findKindNames))]+
+		"enter jump · ctrl+r "+finderKindNames[(m.finder.kind+1)%finderKind(len(finderKindNames))]+
 			" · ↑↓ move · ctrl+u/d scroll · esc back", inner)))
-	return island.Render(m.findTitle(), palette.Accent, lines, m.findWidth(), m.findHeight()-2)
+	return island.Render(m.finderTitle(), palette.Accent, lines, m.finderWidth(), m.finderHeight()-2)
 }
 
-func (m Model) findTitle() string {
-	title := styleBrand.Render("find") + styleFaint.Render(" · "+findKindNames[m.find.kind])
+func (m Model) finderTitle() string {
+	title := styleBrand.Render("finder") + styleFaint.Render(" · "+finderKindNames[m.finder.kind])
 	// An approval waits for the finder to close, so say one is there.
 	if m.asking != nil || m.bound != nil {
 		title += styleCaution.Render(" · a question is waiting, esc to answer it")
@@ -60,9 +90,9 @@ func (m Model) findTitle() string {
 	return title
 }
 
-func (m Model) findQueryLine(width int) string {
-	count := styleFaint.Render(fmt.Sprintf("%d found", len(m.find.hits)))
-	left := styleBrand.Render("> ") + styleGoal.Render(m.find.query) + styleBrand.Render("▏")
+func (m Model) finderQueryLine(width int) string {
+	count := styleFaint.Render(fmt.Sprintf("%d found", len(m.finder.hits)))
+	left := styleBrand.Render("> ") + styleGoal.Render(m.finder.query) + styleBrand.Render("▏")
 	gap := width - lipgloss.Width(left) - lipgloss.Width(count)
 	if gap < 1 {
 		return ansi.Truncate(left, width, "")
@@ -70,14 +100,14 @@ func (m Model) findQueryLine(width int) string {
 	return left + strings.Repeat(" ", gap) + count
 }
 
-// findBodyLines is the list beside the preview, one row of each per line.
-func (m Model) findBodyLines() []string {
-	height, listW, prevW := m.findBodyHeight(), m.findListWidth(), m.findPreviewWidth()
-	list := m.findListLines(listW, height)
+// finderBodyLines is the list beside the preview, one row of each per line.
+func (m Model) finderBodyLines() []string {
+	height, listW, prevW := m.finderBodyHeight(), m.finderListWidth(), m.finderPreviewWidth()
+	list := m.finderListLines(listW, height)
 	var preview []string
-	if h, ok := m.findSelected(); ok {
-		lines, match := m.findPreview(h, prevW-1)
-		top := previewStart(len(lines), match, height, m.find.scroll)
+	if h, ok := m.finderSelected(); ok {
+		lines, match := m.finderPreview(h, prevW-1)
+		top := previewStart(len(lines), match, height, m.finder.scroll)
 		for i := top; i < min(top+height, len(lines)); i++ {
 			gutter := " "
 			if i == match {
@@ -101,39 +131,39 @@ func (m Model) findBodyLines() []string {
 	return out
 }
 
-// findListLines is the window of hits that keeps the cursor on screen.
-func (m Model) findListLines(width, height int) []string {
-	if len(m.find.hits) == 0 {
+// finderListLines is the window of hits that keeps the cursor on screen.
+func (m Model) finderListLines(width, height int) []string {
+	if len(m.finder.hits) == 0 {
 		msg := "nothing matches"
 		if len(m.rows()) == 0 {
 			msg = "nothing in history yet"
 		}
 		return []string{styleFaint.Render("  " + msg)}
 	}
-	top := max(0, m.find.cursor-height+1)
+	top := max(0, m.finder.cursor-height+1)
 	var out []string
-	for i := top; i < min(top+height, len(m.find.hits)); i++ {
-		h := m.find.hits[i]
+	for i := top; i < min(top+height, len(m.finder.hits)); i++ {
+		h := m.finder.hits[i]
 		mark := "  "
-		if i == m.find.cursor {
+		if i == m.finder.cursor {
 			mark = styleRowCursor.Render("▸ ")
 		}
-		glyph := m.findGlyph(h)
+		glyph := m.finderGlyph(h)
 		used := 2 + lipgloss.Width(glyph) + 1
 		out = append(out, mark+glyph+" "+highlight(h.label, h.pos, width-used))
 	}
 	return out
 }
 
-// findGlyph says what matched: a request by its number, a command, or a
+// finderGlyph says what matched: a request by its number, a command, or a
 // line of what something printed.
-func (m Model) findGlyph(h findHit) string {
+func (m Model) finderGlyph(h finderHit) string {
 	switch {
-	case h.kind == findPrompts:
+	case h.kind == finderPrompts:
 		return styleGoal.Render(fmt.Sprintf("#%d", h.block.n))
-	case h.kind == findOutput && h.row.prose != "":
+	case h.kind == finderOutput && h.row.prose != "":
 		return styleGoal.Render("❯")
-	case h.kind == findOutput:
+	case h.kind == finderOutput:
 		return styleFaint.Render("↳")
 	case h.row.human:
 		return styleGoal.Render(m.prompt.mark())
@@ -141,10 +171,10 @@ func (m Model) findGlyph(h findHit) string {
 	return styleFaint.Render("›")
 }
 
-// findPreview is what the selected hit shows on the right, and the line
+// finderPreview is what the selected hit shows on the right, and the line
 // to centre on.
-func (m Model) findPreview(h findHit, width int) (lines []string, match int) {
-	if h.kind == findPrompts {
+func (m Model) finderPreview(h finderHit, width int) (lines []string, match int) {
+	if h.kind == finderPrompts {
 		lines = wrapPlain(oneLine(h.block.prompt), width)
 		for i := range lines {
 			lines[i] = styleGoal.Render(lines[i])
@@ -165,13 +195,13 @@ func (m Model) findPreview(h findHit, width int) (lines []string, match int) {
 	case r.running:
 		lines = r.live
 	default:
-		rendered, ok := m.drawRow(r, width, m.findBodyHeight(), false)
+		rendered, ok := m.drawRow(r, width, m.finderBodyHeight(), false)
 		if !ok {
 			return []string{styleFaint.Render("(no output)")}, 0
 		}
 		lines = rendered.Lines
 	}
-	if line, _, ok := search.Lines(m.find.query, ansi.Strip(strings.Join(lines, "\n"))); ok {
+	if line, _, ok := search.Lines(m.finder.query, ansi.Strip(strings.Join(lines, "\n"))); ok {
 		return lines, line
 	}
 	return lines, 0

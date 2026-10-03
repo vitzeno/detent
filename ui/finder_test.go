@@ -15,7 +15,7 @@ import (
 )
 
 // A session of three requests, each one command, so a hit names its row.
-func findSession(t *testing.T) (*keyed, []uuid.UUID) {
+func finderSession(t *testing.T) (*keyed, []uuid.UUID) {
 	t.Helper()
 	k := newKeyed(t)
 	var calls []uuid.UUID
@@ -39,8 +39,8 @@ func findSession(t *testing.T) (*keyed, []uuid.UUID) {
 	return k, calls
 }
 
-// findType types text a rune at a time.
-func (k *keyed) findType(t *testing.T, text string) {
+// finderType types text a rune at a time.
+func (k *keyed) finderType(t *testing.T, text string) {
 	t.Helper()
 	for _, r := range text {
 		k.send(t, tea.KeyPressMsg{Code: r, Text: string(r)})
@@ -60,14 +60,14 @@ func (k *keyed) send(t *testing.T, msg tea.KeyPressMsg) {
 }
 
 func TestFinder_JumpsToTheHitAndStopsFollowing(t *testing.T) {
-	k, calls := findSession(t)
+	k, calls := finderSession(t)
 	require.True(t, k.m.nav.follow)
 
 	k.ctrl(t, 'r')
-	require.Equal(t, modeFind, k.m.mode)
-	k.findType(t, "redis tls")
-	require.NotEmpty(t, k.m.find.hits)
-	assert.Equal(t, "redis-cli --tls info", k.m.find.hits[0].label, "the command outranks the prompt saying the same")
+	require.Equal(t, modeFinder, k.m.mode)
+	k.finderType(t, "redis tls")
+	require.NotEmpty(t, k.m.finder.hits)
+	assert.Equal(t, "redis-cli --tls info", k.m.finder.hits[0].label, "the command outranks the prompt saying the same")
 
 	k.press(t, "enter")
 	assert.Equal(t, modeInput, k.m.mode)
@@ -77,10 +77,10 @@ func TestFinder_JumpsToTheHitAndStopsFollowing(t *testing.T) {
 }
 
 func TestFinder_EscPutsEverythingBack(t *testing.T) {
-	k, _ := findSession(t)
+	k, _ := finderSession(t)
 	before := k.m.nav
 	k.ctrl(t, 'r')
-	k.findType(t, "list")
+	k.finderType(t, "list")
 	k.press(t, "down")
 	k.press(t, "esc")
 
@@ -94,16 +94,16 @@ func TestFinder_EscPutsEverythingBack(t *testing.T) {
 // Output is matched a line at a time, and a row gives one hit however
 // often its output repeats the word.
 func TestFinder_OutputHitsAreOneLinePerRow(t *testing.T) {
-	k, calls := findSession(t)
+	k, calls := finderSession(t)
 	k.ctrl(t, 'r')
 	k.ctrl(t, 'r') // prompts
 	k.ctrl(t, 'r') // commands
 	k.ctrl(t, 'r') // output
-	require.Equal(t, findOutput, k.m.find.kind)
-	k.findType(t, "6380")
+	require.Equal(t, finderOutput, k.m.finder.kind)
+	k.finderType(t, "6380")
 
-	require.Len(t, k.m.find.hits, 1)
-	h := k.m.find.hits[0]
+	require.Len(t, k.m.finder.hits, 1)
+	h := k.m.finder.hits[0]
 	assert.Equal(t, "tls-port:6380", h.label)
 	assert.Equal(t, []int{9, 10, 11, 12}, h.pos)
 
@@ -114,15 +114,15 @@ func TestFinder_OutputHitsAreOneLinePerRow(t *testing.T) {
 // Typing must never answer a question, so one arriving while the finder is
 // up waits for it to close.
 func TestFinder_AQuestionWaitsUntilItCloses(t *testing.T) {
-	k, _ := findSession(t)
+	k, _ := finderSession(t)
 	k.ctrl(t, 'r')
 	k.m.apply(event.ApprovalAsked{ToolCall: uuid.Must(uuid.NewV7()), Tool: "bash",
 		Args: map[string]any{"command": "rm -rf build"}})
-	require.Equal(t, modeFind, k.m.mode)
-	assert.Contains(t, stripANSI(k.m.findTitle()), "a question is waiting")
+	require.Equal(t, modeFinder, k.m.mode)
+	assert.Contains(t, stripANSI(k.m.finderTitle()), "a question is waiting")
 
-	k.findType(t, "y")
-	assert.Equal(t, "y", k.m.find.query)
+	k.finderType(t, "y")
+	assert.Equal(t, "y", k.m.finder.query)
 	select {
 	case rec := <-k.seen:
 		t.Fatalf("typing in the finder published %s", rec.Event.Kind())
@@ -135,49 +135,49 @@ func TestFinder_AQuestionWaitsUntilItCloses(t *testing.T) {
 
 // The list holds still while the agent works, as history does.
 func TestFinder_NewRowsDoNotMoveTheList(t *testing.T) {
-	k, _ := findSession(t)
+	k, _ := finderSession(t)
 	k.ctrl(t, 'r')
-	k.findType(t, "go")
+	k.finderType(t, "go")
 	k.press(t, "down")
-	hits, cursor := len(k.m.find.hits), k.m.find.cursor
+	hits, cursor := len(k.m.finder.hits), k.m.finder.cursor
 
 	_, evs := oneTurn("go again", "go vet ./...", "ok\n")
 	for _, e := range evs {
 		k.m.apply(e)
 	}
-	assert.Len(t, k.m.find.hits, hits)
-	assert.Equal(t, cursor, k.m.find.cursor)
+	assert.Len(t, k.m.finder.hits, hits)
+	assert.Equal(t, cursor, k.m.finder.cursor)
 }
 
 func TestFinder_SaysWhenAHitWasUndone(t *testing.T) {
-	k, _ := findSession(t)
+	k, _ := finderSession(t)
 	k.ctrl(t, 'r')
-	k.findType(t, "go test")
-	require.NotEmpty(t, k.m.find.hits)
-	k.m.apply(event.RolledBack{Turn: k.m.find.hits[0].block.id})
+	k.finderType(t, "go test")
+	require.NotEmpty(t, k.m.finder.hits)
+	k.m.apply(event.RolledBack{Turn: k.m.finder.hits[0].block.id})
 
 	k.press(t, "enter")
 	assert.Equal(t, modeInput, k.m.mode)
 	assert.Contains(t, k.m.notice.text, "no longer in history")
 }
 
-func TestFinder_SlashSearchOpensWithTheQuery(t *testing.T) {
-	k, _ := findSession(t)
-	k.findType(t, "/search tls")
+func TestFinder_SlashFinderOpensWithTheQuery(t *testing.T) {
+	k, _ := finderSession(t)
+	k.finderType(t, "/finder tls")
 	k.press(t, "enter")
-	require.Equal(t, modeFind, k.m.mode)
-	assert.Equal(t, "tls", k.m.find.query)
+	require.Equal(t, modeFinder, k.m.mode)
+	assert.Equal(t, "tls", k.m.finder.query)
 }
 
-// The box floats over the panes, so the screen keeps its size and no line
-// of it runs past the terminal.
+// The box floats over the panes with room round it, so the screen keeps its
+// size, no line runs past the terminal, and the panes still show at the edges.
 func TestFinder_DrawsInsideTheScreen(t *testing.T) {
 	for _, w := range []int{120, 80} {
-		k, _ := findSession(t)
+		k, _ := finderSession(t)
 		k.m.layout.width = w
 		k.m.sizeViewport()
 		k.ctrl(t, 'r')
-		k.findType(t, "tls")
+		k.finderType(t, "tls")
 
 		screen := strings.Split(k.m.withFinder(k.m.baseView()), "\n")
 		base := strings.Split(k.m.baseView(), "\n")
@@ -186,6 +186,13 @@ func TestFinder_DrawsInsideTheScreen(t *testing.T) {
 			assert.LessOrEqual(t, lipgloss.Width(l), w, "width %d, line %d: %q", w, i, stripANSI(l))
 		}
 		assert.Contains(t, stripANSI(strings.Join(screen, "\n")), "> tls")
+
+		assert.Equal(t, stripANSI(base[1]), stripANSI(screen[1]), "width %d: the panes' top shows above it", w)
+		for _, l := range screen {
+			if plain := stripANSI(l); strings.Contains(plain, "> tls") {
+				assert.True(t, strings.HasPrefix(plain, "│ "), "width %d: the output pane shows left of it: %q", w, plain)
+			}
+		}
 	}
 }
 

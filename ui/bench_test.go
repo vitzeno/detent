@@ -294,7 +294,7 @@ func BenchmarkFinder_Keystroke(b *testing.B) {
 	for _, q := range []string{"t", "go test", "coverage 99"} {
 		b.Run(q, func(b *testing.B) {
 			for b.Loop() {
-				_ = m.findHits(q, findAll)
+				_ = m.finderHits(q, finderAll)
 			}
 		})
 	}

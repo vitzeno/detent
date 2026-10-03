@@ -31,7 +31,7 @@ func (m *Model) sizeViewport() {
 	// input grows with what is typed.
 	var bottom int
 	switch m.mode {
-	case modeInput, modeFind:
+	case modeInput, modeFinder:
 		bottom = m.prompt.Rows() + 2
 	case modeConfirm:
 		bottom = len(strings.Split(m.confirmBox(), "\n"))
