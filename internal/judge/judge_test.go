@@ -243,14 +243,12 @@ func TestWatch_AToolCallThatNeverRanIsNotJudged(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	asker := recordingAsker{states: make(chan classify.State, 1)}
-	defer Watch(t.Context(), bus, asker)()
+	stop := Watch(t.Context(), bus, asker)
 	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "p"})
 	bus.Publish(event.ToolCallEnded{ToolCall: uuid.Must(uuid.NewV7()), Result: event.Result{Err: "declined"}})
-	select {
-	case <-asker.states:
-		t.Fatal("judged a Call that never ran")
-	case <-time.After(200 * time.Millisecond):
-	}
+	bus.Settle(3 * time.Second)
+	stop() // waits for any judgement already started
+	assert.Empty(t, asker.states, "judged a tool call that never ran")
 }
 
 func TestOutput_KeepsTheTailOfStderr(t *testing.T) {
