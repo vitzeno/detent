@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,7 +50,7 @@ type PromptPart struct {
 // for prose alone.
 func (c *Client) Complete(ctx context.Context, msgs []event.Message, tools []map[string]any) (Reply, event.Usage, error) {
 	if len(msgs) == 0 {
-		return Reply{}, event.Usage{}, fmt.Errorf("model: empty transcript")
+		return Reply{}, event.Usage{}, errors.New("model: empty transcript")
 	}
 	wire := make([]wireMessage, 0, len(msgs)+1)
 	wire = append(wire, wireMessage{Role: string(event.RoleSystem), Content: c.systemPrompt()})
@@ -59,47 +61,91 @@ func (c *Client) Complete(ctx context.Context, msgs []event.Message, tools []map
 }
 
 // Ping fails fast at startup instead of dying on the first Turn with a
-// raw dial error.
-func Ping(ctx context.Context, baseURL, apiKey string) error {
+// raw dial error. It authenticates exactly as Complete does.
+func (c *Client) Ping(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	url := strings.TrimSuffix(baseURL, "/") + "/models"
+	url := c.baseURL() + "/models"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("model: ping: %w", err)
 	}
-	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
-	resp, err := (&http.Client{}).Do(req)
+	c.authorize(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("model: ping %s: %w", url, err)
 	}
 	defer resp.Body.Close()
+	// Drained, within a bound, so the first Step can reuse the connection.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("model: ping %s: HTTP %d", url, resp.StatusCode)
 	}
 	return nil
 }
 
+// StatusError is a reply other than 200, typed so a transient failure
+// can be told from a bad request without reading the message.
+type StatusError struct {
+	URL        string
+	Code       int
+	RetryAfter time.Duration
+	Body       string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("model: %s: HTTP %d: %s", e.URL, e.Code, e.Body)
+}
+
+// Temporary reports whether asking again later could succeed.
+func (e *StatusError) Temporary() bool {
+	return e.Code == http.StatusTooManyRequests || e.Code >= http.StatusInternalServerError
+}
+
+// retryWaits is the pause before each retry of a transient failure, a
+// var so a test need not wait.
+var retryWaits = []time.Duration{2 * time.Second, 8 * time.Second}
+
+// maxRetryWait caps a Retry-After, so an endpoint cannot park a Turn.
+const maxRetryWait = 30 * time.Second
+
+// maxResponseBytes bounds a reply. A Step's answer is kilobytes.
+const maxResponseBytes = 32 << 20
+
+// send posts one request, retrying a 429 or 5xx a bounded number of
+// times so one transient failure does not end a Turn.
 func (c *Client) send(ctx context.Context, r wireRequest) (Reply, event.Usage, error) {
 	r.Model = c.model()
 	body, err := json.Marshal(r)
 	if err != nil {
 		return Reply{}, event.Usage{}, fmt.Errorf("model: encode: %w", err)
 	}
+	for attempt := 0; ; attempt++ {
+		reply, used, err := c.post(ctx, body)
+		var se *StatusError
+		if !errors.As(err, &se) || !se.Temporary() || attempt >= len(retryWaits) {
+			return reply, used, err
+		}
+		wait := retryWaits[attempt]
+		if se.RetryAfter > 0 {
+			wait = min(se.RetryAfter, maxRetryWait)
+		}
+		select {
+		case <-ctx.Done():
+			return Reply{}, event.Usage{}, err
+		case <-time.After(wait):
+		}
+	}
+}
+
+func (c *Client) post(ctx context.Context, body []byte) (Reply, event.Usage, error) {
 	url := c.baseURL() + "/chat/completions"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return Reply{}, event.Usage{}, fmt.Errorf("model: request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if c.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.APIKey)
-	}
-	for k, v := range c.Headers {
-		req.Header.Set(k, v)
-	}
+	c.authorize(req)
 
 	start := time.Now()
 	resp, err := c.httpClient().Do(req)
@@ -107,12 +153,16 @@ func (c *Client) send(ctx context.Context, r wireRequest) (Reply, event.Usage, e
 		return Reply{}, event.Usage{}, fmt.Errorf("model: %s: %w", url, err)
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return Reply{}, event.Usage{}, fmt.Errorf("model: read: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return Reply{}, event.Usage{}, fmt.Errorf("model: %s: HTTP %d: %s", url, resp.StatusCode, snippet(raw))
+		return Reply{}, event.Usage{}, &StatusError{URL: url, Code: resp.StatusCode,
+			RetryAfter: retryAfter(resp.Header.Get("Retry-After")), Body: snippet(raw)}
+	}
+	if len(raw) > maxResponseBytes {
+		return Reply{}, event.Usage{}, fmt.Errorf("model: %s: reply over %d bytes", url, maxResponseBytes)
 	}
 
 	var wr wireResponse
@@ -132,6 +182,26 @@ func (c *Client) send(ctx context.Context, r wireRequest) (Reply, event.Usage, e
 	return reply, used, nil
 }
 
+// authorize sets the key and the configured headers, the same on every request.
+func (c *Client) authorize(req *http.Request) {
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+	for k, v := range c.Headers {
+		req.Header.Set(k, v)
+	}
+}
+
+// retryAfter reads a Retry-After in seconds. The HTTP-date form is rare
+// from an API and counts as absent.
+func retryAfter(v string) time.Duration {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return time.Duration(n) * time.Second
+}
+
 func (c *Client) baseURL() string {
 	if c.BaseURL != "" {
 		return strings.TrimSuffix(c.BaseURL, "/")
@@ -146,11 +216,14 @@ func (c *Client) model() string {
 	return DefaultModel
 }
 
+// defaultHTTPClient bounds a Step that never answers.
+var defaultHTTPClient = &http.Client{Timeout: 5 * time.Minute}
+
 func (c *Client) httpClient() *http.Client {
 	if c.HTTPClient != nil {
 		return c.HTTPClient
 	}
-	return &http.Client{Timeout: 5 * time.Minute}
+	return defaultHTTPClient
 }
 
 // PromptParts names each piece of the system prompt and its size. A new
@@ -162,10 +235,13 @@ func (c *Client) PromptParts() []PromptPart {
 	parts := []PromptPart{{Name: "detent", Detail: "environment and rules", Bytes: len(systemPrompt(c.env()))}}
 	if c.Instructions != "" {
 		parts = append(parts, PromptPart{Name: "instructions", Detail: strings.Join(c.InstructionFiles, ", "),
-			Bytes: len(c.Instructions) + 2})
+			Bytes: len(c.Instructions) + len(instructionsSep)})
 	}
 	return parts
 }
+
+// instructionsSep sits between the built-in prompt and the project's own.
+const instructionsSep = "\n\n"
 
 func (c *Client) systemPrompt() string {
 	if c.SystemPrompt != "" {
@@ -174,7 +250,7 @@ func (c *Client) systemPrompt() string {
 	if c.Instructions == "" {
 		return systemPrompt(c.env())
 	}
-	return systemPrompt(c.env()) + "\n\n" + c.Instructions
+	return systemPrompt(c.env()) + instructionsSep + c.Instructions
 }
 
 // env is where commands run, this machine when the harness said nothing.
@@ -188,9 +264,9 @@ func (c *Client) env() Environment {
 // snippet bounds an error body so a 2MB HTML error page cannot become
 // the error message.
 func snippet(b []byte) string {
-	const max = 300
-	if len(b) > max {
-		return string(b[:max]) + "…"
+	const limit = 300
+	if len(b) > limit {
+		return strings.ToValidUTF8(string(b[:limit]), "") + "…"
 	}
 	return string(b)
 }

@@ -115,7 +115,7 @@ func run() error {
 	// wait needs the endpoint, so the ping overlaps it.
 	pinged := make(chan error, 1)
 	go func() {
-		pinged <- model.Ping(context.Background(), resolved.BaseURL, resolved.APIKey)
+		pinged <- (&model.Client{BaseURL: resolved.BaseURL, APIKey: resolved.APIKey, Headers: resolved.Headers}).Ping(context.Background())
 	}()
 
 	// A resumed session keeps its id, so its records continue the same

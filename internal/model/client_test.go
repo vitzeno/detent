@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -104,6 +106,7 @@ func TestComplete_SurfacesFailures(t *testing.T) {
 	})
 
 	t.Run("an HTML error page is bounded", func(t *testing.T) {
+		fastRetries(t)
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusBadGateway)
 			for range 5000 {
@@ -130,10 +133,122 @@ func serve(t *testing.T, body string) (*Client, *map[string]any) {
 	got := map[string]any{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
-		require.NoError(t, json.Unmarshal(raw, &got))
+		assert.NoError(t, json.Unmarshal(raw, &got)) // require cannot stop a test from a handler
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, body)
 	}))
 	t.Cleanup(srv.Close)
 	return &Client{BaseURL: srv.URL, Model: "m"}, &got
+}
+
+// The request carries the key, the configured headers and the model,
+// and Ping sends the same, or a gateway keyed by header fails at startup.
+func TestClient_AuthenticatesEveryRequest(t *testing.T) {
+	headers := make(chan http.Header, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headers <- r.Header.Clone()
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL + "/", APIKey: "k", Headers: map[string]string{"X-API-Key": "g"}}
+
+	require.NoError(t, c.Ping(context.Background()))
+	_, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
+	require.NoError(t, err)
+
+	for _, name := range []string{"ping", "complete"} {
+		h := <-headers
+		assert.Equal(t, "Bearer k", h.Get("Authorization"), name)
+		assert.Equal(t, "g", h.Get("X-API-Key"), name)
+	}
+}
+
+func TestPing_ANon200Fails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	err := (&Client{BaseURL: srv.URL}).Ping(context.Background())
+	assert.ErrorContains(t, err, "HTTP 401")
+}
+
+// A transient failure is asked again and a bad request is not, and either
+// way the caller can read the status without parsing a message.
+func TestComplete_RetriesOnlyTransientFailures(t *testing.T) {
+	fastRetries(t)
+	tests := []struct {
+		name     string
+		codes    []int
+		wantErr  int
+		wantAsks int
+	}{
+		{"a 502 then an answer", []int{502, 200}, 0, 2},
+		{"a 429 then an answer", []int{429, 200}, 0, 2},
+		{"a 400 is final", []int{400, 200}, 400, 1},
+		{"retries are bounded", []int{503, 503, 503, 200}, 503, 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var asks atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.codes[asks.Add(1)-1])
+				_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+			}))
+			defer srv.Close()
+			c := &Client{BaseURL: srv.URL}
+			_, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
+			assert.Equal(t, int32(tt.wantAsks), asks.Load())
+			if tt.wantErr == 0 {
+				require.NoError(t, err)
+				return
+			}
+			var se *StatusError
+			require.ErrorAs(t, err, &se)
+			assert.Equal(t, tt.wantErr, se.Code)
+		})
+	}
+}
+
+// fastRetries keeps a 5xx from making a test wait out the real backoff.
+func fastRetries(t *testing.T) {
+	t.Helper()
+	old := retryWaits
+	retryWaits = []time.Duration{time.Millisecond, time.Millisecond}
+	t.Cleanup(func() { retryWaits = old })
+}
+
+func TestRetryAfter_ReadsSeconds(t *testing.T) {
+	assert.Equal(t, 3*time.Second, retryAfter("3"))
+	assert.Zero(t, retryAfter(""))
+	assert.Zero(t, retryAfter("Wed, 21 Oct 2015 07:28:00 GMT"))
+}
+
+func TestComplete_NullArgumentsAreAnEmptyMap(t *testing.T) {
+	c, _ := serve(t, `{"choices":[{"message":{"tool_calls":[{"id":"c","type":"function","function":{"name":"list_dir","arguments":"null"}}]}}]}`)
+	reply, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{}, reply.Calls[0].Args, "null must not go back to the endpoint as null")
+}
+
+func TestReply_Unfinished(t *testing.T) {
+	call := []event.ToolCall{{ID: "c", Name: "bash"}}
+	tests := []struct {
+		name  string
+		reply Reply
+		want  bool
+	}{
+		{"an answer", Reply{Text: "done", Stop: "stop"}, false},
+		{"no stop reason is taken at its word", Reply{Text: "done"}, false},
+		{"end_turn", Reply{Text: "done", Stop: "end_turn"}, false},
+		{"cut off", Reply{Text: "half", Stop: "length"}, true},
+		{"provider error", Reply{Text: "half", Stop: "error"}, true},
+		{"only whitespace", Reply{Text: " \n", Stop: "stop"}, true},
+		{"only reasoning", Reply{Text: "thinking", Thinking: true, Stop: "stop"}, true},
+		{"calls are never unfinished", Reply{Calls: call, Stop: "length"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.reply.Unfinished())
+		})
+	}
 }

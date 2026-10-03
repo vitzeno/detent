@@ -31,7 +31,7 @@ func TestLive_ToolCallsRoundTrip(t *testing.T) {
 	t.Logf("endpoint %s, model %s", c.baseURL(), c.model())
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	require.NoError(t, Ping(ctx, c.baseURL(), c.APIKey))
+	require.NoError(t, c.Ping(ctx))
 
 	tools := []map[string]any{{
 		"type": "function",

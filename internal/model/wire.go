@@ -13,7 +13,6 @@ type wireRequest struct {
 	Model       string           `json:"model"`
 	Messages    []wireMessage    `json:"messages"`
 	Tools       []map[string]any `json:"tools,omitempty"`
-	ToolChoice  string           `json:"tool_choice,omitempty"`
 	Temperature float64          `json:"temperature,omitempty"`
 }
 
@@ -103,6 +102,10 @@ func decodeCall(wc wireToolCall, i int) event.ToolCall {
 	if err := json.Unmarshal([]byte(raw), &c.Args); err != nil {
 		c.Args = map[string]any{}
 		c.Err = fmt.Sprintf("arguments were not valid JSON: %v", err)
+	}
+	// "null" parses to a nil map, which would go back to the endpoint as "null".
+	if c.Args == nil {
+		c.Args = map[string]any{}
 	}
 	return c
 }
