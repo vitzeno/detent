@@ -17,13 +17,6 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// Native is a Tool that also runs in this process, which is how it runs on the
-// host on every OS. The sandbox still runs Lower, and both must print the same.
-type Native interface {
-	Tool
-	Run(ctx context.Context, args Args) capture.Result
-}
-
 // failed is a native tool refusing or failing, said the way a command would.
 func failed(code int, format string, a ...any) capture.Result {
 	return capture.Result{ExitCode: code, Stderr: fmt.Sprintf(format, a...) + "\n"}

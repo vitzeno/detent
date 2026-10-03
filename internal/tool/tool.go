@@ -3,7 +3,19 @@
 // of them. An MCP tool has none, and internal/mcp answers it instead.
 package tool
 
-import "github.com/vitzeno/detent/event"
+import (
+	"context"
+
+	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/capture"
+)
+
+// The parameter types a Spec may use.
+const (
+	TypeString = "string"
+	TypeInt    = "integer"
+	TypeBool   = "boolean"
+)
 
 // Tool is a typed front end onto a shell command. Pure: no tool runs
 // anything, so the Runner stays the one place with I/O.
@@ -13,6 +25,13 @@ type Tool interface {
 	// Lower turns validated args into a command. An error here becomes
 	// a tool result, never a failed Turn.
 	Lower(args Args) (string, error)
+}
+
+// Native is a Tool that also runs in this process, which is how it runs on the
+// host on every OS. The sandbox still runs Lower, and both must print the same.
+type Native interface {
+	Tool
+	Run(ctx context.Context, args Args) capture.Result
 }
 
 // Spec is what the model is told about a tool, and what the risk chain
@@ -73,10 +92,3 @@ func (a Args) Bool(name string, def bool) bool {
 	}
 	return def
 }
-
-// The parameter types a Spec may use.
-const (
-	TypeString = "string"
-	TypeInt    = "integer"
-	TypeBool   = "boolean"
-)
