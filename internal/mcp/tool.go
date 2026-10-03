@@ -59,12 +59,6 @@ func (t Tool) Lower(args tool.Args) (string, error) {
 	return event.Command(t.name, args), nil
 }
 
-// Remote is the name on the server, which namespacing changed.
-func (t Tool) Remote() string { return t.remote }
-
-// Server is who answers this call.
-func (t Tool) Server() *Server { return t.server }
-
 // toolName namespaces a server's tool, because two servers offering
 // "search" is the collision the spec warns aggregators about.
 func toolName(server, remote string) string {

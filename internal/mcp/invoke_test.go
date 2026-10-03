@@ -59,7 +59,7 @@ func TestInvokers_CloseEndsEveryServer(t *testing.T) {
 	for _, s := range []*Server{a, b} {
 		tools, err := s.Tools(context.Background())
 		require.NoError(t, err)
-		in.Add(Register(tool.Standard(), s, tools)...)
+		in.add(Register(tool.Standard(), s, tools)...)
 	}
 	require.Len(t, in.Servers(), 2)
 	require.NoError(t, in.Close())
@@ -77,6 +77,6 @@ func wired(t *testing.T, s *Server) (*tool.Registry, *Invokers) {
 
 	reg := tool.Standard()
 	in := NewInvokers()
-	in.Add(Register(reg, s, tools)...)
+	in.add(Register(reg, s, tools)...)
 	return reg, in
 }

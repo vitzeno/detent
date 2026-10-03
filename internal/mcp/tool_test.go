@@ -140,7 +140,7 @@ func TestRegister_FromALiveServer(t *testing.T) {
 
 	tl, ok := reg.Lookup("fake__alpha")
 	require.True(t, ok)
-	assert.Equal(t, "alpha", tl.(Tool).Remote(), "the server's own name was lost")
+	assert.Equal(t, "alpha", tl.(Tool).remote, "the server's own name was lost")
 }
 
 // Strict mode demands every property in required and optionals

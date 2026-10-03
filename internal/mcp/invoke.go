@@ -46,8 +46,8 @@ func (i *Invokers) Invoke(ctx context.Context, c tool.Call) capture.Result {
 	return t.server.Call(ctx, t.remote, c.Args)
 }
 
-// Add records what Register returned, which carries its own routing.
-func (i *Invokers) Add(tools ...Tool) {
+// add records what Register returned, which carries its own routing.
+func (i *Invokers) add(tools ...Tool) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	for _, t := range tools {
@@ -99,7 +99,7 @@ func (i *Invokers) register(reg *tool.Registry, s *Server, tools []*sdk.Tool) {
 	i.registering.Lock()
 	defer i.registering.Unlock()
 	i.keep(s)
-	i.Add(Register(reg, s, tools)...)
+	i.add(Register(reg, s, tools)...)
 }
 
 // swap replaces a server's session and tools, handing back the old session to close.
@@ -109,7 +109,7 @@ func (i *Invokers) swap(reg *tool.Registry, s *Server, tools []*sdk.Tool) *Serve
 	old, names := i.drop(s.Name)
 	reg.Unregister(names...)
 	i.keep(s)
-	i.Add(Register(reg, s, tools)...)
+	i.add(Register(reg, s, tools)...)
 	return old
 }
 
