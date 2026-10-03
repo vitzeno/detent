@@ -39,8 +39,8 @@ func Subject(e Event) (turn, call uuid.UUID) {
 	}
 	read := func(name string) (out uuid.UUID) {
 		f := v.FieldByName(name)
-		if f.IsValid() && f.Type() == reflect.TypeFor[uuid.UUID]() {
-			out = f.Interface().(uuid.UUID)
+		if f.IsValid() {
+			out, _ = f.Interface().(uuid.UUID)
 		}
 		return out
 	}

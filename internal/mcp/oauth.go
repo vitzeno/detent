@@ -195,5 +195,9 @@ func freePort() (int, error) {
 		return 0, err
 	}
 	defer func() { _ = ln.Close() }() // only its port was wanted
-	return ln.Addr().(*net.TCPAddr).Port, nil
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		return 0, fmt.Errorf("listening gave a %T, not a TCP address", ln.Addr())
+	}
+	return addr.Port, nil
 }
