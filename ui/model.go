@@ -61,9 +61,9 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, and helpe
 	panel  panelState
 	layout layoutState
 	notice noticeState
-	// context is the last Step's prompt tokens, which is the whole
+	// ctxTokens is the last Step's prompt tokens, which is the whole
 	// transcript resent, so it is how full the budget is right now.
-	context int
+	ctxTokens int
 	// replaying suppresses the flashes, because a replayed fact is
 	// history and a notice says something just happened.
 	replaying bool

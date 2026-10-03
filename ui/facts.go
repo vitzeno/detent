@@ -154,13 +154,13 @@ func (m *Model) apply(ev event.Event) {
 	case event.StepEnded:
 		m.steps++
 		if v.Usage.PromptTokens > 0 {
-			m.context = v.Usage.PromptTokens
+			m.ctxTokens = v.Usage.PromptTokens
 		}
 
 	case event.Compacted:
 		// The next Step measures the new size. Until then the old
 		// reading is stale and would overstate the budget.
-		m.context = 0
+		m.ctxTokens = 0
 		m.noteOK(fmt.Sprintf("compacted, %d messages summarised", v.Dropped))
 
 	case event.Notice:
@@ -286,7 +286,7 @@ func (m *Model) clearHistory() {
 	m.blocks, m.cur = nil, nil
 	m.nav = navState{follow: true}
 	m.calls, m.steps, m.errors, m.views, m.tokens = 0, 0, 0, 0, 0
-	m.context = 0
+	m.ctxTokens = 0
 }
 
 // block and row find what an event is about and mark its block to redraw.

@@ -37,20 +37,20 @@ func (m Model) sessionBar() string {
 // decides when a Turn stalls to compact. Raw totals live in /status.
 func (m Model) contextGauge() string {
 	budget := m.run.ContextTokens
-	if budget <= 0 || m.context <= 0 {
+	if budget <= 0 || m.ctxTokens <= 0 {
 		return status.Tokens(m.tokens) + " tok"
 	}
-	return fmt.Sprintf("ctx %d%%", m.context*100/budget)
+	return fmt.Sprintf("ctx %d%%", m.ctxTokens*100/budget)
 }
 
 // contextStyle warns before the stall rather than after it: crossing
 // the budget costs a summariser round trip mid-Turn.
 func (m Model) contextStyle() lipgloss.Style {
 	budget := m.run.ContextTokens
-	if budget <= 0 || m.context <= 0 {
+	if budget <= 0 || m.ctxTokens <= 0 {
 		return styleFaint
 	}
-	switch pct := m.context * 100 / budget; {
+	switch pct := m.ctxTokens * 100 / budget; {
 	case pct >= 90:
 		return styleDanger
 	case pct >= 75:

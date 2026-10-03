@@ -94,11 +94,11 @@ func (m Model) contextDetail() string {
 	if budget <= 0 {
 		return "no budget set"
 	}
-	if m.context <= 0 {
+	if m.ctxTokens <= 0 {
 		return "nothing measured yet, budget " + status.Tokens(budget)
 	}
-	return fmt.Sprintf("%d%%  %s of %s", m.context*100/budget,
-		status.Tokens(m.context), status.Tokens(budget))
+	return fmt.Sprintf("%d%%  %s of %s", m.ctxTokens*100/budget,
+		status.Tokens(m.ctxTokens), status.Tokens(budget))
 }
 
 func (m *Model) helpLines() []string {
