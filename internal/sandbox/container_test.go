@@ -96,6 +96,7 @@ func TestContainer_StreamsLiveEvents(t *testing.T) {
 	res, err := c.Run(context.Background(), "echo one; echo two", ch)
 	require.NoError(t, err)
 	assert.Equal(t, "one\ntwo\n", res.Stdout)
+	close(ch) // the caller's to close once Run returns, never the runner's
 
 	var lines []string
 	for e := range ch {
