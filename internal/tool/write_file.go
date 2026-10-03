@@ -67,6 +67,9 @@ func (WriteFile) Run(ctx context.Context, a Args) capture.Result {
 	if err := ctx.Err(); err != nil {
 		return stopped("write_file", "", err)
 	}
+	if existed {
+		content = keepCRLF(before, content)
+	}
 	if err := writeAsShell(p, content); err != nil {
 		return failed(2, "write_file: %v", err) // dash's status for a redirection it cannot open
 	}
@@ -74,6 +77,16 @@ func (WriteFile) Run(ctx context.Context, a Args) capture.Result {
 		return capture.Result{Stdout: fmt.Sprintf("created %s, %d lines\n", p, strings.Count(content, "\n"))}
 	}
 	return capture.Result{Stdout: changeShown(p, before, content)}
+}
+
+// keepCRLF gives content CRLF endings when it replaces a file that was all CRLF,
+// since read_file showed that file without its \r. Mixed or chosen endings stand.
+func keepCRLF(before, content string) string {
+	crlf := strings.Count(before, "\r\n")
+	if crlf == 0 || crlf != strings.Count(before, "\n") || strings.Contains(content, "\r") {
+		return content
+	}
+	return strings.ReplaceAll(content, "\n", "\r\n")
 }
 
 func writeArgs(a Args) (string, error) {

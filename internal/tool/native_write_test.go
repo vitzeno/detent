@@ -162,3 +162,24 @@ func filesUnder(t *testing.T, dir string) map[string]string {
 	}))
 	return files
 }
+
+// Rewriting a CRLF file from what read_file showed keeps it CRLF, while a mixed
+// file or content that chose its own endings is written as given.
+func TestWriteFile_NativeKeepsACRLFFileCRLF(t *testing.T) {
+	for name, c := range map[string]struct{ before, content, want string }{
+		"all CRLF, model wrote LF": {"a\r\nb\r\n", "a\nB\n", "a\r\nB\r\n"},
+		"mixed endings":            {"a\r\nb\n", "a\nB\n", "a\nB\n"},
+		"content chose CRLF":       {"a\r\nb\r\n", "a\r\nB\n", "a\r\nB\n"},
+		"an LF file":               {"a\nb\n", "a\nB\n", "a\nB\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			require.NoError(t, os.WriteFile("f.txt", []byte(c.before), 0o600))
+			got := WriteFile{}.Run(t.Context(), Args{"path": "f.txt", "content": c.content})
+			require.Zero(t, got.ExitCode, got.Stderr)
+			b, err := os.ReadFile("f.txt")
+			require.NoError(t, err)
+			assert.Equal(t, c.want, string(b))
+		})
+	}
+}
