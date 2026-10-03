@@ -103,36 +103,6 @@ func TestFind_ReadsWhoMayAskForIt(t *testing.T) {
 	assert.False(t, got[1].UserInvocable)
 }
 
-func TestRoots_WalkUpToTheRepositoryThenHome(t *testing.T) {
-	repo := tree(t, map[string]string{".git/HEAD": "ref", "sub/x": ""})
-	roots := Roots(filepath.Join(repo, "sub"), "/home/ada")
-	var dirs []string
-	for _, r := range roots {
-		dirs = append(dirs, strings.TrimPrefix(r.Dir, repo))
-	}
-	assert.Equal(t, []string{
-		"/sub/.agents/skills", "/sub/.claude/skills", "/.agents/skills", "/.claude/skills",
-		"/home/ada/.agents/skills", "/home/ada/.claude/skills",
-	}, dirs)
-	assert.True(t, roots[3].Project)
-	assert.False(t, roots[4].Project)
-}
-
-func skill(name, description string) string {
-	return "---\nname: " + name + "\ndescription: |\n  " + strings.ReplaceAll(description, "\n", "\n  ") + "\n---\n# " + name + "\n"
-}
-
-func tree(t *testing.T, files map[string]string) string {
-	t.Helper()
-	dir := t.TempDir()
-	for name, body := range files {
-		p := filepath.Join(dir, name)
-		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
-		require.NoError(t, os.WriteFile(p, []byte(body), 0o644))
-	}
-	return dir
-}
-
 // A cloned repository must not be able to point a skill at the human's home and have it listed.
 func TestFind_SkipsAProjectSkillLinkedOutOfTheRepository(t *testing.T) {
 	repo := tree(t, map[string]string{"skills/inside/SKILL.md": skill("inside", "fine"), "elsewhere/linked/SKILL.md": skill("linked", "fine too")})
@@ -158,6 +128,21 @@ func TestFind_SkipsAProjectSkillLinkedOutOfTheRepository(t *testing.T) {
 	assert.Len(t, got, 3, "file links to away, so it is shadowed rather than skipped")
 }
 
+func TestRoots_WalkUpToTheRepositoryThenHome(t *testing.T) {
+	repo := tree(t, map[string]string{".git/HEAD": "ref", "sub/x": ""})
+	roots := Roots(filepath.Join(repo, "sub"), "/home/ada")
+	var dirs []string
+	for _, r := range roots {
+		dirs = append(dirs, strings.TrimPrefix(r.Dir, repo))
+	}
+	assert.Equal(t, []string{
+		"/sub/.agents/skills", "/sub/.claude/skills", "/.agents/skills", "/.claude/skills",
+		"/home/ada/.agents/skills", "/home/ada/.claude/skills",
+	}, dirs)
+	assert.True(t, roots[3].Project)
+	assert.False(t, roots[4].Project)
+}
+
 func TestRoots_FenceProjectSkillsToTheRepository(t *testing.T) {
 	repo := tree(t, map[string]string{".git/HEAD": "ref", "sub/x": ""})
 	for _, r := range Roots(filepath.Join(repo, "sub"), "/home/me") {
@@ -167,4 +152,19 @@ func TestRoots_FenceProjectSkillsToTheRepository(t *testing.T) {
 			assert.Empty(t, r.Within)
 		}
 	}
+}
+
+func skill(name, description string) string {
+	return "---\nname: " + name + "\ndescription: |\n  " + strings.ReplaceAll(description, "\n", "\n  ") + "\n---\n# " + name + "\n"
+}
+
+func tree(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for name, body := range files {
+		p := filepath.Join(dir, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o644))
+	}
+	return dir
 }

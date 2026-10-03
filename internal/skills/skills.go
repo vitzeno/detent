@@ -16,6 +16,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// maxHead bounds what is read of a SKILL.md at startup, where only its header is wanted.
+const maxHead = 64 * 1024
+
+var validName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
 // Skill is one SKILL.md and what its frontmatter says about it.
 type Skill struct {
 	Name        string
@@ -106,8 +111,6 @@ type frontmatter struct {
 	UserInvocable          *bool  `yaml:"user-invocable"`
 }
 
-var validName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
-
 // load reads dir/SKILL.md. ok is false only with no SKILL.md, no description,
 // or a header that will not parse even leniently.
 func load(dir string) (Skill, []string, bool) {
@@ -155,6 +158,17 @@ func load(dir string) (Skill, []string, bool) {
 	}, warnings, true
 }
 
+// readHead reads the start of a file, enough for any sane header.
+func readHead(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	b, err := io.ReadAll(io.LimitReader(f, maxHead))
+	return string(b), err
+}
+
 // header is the YAML between a leading --- line and the next one.
 func header(text string) (string, bool) {
 	text = strings.TrimPrefix(text, "\ufeff")
@@ -168,20 +182,6 @@ func header(text string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// maxHead bounds what is read of a SKILL.md at startup, where only its header is wanted.
-const maxHead = 64 * 1024
-
-// readHead reads the start of a file, enough for any sane header.
-func readHead(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = f.Close() }()
-	b, err := io.ReadAll(io.LimitReader(f, maxHead))
-	return string(b), err
 }
 
 // quoteValues quotes each top-level "key: value" whose value is plain text.

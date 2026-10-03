@@ -93,27 +93,6 @@ func TestFind_PutsTheGlobalFileFirst(t *testing.T) {
 	assert.Len(t, files, 1, "run from beside it, the file is read once")
 }
 
-func TestPrompt_NamesEachFileAndSaysWhatWasCut(t *testing.T) {
-	assert.Empty(t, Prompt(nil))
-	p := Prompt([]File{{Path: "../AGENTS.md", Text: "be brief\n"}, {Path: "CLAUDE.md", Text: "use go", Truncated: true}})
-	assert.Contains(t, p, "<instructions path=\"../AGENTS.md\">\nbe brief\n</instructions>")
-	assert.Contains(t, p, "use go\n[kept the first 6 bytes, read the file for the rest]\n</instructions>")
-	assert.Less(t, strings.Index(p, "be brief"), strings.Index(p, "use go"))
-}
-
-func tree(t *testing.T, files map[string]string) string {
-	t.Helper()
-	// One level down, so a test can put a file above the root.
-	dir := filepath.Join(t.TempDir(), "repo")
-	require.NoError(t, os.MkdirAll(dir, 0o755))
-	for name, body := range files {
-		p := filepath.Join(dir, name)
-		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
-		require.NoError(t, os.WriteFile(p, []byte(body), 0o644))
-	}
-	return dir
-}
-
 // A cloned repository must not be able to point AGENTS.md at a key and have it sent to the model.
 func TestFind_ReadsNoLinkOutOfTheRepository(t *testing.T) {
 	root := tree(t, map[string]string{".git/HEAD": "ref", "docs/rules.md": "linked rules", "sub/CLAUDE.md": "near"})
@@ -162,7 +141,28 @@ func TestFind_WalksUpFromARelativeDirectory(t *testing.T) {
 	assert.Equal(t, []string{"../AGENTS.md", "AGENTS.md"}, Paths(files))
 }
 
+func TestPrompt_NamesEachFileAndSaysWhatWasCut(t *testing.T) {
+	assert.Empty(t, Prompt(nil))
+	p := Prompt([]File{{Path: "../AGENTS.md", Text: "be brief\n"}, {Path: "CLAUDE.md", Text: "use go", Truncated: true}})
+	assert.Contains(t, p, "<instructions path=\"../AGENTS.md\">\nbe brief\n</instructions>")
+	assert.Contains(t, p, "use go\n[kept the first 6 bytes, read the file for the rest]\n</instructions>")
+	assert.Less(t, strings.Index(p, "be brief"), strings.Index(p, "use go"))
+}
+
 func TestCut_NeverSplitsACharacter(t *testing.T) {
 	assert.Equal(t, "ab", cut("ab世界", 4))
 	assert.Equal(t, "a\n", cut("a\nb世", 4))
+}
+
+func tree(t *testing.T, files map[string]string) string {
+	t.Helper()
+	// One level down, so a test can put a file above the root.
+	dir := filepath.Join(t.TempDir(), "repo")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	for name, body := range files {
+		p := filepath.Join(dir, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o644))
+	}
+	return dir
 }
