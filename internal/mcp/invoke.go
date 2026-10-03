@@ -46,16 +46,6 @@ func (i *Invokers) Invoke(ctx context.Context, c tool.Call) capture.Result {
 	return t.server.Call(ctx, t.remote, c.Args)
 }
 
-// add records what Register returned, which carries its own routing.
-func (i *Invokers) add(tools ...Tool) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	for _, t := range tools {
-		i.tools[t.name] = t
-		i.servers[t.server.Name] = t.server
-	}
-}
-
 // Status is what /mcp draws, sorted by name the way they connect.
 func (i *Invokers) Status() []event.ServerSummary {
 	i.mu.RLock()
@@ -134,6 +124,16 @@ func (i *Invokers) keep(s *Server) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.servers[s.Name] = s
+}
+
+// add records what Register returned, which carries its own routing.
+func (i *Invokers) add(tools ...Tool) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	for _, t := range tools {
+		i.tools[t.name] = t
+		i.servers[t.server.Name] = t.server
+	}
 }
 
 // settle replaces a seeded entry with what dialling found.
