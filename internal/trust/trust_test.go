@@ -12,16 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func write(t *testing.T, dir, name, body string) {
-	t.Helper()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644))
-}
-
-// answer is an Ask that records it was asked.
-func answer(yes bool, asked *bool) func() bool {
-	return func() bool { *asked = true; return yes }
-}
-
 func TestDecide(t *testing.T) {
 	for _, c := range []struct {
 		name     string
@@ -211,4 +201,14 @@ func TestSummary_StripsControlSequences(t *testing.T) {
 	assert.NotContains(t, got, "\x1b")
 	assert.NotContains(t, got, "\r")
 	assert.Contains(t, got, "changed since")
+}
+
+func write(t *testing.T, dir, name, body string) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644))
+}
+
+// answer is an Ask that records it was asked.
+func answer(yes bool, asked *bool) func() bool {
+	return func() bool { *asked = true; return yes }
 }

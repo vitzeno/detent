@@ -43,16 +43,6 @@ func Summary(dir string, present []string, files map[string][]byte, changed bool
 	return b.String()
 }
 
-// printable keeps a file from moving the cursor or recolouring the question.
-func printable(s string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return '?'
-		}
-		return r
-	}, s)
-}
-
 func detentYAML(raw []byte) []string {
 	var m map[string]any
 	// The error is not printed, since a decode error can quote a value.
@@ -181,4 +171,14 @@ func cleanURL(raw string) string {
 		return u.String() + "?…"
 	}
 	return u.String()
+}
+
+// printable keeps a file from moving the cursor or recolouring the question.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return '?'
+		}
+		return r
+	}, s)
 }
