@@ -79,7 +79,7 @@ func TestTranscriptText_BoundsArgumentsAndResults(t *testing.T) {
 	assert.Contains(t, text, "the error", "the tail of a result is kept")
 }
 
-func TestSummarize_EmptyIsNotACall(t *testing.T) {
+func TestSummarize_EmptyNeverReachesTheEndpoint(t *testing.T) {
 	c := &Client{BaseURL: "http://127.0.0.1:1"} // would fail if dialled
 	out, err := c.Summarize(context.Background(), nil)
 	require.NoError(t, err)

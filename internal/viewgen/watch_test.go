@@ -49,7 +49,7 @@ func TestWatch_KeysOnTheCommandNotTheTool(t *testing.T) {
 
 // A command the human ran is never judged, and still gets the view
 // detent ships for it.
-func TestWatch_AShellGetsTheShippedViewWithoutAJudge(t *testing.T) {
+func TestWatch_AUserCommandGetsTheShippedViewWithoutAJudge(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	g := &viewgen.Generator{Registry: ui.Registry()}
@@ -69,7 +69,7 @@ func TestWatch_AShellGetsTheShippedViewWithoutAJudge(t *testing.T) {
 
 // A user command is asked its shape and nothing else: how it went is the
 // human's to read, which is the line a user command was made to hold.
-func TestWatch_AShellIsAskedItsShapeAndNothingElse(t *testing.T) {
+func TestWatch_AUserCommandIsAskedItsShapeAndNothingElse(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	g, judge := composer(t, map[string]string{
@@ -103,7 +103,7 @@ func TestWatch_AShellIsAskedItsShapeAndNothingElse(t *testing.T) {
 
 // A diff composes nothing, and a user command's row has no kind for ui to fall
 // back on, so the kind's own view is sent instead.
-func TestWatch_AShellFallsBackToItsKindsView(t *testing.T) {
+func TestWatch_AUserCommandFallsBackToItsKindsView(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	g, _ := composer(t, map[string]string{"render_kind": viewgen.KindDiff})
@@ -124,7 +124,7 @@ func TestWatch_AShellFallsBackToItsKindsView(t *testing.T) {
 
 // With no judge wired nothing publishes CallJudged, and a tool call must not
 // wait for one: the shipped view draws as soon as it ends.
-func TestWatch_AnUnjudgedCallResolvesWhenItEnds(t *testing.T) {
+func TestWatch_AnUnjudgedToolCallResolvesWhenItEnds(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	g := &viewgen.Generator{Registry: ui.Registry(), Unjudged: true}
@@ -145,7 +145,7 @@ func TestWatch_AnUnjudgedCallResolvesWhenItEnds(t *testing.T) {
 
 // User commands of one shipped command resolve at once, in parallel, and share
 // nothing mutable with each other or with ui.
-func TestWatch_ParallelShellsShareNoState(t *testing.T) {
+func TestWatch_ParallelUserCommandsShareNoState(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	g := &viewgen.Generator{Registry: ui.Registry()}

@@ -153,7 +153,7 @@ func TestDecode_RefusesAnUnknownKind(t *testing.T) {
 
 // A store lifts these out as columns, so they have to come off the
 // event without a second list of which types carry what.
-func TestSubject_ReadsTurnAndCall(t *testing.T) {
+func TestSubject_ReadsTurnAndToolCall(t *testing.T) {
 	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 
 	gotTurn, gotCall := Subject(TurnStarted{Turn: turn})

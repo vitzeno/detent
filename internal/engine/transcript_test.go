@@ -14,7 +14,7 @@ import (
 
 // The gate: whatever goes wrong in a Step, the transcript that comes
 // out must still be one the next Step can be built on.
-func TestStep_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
+func TestStep_EveryToolCallIsAnsweredHoweverItWent(t *testing.T) {
 	calls := []event.ToolRequest{call("c1", "bash"), call("c2", "read_file"), call("c3", "write_file")}
 	reply := model.Reply{Text: "working", Requests: calls}
 

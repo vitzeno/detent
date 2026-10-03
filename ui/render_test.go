@@ -143,7 +143,7 @@ func TestPanels_AllDraw(t *testing.T) {
 }
 
 // A call a human had to approve must not read like `ls` afterwards.
-func TestHistory_FlaggedCallsAreMarked(t *testing.T) {
+func TestHistory_FlaggedToolCallsAreMarked(t *testing.T) {
 	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := sized(t, 120, 40,
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "clean"},
@@ -594,7 +594,7 @@ func TestDetailKey_CoversEverythingThePaneDrawsFrom(t *testing.T) {
 
 // Every running row draws a spinner, not just the thinking line, so a
 // block holding one has to redraw as the frame advances.
-func TestBlockCache_ARunningCallKeepsSpinning(t *testing.T) {
+func TestBlockCache_ARunningToolCallKeepsSpinning(t *testing.T) {
 	m := session(3, 2, 0)
 	turn := uuid.Must(uuid.NewV7())
 	call := uuid.Must(uuid.NewV7())

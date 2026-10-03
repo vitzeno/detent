@@ -332,7 +332,7 @@ func ran(bus *event.Bus, call uuid.UUID, res event.Result) {
 }
 
 // A tool call that was declined or abandoned never ran, so nobody asks about it.
-func TestWatch_ACallThatNeverRanIsNotJudged(t *testing.T) {
+func TestWatch_AToolCallThatNeverRanIsNotJudged(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	asker := recordingAsker{states: make(chan classify.State, 1)}

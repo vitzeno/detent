@@ -64,7 +64,7 @@ func TestApply_CountsWhatStatusReports(t *testing.T) {
 
 // Live output is routed by call, because parallel calls interleave.
 // The human's own command streams under its user command id, into its own row.
-func TestApply_AShellsLiveOutputReachesItsRow(t *testing.T) {
+func TestApply_AUserCommandsLiveOutputReachesItsRow(t *testing.T) {
 	shell := uuid.Must(uuid.NewV7())
 	m := feed(t,
 		event.UserCommandStarted{UserCommand: shell, Command: "go test ./...", Runner: "host"},

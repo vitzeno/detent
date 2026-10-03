@@ -170,7 +170,7 @@ func TestApproval_AnAbortIsNotADecline(t *testing.T) {
 }
 
 // Every proposed row gets an end, however its tool call was settled.
-func TestStep_EveryProposedCallEnds(t *testing.T) {
+func TestStep_EveryProposedToolCallEnds(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		{ID: "bad", Name: "bash", Err: "arguments are not JSON"},
 		bashCall("ok", "ls"),
@@ -226,7 +226,7 @@ func TestCheckpoint_AFailedSnapshotIsSaid(t *testing.T) {
 
 // The caller closes the output channel, so a Runner failing before it
 // sent anything costs no grace period.
-func TestExecute_ARunnerErrorEndsTheCallAtOnce(t *testing.T) {
+func TestExecute_ARunnerErrorEndsTheToolCallAtOnce(t *testing.T) {
 	r := rigWith(t, event.New(), &fakeModel{replies: []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}}}, failingRunner{})
 	start := time.Now()
 	r.run("go")

@@ -16,7 +16,7 @@ import (
 
 // A tool call with an executor goes to the Invoker, and the Runner never
 // sees it: there is no command for a shell to run.
-func TestExecute_ARemoteCallGoesToTheInvoker(t *testing.T) {
+func TestExecute_ARemoteToolCallGoesToTheInvoker(t *testing.T) {
 	in := &fakeInvoker{out: capture.Result{Stdout: "from the server\n"}}
 	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{remoteCall("r1")}}})
 	r.approve(t)
@@ -32,7 +32,7 @@ func TestExecute_ARemoteCallGoesToTheInvoker(t *testing.T) {
 }
 
 // The row and the log say where it ran, or the sandbox badge is a lie.
-func TestExecute_CallStartedNamesTheServer(t *testing.T) {
+func TestExecute_ToolCallStartedNamesTheServer(t *testing.T) {
 	in := &fakeInvoker{out: capture.Result{Stdout: "ok\n"}}
 	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{remoteCall("r1")}}})
 	r.approve(t)
@@ -44,7 +44,7 @@ func TestExecute_CallStartedNamesTheServer(t *testing.T) {
 }
 
 // A shell tool call must keep going to the Runner untouched.
-func TestExecute_AShellCallStillGoesToTheRunner(t *testing.T) {
+func TestExecute_AShellToolCallStillGoesToTheRunner(t *testing.T) {
 	in := &fakeInvoker{}
 	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
 	r.run("go")
@@ -65,7 +65,7 @@ func TestExecute_NoInvokerIsAnAnswerNotAFailure(t *testing.T) {
 }
 
 // A panicking Invoker must not take the session and its checkpoints.
-func TestExecute_APanickingInvokerIsAFailedCall(t *testing.T) {
+func TestExecute_APanickingInvokerIsAFailedToolCall(t *testing.T) {
 	in := &fakeInvoker{panic: true}
 	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{remoteCall("r1")}}})
 	r.approve(t)
@@ -78,7 +78,7 @@ func TestExecute_APanickingInvokerIsAFailedCall(t *testing.T) {
 
 // The gate itself: an MCP tool call waits for a human, and one nobody
 // answers never runs. This is why the tests above have to approve.
-func TestExecute_ARemoteCallWaitsForAHuman(t *testing.T) {
+func TestExecute_ARemoteToolCallWaitsForAHuman(t *testing.T) {
 	in := &fakeInvoker{out: capture.Result{Stdout: "ok\n"}}
 	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{remoteCall("r1")}}})
 
@@ -96,7 +96,7 @@ func TestExecute_ARemoteCallWaitsForAHuman(t *testing.T) {
 }
 
 // Declining stops a tool call, not a Turn: its siblings still run.
-func TestExecute_DecliningARemoteCallLeavesItsSiblings(t *testing.T) {
+func TestExecute_DecliningARemoteToolCallLeavesItsSiblings(t *testing.T) {
 	in := &fakeInvoker{out: capture.Result{Stdout: "ok\n"}}
 	r := remoteRig(t, in, []model.Reply{{Requests: []event.ToolRequest{
 		remoteCall("r1"), bashCall("c1", "echo still here"),

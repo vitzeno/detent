@@ -46,7 +46,7 @@ func TestComplete_TextOnlyIsAStop(t *testing.T) {
 
 // A malformed call must survive decoding. Dropping it leaves the
 // assistant message naming an id nothing answers.
-func TestComplete_KeepsCallsItCannotParse(t *testing.T) {
+func TestComplete_KeepsRequestsItCannotParse(t *testing.T) {
 	c, _ := serve(t, `{"choices":[{"message":{"tool_calls":[
 		{"id":"c1","type":"function","function":{"name":"bash","arguments":"{not json"}}
 	]}}]}`)

@@ -14,7 +14,7 @@ import (
 
 // A Step asking for several tool calls runs them all, and the Turn ends when
 // the model stops asking.
-func TestTurn_MultiCallStep(t *testing.T) {
+func TestTurn_MultiToolCallStep(t *testing.T) {
 	r := newRig(t, []model.Reply{{
 		Text:     "reading three things",
 		Requests: []event.ToolRequest{readCall("c1", "a.go"), readCall("c2", "b.go"), bashCall("c3", "git status")},
@@ -30,7 +30,7 @@ func TestTurn_MultiCallStep(t *testing.T) {
 
 // Whatever goes wrong, every tool_call id is answered. This is the
 // invariant the next Step is built on.
-func TestTurn_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
+func TestTurn_EveryToolCallIsAnsweredHoweverItWent(t *testing.T) {
 	tests := []struct {
 		name  string
 		calls []event.ToolRequest
@@ -83,7 +83,7 @@ func TestTurn_EveryCallIsAnsweredHoweverItWent(t *testing.T) {
 
 // Declining stops a tool call, not a Turn. Its siblings still
 // run and the model gets to react.
-func TestTurn_DeclineStopsOneCallOnly(t *testing.T) {
+func TestTurn_DeclineStopsOneToolCallOnly(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		bashCall("c1", "rm -rf /tmp/x"), // the regex hook flags this
 		bashCall("c2", "ls"),
@@ -103,7 +103,7 @@ func TestTurn_DeclineStopsOneCallOnly(t *testing.T) {
 }
 
 // Abort cancels in flight and still completes the Step.
-func TestTurn_AbortStillAnswersEveryCall(t *testing.T) {
+func TestTurn_AbortStillAnswersEveryToolCall(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		bashCall("c1", "sleep 1"), bashCall("c2", "sleep 2"), bashCall("c3", "sleep 3"),
 	}}})
@@ -265,7 +265,7 @@ func TestTurn_NudgingGivesUpAfterTheLimit(t *testing.T) {
 
 // A panicking Runner must cost one tool call, not the session: every
 // checkpoint a human could still roll back to lives in the engine.
-func TestTurn_PanickingRunnerIsOneFailedCall(t *testing.T) {
+func TestTurn_PanickingRunnerIsOneFailedToolCall(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "boom")}}})
 	r.runner.mu.Lock()
 	r.runner.pan = true
@@ -319,7 +319,7 @@ func TestEngine_ResetForgetsTheTranscript(t *testing.T) {
 
 // A front-end cannot ask the registry, so the tool's own answer about
 // how to read its output has to travel on the fact.
-func TestCallProposed_CarriesTheToolsDeclaredShape(t *testing.T) {
+func TestToolCallProposed_CarriesTheToolsDeclaredShape(t *testing.T) {
 	reg := tool.Standard()
 	require.NoError(t, reg.Register(markdownTool{}))
 	call := event.ToolRequest{ID: "m1", Name: "declares_markdown"}
@@ -335,7 +335,7 @@ func TestCallProposed_CarriesTheToolsDeclaredShape(t *testing.T) {
 
 // A front-end says what a rollback cannot take back, so it has to be
 // told which tool calls ran outside the sandbox.
-func TestCallProposed_CarriesTheExecutor(t *testing.T) {
+func TestToolCallProposed_CarriesTheExecutor(t *testing.T) {
 	reg := tool.Standard()
 	require.NoError(t, reg.Register(remoteTool{name: "srv__do"}))
 	r := rigWithTools(t, event.New(),
@@ -352,7 +352,7 @@ func TestCallProposed_CarriesTheExecutor(t *testing.T) {
 
 // A shell tool call must not claim one, or undo would say it cannot
 // reverse things it can.
-func TestCallProposed_AShellCallHasNoExecutor(t *testing.T) {
+func TestToolCallProposed_AShellToolCallHasNoExecutor(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
 	r.run("go")
 
@@ -363,7 +363,7 @@ func TestCallProposed_AShellCallHasNoExecutor(t *testing.T) {
 
 // No tool ships with an opinion, and inventing one would send ordinary
 // command output through a markdown renderer.
-func TestCallProposed_LeavesRendersEmptyWhenTheToolHasNoOpinion(t *testing.T) {
+func TestToolCallProposed_LeavesRendersEmptyWhenTheToolHasNoOpinion(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
 	r.run("go")
 

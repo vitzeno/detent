@@ -189,7 +189,7 @@ func TestPrepare_StillValidatesABuiltIn(t *testing.T) {
 
 // The Command is what a human reads before approving, so for a tool
 // with nothing to run it describes the call.
-func TestPrepare_CommandDescribesTheCall(t *testing.T) {
+func TestPrepare_CommandDescribesTheToolCall(t *testing.T) {
 	reg := tool.Standard()
 	added := Register(reg, &Server{Name: "github"}, []*sdk.Tool{
 		{Name: "create_issue", InputSchema: map[string]any{"type": "object"}},

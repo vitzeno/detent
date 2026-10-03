@@ -55,7 +55,7 @@ func TestShutdown_DrainsOnlyAfterTheEngineHasStopped(t *testing.T) {
 
 // The same rule one step earlier: the command's end is published before
 // the engine goes, or the message it owes the transcript lands nowhere.
-func TestShutdown_StopsTheShellBeforeTheEngineAndTheDrain(t *testing.T) {
+func TestShutdown_StopsTheUserCommandBeforeTheEngineAndTheDrain(t *testing.T) {
 	bus := event.New()
 	records, unsub := bus.Subscribe(nil)
 	t.Cleanup(unsub)

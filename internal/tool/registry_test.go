@@ -12,7 +12,7 @@ import (
 
 // A bad call must come back as something the model can
 // read and correct, never a Go error that ends the Turn.
-func TestPrepare_BadCallsExplainThemselves(t *testing.T) {
+func TestPrepare_BadToolCallsExplainThemselves(t *testing.T) {
 	r := Standard()
 	tests := []struct {
 		name  string

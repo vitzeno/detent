@@ -14,7 +14,7 @@ import (
 
 // Read-only tool calls run together, anything else runs alone and in the
 // order the model asked.
-func TestStep_ReadOnlyCallsRunTogether(t *testing.T) {
+func TestStep_ReadOnlyToolCallsRunTogether(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		readCall("c1", "a.go"), readCall("c2", "b.go"), readCall("c3", "c.go"),
 	}}})
@@ -40,7 +40,7 @@ func TestStep_WritesRunOneAtATime(t *testing.T) {
 		"serial, in the order asked")
 }
 
-func TestStep_CapsHowManyCallsOneStepMayAskFor(t *testing.T) {
+func TestStep_CapsHowManyToolCallsOneStepMayAskFor(t *testing.T) {
 	var calls []event.ToolRequest
 	for i := range 6 {
 		calls = append(calls, readCall(string(rune('a'+i)), string(rune('a'+i))+".go"))
@@ -62,7 +62,7 @@ func TestStep_CapsHowManyCallsOneStepMayAskFor(t *testing.T) {
 
 // Only a Dangerous tool call is shown. Everything else runs straight
 // through, which is the harness's whole posture.
-func TestStep_OnlyDangerousCallsAreShown(t *testing.T) {
+func TestStep_OnlyDangerousToolCallsAreShown(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{
 		bashCall("c1", "ls -la"), readCall("c2", "a.go"),
 	}}})
@@ -71,7 +71,7 @@ func TestStep_OnlyDangerousCallsAreShown(t *testing.T) {
 	assert.Len(t, r.runner.commands(), 2)
 }
 
-func TestStep_ApprovalLetsADangerousCallThrough(t *testing.T) {
+func TestStep_ApprovalLetsADangerousToolCallThrough(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "rm -rf build")}}})
 	r.bus.Publish(event.SubmitPrompt{Text: "clean"})
 

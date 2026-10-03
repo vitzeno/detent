@@ -194,7 +194,7 @@ func TestDescribe_ReadsAsASentence(t *testing.T) {
 
 // Every MCP tool call is confirmed: it runs outside the sandbox and no
 // checkpoint can undo it.
-func TestMCPFloor_ConfirmsEveryRemoteCall(t *testing.T) {
+func TestMCPFloor_ConfirmsEveryRemoteToolCall(t *testing.T) {
 	risk, err := mcpFloor{}.Assess(context.Background(),
 		tool.Call{Tool: "github__create_issue", Executor: "github"}, event.Risk{})
 	require.NoError(t, err)
@@ -203,7 +203,7 @@ func TestMCPFloor_ConfirmsEveryRemoteCall(t *testing.T) {
 }
 
 // A shell tool call must not pick it up, or everything would need approval.
-func TestMCPFloor_LeavesShellCallsAlone(t *testing.T) {
+func TestMCPFloor_LeavesShellToolCallsAlone(t *testing.T) {
 	risk, err := mcpFloor{}.Assess(context.Background(),
 		tool.Call{Tool: "bash", Command: "ls"}, event.Risk{})
 	require.NoError(t, err)
