@@ -24,6 +24,13 @@ const (
 	stoppedByHuman = "stopped by the human"
 )
 
+// Runner executes one command. Declared here rather than imported, so
+// this package depends on event and capture alone. It sends nothing on
+// events after it returns, and the caller closes events.
+type Runner interface {
+	Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error)
+}
+
 // Watch runs what RunCommand carries and stops it on CancelCommand.
 // where is "host" or "sandbox". Cancelling ctx stops a running command.
 func Watch(ctx context.Context, bus *event.Bus, runner Runner, where string) func() {
@@ -42,13 +49,6 @@ func Watch(ctx context.Context, bus *event.Bus, runner Runner, where string) fun
 		s.cancel(uuid.Nil)
 		s.wg.Wait()
 	}
-}
-
-// Runner executes one command. Declared here rather than imported, so
-// this package depends on event and capture alone. It sends nothing on
-// events after it returns, and the caller closes events.
-type Runner interface {
-	Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error)
 }
 
 // commands holds the one command that may be in flight. One at a time:
@@ -133,14 +133,15 @@ func (s *commands) run(ctx context.Context, id uuid.UUID, command string) {
 	s.bus.Publish(event.NoteContext{Text: transcribe(command, s.where, out)})
 }
 
-// cancel stops the running command. A zero id means whichever one
-// that is, which is what esc knows without tracking it.
-func (s *commands) cancel(id uuid.UUID) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.stop != nil && (id == uuid.Nil || id == s.id) {
-		s.stop()
-	}
+// runSafely turns a panicking Runner into a failed command rather
+// than a dead session.
+func runSafely(ctx context.Context, r Runner, cmd string, lines chan<- capture.StreamEvent) (res capture.Result, err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			err = fmt.Errorf("runner panicked: %v", v)
+		}
+	}()
+	return r.Run(ctx, cmd, lines)
 }
 
 func (s *commands) done(id uuid.UUID) {
@@ -151,13 +152,12 @@ func (s *commands) done(id uuid.UUID) {
 	}
 }
 
-// runSafely turns a panicking Runner into a failed command rather
-// than a dead session.
-func runSafely(ctx context.Context, r Runner, cmd string, lines chan<- capture.StreamEvent) (res capture.Result, err error) {
-	defer func() {
-		if v := recover(); v != nil {
-			err = fmt.Errorf("runner panicked: %v", v)
-		}
-	}()
-	return r.Run(ctx, cmd, lines)
+// cancel stops the running command. A zero id means whichever one
+// that is, which is what esc knows without tracking it.
+func (s *commands) cancel(id uuid.UUID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stop != nil && (id == uuid.Nil || id == s.id) {
+		s.stop()
+	}
 }

@@ -185,6 +185,21 @@ func TestWatch_APanickingRunnerEndsTheCommandOnly(t *testing.T) {
 		3*time.Second, time.Millisecond, "the subscriber is still listening")
 }
 
+// The caller closes the output channel, so a Runner's early error costs
+// nothing: no grace to wait out, no relay left behind.
+func TestWatch_ARunnerErrorEndsTheCommandAtOnce(t *testing.T) {
+	bus := event.New()
+	c := collect(t, bus)
+	stop := Watch(t.Context(), bus, failingRunner{}, "sandbox")
+	t.Cleanup(stop)
+
+	start := time.Now()
+	bus.Publish(event.RunCommand{Text: "ls"})
+	ended := c.await(t, event.UserCommandEndedKind).(event.UserCommandEnded)
+	assert.Less(t, time.Since(start), time.Second)
+	assert.Equal(t, "create task: already exists", ended.Result.Err)
+}
+
 // host.Shell caps a command at 30s when handed no deadline, which no
 // build, test run or install finishes inside.
 func TestWatch_DoesNotInheritTheTimeoutMeantForTheModel(t *testing.T) {
@@ -281,21 +296,6 @@ type failingRunner struct{}
 
 func (failingRunner) Run(context.Context, string, chan<- capture.StreamEvent) (capture.Result, error) {
 	return capture.Result{}, errors.New("create task: already exists")
-}
-
-// The caller closes the output channel, so a Runner's early error costs
-// nothing: no grace to wait out, no relay left behind.
-func TestWatch_ARunnerErrorEndsTheCommandAtOnce(t *testing.T) {
-	bus := event.New()
-	c := collect(t, bus)
-	stop := Watch(t.Context(), bus, failingRunner{}, "sandbox")
-	t.Cleanup(stop)
-
-	start := time.Now()
-	bus.Publish(event.RunCommand{Text: "ls"})
-	ended := c.await(t, event.UserCommandEndedKind).(event.UserCommandEnded)
-	assert.Less(t, time.Since(start), time.Second)
-	assert.Equal(t, "create task: already exists", ended.Result.Err)
 }
 
 // collector keeps Records, so a test can assert on order as well as
