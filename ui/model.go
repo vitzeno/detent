@@ -29,8 +29,8 @@ type Model struct {
 	// hist is the assembled history, behind a pointer so the copy of
 	// Model that View works on can still fill it.
 	hist *histCache
-	// histRev moves whenever block content does, and every block cache
-	// is keyed on it. Bumped by apply and toggleExpand.
+	// histRev moves whenever history may assemble differently, and the
+	// assembled cache is keyed on it. Each block keeps its own rev.
 	histRev int
 	// detail is the key the output pane's content was last drawn for.
 	detail detailKey

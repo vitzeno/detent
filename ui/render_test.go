@@ -292,6 +292,27 @@ func TestBlockCache_NeverGoesStale(t *testing.T) {
 		{"a new turn starts", func(m *Model) {
 			m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 7, Prompt: "one more"})
 		}},
+		{"the model speaks", func(m *Model) {
+			m.apply(event.ModelText{Turn: m.cur.id, Text: "looking into it"})
+		}},
+		{"a call is flagged", func(m *Model) {
+			m.apply(event.CallAssessed{Call: call, Risk: event.Risk{Dangerous: true}})
+		}},
+		{"a sign-in is asked for", func(m *Model) {
+			m.apply(event.AuthorizationWaiting{Server: "notion", URL: "https://x", Until: time.Now()})
+		}},
+		{"the sign-in lands", func(m *Model) { m.apply(event.ServerAuthorized{Server: "notion"}) }},
+		{"the human runs a command", func(m *Model) {
+			m.apply(event.ShellStarted{Shell: uuid.Must(uuid.NewV7()), Command: "ls"})
+		}},
+		{"the live turn ends", func(m *Model) {
+			m.apply(event.TurnEnded{Turn: m.cur.id, Reason: event.EndAborted})
+		}},
+		{"a prompt is sent", func(m *Model) {
+			next, _ := m.sendPrompt("and again")
+			*m = next.(Model)
+		}},
+		{"an old turn is undone", func(m *Model) { m.apply(event.RolledBack{Turn: turn}) }},
 	}
 
 	for _, s := range steps {
@@ -332,6 +353,95 @@ func TestBlockCache_IsActuallyHit(t *testing.T) {
 		}
 	}
 	assert.LessOrEqual(t, redrawn, 2, "a cursor move redrew %d blocks, not the two it touches", redrawn)
+}
+
+// Scrolled up, history is laid out whole, so a live line that redrew
+// every block would make each frame cost what the session has done.
+func TestBlockCache_ALiveLineRedrawsOnlyItsBlock(t *testing.T) {
+	m := session(40, 3, 0)
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	m.apply(event.TurnStarted{Turn: turn, N: 41, Prompt: "run something"})
+	m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
+	m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
+	m.nav.follow, m.nav.cursor = false, 5
+	_, _ = m.historyAll()
+
+	before := make([]*blockCache, len(m.blocks))
+	for i, b := range m.blocks {
+		before[i] = b.cache
+	}
+	m.apply(event.OutputChunk{Call: call, Line: "ok"})
+	m.apply(event.StepEnded{Turn: turn})
+	_, _ = m.historyAll()
+
+	for i, b := range m.blocks[:len(m.blocks)-1] {
+		assert.Same(t, before[i], b.cache, "block %d redrew for a line that was not in it", i)
+	}
+}
+
+// Equivalence over a fixed list cannot catch an input missing from both
+// the key and the list, so each input must move the key on its own.
+func TestBlockKey_CoversEverythingABlockDrawsFrom(t *testing.T) {
+	inputs := []struct {
+		name string
+		do   func(m *Model, b *turnBlock)
+	}{
+		{"its content", func(m *Model, b *turnBlock) {
+			m.apply(event.CallJudged{Call: b.rows[0].id, Status: "failed"})
+		}},
+		{"the pane width", func(m *Model, _ *turnBlock) { m.layout.histColW = 44 }},
+		{"the cursor entering it", func(m *Model, b *turnBlock) { m.nav.cursor = len(m.rows()) - 1 }},
+		{"the spinner while live", func(m *Model, _ *turnBlock) {
+			m.spinner, _ = m.spinner.Update(m.spinner.Tick())
+		}},
+	}
+	for _, in := range inputs {
+		t.Run(in.name, func(t *testing.T) {
+			m := session(3, 2, 0)
+			m.layout.histColW = 60
+			turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+			m.apply(event.TurnStarted{Turn: turn, N: 4, Prompt: "live"})
+			m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make"}})
+			m.apply(event.CallStarted{Call: call})
+			m.nav.cursor = 0
+			b := m.cur
+			before := m.blockKey(b, m.focusedRow())
+
+			in.do(&m, b)
+			assert.NotEqual(t, before, m.blockKey(b, m.focusedRow()),
+				"%s changed what the block draws, but not the key it is cached under", in.name)
+		})
+	}
+}
+
+func TestHistKey_CoversEverythingHistoryAssemblesFrom(t *testing.T) {
+	inputs := []struct {
+		name string
+		do   func(m *Model)
+	}{
+		{"a fact arrives", func(m *Model) { m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 9}) }},
+		{"a row expands", func(m *Model) { m.toggleExpand(m.rows()[1]) }},
+		{"the pane width", func(m *Model) { m.layout.histColW = 44 }},
+		{"the cursor", func(m *Model) { m.nav.cursor = 2 }},
+		{"the spinner while live", func(m *Model) {
+			m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 9})
+			_, _ = m.historyAll()
+			m.spinner, _ = m.spinner.Update(m.spinner.Tick())
+		}},
+	}
+	for _, in := range inputs {
+		t.Run(in.name, func(t *testing.T) {
+			m := session(3, 2, 0)
+			m.layout.histColW = 60
+			_, _ = m.historyAll()
+			before := m.hist.key
+
+			in.do(&m)
+			_, _ = m.historyAll()
+			assert.NotEqual(t, before, m.hist.key,
+				"%s changed what history draws, but not the key it is cached under", in.name)
+		})
+	}
 }
 
 // Equivalence cannot see a cursor that never renders, since a cold

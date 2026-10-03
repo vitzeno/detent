@@ -45,6 +45,30 @@ func BenchmarkStressPerEvent(b *testing.B) {
 	}
 }
 
+// BenchmarkStressPerEventScrolledUp is the same line read from the top
+// of history, where the tail shortcut does not apply.
+func BenchmarkStressPerEventScrolledUp(b *testing.B) {
+	for _, s := range stressSizes {
+		b.Run(s.name, func(b *testing.B) {
+			m := session(s.turns, s.calls, 20)
+			call := uuid.Must(uuid.NewV7())
+			m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: s.turns + 1, Prompt: "live"})
+			m.apply(event.CallProposed{Call: call, Tool: "bash", Args: map[string]any{"command": "make test"}})
+			m.apply(event.CallStarted{Call: call, Runner: "sandbox"})
+			m.nav.focus, m.nav.follow, m.nav.cursor = focusHistory, false, 3
+			m.sizeViewport()
+			msg := oneChunk(call)
+			b.ReportAllocs()
+			cur := m
+			for b.Loop() {
+				next, _ := cur.Update(msg)
+				cur = next.(Model)
+				_ = cur.View()
+			}
+		})
+	}
+}
+
 // BenchmarkStressBurst is 200 lines at once, one noisy command.
 func BenchmarkStressBurst(b *testing.B) {
 	for _, s := range stressSizes {

@@ -30,6 +30,9 @@ type turnBlock struct {
 	undoable bool
 	err      string
 
+	// rev moves whenever anything this block draws does, and its cache
+	// is keyed on it, so one live line redraws one block.
+	rev int
 	// cache is this block's last drawing, behind a pointer so the copy
 	// of Model that View works on can still fill it.
 	cache *blockCache

@@ -32,8 +32,8 @@ func (m Model) Restore(records []event.Record) Model {
 // apply folds one fact into the Model, and is the whole of how the UI
 // learns anything. A test drives it with events and no harness.
 func (m *Model) apply(ev event.Event) {
-	// Every fact may change content, so the caches go stale here
-	// rather than at a dozen mutation sites.
+	// Any fact may change what history assembles. A block's own drawing
+	// goes stale only through the lookups below, which bump its rev.
 	m.histRev++
 	switch v := ev.(type) {
 	case event.SessionStarted:
@@ -53,7 +53,7 @@ func (m *Model) apply(ev event.Event) {
 	case event.TurnStarted:
 		b := &turnBlock{id: v.Turn, n: v.N, prompt: v.Prompt}
 		m.blocks = append(m.blocks, b)
-		m.cur = b
+		m.setCur(b)
 		m.waiting = true
 		m.trackNewest()
 
@@ -168,7 +168,8 @@ func (m *Model) endTurn(v event.TurnEnded) {
 			b.err = v.Summary
 		}
 	}
-	m.cur, m.asking, m.bound = nil, nil, nil
+	m.setCur(nil)
+	m.asking, m.bound = nil, nil
 	m.waiting = false
 	m.tokens += v.Usage.Tokens()
 	if !m.askingOwn() {
@@ -182,6 +183,7 @@ func (m *Model) addProse(text string) {
 	if m.cur == nil || strings.TrimSpace(text) == "" {
 		return
 	}
+	m.cur.rev++
 	m.cur.rows = append(m.cur.rows, &callRow{prose: text})
 	m.trackNewest()
 }
@@ -190,6 +192,7 @@ func (m *Model) addCall(v event.CallProposed) {
 	if m.cur == nil {
 		return
 	}
+	m.cur.rev++
 	m.cur.rows = append(m.cur.rows, &callRow{
 		id: v.Call, command: event.Command(v.Tool, v.Args),
 		renders: v.Renders, executor: v.Executor,
@@ -204,6 +207,7 @@ func (m *Model) addShell(v event.ShellStarted) {
 	if b == nil {
 		b = m.shellBlock()
 	}
+	b.rev++
 	b.rows = append(b.rows, &callRow{
 		id: v.Shell, command: v.Command, human: true, running: true,
 	})
@@ -271,11 +275,16 @@ func (m *Model) rolledBack(id uuid.UUID) {
 	m.noteOK("undone")
 }
 
-// block and row find what an event is about. Linear: a map would have
-// to be kept in step with the slice that draws them.
+// block and row find what an event is about, and mark its block for a
+// redraw since the caller is about to change it. Linear: a map would
+// have to be kept in step with the slice that draws them.
 func (m *Model) block(id uuid.UUID) *turnBlock {
+	if id == uuid.Nil {
+		return nil
+	}
 	for _, b := range m.blocks {
 		if b.id == id {
+			b.rev++
 			return b
 		}
 	}
@@ -283,12 +292,28 @@ func (m *Model) block(id uuid.UUID) *turnBlock {
 }
 
 func (m *Model) row(id uuid.UUID) *callRow {
+	if id == uuid.Nil {
+		return nil
+	}
 	for i := len(m.blocks) - 1; i >= 0; i-- {
 		for _, r := range m.blocks[i].rows {
 			if r.id == id {
+				m.blocks[i].rev++
 				return r
 			}
 		}
 	}
 	return nil
+}
+
+// setCur moves the live block. Both ends redraw, since only the live
+// one draws the thinking line.
+func (m *Model) setCur(b *turnBlock) {
+	if m.cur != nil {
+		m.cur.rev++
+	}
+	if b != nil {
+		b.rev++
+	}
+	m.cur = b
 }

@@ -12,7 +12,7 @@ import (
 )
 
 // The history pane: one block per request, its calls under it. View
-// calls this on a throwaway copy of Model, so nothing may write back.
+// calls this on a throwaway copy of Model, so nothing but the caches may write back.
 
 // historyLines renders every entry and reports which one the cursor is
 // on. Pure, so sizeViewport can call it before anything is committed.
@@ -71,7 +71,7 @@ func (m Model) blockLines(b *turnBlock, focused *callRow) (lines []string, curso
 // blockKey carries focused only when the cursor is inside, so a
 // cursor moving elsewhere leaves this block's key alone.
 func (m Model) blockKey(b *turnBlock, focused *callRow) blockKey {
-	k := blockKey{rev: m.histRev, width: m.blockWidth()}
+	k := blockKey{rev: b.rev, width: m.blockWidth()}
 	for _, r := range b.rows {
 		if r == focused {
 			k.focused = focused

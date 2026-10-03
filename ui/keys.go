@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"slices"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/vitzeno/detent/event"
@@ -316,10 +318,15 @@ func (m Model) onEscape() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// toggleExpand opens or shuts a row's preview. The only thing outside
-// apply that changes what history draws, so the only other bump.
+// toggleExpand opens or shuts a row's preview, outside apply, so it
+// marks the row's block and history itself.
 func (m *Model) toggleExpand(r *callRow) {
 	r.expanded = !r.expanded
+	for _, b := range m.blocks {
+		if slices.Contains(b.rows, r) {
+			b.rev++
+		}
+	}
 	m.histRev++
 }
 

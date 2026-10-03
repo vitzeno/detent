@@ -39,6 +39,7 @@ func (m *Model) addSignIn(v event.AuthorizationWaiting) {
 	if b == nil {
 		b = m.shellBlock()
 	}
+	b.rev++
 	b.rows = append(b.rows, &callRow{
 		id: uuid.Must(uuid.NewV7()), command: v.Server,
 		signin: &signInState{server: v.Server, url: v.URL, until: v.Until},
@@ -54,6 +55,7 @@ func (m *Model) signInFor(server string) *signInState {
 		rows := m.blocks[i].rows
 		for j := len(rows) - 1; j >= 0; j-- {
 			if s := rows[j].signin; s != nil && s.server == server && s.stage == stageWaiting {
+				m.blocks[i].rev++
 				return s
 			}
 		}
@@ -68,6 +70,7 @@ func (m *Model) staleSignIns() {
 		for _, r := range b.rows {
 			if r.signin != nil && r.signin.stage == stageWaiting {
 				r.signin.stage = stageStale
+				b.rev++
 				m.histRev++
 			}
 		}
