@@ -17,6 +17,7 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/version"
 )
 
 // ReservedName is the one word -resume reads as an instruction.
@@ -50,6 +51,11 @@ func Open(path string) (*Store, error) {
 	// SQLite has one writer anyway, and one connection is also what
 	// keeps ":memory:" a single database.
 	db.SetMaxOpenConns(1)
+	if path != ":memory:" {
+		if err := backup(db, path); err != nil {
+			return nil, errors.Join(err, db.Close())
+		}
+	}
 	if err := migrate(db); err != nil {
 		return nil, errors.Join(err, db.Close())
 	}
@@ -76,13 +82,13 @@ func (s *Store) Append(session uuid.UUID, r event.Record) error {
 	if started, ok := r.Event.(event.SessionStarted); ok {
 		if _, err := tx.ExecContext(ctx, upsertSession, session.String(), r.At.UnixMilli(),
 			started.Model, started.Judge, started.Sandbox, started.Network,
-			started.Resumed); err != nil {
+			started.Resumed, version.String(), latest()); err != nil {
 			return fmt.Errorf("store: session header: %w", err)
 		}
 	}
-	turn, call := event.Subject(r.Event)
+	turn, toolCall := event.Subject(r.Event)
 	if _, err := tx.ExecContext(ctx, insert, session.String(), r.Ordinal, r.At.UnixMilli(),
-		string(r.Event.Kind()), nullable(turn), nullable(call), payload); err != nil {
+		string(r.Event.Kind()), nullable(turn), nullable(toolCall), payload); err != nil {
 		return fmt.Errorf("store: append %s: %w", r.Event.Kind(), err)
 	}
 	return tx.Commit()

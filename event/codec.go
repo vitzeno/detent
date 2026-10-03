@@ -17,13 +17,9 @@ import (
 // not inside, because a reader needs it to choose the type.
 func Encode(e Event) ([]byte, error) { return json.Marshal(e) }
 
-// Decode rebuilds an event from its Kind and payload, either as stored now
-// or as it was before a rename.
+// Decode rebuilds an event from its Kind and payload. A record in an older
+// shape is the store's to migrate, never this package's to guess at.
 func Decode(k Kind, payload []byte) (Event, error) {
-	k, payload, err := upgrade(k, payload)
-	if err != nil {
-		return nil, err
-	}
 	decode, ok := codecs[k]
 	if !ok {
 		return nil, fmt.Errorf("event: no type registered for kind %q", k)

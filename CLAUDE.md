@@ -184,8 +184,8 @@ carry a `UserCommand` id beside `ToolCall` rather than reuse it.
 shell mode (shift+tab). Its output is still drawn: `viewgen` asks Jev
 its shape, never how it went.
 
-Sessions saved under the old names (Call, Shell) still resume:
-`event/legacy.go` renames their kinds and keys as they are read.
+Sessions saved under the old names (Call, Shell) were rewritten by store
+migration 0003, so nothing on disk uses them.
 
 ### The transcript's atom is a Step
 
@@ -606,10 +606,16 @@ adding a fat dependency fails with the transitive import named.
   `events` log with a foreign key between them: the header is written
   once from `SessionStarted` so it cannot drift, while a `turns` table
   would be a mutable aggregate over several facts and would. The
-  schema lives in `migrations/*.sql`, embedded, versioned by SQLite's
-  own `PRAGMA user_version` rather than a migration library. Each file
-  applies in one transaction with its version bump, so a half-applied
-  migration cannot be recorded as done. Encoding is **not** here: a
+  schema lives in `migrations/*.sql`, embedded, plus Go steps in
+  `goSteps` for what SQL cannot say (rewriting payloads), numbered
+  together and versioned by SQLite's own `PRAGMA user_version` rather
+  than a migration library. Each step applies in one transaction with
+  its version bump, so a half-applied one cannot be recorded as done,
+  and a database about to migrate is first copied to
+  `events.db.bak-v<n>` with `VACUUM INTO`. A Go step is frozen once
+  released: it carries its own copy of the shapes it reads rather than
+  the event package's, which will have moved on. Each session row says
+  which detent started it and the schema its records are in. Encoding is **not** here: a
   store holding its own type list would decode every old record and
   silently drop a new one, so `event/codec.go` owns it and a test
   parses the package to prove no type lacks a codec. `Watch` is the
@@ -623,6 +629,18 @@ adding a fat dependency fails with the transitive import named.
   `-shm` files beside `events.db`.
 
 - **`version`**: what this build calls itself, and nothing else.
+
+### Changing what an event stores
+
+Every stored fact's fields carry a `json` tag, so the key on disk is a
+decision rather than whatever the Go field is called, and
+`event/testdata/shapes.golden` lists every key path each kind stores.
+Renaming a Go field is free. Changing a tag, a kind string, or a field's
+type fails `TestShapes_StoredFactsKeepTheirShape`, and the fix is two
+things in one commit: a store migration that rewrites the old records
+(see `internal/store/migrate_0003.go`), then
+`go test ./event -run TestShapes -update`. Adding a field needs only the
+update, since an old record decodes it as zero.
 
 ### Adding or changing a widget
 
