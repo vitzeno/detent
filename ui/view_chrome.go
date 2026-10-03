@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -180,15 +181,11 @@ func (m Model) historyHeader() string {
 
 func (m Model) statusBar() string {
 	phase := "idle"
-	if m.waiting {
+	switch {
+	case m.waiting && slices.ContainsFunc(m.blocks, anyRunning):
+		phase = "running…"
+	case m.waiting:
 		phase = "thinking…"
-		for _, b := range m.blocks {
-			for _, r := range b.rows {
-				if r.running {
-					phase = "running…"
-				}
-			}
-		}
 	}
 	return status.Bar(m.spinner.View(), phase, m.statusHint(),
 		status.Notice{Text: m.notice.text, Bad: m.notice.bad}, m.waiting)

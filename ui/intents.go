@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -107,12 +108,7 @@ func (m Model) listServers(input string) (Model, tea.Cmd) {
 // knowsServer reports whether the last listing named server. Whether it
 // can sign in is internal/mcp's to say: any reached server can.
 func (m Model) knowsServer(server string) bool {
-	for _, s := range m.servers {
-		if s.Name == server {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(m.servers, func(s event.ServerSummary) bool { return s.Name == server })
 }
 
 // renameSession names this run so a listing shows something a human

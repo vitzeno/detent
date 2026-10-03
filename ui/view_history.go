@@ -123,11 +123,7 @@ func (m Model) focusedRow() *historyRow {
 	if len(rows) == 0 {
 		return nil
 	}
-	at := max(m.nav.cursor, 0)
-	if at >= len(rows) {
-		at = len(rows) - 1
-	}
-	return rows[at]
+	return rows[min(max(m.nav.cursor, 0), len(rows)-1)]
 }
 
 // spinnerFrame is the frame a live block is drawing, or "" when none
