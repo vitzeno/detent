@@ -27,7 +27,7 @@ var coalesceWindow = 2 * time.Millisecond
 
 // Model is a projection of the event stream: facts.go folds facts in,
 // and every key publishes an intent.
-type Model struct { //nolint:recvcheck // Bubble Tea updates by value, and helpers mutate through a pointer
+type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mutators and the page drawers take a pointer
 	bus *event.Bus
 
 	info SessionInfo

@@ -89,7 +89,7 @@ func (m *Model) statusLines() []string {
 
 // contextDetail spells out what the bar compresses to a percentage,
 // which is the wrong thing when you want to know how much room is left.
-func (m Model) contextDetail() string {
+func (m *Model) contextDetail() string {
 	budget := m.run.ContextTokens
 	if budget <= 0 {
 		return "no budget set"
