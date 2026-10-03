@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -72,11 +73,8 @@ func (m Model) blockLines(b *turnBlock, focused *callRow) (lines []string, curso
 // cursor moving elsewhere leaves this block's key alone.
 func (m Model) blockKey(b *turnBlock, focused *callRow) blockKey {
 	k := blockKey{rev: b.rev, width: m.blockWidth()}
-	for _, r := range b.rows {
-		if r == focused {
-			k.focused = focused
-			break
-		}
+	if slices.Contains(b.rows, focused) {
+		k.focused = focused
 	}
 	// Every running row draws a spinner too, not just the thinking
 	// line, so the frame is part of the key whenever either shows.
@@ -171,10 +169,7 @@ func (m Model) focusedRow() *callRow {
 	if len(rows) == 0 {
 		return nil
 	}
-	at := m.nav.cursor
-	if at < 0 {
-		at = 0
-	}
+	at := max(m.nav.cursor, 0)
 	if at >= len(rows) {
 		at = len(rows) - 1
 	}

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -48,8 +49,9 @@ func (m *Model) panelLines() []string {
 		return m.mcpLines()
 	case panelSkills:
 		return m.skillLines()
+	default:
+		return nil
 	}
-	return nil
 }
 
 // skillLines lists the skills found at startup, and who may ask for each.
@@ -104,7 +106,7 @@ func (m *Model) statusLines() []string {
 		{"model", m.run.Model},
 		{"judge", orNone(m.run.Judge)},
 		{"runs in", m.runMode()},
-		{"step bound", fmt.Sprint(m.run.MaxSteps)},
+		{"step bound", strconv.Itoa(m.run.MaxSteps)},
 		{"instructions", orNone(strings.Join(m.run.Instructions, ", "))},
 		{"", ""},
 		{"session", m.run.Session.String()},
@@ -112,11 +114,11 @@ func (m *Model) statusLines() []string {
 		{"resumed", resumed(m.run)},
 		{"on disk", countOf(len(m.sessions), "session")},
 		{"", ""},
-		{"requests", fmt.Sprint(len(m.blocks))},
-		{"steps", fmt.Sprint(m.steps)},
-		{"calls", fmt.Sprint(m.calls)},
-		{"errors", fmt.Sprint(m.errors)},
-		{"views drawn", fmt.Sprint(m.views)},
+		{"requests", strconv.Itoa(len(m.blocks))},
+		{"steps", strconv.Itoa(m.steps)},
+		{"calls", strconv.Itoa(m.calls)},
+		{"errors", strconv.Itoa(m.errors)},
+		{"views drawn", strconv.Itoa(m.views)},
 		{"tokens", status.Tokens(m.tokens)},
 		{"context", m.contextDetail()},
 	}
@@ -139,7 +141,7 @@ func (m Model) contextDetail() string {
 		return "no budget set"
 	}
 	if m.context <= 0 {
-		return fmt.Sprintf("nothing measured yet, budget %s", status.Tokens(budget))
+		return "nothing measured yet, budget " + status.Tokens(budget)
 	}
 	return fmt.Sprintf("%d%%  %s of %s", m.context*100/budget,
 		status.Tokens(m.context), status.Tokens(budget))

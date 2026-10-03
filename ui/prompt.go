@@ -11,7 +11,7 @@ import (
 
 // prompt is the input box and the slash dropdown above it, owned
 // together so nothing else can put the two out of step.
-type prompt struct {
+type prompt struct { //nolint:recvcheck // readers take a value so View can call them on a copy
 	input   textarea.Model
 	matches []slashCmd
 	// extra are commands beyond the built-ins, a skill's /name.
@@ -224,7 +224,7 @@ func inputRows(value string, width int) int {
 		width = 1
 	}
 	rows := 0
-	for _, line := range strings.Split(value, "\n") {
+	for line := range strings.SplitSeq(value, "\n") {
 		rows += lipgloss.Width(line)/width + 1
 	}
 	return min(max(rows, 1), maxInputRows)

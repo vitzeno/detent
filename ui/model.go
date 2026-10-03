@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"os"
+	"slices"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -17,7 +18,7 @@ import (
 
 // Model is a projection of the event stream: facts.go folds facts in,
 // and every key publishes an intent.
-type Model struct {
+type Model struct { //nolint:recvcheck // Bubble Tea updates by value, and helpers mutate through a pointer
 	bus *event.Bus
 
 	info SessionInfo
@@ -276,15 +277,7 @@ func (m Model) focused() *callRow {
 // spinning reports whether anything on screen is still turning: the
 // model thinking, a Call running, or a command the human ran.
 func (m Model) spinning() bool {
-	if m.waiting {
-		return true
-	}
-	for _, b := range m.blocks {
-		if anyRunning(b) {
-			return true
-		}
-	}
-	return false
+	return m.waiting || slices.ContainsFunc(m.blocks, anyRunning)
 }
 
 // shellRunning is whether esc has a command of the human's to stop.

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/google/uuid"
+
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/viewspec"
 )

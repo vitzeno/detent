@@ -96,9 +96,7 @@ func (m Model) historyWindow() (window []string, offset int) {
 	start := 0
 	if len(lines) > m.nav.histHeight {
 		start = m.nav.histOffset
-		if cursorLine < start {
-			start = cursorLine
-		}
+		start = min(start, cursorLine)
 		if cursorLine >= start+m.nav.histHeight {
 			start = cursorLine - m.nav.histHeight + 1
 		}
