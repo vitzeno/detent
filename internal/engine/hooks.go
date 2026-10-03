@@ -25,7 +25,7 @@ type toolFloor struct{}
 func (toolFloor) Name() string { return "tool" }
 
 func (toolFloor) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
-	return event.Risk{Mutability: c.Mutability}, nil
+	return event.Risk{Mutability: event.Declared(c.Mutability)}, nil
 }
 
 // mcpFloor confirms every Call that runs outside the sandbox: no

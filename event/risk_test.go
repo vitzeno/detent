@@ -83,10 +83,42 @@ func TestRisk_WidenIsOrderIndependent(t *testing.T) {
 	assert.Equal(t, fwd.FromJudge, rev.FromJudge)
 }
 
+// A tool that declared nothing must not be made read-only by a hook
+// claiming so, or sed -i runs alongside its siblings.
+func TestRisk_UnknownIsNotLoweredByAReadOnlyClaim(t *testing.T) {
+	got := UnknownRisk().Widen(Risk{Mutability: Declared("")}).Widen(Risk{Mutability: MutRead})
+	assert.Equal(t, MutUnknown, got.Mutability)
+	assert.False(t, got.ReadOnly())
+
+	got = UnknownRisk().Widen(Risk{Mutability: Declared(MutRead)})
+	assert.True(t, got.ReadOnly(), "a tool declaring read-only still runs in parallel")
+	assert.Equal(t, MutWorkspace, got.Widen(Risk{Mutability: MutWorkspace}).Mutability)
+}
+
+// A hook with no answer says zero by its zero value, which must not
+// read as a scope the human is then shown.
+func TestRisk_ScopeStaysUnknownUntilSomethingAnswers(t *testing.T) {
+	tests := []struct {
+		name string
+		with Risk
+		want float64
+	}{
+		{"a silent hook", Risk{}, -1},
+		{"the judge answering zero", Risk{FromJudge: true}, 0},
+		{"the judge with no answer", Risk{FromJudge: true, ScopeRisk: -1}, -1},
+		{"a hook naming a scope", Risk{ScopeRisk: 0.4}, 0.4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, UnknownRisk().Widen(tt.with).ScopeRisk)
+		})
+	}
+}
+
 // Parallelism is the one thing mutability still decides.
 func TestRisk_OnlyReadOnlyRunsAlongsideSiblings(t *testing.T) {
 	assert.True(t, Risk{Mutability: MutRead}.ReadOnly())
-	for _, m := range []string{"", MutWorkspace, MutSystem, MutIrreversible} {
+	for _, m := range []string{"", MutUnknown, MutWorkspace, MutSystem, MutIrreversible} {
 		assert.False(t, Risk{Mutability: m}.ReadOnly(), "%q must run alone", m)
 	}
 }
