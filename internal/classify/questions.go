@@ -13,6 +13,19 @@ type Asker interface {
 	Ask(ctx context.Context, state State, questions Questions) (Answers, Usage, error)
 }
 
+// AskOrFallback calls j.Ask, reporting ok=false when j is nil or errors so a
+// caller's fallback is one branch. A caller that must say why calls Ask.
+func AskOrFallback(ctx context.Context, j Asker, state State, questions Questions) (Answers, Usage, bool) {
+	if j == nil {
+		return nil, Usage{}, false
+	}
+	answers, u, err := j.Ask(ctx, state, questions)
+	if err != nil {
+		return nil, Usage{}, false
+	}
+	return answers, u, true
+}
+
 // Questions batches one request, keyed by question id.
 type Questions map[string]Question
 
@@ -56,17 +69,4 @@ type Usage struct {
 	InputTokens, OutputTokens int
 	LatencyMS                 float64
 	Model                     string
-}
-
-// AskOrFallback calls j.Ask, reporting ok=false when j is nil or errors so a
-// caller's fallback is one branch. A caller that must say why calls Ask.
-func AskOrFallback(ctx context.Context, j Asker, state State, questions Questions) (Answers, Usage, bool) {
-	if j == nil {
-		return nil, Usage{}, false
-	}
-	answers, u, err := j.Ask(ctx, state, questions)
-	if err != nil {
-		return nil, Usage{}, false
-	}
-	return answers, u, true
 }

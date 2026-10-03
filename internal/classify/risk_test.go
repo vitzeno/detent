@@ -12,18 +12,6 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-func TestRiskJudge_ZeroThresholdTakesTheDefault(t *testing.T) {
-	for _, tc := range []struct {
-		noul      float64
-		dangerous bool
-	}{{0.2, false}, {0.5, true}, {0.9, true}} {
-		j := RiskJudge{Asker: scopeRisk(tc.noul)}
-		risk, err := j.Assess(context.Background(), "ls", 0)
-		require.NoError(t, err)
-		assert.Equal(t, tc.dangerous, risk.Dangerous, "noul %.1f", tc.noul)
-	}
-}
-
 // What the safety argument rests on: a failure is an error the engine
 // can show, and never a verdict that narrows anything.
 func TestRiskJudge_Assess(t *testing.T) {
@@ -61,6 +49,18 @@ func TestRiskJudge_Assess(t *testing.T) {
 				assert.InDelta(t, tc.scope, risk.ScopeRisk, 1e-9)
 			}
 		})
+	}
+}
+
+func TestRiskJudge_ZeroThresholdTakesTheDefault(t *testing.T) {
+	for _, tc := range []struct {
+		noul      float64
+		dangerous bool
+	}{{0.2, false}, {0.5, true}, {0.9, true}} {
+		j := RiskJudge{Asker: scopeRisk(tc.noul)}
+		risk, err := j.Assess(context.Background(), "ls", 0)
+		require.NoError(t, err)
+		assert.Equal(t, tc.dangerous, risk.Dangerous, "noul %.1f", tc.noul)
 	}
 }
 

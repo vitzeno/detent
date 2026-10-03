@@ -12,16 +12,8 @@ import (
 	"unicode/utf8"
 )
 
-const jevEndpoint = "https://api.typesafe.ai/v1/systemone"
-
 // DefaultModel is the pinned model id, never an alias.
 const DefaultModel = "jev-1.13.0"
-
-// maxResponseBytes bounds a reply. A real one is a few KB.
-const maxResponseBytes = 1 << 20
-
-// defaultClient is what a JevJudge with no client of its own uses.
-var defaultClient = &http.Client{Timeout: 60 * time.Second}
 
 var (
 	// ErrNoModel is a JevJudge with no model to ask.
@@ -30,14 +22,13 @@ var (
 	ErrNoKind = errors.New("has none of Choice/Noul/Score set")
 )
 
-// HTTPError is a reply that was not 200, so a caller can tell a bad key
-// from an outage without reading the message.
-type HTTPError struct {
-	Status int
-	Body   string
-}
+const jevEndpoint = "https://api.typesafe.ai/v1/systemone"
 
-func (e *HTTPError) Error() string { return fmt.Sprintf("classify: HTTP %d: %s", e.Status, e.Body) }
+// maxResponseBytes bounds a reply. A real one is a few KB.
+const maxResponseBytes = 1 << 20
+
+// defaultClient is what a JevJudge with no client of its own uses.
+var defaultClient = &http.Client{Timeout: 60 * time.Second}
 
 // JevJudge asks TypeSafe's Jev over HTTP.
 type JevJudge struct {
@@ -147,6 +138,15 @@ func (j *JevJudge) Ask(ctx context.Context, state State, qs Questions) (Answers,
 	}
 	return answers, usage, nil
 }
+
+// HTTPError is a reply that was not 200, so a caller can tell a bad key
+// from an outage without reading the message.
+type HTTPError struct {
+	Status int
+	Body   string
+}
+
+func (e *HTTPError) Error() string { return fmt.Sprintf("classify: HTTP %d: %s", e.Status, e.Body) }
 
 func (j *JevJudge) endpoint() string {
 	if j.Endpoint != "" {
