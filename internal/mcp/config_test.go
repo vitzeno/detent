@@ -28,7 +28,7 @@ func TestLoad_ReadsTheStandardShape(t *testing.T) {
       }
     }`)
 
-	got, err := Load(path)
+	got, err := Load(nil, path)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 
@@ -50,11 +50,11 @@ func TestLoad_ProjectReplacesUserWholesale(t *testing.T) {
       "shared": {"command": "/usr/bin/old", "args": ["--global"], "env": {"A": "1"}},
       "only-user": {"command": "/usr/bin/keep"}
     }}`)
-	project := write(t, dir, "project.json", `{"mcpServers": {
+	project := []byte(`{"mcpServers": {
       "shared": {"command": "/usr/bin/new"}
     }}`)
 
-	got, err := Load(user, project)
+	got, err := Load(project, user)
 	require.NoError(t, err)
 
 	assert.Equal(t, "/usr/bin/new", got["shared"].Command)
@@ -74,7 +74,7 @@ func TestLoad_ExpandsEnvironmentReferences(t *testing.T) {
       "env": {"MISSING": "${DETENT_TEST_ABSENT}"}
     }}}`)
 
-	got, err := Load(path)
+	got, err := Load(nil, path)
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com/mcp", got["s"].URL, "the default was not used")
 	assert.Equal(t, "Bearer secret", got["s"].Headers["Authorization"])
@@ -115,7 +115,7 @@ func FuzzExpand(f *testing.F) {
 }
 
 func TestLoad_MissingFilesAreNotAnError(t *testing.T) {
-	got, err := Load(filepath.Join(t.TempDir(), "nope.json"))
+	got, err := Load(nil, filepath.Join(t.TempDir(), "nope.json"))
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }
@@ -124,16 +124,25 @@ func TestLoad_MissingFilesAreNotAnError(t *testing.T) {
 // typo silently costs every server in it.
 func TestLoad_BadJSONSaysWhichFile(t *testing.T) {
 	path := write(t, t.TempDir(), "mcp.json", `{"mcpServers": {`)
-	_, err := Load(path)
+	_, err := Load(nil, path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "mcp.json")
 }
 
-func TestFiles_UserThenProject(t *testing.T) {
-	paths := Files(true)
-	require.NotEmpty(t, paths)
-	assert.Equal(t, ".mcp.json", paths[len(paths)-1], "the project file has to win")
-	assert.NotContains(t, Files(false), ".mcp.json", "an untrusted directory's file is never read")
+// The project file is only ever the approved bytes, never read from disk.
+func TestLoad_NeverReadsTheProjectFileItself(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	write(t, ".", Project, `{"mcpServers": {"evil": {"command": "sh"}}}`)
+	assert.NotContains(t, Files(), Project)
+
+	got, err := Load(nil, Files()...)
+	require.NoError(t, err)
+	assert.NotContains(t, got, "evil")
+	got, err = Load([]byte(`{"mcpServers": {"ok": {"command": "true"}}}`), Files()...)
+	require.NoError(t, err)
+	assert.Contains(t, got, "ok")
+	assert.NotContains(t, got, "evil")
 }
 
 // Absent type means stdio, so type only names a remote transport. One
@@ -178,7 +187,7 @@ func TestLoad_ReadsClaudeCodesOAuth(t *testing.T) {
         "clientId": "id", "clientSecret": "${NOTION_SECRET}", "callbackPort": 8080, "scopes": "read write"}},
       "listed": {"type": "http", "url": "https://y/mcp", "oauth": {"scopes": ["read"]}}
     }}`)
-	got, err := Load(path)
+	got, err := Load(nil, path)
 	require.NoError(t, err)
 	assert.Equal(t, &OAuth{ClientID: "id", ClientSecret: "s3cret", CallbackPort: 8080,
 		Scopes: Scopes{"read", "write"}}, got["spaced"].OAuth)
@@ -190,7 +199,7 @@ func TestLoad_ReadsClaudeCodesOAuth(t *testing.T) {
 func TestLoad_AClaudeCodeEntryNeedsNothingAdded(t *testing.T) {
 	path := write(t, t.TempDir(), "mcp.json",
 		`{"mcpServers": {"notion": {"type": "http", "url": "https://mcp.notion.com/mcp"}}}`)
-	got, err := Load(path)
+	got, err := Load(nil, path)
 	require.NoError(t, err)
 	assert.Nil(t, got["notion"].OAuth, "nothing to tune, and nothing needed")
 }
@@ -199,7 +208,7 @@ func TestLoad_AClaudeCodeEntryNeedsNothingAdded(t *testing.T) {
 func TestLoad_ReadsCursorsClientCredentials(t *testing.T) {
 	path := write(t, t.TempDir(), "mcp.json", `{"mcpServers": {"s": {"url": "https://x/mcp",
       "auth": {"CLIENT_ID": "id", "CLIENT_SECRET": "sec", "scopes": ["read"]}}}}`)
-	got, err := Load(path)
+	got, err := Load(nil, path)
 	require.NoError(t, err)
 	assert.Equal(t, &OAuth{ClientID: "id", ClientSecret: "sec", Scopes: Scopes{"read"}}, got["s"].OAuth)
 }
@@ -217,7 +226,7 @@ func TestLoad_AnotherClientsAuthNeverFailsTheLoad(t *testing.T) {
 			path := write(t, t.TempDir(), "mcp.json", `{"mcpServers": {
               "s": {"url": "https://x/mcp", "auth": `+auth+`},
               "other": {"url": "https://y/mcp"}}}`)
-			got, err := Load(path)
+			got, err := Load(nil, path)
 			require.NoError(t, err)
 			assert.Len(t, got, 2, "every other server still loads")
 		})

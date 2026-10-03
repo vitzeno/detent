@@ -178,16 +178,18 @@ func Default() Config {
 	}
 }
 
-// Load reads path, or else the first of ./.detent.y(a)ml (only when local)
-// and ~/.config/detent/config.y(a)ml, or else returns Default.
-func Load(path string, local bool) (Config, error) {
+// Load reads path, else ./.detent.y(a)ml from local (the bytes trust
+// approved), else ~/.config/detent/config.y(a)ml, else returns Default.
+func Load(path string, local map[string][]byte) (Config, error) {
 	if path != "" {
 		return read(path)
 	}
-	var candidates []string
-	if local {
-		candidates = append(candidates, ".detent.yaml", ".detent.yml")
+	for _, name := range []string{".detent.yaml", ".detent.yml"} {
+		if raw, ok := local[name]; ok {
+			return decode(name, raw)
+		}
 	}
+	var candidates []string
 	if home, err := os.UserHomeDir(); err == nil {
 		candidates = append(candidates,
 			filepath.Join(home, ".config", "detent", "config.yaml"),
@@ -255,6 +257,10 @@ func read(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("config: %w", err)
 	}
+	return decode(path, raw)
+}
+
+func decode(path string, raw []byte) (Config, error) {
 	cfg := Default()
 	// Strict, so a misspelt key fails with its line instead of quietly doing nothing.
 	dec := yaml.NewDecoder(bytes.NewReader(raw))

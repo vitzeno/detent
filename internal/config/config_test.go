@@ -13,7 +13,7 @@ import (
 
 func TestLoad_ExplicitFile(t *testing.T) {
 	p := writeTemp(t, "base_url: http://x:9999/v1\nmodel: some-model\napi_key: sk-1\nsteps: 12\n")
-	cfg, err := Load(p, true)
+	cfg, err := Load(p, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "http://x:9999/v1", cfg.BaseURL)
 	assert.Equal(t, "some-model", cfg.Model)
@@ -23,7 +23,7 @@ func TestLoad_ExplicitFile(t *testing.T) {
 
 func TestLoad_PartialFileKeepsDefaults(t *testing.T) {
 	p := writeTemp(t, "model: other-model\n")
-	cfg, err := Load(p, true)
+	cfg, err := Load(p, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "other-model", cfg.Model)
 	assert.Equal(t, DefaultBaseURL, cfg.BaseURL)
@@ -37,13 +37,13 @@ func TestDefaults_DoNotDriftFromModel(t *testing.T) {
 }
 
 func TestLoad_MissingExplicitPathErrors(t *testing.T) {
-	_, err := Load(filepath.Join(t.TempDir(), "nope.yaml"), true)
+	_, err := Load(filepath.Join(t.TempDir(), "nope.yaml"), nil)
 	assert.Error(t, err)
 }
 
 func TestLoad_BadYAMLErrors(t *testing.T) {
 	p := writeTemp(t, "base_url: [unclosed\n")
-	_, err := Load(p, true)
+	_, err := Load(p, nil)
 	assert.Error(t, err)
 }
 
@@ -52,20 +52,22 @@ func TestLoad_NoFileReturnsDefault(t *testing.T) {
 	t.Chdir(dir)
 	t.Setenv("HOME", dir) // empty ~/.config too
 
-	cfg, err := Load("", true)
+	cfg, err := Load("", map[string][]byte{})
 	require.NoError(t, err)
 	assert.Equal(t, Default(), cfg)
 }
 
-func TestLoad_FindsLocalFile(t *testing.T) {
+// The local file is the approved bytes, whatever the disk now holds.
+func TestLoad_ReadsLocalFromTheApprovedBytes(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".detent.yaml"), []byte("model: local-model\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".detent.yaml"), []byte("base_url: http://evil/v1\n"), 0o644))
 	t.Chdir(dir)
 	t.Setenv("HOME", t.TempDir())
 
-	cfg, err := Load("", true)
+	cfg, err := Load("", map[string][]byte{".detent.yml": []byte("model: local-model\n")})
 	require.NoError(t, err)
 	assert.Equal(t, "local-model", cfg.Model)
+	assert.Equal(t, DefaultBaseURL, cfg.BaseURL)
 }
 
 // An untrusted directory's file is passed over for the user's own.
@@ -77,7 +79,7 @@ func TestLoad_WithoutLocalSkipsTheWorkingDirectory(t *testing.T) {
 	t.Chdir(dir)
 	t.Setenv("HOME", home)
 
-	cfg, err := Load("", false)
+	cfg, err := Load("", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "mine", cfg.Model)
 	assert.Equal(t, DefaultBaseURL, cfg.BaseURL)
@@ -85,14 +87,14 @@ func TestLoad_WithoutLocalSkipsTheWorkingDirectory(t *testing.T) {
 
 // A misspelt key used to load as nothing at all, which is a setting the user thinks is on.
 func TestLoad_UnknownKeyFailsWithItsLine(t *testing.T) {
-	_, err := Load(writeTemp(t, "model: m\nsandbox_mod: host\n"), true)
+	_, err := Load(writeTemp(t, "model: m\nsandbox_mod: host\n"), nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "sandbox_mod")
 	assert.Contains(t, err.Error(), "line 2")
 }
 
 func TestLoad_EmptyFileIsDefault(t *testing.T) {
-	cfg, err := Load(writeTemp(t, ""), true)
+	cfg, err := Load(writeTemp(t, ""), nil)
 	require.NoError(t, err)
 	assert.Equal(t, Default(), cfg)
 }
@@ -148,7 +150,7 @@ func TestLogValue_MasksTheKeys(t *testing.T) {
 
 func TestLoad_Headers(t *testing.T) {
 	p := writeTemp(t, "base_url: https://openrouter.ai/api/v1\nmodel: qwen/qwen3-32b\nheaders:\n  HTTP-Referer: https://example.com\n  X-Title: detent\n")
-	cfg, err := Load(p, true)
+	cfg, err := Load(p, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "https://openrouter.ai/api/v1", cfg.BaseURL)
 	assert.Equal(t, map[string]string{"HTTP-Referer": "https://example.com", "X-Title": "detent"}, cfg.Headers)
@@ -156,7 +158,7 @@ func TestLoad_Headers(t *testing.T) {
 
 func TestLoad_JudgeFields(t *testing.T) {
 	p := writeTemp(t, "jev_api_key: sk-jev\njev_model: jev-9.9.9\njev_endpoint: http://x/v1\nrisk_threshold: 0.7\n")
-	cfg, err := Load(p, true)
+	cfg, err := Load(p, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "sk-jev", cfg.JevAPIKey)
 	assert.Equal(t, "jev-9.9.9", cfg.JevModel)
@@ -166,14 +168,14 @@ func TestLoad_JudgeFields(t *testing.T) {
 
 func TestLoad_Theme(t *testing.T) {
 	p := writeTemp(t, "theme: dracula\n")
-	cfg, err := Load(p, true)
+	cfg, err := Load(p, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "dracula", cfg.Theme)
 }
 
 func TestLoad_SandboxFields(t *testing.T) {
 	p := writeTemp(t, "sandbox_mode: host\nsandbox_socket: /tmp/containerd.sock\nsandbox_image: ubuntu:22.04\nsandbox_runtime: runsc\nsandbox_workspace: /work\n")
-	cfg, err := Load(p, true)
+	cfg, err := Load(p, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "host", cfg.SandboxMode)
 	assert.Equal(t, "/tmp/containerd.sock", cfg.SandboxSocket)

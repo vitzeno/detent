@@ -68,7 +68,7 @@ func run() error {
 	case o.prune:
 		return pruneSandbox(cfg.SandboxSocket)
 	case o.listMCP:
-		return listServers(trusted.Trusted)
+		return listServers(trusted)
 	}
 	// Validated even for -prompt, so a typo fails fast either way.
 	if err := applyLook(cfg); err != nil {
@@ -262,11 +262,11 @@ func sandboxSocketFor(c config.Config) string {
 
 // loadMCPConfig keeps MCP configuration out of headless runs entirely.
 // It is enabled for the TUI, where users can inspect and invoke servers.
-func loadMCPConfig(enabled bool, files []string) (map[string]mcppkg.Config, error) {
+func loadMCPConfig(enabled bool, project []byte, files []string) (map[string]mcppkg.Config, error) {
 	if !enabled {
 		return map[string]mcppkg.Config{}, nil
 	}
-	return mcppkg.Load(files...)
+	return mcppkg.Load(project, files...)
 }
 
 // connectServers dials MCP without holding up the first frame, publishing

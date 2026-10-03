@@ -194,7 +194,7 @@ func (s *session) buildEngine() error {
 	// Connected before the engine, which takes the registry by value.
 	// Headless reads none: config expands secrets, servers start processes.
 	s.tools = tool.StandardFor(shellTool(s.env), s.found.skillTools()...)
-	s.configured, err = loadMCPConfig(s.o.prompt == "", mcppkg.Files(s.trusted.Trusted))
+	s.configured, err = loadMCPConfig(s.o.prompt == "", s.trusted.Files[mcppkg.Project], mcppkg.Files())
 	if err != nil {
 		return err
 	}

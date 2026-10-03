@@ -28,22 +28,22 @@ type Config struct {
 	Auth foreignAuth `json:"auth"`
 }
 
-// Files are where servers are configured, nearest last, and project adds
-// ./.mcp.json. The name and shape are what every MCP client reads.
-func Files(project bool) []string {
-	var out []string
-	if home, err := os.UserHomeDir(); err == nil {
-		out = append(out, filepath.Join(home, ".config", "detent", "mcp.json"))
+// Project is the working directory's own file. The name and shape are
+// what every MCP client reads.
+const Project = ".mcp.json"
+
+// Files are the user's own config files, nearest last.
+func Files() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
 	}
-	if project {
-		out = append(out, ".mcp.json")
-	}
-	return out
+	return []string{filepath.Join(home, ".config", "detent", "mcp.json")}
 }
 
-// Load merges the files that exist, later winning. An entry is
-// replaced whole: half of one config and half of another is nobody's.
-func Load(paths ...string) (map[string]Config, error) {
+// Load merges the files that exist and then project, the approved bytes of
+// ./.mcp.json, later winning. An entry is replaced whole, never half and half.
+func Load(project []byte, paths ...string) (map[string]Config, error) {
 	out := map[string]Config{}
 	for _, path := range paths {
 		raw, err := os.ReadFile(path)
@@ -53,15 +53,27 @@ func Load(paths ...string) (map[string]Config, error) {
 		case err != nil:
 			return nil, fmt.Errorf("mcp: read %s: %w", path, err)
 		}
-		var f file
-		if err := json.Unmarshal(raw, &f); err != nil {
-			return nil, fmt.Errorf("mcp: %s: %w", path, err)
+		if err := merge(out, path, raw); err != nil {
+			return nil, err
 		}
-		for name, c := range f.Servers {
-			out[name] = c.expanded()
+	}
+	if project != nil {
+		if err := merge(out, Project, project); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
+}
+
+func merge(into map[string]Config, path string, raw []byte) error {
+	var f file
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return fmt.Errorf("mcp: %s: %w", path, err)
+	}
+	for name, c := range f.Servers {
+		into[name] = c.expanded()
+	}
+	return nil
 }
 
 // OAuth is Claude Code's "oauth" object, for a sign-in discovery cannot

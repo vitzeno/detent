@@ -2,11 +2,11 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"cmp"
 	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -72,14 +72,19 @@ func configure(o options) (trust.Decision, config.Config, error) {
 	if err != nil {
 		return trusted, config.Config{}, err
 	}
-	if trusted.Trusted {
-		if err := loadDotenv(".env"); err != nil {
-			return trusted, config.Config{}, err
-		}
+	cfg, err := layer(o, trusted)
+	return trusted, cfg, err
+}
+
+// layer reads the bytes trust hashed rather than the disk, so a file
+// changed since it asked cannot slip in.
+func layer(o options, trusted trust.Decision) (config.Config, error) {
+	if err := loadDotenv(trusted.Files[".env"]); err != nil {
+		return config.Config{}, err
 	}
-	file, err := config.Load(o.configPath, trusted.Trusted)
+	file, err := config.Load(o.configPath, trusted.Files)
 	if err != nil {
-		return trusted, config.Config{}, err
+		return config.Config{}, err
 	}
 	flags := config.Config{
 		BaseURL: o.baseURL, Model: o.modelName, APIKey: o.apiKey, Theme: o.themeName,
@@ -87,7 +92,7 @@ func configure(o options) (trust.Decision, config.Config, error) {
 	}
 	cfg := config.Resolve(file, flags, o.steps)
 	cfg.SandboxSocket = cmp.Or(cfg.SandboxSocket, defaultSandboxSocket())
-	return trusted, cfg, nil
+	return cfg, nil
 }
 
 // defaultSandboxSocket returns the OS-conventional containerd socket,
@@ -121,19 +126,11 @@ func isTerminal(f *os.File) bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
-// loadDotenv fills gaps from .env in the working directory. Real
-// environment variables always win, even set to "".
-func loadDotenv(path string) error {
-	f, err := os.Open(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-
-	scanner := bufio.NewScanner(f)
+// loadDotenv fills gaps from the working directory's .env, as approved.
+// Real environment variables always win, even set to "".
+func loadDotenv(raw []byte) error {
+	const path = ".env"
+	scanner := bufio.NewScanner(bytes.NewReader(raw))
 	for scanner.Scan() {
 		key, value, ok := dotenvLine(scanner.Text())
 		if !ok {
