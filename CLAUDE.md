@@ -90,7 +90,7 @@ untrusted files are ignored with a warning unless `-trust` is passed,
 which trusts them for that run without recording it. An unknown key in the config file is an error that
 names its line, so a typo cannot silently do nothing.
 
-At startup `main.go` pings the endpoint's `/models` and fails fast
+At startup `run()` pings the endpoint's `/models` and fails fast
 with a clear message. Don't remove it: it's the difference between a
 useful error and a raw dial failure on the first request. It also
 applies the theme before building the TUI: `theme.Apply` sets the
@@ -237,9 +237,13 @@ the ones that drive the loop. Disjointness is what makes several
 subscribers sound, and it is why cancelling a command is its own
 `CancelCommand` rather than a field on `Abort`.
 
-That table is the wiring. `cmd/detent/main.go` connects nothing to
-anything else, only each part to the bus, which is why each row is one
-line there. Three things follow, and they are the reason the
+That table is the wiring. `cmd/detent` connects nothing to anything
+else, only each part to the bus, which is why each row is one line
+there: in `session.wire` for every run, and in `runTUI` for the two
+only an interactive session has. `run()` in `main.go` reads top to
+bottom as the phases a session opens in (`configure`, `openSandbox`,
+`buildEngine`, `wire`, then a front-end), each filling in the
+`shutdown` that closes it. Three things follow, and they are the reason the
 shape was worth the rework:
 
 - **Tests are events in, state out.** `ui/apply_test.go` drives the
@@ -249,7 +253,7 @@ shape was worth the rework:
   `event.Record` and resume replays it, so nothing has to reproduce
   what the engine did. `Appended` carries the real messages for
   exactly this reason.
-- **A new feature is a subscriber.** Adding one touches `main.go` once
+- **A new feature is a subscriber.** Adding one touches `cmd/detent` once
   and no existing component at all.
 
 ```
