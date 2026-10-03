@@ -102,8 +102,10 @@ At startup `run()` pings the endpoint's `/models` and fails fast
 with a clear message. Don't remove it: it's the difference between a
 useful error and a raw dial failure on the first request. It also
 applies the theme before building the TUI: `theme.Apply` sets the
-colors, `ui.RefreshStyles` rebuilds every style baked from the old
-ones.
+active theme, `ui.RefreshStyles` rebakes every style from it. There is
+no `init()`: each package bakes its styles from `theme.Current()` as it
+loads, and a test fails if a subpackage holding baked styles is missing
+from `RefreshStyles`.
 
 ### The sandbox VM
 
@@ -290,7 +292,7 @@ tool        →  event
 model       →  event
 event       →  the standard library, plus viewspec and google/uuid
 viewspec    →  the standard library, nothing else
-views       →  viewspec
+views       →  viewspec, event
 logging     →  the standard library, plus event
 config      →  engine, model, classify, sandbox, host (for defaults and names only)
 host        →  capture, winjob
@@ -623,9 +625,12 @@ adding a fat dependency fails with the transitive import named.
   a notice or an error is cut to a snippet.
 
 - **`views`**: every spec detent ships, keyed by command name
-  (`ForCommand`) and by judged output shape (`ForKind`). Imports
-  `viewspec` and nothing else, which is what lets both `ui` and
-  `viewgen` read it without either importing the other.
+  (`ForCommand`) and by judged output shape (`ForKind`, an
+  `event.RenderKind`). Imports `viewspec` and `event` and nothing else,
+  which is what lets both `ui` and `viewgen` read it without either
+  importing the other. Result statuses and render kinds are typed
+  constants in `event/verdict.go`, and judge, viewgen, views and
+  `ui/status` each have a test that their copy agrees with it.
 
 - **`internal/store`**: a session's events on disk, so it can be
   replayed rather than reconstructed. Speaks `event.Record` and knows
