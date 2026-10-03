@@ -6,10 +6,11 @@ import (
 	"strings"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/tool"
 )
 
-// kind is one tool as the generator uses it, in one entry so a tool
-// cannot be half-added.
+// kind is one tool as the generator uses it. What a tool says about
+// itself comes from the registry, so only its content is made up here.
 type kind struct {
 	name     string
 	runner   string
@@ -21,63 +22,131 @@ type kind struct {
 	result   func(*rand.Rand) event.Result
 }
 
-var tools = []kind{
-	{
-		name: "bash", runner: "sandbox", render: "logs",
+// gen is the made-up half of a kind, keyed by tool name.
+type gen struct {
+	runner string
+	render string // the kind a judge would give its output
+	args   func(*rand.Rand) map[string]any
+	result func(*rand.Rand) event.Result
+}
+
+// registry is what a session offers, so a tool added there without a
+// gen here fails TestTools_EveryRegisteredToolHasAGenerator.
+func registry() *tool.Registry {
+	return tool.Standard(tool.Skill{Entries: []tool.SkillEntry{{Name: "release", Description: "cut a release"}}})
+}
+
+var tools = kinds()
+
+func kinds() []kind {
+	reg := registry()
+	var out []kind
+	for _, name := range reg.Names() {
+		g, ok := gens[name]
+		if !ok {
+			continue
+		}
+		t, _ := reg.Lookup(name)
+		spec := t.Describe()
+		out = append(out, kind{name: name, runner: g.runner, render: g.render,
+			renders: spec.Renders, args: g.args, result: g.result, risk: riskFor(spec.Mutability)})
+	}
+	// Two MCP tools, which no registry holds until a server answers.
+	return append(out,
+		kind{
+			name: "github__create_issue", runner: "host", executor: "mcp:github", render: "text",
+			args: func(r *rand.Rand) map[string]any {
+				return map[string]any{"repo": "vitzeno/detent", "title": pick(r, prompts)}
+			},
+			risk: mcpRisk, result: issueResult,
+		},
+		kind{
+			name: "docs__search_docs", runner: "host", executor: "mcp:docs", render: "markdown", renders: event.RendersMarkdown,
+			args: func(r *rand.Rand) map[string]any {
+				return map[string]any{"q": pick(r, queries), "limit": 5}
+			},
+			risk: mcpRisk, result: searchResult,
+		})
+}
+
+// riskFor spreads verdicts around what the tool declared, as the chain would.
+func riskFor(mutability string) func(*rand.Rand) event.Risk {
+	switch mutability {
+	case event.MutRead:
+		return readOnly
+	case event.MutWorkspace:
+		return workspaceRisk
+	}
+	return shellRisk
+}
+
+var gens = map[string]gen{
+	"bash": {
+		runner: "sandbox", render: "logs",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"command": pick(r, commands)}
 		},
-		risk:   shellRisk,
 		result: shellResult,
 	},
-	{
-		name: "read_file", runner: "sandbox", render: "code",
+	"read_file": {
+		runner: "sandbox", render: "code",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"path": pick(r, paths)}
 		},
-		risk:   readOnly,
 		result: fileResult,
 	},
-	{
-		name: "write_file", runner: "sandbox", render: "text",
+	"write_file": {
+		runner: "sandbox", render: "text",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"path": pick(r, paths), "content": pick(r, prose)}
 		},
-		risk:   workspaceRisk,
 		result: wroteResult,
 	},
-	{
-		name: "list_dir", runner: "sandbox", render: "table",
+	"edit_file": {
+		runner: "sandbox", render: "diff",
+		args: func(r *rand.Rand) map[string]any {
+			return map[string]any{"path": pick(r, paths), "old_string": pick(r, codeLines),
+				"new_string": pick(r, codeLines), "replace_all": r.IntN(5) == 0}
+		},
+		result: diffResult,
+	},
+	"list_dir": {
+		runner: "sandbox", render: "table",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"path": pick(r, dirs), "all": r.IntN(4) == 0}
 		},
-		risk:   readOnly,
 		result: listResult,
 	},
-	{
-		name: "web_search", runner: "sandbox", render: "markdown", renders: event.RendersMarkdown,
+	"grep": {
+		runner: "sandbox", render: "code",
+		args: func(r *rand.Rand) map[string]any {
+			return map[string]any{"pattern": pick(r, []string{"Publish", "func New", "TODO"}),
+				"path": pick(r, dirs), "include": "*.go", "ignore_case": false, "max_results": 200}
+		},
+		result: grepResult,
+	},
+	"find_files": {
+		runner: "sandbox", render: "table",
+		args: func(r *rand.Rand) map[string]any {
+			return map[string]any{"pattern": "*_test.go", "path": pick(r, dirs), "max_results": 200}
+		},
+		result: listResult,
+	},
+	"web_search": {
+		runner: "sandbox", render: "markdown",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"query": pick(r, queries)}
 		},
-		risk:   readOnly,
 		result: searchResult,
 	},
-	{
-		// Runs in detent's own process, so no checkpoint undoes it.
-		name: "github__create_issue", runner: "host", executor: "mcp:github", render: "text",
-		args: func(r *rand.Rand) map[string]any {
-			return map[string]any{"repo": "vitzeno/detent", "title": pick(r, prompts)}
+	"skill": {
+		runner: "sandbox", render: "markdown",
+		args: func(*rand.Rand) map[string]any {
+			return map[string]any{"name": "release"}
 		},
-		risk:   mcpRisk,
-		result: issueResult,
-	},
-	{
-		name: "docs__search_docs", runner: "host", executor: "mcp:docs", render: "markdown", renders: event.RendersMarkdown,
-		args: func(r *rand.Rand) map[string]any {
-			return map[string]any{"q": pick(r, queries), "limit": 5}
+		result: func(r *rand.Rand) event.Result {
+			return event.Result{Stdout: "---\nname: release\n---\n\n" + pick(r, prose) + "\n"}
 		},
-		risk:   mcpRisk,
-		result: searchResult,
 	},
 }
 
@@ -99,23 +168,23 @@ func mcpRisk(r *rand.Rand) event.Risk {
 
 // shellRisk spreads: most read, a few write, one in eight needs a human.
 func shellRisk(r *rand.Rand) event.Risk {
-	switch n := r.IntN(8); {
-	case n == 0:
+	switch r.IntN(8) {
+	case 0:
 		return event.Risk{
 			Dangerous: true, Mutability: event.MutIrreversible, ScopeRisk: 0.7 + r.Float64()*0.3,
 			Note: pick(r, rationales), FromJudge: true,
 		}
-	case n < 3:
+	case 1, 2:
 		return workspaceRisk(r)
 	}
 	return event.Risk{Mutability: event.MutRead, ScopeRisk: r.Float64() * 0.2, FromJudge: true}
 }
 
 func shellResult(r *rand.Rand) event.Result {
-	switch n := r.IntN(12); {
-	case n == 0:
+	switch r.IntN(12) {
+	case 0:
 		return event.Result{ExitCode: 1, Stderr: pick(r, failures), Stdout: ""}
-	case n == 1:
+	case 1:
 		return event.Result{Err: pick(r, breakages)}
 	}
 	out := strings.Repeat(pick(r, logLines)+"\n", 1+r.IntN(40))
@@ -129,6 +198,22 @@ func fileResult(r *rand.Rand) event.Result {
 	var b strings.Builder
 	for i := range 8 + r.IntN(60) {
 		fmt.Fprintf(&b, "%4d\t%s\n", i+1, pick(r, codeLines))
+	}
+	return event.Result{Stdout: b.String()}
+}
+
+func diffResult(r *rand.Rand) event.Result {
+	if r.IntN(10) == 0 {
+		return event.Result{ExitCode: 1, Stderr: "old_string not found"}
+	}
+	return event.Result{Stdout: fmt.Sprintf("@@ -%d,1 +%d,1 @@\n-%s\n+%s\n",
+		1+r.IntN(200), 1+r.IntN(200), pick(r, codeLines), pick(r, codeLines))}
+}
+
+func grepResult(r *rand.Rand) event.Result {
+	var b strings.Builder
+	for range 1 + r.IntN(20) {
+		fmt.Fprintf(&b, "%s:%d:%s\n", pick(r, paths), 1+r.IntN(400), pick(r, codeLines))
 	}
 	return event.Result{Stdout: b.String()}
 }

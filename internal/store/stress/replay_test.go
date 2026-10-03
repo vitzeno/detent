@@ -21,7 +21,7 @@ func TestGenerated_ReplaysAsARealSessionWould(t *testing.T) {
 	records, session := generate(t, 40)
 
 	require.NotEmpty(t, records)
-	_, ok := records[0].Event.(event.SessionStarted)
+	started, ok := records[0].Event.(event.SessionStarted)
 	assert.True(t, ok, "a session that does not open with SessionStarted has no header")
 
 	// Gapless from 1, or a filtered subscriber reads as a lossy one.
@@ -39,9 +39,9 @@ func TestGenerated_ReplaysAsARealSessionWould(t *testing.T) {
 			ended++
 		}
 	}
-	assert.Equal(t, 40, len(turns), "not every turn was written")
+	assert.Len(t, turns, 40, "not every turn was written")
 	assert.Equal(t, 40, ended, "a turn was left open")
-	assert.Equal(t, session, records[0].Event.(event.SessionStarted).Session)
+	assert.Equal(t, session, started.Session)
 }
 
 // A Step is indivisible: an endpoint rejects either half on its own.
@@ -108,6 +108,14 @@ func TestGenerated_TheUiFoldsEveryCallIntoARow(t *testing.T) {
 	assert.Equal(t, want, m.RowCount(), "the history lost rows on the way in")
 	assert.True(t, m.Idle(), "a restored session is waiting on a request that already ended")
 	assert.NotEmpty(t, m.View().Content, "a restored session draws nothing")
+}
+
+// A tool the registry ships but the generator never calls is a shape
+// no stress run has drawn.
+func TestTools_EveryRegisteredToolHasAGenerator(t *testing.T) {
+	for _, name := range registry().Names() {
+		assert.Containsf(t, gens, name, "%s has no generator", name)
+	}
 }
 
 // generate writes to a scratch database and reads it back, as resume does.

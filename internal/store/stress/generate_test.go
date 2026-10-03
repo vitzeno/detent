@@ -34,11 +34,19 @@ func TestGenerate(t *testing.T) {
 	}
 	turns := envInt(t, "DETENT_STRESS_TURNS", defaultTurns)
 	name := envStr("DETENT_STRESS_NAME", defaultName)
-	seed := uint64(envInt(t, "DETENT_STRESS_SEED", defaultSeed))
+	rawSeed := envInt(t, "DETENT_STRESS_SEED", defaultSeed)
+	require.GreaterOrEqual(t, rawSeed, 0, "DETENT_STRESS_SEED must not be negative")
+	seed := uint64(rawSeed)
 
 	db, err := store.Open(envStr("DETENT_STRESS_DB", store.DefaultPath()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	// Checked before writing, or a taken name fails only after a thousand Turns.
+	existing, err := db.Sessions()
+	require.NoError(t, err)
+	for _, s := range existing {
+		require.NotEqualf(t, name, s.Name, "a session is already called %q, so set DETENT_STRESS_NAME", name)
+	}
 
 	w := &writer{
 		t: t, store: db, session: uuid.Must(uuid.NewV7()),
@@ -126,8 +134,8 @@ func (w *writer) step(turn uuid.UUID, n int, last bool) event.Usage {
 
 	asked := make([]event.ToolCall, 0, calls)
 	answers := make([]event.Message, 0, calls)
-	for i := range calls {
-		c, answer := w.call(step, fmt.Sprintf("c%d_%d", n, i))
+	for range calls {
+		c, answer := w.call(step)
 		asked = append(asked, c)
 		answers = append(answers, answer)
 	}
@@ -151,8 +159,10 @@ func (w *writer) step(turn uuid.UUID, n int, last bool) event.Usage {
 }
 
 // call is proposed, assessed, maybe approved, run and judged.
-func (w *writer) call(step uuid.UUID, id string) (event.ToolCall, event.Message) {
+func (w *writer) call(step uuid.UUID) (event.ToolCall, event.Message) {
 	call := uuid.Must(uuid.NewV7())
+	// The Call's own id, so no two Turns share one and mask a missing answer.
+	id := call.String()
 	t := pick(w.rng, tools)
 	args := t.args(w.rng)
 	risk := t.risk(w.rng)
@@ -221,6 +231,7 @@ func status(r event.Result) string {
 func pick[T any](r *rand.Rand, from []T) T { return from[r.IntN(len(from))] }
 
 func envInt(t *testing.T, key string, def int) int {
+	t.Helper()
 	raw := os.Getenv(key)
 	if raw == "" {
 		return def
