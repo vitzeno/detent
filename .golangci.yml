@@ -39,6 +39,9 @@ linters:
       excludes:
         - G204 # sh -c is the design: the Dangerous gate is the control
         - G304 # reading a path the human or the config named is the point
+    recvcheck:
+      exclusions:
+        - "*.UnmarshalJSON" # must take a pointer beside value MarshalJSON
     perfsprint:
       errorf: false # fmt.Errorf without args reads the same as errors.New
     misspell:
