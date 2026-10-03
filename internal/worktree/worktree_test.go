@@ -228,9 +228,8 @@ func TestCapture_IncludesUntrackedFiles(t *testing.T) {
 	assert.Equal(t, "# notes\n", read(t, dir, "notes.md"), "an untracked file is restorable")
 }
 
-// Build output is not state worth reverting, and walking it would make
-// every step slower. What git ignores, this ignores, including the
-// sandbox's own output directory, which ignores itself.
+// Build output is not worth reverting. What git ignores, this ignores,
+// including the sandbox's own output directory, which ignores itself.
 func TestCapture_SkipsIgnoredPaths(t *testing.T) {
 	ctx := t.Context()
 	dir := repo(t)

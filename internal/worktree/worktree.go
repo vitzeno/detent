@@ -1,13 +1,6 @@
-// Package worktree checkpoints the human's own working directory so a
-// rollback can offer to revert it. The container's snapshot stops at
-// the bind mount, which is exactly where a goal does its real work.
-//
-// Everything runs through git plumbing against a scratch index, so the
-// user's own index, branch and stash list are never touched. What git
-// ignores, this ignores: build output is not state worth restoring.
-//
-// A checkpoint is a tree object nothing references, so its blobs sit
-// loose in .git/objects until git gc prunes them, two weeks by default.
+// Package worktree checkpoints the human's working directory, which the
+// container's snapshot never covers, so undo can offer to revert it. It uses git
+// plumbing on a scratch index, never the human's own, and skips what git ignores.
 package worktree
 
 import (
@@ -31,7 +24,8 @@ var ErrGone = errors.New("worktree: checkpoint no longer exists")
 // than which repository to act on.
 var keepEnv = []string{"GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_EXEC_PATH"}
 
-// Checkpoint is a git tree object naming one captured state.
+// Checkpoint is a git tree object naming one captured state. Nothing
+// references it, so git gc prunes its blobs, two weeks by default.
 type Checkpoint string
 
 // Kind is what restoring a checkpoint would do to a path.
