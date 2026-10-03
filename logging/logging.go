@@ -14,6 +14,11 @@ import (
 	"unicode/utf8"
 )
 
+const snippetBytes = 200
+
+// bodies is package-level so no call site has to thread it.
+var bodies atomic.Bool
+
 // Setup opens this session's log as the default logger. A path it cannot
 // open is reported, not fatal: it discards instead.
 func Setup(session string, opts ...Option) (func() error, error) {
@@ -84,8 +89,6 @@ func Snippet(text string) string {
 	return fmt.Sprintf("%s... (%d bytes, set log_bodies to record)", text[:cut], len(text))
 }
 
-const snippetBytes = 200
-
 // DefaultDir is where session logs live, beside the saved views.
 func DefaultDir() string {
 	home, err := os.UserHomeDir()
@@ -94,9 +97,6 @@ func DefaultDir() string {
 	}
 	return filepath.Join(home, ".local", "state", "detent", "logs")
 }
-
-// bodies is package-level so no call site has to thread it.
-var bodies atomic.Bool
 
 func parseLevel(s string) (slog.Level, error) {
 	switch strings.ToLower(s) {
