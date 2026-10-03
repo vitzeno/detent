@@ -30,8 +30,8 @@ func newGroup(cmd *exec.Cmd) *group {
 	return g
 }
 
-// started joins the job straight after Start, before the shell has
-// loaded far enough to start anything of its own.
+// started joins the job straight after Start. Anything the shell starts before
+// then is outside it, a race detent nearly always wins as shells start slowly.
 func (g *group) started(cmd *exec.Cmd) {
 	job, err := winjob.Assign(cmd.Process)
 	if err != nil {

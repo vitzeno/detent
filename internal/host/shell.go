@@ -19,17 +19,19 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
-// DefaultTimeout bounds a command whose caller set no deadline. The
-// engine and humanshell always set one.
-const DefaultTimeout = 30 * time.Second
-
-// waitDelay is how long output is still read after the shell exits.
-const waitDelay = time.Second
+const (
+	// DefaultTimeout bounds a command whose caller set no deadline. The
+	// engine and usercommand always set one.
+	DefaultTimeout = 30 * time.Second
+	// waitDelay is how long output is still read after the shell exits.
+	waitDelay = time.Second
+)
 
 // ErrEmptyCommand is a command with nothing to run.
 var ErrEmptyCommand = errors.New("host: empty command")
 
-// secrets are detent's own credentials, which no command it runs needs.
+// secrets are detent's own credentials, kept from every command it runs. A
+// denylist, so another token, such as one loaded from .env, still passes.
 var secrets = []string{"DETENT_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "TYPESAFE_API_KEY"}
 
 // Shell runs commands directly on the host, unsandboxed. It satisfies
@@ -63,9 +65,8 @@ func WithLimit(limit int) Option {
 // Dialect is the shell commands are written for.
 func (s *Shell) Dialect() string { return cmp.Or(s.dialect, Sh) }
 
-// Run executes command in the shell, sending each output line on events as
-// it arrives. events may be nil. Run sends nothing after it returns, and
-// the caller closes events.
+// Run executes command, sending each output line on events, which may be nil.
+// It sends nothing after it returns, and the caller closes events.
 func (s *Shell) Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error) {
 	if strings.TrimSpace(command) == "" {
 		return capture.Result{}, ErrEmptyCommand

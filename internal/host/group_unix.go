@@ -7,7 +7,8 @@ import (
 	"syscall"
 )
 
-// group is the process group a command leads.
+// group is the process group a command leads. Unlike a Windows job, it
+// outlives a detent that is killed.
 type group struct{}
 
 // newGroup makes a cancel kill the command's whole process group, since

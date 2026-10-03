@@ -111,6 +111,7 @@ func (sys system) gitBash() string {
 			}
 		}
 	}
+	// Any bash.exe under a git directory, which may be usr\bin's.
 	if p, err := sys.lookPath("bash.exe"); err == nil && strings.Contains(strings.ToLower(filepath.ToSlash(p)), "/git/") {
 		return p
 	}
@@ -152,13 +153,13 @@ func (s *Shell) argv(command string) ([]string, error) {
 	return []string{cmp.Or(s.path, "sh"), "-c", command}, nil
 }
 
-// pwshPrelude makes output UTF-8 rather than the console's code page,
-// and keeps progress bars out of the capture.
+// pwshPrelude makes output UTF-8 and keeps progress bars out of the capture.
+// It goes first, so a script that opens with a using statement fails to parse.
 const pwshPrelude = "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n" +
 	"$ProgressPreference = 'SilentlyContinue'\n"
 
-// pwshStatus exits as sh would: 0 when the last statement worked, else a
-// native program's code, else 1. Read first, since any statement resets $?.
+// pwshStatus exits 0 when the last statement worked, else the last native exit
+// code, which may be an earlier statement's, else 1. $? is read first, as anything resets it.
 const pwshStatus = "\n$detentOK = $?\n" +
 	"if ($detentOK) { exit 0 }\n" +
 	"if ($LASTEXITCODE) { exit $LASTEXITCODE }\n" +
