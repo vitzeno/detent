@@ -2,7 +2,11 @@
 package routing
 
 import (
+	"context"
+	"errors"
+
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/capture"
 	"github.com/vitzeno/detent/internal/engine"
 	"github.com/vitzeno/detent/internal/sandbox"
 )
@@ -15,18 +19,28 @@ type Selector struct {
 	HostOnly bool
 }
 
-// Select returns the sandbox unless HostOnly is set or there is none.
-func (s Selector) Select(event.Risk) (engine.Runner, string) {
-	if s.HostOnly || s.Sandbox == nil {
+// ErrNoSandbox is what a command gets when the sandbox was asked for and
+// never wired: failing loudly beats running it on the host instead.
+var ErrNoSandbox = errors.New("routing: no sandbox is configured")
+
+// Select returns the sandbox unless HostOnly is set.
+func (s Selector) Select(_ event.Risk) (engine.Runner, string) {
+	switch {
+	case s.HostOnly:
 		return s.Host, "host"
+	case s.Sandbox == nil:
+		return missing{}, "sandbox"
 	}
 	return s.Sandbox, "sandbox"
 }
 
+// missing is the sandbox nobody wired.
+type missing struct{}
+
+func (missing) Run(context.Context, string, chan<- capture.StreamEvent) (capture.Result, error) {
+	return capture.Result{}, ErrNoSandbox
+}
+
 // Asserted because the engine finds Snapshotter by type assertion, so
 // a rename would silently remove rollback rather than fail the build.
-var (
-	_ engine.RunnerSelector = Selector{}
-	_ engine.Runner         = (*sandbox.Container)(nil)
-	_ engine.Snapshotter    = (*sandbox.Container)(nil)
-)
+var _ engine.Snapshotter = (*sandbox.Container)(nil)
