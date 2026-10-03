@@ -44,6 +44,37 @@ jobs:
             - name: Run Go tests
               uses: ./.github/actions/go/tests
 
+    fuzz:
+        name: Fuzz viewspec
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                # go test -fuzz takes one target at a time.
+                target:
+                    - FuzzExtractLines
+                    - FuzzExtractColumns
+                    - FuzzExtractJSON
+                    - FuzzExtractFixed
+                    - FuzzExtractPairs
+                    - FuzzExtractDelimited
+                    - FuzzExtractIndent
+                    - FuzzExtractPrefix
+                    - FuzzExtractBox
+                    - FuzzExtractNone
+                    - FuzzNumber
+        steps:
+            - name: Checkout
+              uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+              with:
+                  persist-credentials: false
+
+            - name: Setup Go
+              uses: ./.github/actions/go/setup
+
+            - name: Fuzz ${{ matrix.target }}
+              run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 20s ./viewspec/
+
     lint:
         name: Format and vet
         runs-on: ubuntu-latest

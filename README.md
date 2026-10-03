@@ -53,7 +53,14 @@ All extensions listen, publish, or both
 
 `./.detent.yaml` or `~/.config/detent/config.yaml`
 
-All keys are documented in [`detent.example.yaml`](detent.example.yaml)
+All keys are documented in [`detent.example.yaml`](detent.example.yaml). A key detent does not know stops it starting, with the line it is on
+
+### What leaves your machine
+
+- Your requests, the transcript and every command's output go to the model endpoint, `base_url`
+- With `jev_api_key` set, each Call's request, command and up to 4KB of its output go to TypeSafe to be assessed and judged, whatever `log_bodies` says
+- With `views: generate`, a command you ran yourself and up to 4KB of its output go to TypeSafe too
+- `web_search` queries go to DuckDuckGo through `r.jina.ai`
 
 ## MCP
 
@@ -135,7 +142,7 @@ Each one is a shell command underneath, so it runs in the sandbox like everythin
 
 A command still running after 10 minutes is stopped, and the model is told so along with what it printed. `command_timeout` in the config changes it
 
-`web_search` is a curl to DuckDuckGo so there is no API key but it needs the sandbox to have network, which is the default
+`web_search` is a curl to DuckDuckGo, read through `r.jina.ai`, so there is no API key but it needs the sandbox to have network, which is the default
 
 ## Your own commands
 
@@ -193,6 +200,10 @@ literal command and answer it.
 Flagging is a chain: the tool's own declared mutability, a regex backstop, a
 repeat check, then TypeSafe's Jev if a key is set. Each link can raise the
 verdict but none can lower it
+
+A command too tall for the screen shows how much is below, and `y` does
+nothing until you have scrolled to its last line. Control characters
+in it are shown rather than sent to your terminal
 
 Declining stops that Call, the agent reads the refusal and tries
 something else
