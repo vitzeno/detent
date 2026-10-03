@@ -27,7 +27,7 @@ func (m Model) baseView() string {
 		return "loading…"
 	}
 	outputBlock := island.Render(m.viewportHeader(), paneBorder(m.nav.focus == focusOutput), m.detailLines(), m.layout.outputColW, m.output.Height()+1)
-	historyBlock := island.Render(m.historyHeader(), paneBorder(m.nav.focus == focusHistory), m.histWindow(), m.layout.histColW, m.nav.histHeight+1)
+	historyBlock := island.Render(m.historyHeader(), paneBorder(m.nav.focus == focusHistory), m.historyPaneLines(), m.layout.histColW, m.nav.histHeight+1)
 
 	var b strings.Builder
 	b.WriteString(m.sessionBar())

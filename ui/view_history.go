@@ -21,9 +21,9 @@ const railWidth = 2
 // paragraph under its label, not flush against the pane edge.
 const contPrefix = "    "
 
-// histWindow is what sizeViewport laid out. The fallback is the first
+// historyPaneLines is what sizeViewport laid out. The fallback is the first
 // frame, which lands before any Update.
-func (m Model) histWindow() []string {
+func (m Model) historyPaneLines() []string {
 	if m.nav.histWindow != nil {
 		return m.nav.histWindow
 	}
@@ -187,7 +187,7 @@ func (m Model) drawBlock(b *turnBlock, focused *historyRow) (lines []string, cur
 		}
 	}
 	if b.ended {
-		add(m.turnBanner(b)...)
+		add(m.bannerLines(b)...)
 	} else if b == m.cur && m.waiting && !anyRunning(b) {
 		add(fmt.Sprintf("  %s %s", m.spinner.View(), styleFaint.Render("thinking…")))
 	}
@@ -266,9 +266,9 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 	return []string{fmt.Sprintf("%s%s %s %s", mark, icon, cmd, styleMuted.Render(tail))}
 }
 
-// turnBanner is the one line under a finished block. The model's own
+// bannerLines is the one line under a finished block. The model's own
 // words have a row of their own, so this is the outcome alone.
-func (m Model) turnBanner(b *turnBlock) []string {
+func (m Model) bannerLines(b *turnBlock) []string {
 	w := m.blockWidth() - 2
 	ran := fmt.Sprintf("%d tool call(s)", len(b.rows))
 	switch b.end {

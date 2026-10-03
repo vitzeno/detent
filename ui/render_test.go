@@ -110,7 +110,7 @@ func TestTildePath_MatchesWholeElements(t *testing.T) {
 // does not exist, and welcome cannot see the registry to check.
 func TestWelcome_OffersOnlyRealCommands(t *testing.T) {
 	m := sized(t, 160, 60)
-	pane := stripANSI(strings.Join(m.welcomePane(), "\n"))
+	pane := stripANSI(strings.Join(m.welcomeLines(), "\n"))
 	_, after, found := strings.Cut(pane, "slash command")
 	require.True(t, found, "the welcome pane names slash commands")
 	cmds := regexp.MustCompile(`/[a-z]+`).FindAllString(after, -1)

@@ -33,7 +33,7 @@ func (m Model) detailLines() []string {
 		return strings.Split(m.output.View(), "\n")
 	}
 	if m.showWelcome() {
-		return m.welcomePane()
+		return m.welcomeLines()
 	}
 	return strings.Split(m.output.View(), "\n")
 }
@@ -44,9 +44,9 @@ func (m Model) showWelcome() bool {
 	return m.focused() == nil
 }
 
-// welcomePane hands the boot pane the facts it reports, so nothing in
+// welcomeLines hands the boot pane the facts it reports, so nothing in
 // ui/welcome reaches into Model.
-func (m Model) welcomePane() []string {
+func (m Model) welcomeLines() []string {
 	return welcome.Lines(welcome.Facts{
 		Version: version.String(),
 		Model:   m.run.Model, Judge: m.run.Judge, RunMode: m.runMode(),
