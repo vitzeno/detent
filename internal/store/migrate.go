@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
@@ -25,7 +26,7 @@ func migrate(db *sql.DB) error {
 	}
 
 	var at int
-	if err := db.QueryRow(`PRAGMA user_version`).Scan(&at); err != nil {
+	if err := db.QueryRowContext(context.Background(), `PRAGMA user_version`).Scan(&at); err != nil {
 		return fmt.Errorf("store: read schema version: %w", err)
 	}
 	if at > len(files) {
@@ -57,16 +58,17 @@ func numbered(files []string) error {
 }
 
 func apply(db *sql.DB, body string, version int) error {
-	tx, err := db.Begin()
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback() //nolint:errcheck // a committed tx rolls back to nothing
-	if _, err := tx.Exec(body); err != nil {
+	if _, err := tx.ExecContext(ctx, body); err != nil {
 		return err
 	}
 	// PRAGMA takes a literal, and version is an int we counted.
-	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -13,7 +13,7 @@ import (
 func TestMigrate_BringsAFreshDatabaseUpToDate(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 
 	require.Zero(t, version(t, db))
 	require.NoError(t, migrate(db))
@@ -35,7 +35,7 @@ func TestMigrate_IsANoOpSecondTime(t *testing.T) {
 
 	second, err := Open(path)
 	require.NoError(t, err)
-	defer second.Close()
+	t.Cleanup(func() { _ = second.Close() })
 	assert.Equal(t, at, version(t, second.db))
 }
 
@@ -44,7 +44,7 @@ func TestMigrate_IsANoOpSecondTime(t *testing.T) {
 func TestMigrate_RefusesADatabaseFromTheFuture(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 
 	_, err = db.Exec(`PRAGMA user_version = 99`)
 	require.NoError(t, err)
@@ -59,7 +59,7 @@ func TestMigrate_RefusesADatabaseFromTheFuture(t *testing.T) {
 func TestMigrate_DoesNotRecordAFailedMigration(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 
 	err = apply(db, `CREATE TABLE fine (x INTEGER); THIS IS NOT SQL;`, 1)
 	require.Error(t, err)
@@ -81,7 +81,7 @@ func TestMigrate_NumberingHasNoGaps(t *testing.T) {
 		{"migrations/a.sql"},
 	}
 	for _, files := range tests {
-		assert.Error(t, numbered(files), "%v", files)
+		require.Error(t, numbered(files), "%v", files)
 	}
 	assert.NoError(t, numbered([]string{"migrations/0001_a.sql", "migrations/0002_b.sql"}))
 }

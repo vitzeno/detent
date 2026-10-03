@@ -73,6 +73,7 @@ func wanted(e event.Event) bool {
 		return false
 	case event.ListSessionsKind, event.RenameSessionKind:
 		return true
+	default:
+		return !e.Kind().IsIntent()
 	}
-	return !e.Kind().IsIntent()
 }

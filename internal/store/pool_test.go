@@ -13,7 +13,7 @@ import (
 func TestOpen_ConfiguresEveryConnection(t *testing.T) {
 	s, err := Open(filepath.Join(t.TempDir(), "events.db"))
 	require.NoError(t, err)
-	defer s.Close()
+	t.Cleanup(func() { _ = s.Close() })
 
 	assert.Equal(t, 1, s.db.Stats().MaxOpenConnections)
 	// Closing the idle connection makes the next query open a fresh one.
@@ -33,7 +33,7 @@ func TestOpen_ConfiguresEveryConnection(t *testing.T) {
 func TestOpen_InMemoryKeepsItsTables(t *testing.T) {
 	s, err := Open(":memory:")
 	require.NoError(t, err)
-	defer s.Close()
+	t.Cleanup(func() { _ = s.Close() })
 	_, err = s.Sessions()
 	assert.NoError(t, err)
 }

@@ -3,6 +3,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -50,8 +51,7 @@ func Open(path string) (*Store, error) {
 	// keeps ":memory:" a single database.
 	db.SetMaxOpenConns(1)
 	if err := migrate(db); err != nil {
-		db.Close()
-		return nil, err
+		return nil, errors.Join(err, db.Close())
 	}
 	return &Store{db: db}, nil
 }
@@ -66,21 +66,22 @@ func (s *Store) Append(session uuid.UUID, r event.Record) error {
 	if err != nil {
 		return fmt.Errorf("store: encode %s: %w", r.Event.Kind(), err)
 	}
-	tx, err := s.db.Begin()
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: append: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // a committed tx rolls back to nothing
 
 	if started, ok := r.Event.(event.SessionStarted); ok {
-		if _, err := tx.Exec(upsertSession, session.String(), r.At.UnixMilli(),
+		if _, err := tx.ExecContext(ctx, upsertSession, session.String(), r.At.UnixMilli(),
 			started.Model, started.Judge, started.Sandbox, started.Network,
 			started.Resumed); err != nil {
 			return fmt.Errorf("store: session header: %w", err)
 		}
 	}
 	turn, call := event.Subject(r.Event)
-	if _, err := tx.Exec(insert, session.String(), r.Ordinal, r.At.UnixMilli(),
+	if _, err := tx.ExecContext(ctx, insert, session.String(), r.Ordinal, r.At.UnixMilli(),
 		string(r.Event.Kind()), nullable(turn), nullable(call), payload); err != nil {
 		return fmt.Errorf("store: append %s: %w", r.Event.Kind(), err)
 	}
@@ -90,11 +91,11 @@ func (s *Store) Append(session uuid.UUID, r event.Record) error {
 // Replay is a session's records in publish order. Whole rather than
 // streamed: a session is small, and bounding it is a later decision.
 func (s *Store) Replay(session uuid.UUID) ([]event.Record, error) {
-	rows, err := s.db.Query(selectSession, session.String())
+	rows, err := s.db.QueryContext(context.Background(), selectSession, session.String())
 	if err != nil {
 		return nil, fmt.Errorf("store: replay: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // rows.Err reports what reading can fail with
 
 	var out []event.Record
 	for rows.Next() {
@@ -111,7 +112,8 @@ func (s *Store) Replay(session uuid.UUID) ([]event.Record, error) {
 			return nil, fmt.Errorf("store: replay: %w", err)
 		}
 		out = append(out, event.Record{
-			Ordinal: uint64(ordinal), At: time.UnixMilli(at), Event: e,
+			Ordinal: uint64(ordinal), //nolint:gosec // written from a uint64 by Append
+			At:      time.UnixMilli(at), Event: e,
 		})
 	}
 	return out, rows.Err()
@@ -119,11 +121,11 @@ func (s *Store) Replay(session uuid.UUID) ([]event.Record, error) {
 
 // Sessions are what can be replayed, newest first.
 func (s *Store) Sessions() ([]event.SessionSummary, error) {
-	rows, err := s.db.Query(selectSessions)
+	rows, err := s.db.QueryContext(context.Background(), selectSessions)
 	if err != nil {
 		return nil, fmt.Errorf("store: sessions: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // rows.Err reports what reading can fail with
 
 	var out []event.SessionSummary
 	for rows.Next() {
@@ -153,7 +155,7 @@ func (s *Store) Rename(session uuid.UUID, name string) error {
 	if err := usableName(name); err != nil {
 		return err
 	}
-	res, err := s.db.Exec(renameSession, name, session.String())
+	res, err := s.db.ExecContext(context.Background(), renameSession, name, session.String())
 	if err != nil {
 		var se *sqlite.Error
 		if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
@@ -171,7 +173,7 @@ func (s *Store) Rename(session uuid.UUID, name string) error {
 // Delete forgets a session and its events, reporting whether there
 // was anything to forget.
 func (s *Store) Delete(session uuid.UUID) (bool, error) {
-	res, err := s.db.Exec(deleteSession, session.String())
+	res, err := s.db.ExecContext(context.Background(), deleteSession, session.String())
 	if err != nil {
 		return false, fmt.Errorf("store: delete: %w", err)
 	}

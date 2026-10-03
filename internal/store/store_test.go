@@ -270,7 +270,7 @@ func TestRename_RefusesANameAlreadyTaken(t *testing.T) {
 	begin(t, s, second)
 
 	require.NoError(t, s.Rename(first, "the sandbox bug"))
-	assert.ErrorContains(t, s.Rename(second, "the sandbox bug"), "already called")
+	require.ErrorContains(t, s.Rename(second, "the sandbox bug"), "already called")
 
 	// Renaming to what it already is stays fine.
 	assert.NoError(t, s.Rename(first, "the sandbox bug"))
@@ -339,7 +339,7 @@ func TestDelete_CascadesThroughAnyConnection(t *testing.T) {
 
 	raw, err := sql.Open("sqlite", path)
 	require.NoError(t, err)
-	defer raw.Close()
+	t.Cleanup(func() { _ = raw.Close() })
 	var left int
 	require.NoError(t, raw.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&left))
 	assert.Zero(t, left, "no event outlives its session")
