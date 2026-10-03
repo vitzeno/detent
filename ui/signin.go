@@ -37,7 +37,7 @@ const (
 func (m *Model) addSignIn(v event.AuthorizationWaiting) {
 	b := m.cur
 	if b == nil {
-		b = m.commandBlock()
+		b = m.userCommandBlock()
 	}
 	b.rev++
 	b.rows = append(b.rows, &historyRow{

@@ -116,7 +116,7 @@ func TestApply_ACommandBetweenTurnsGetsItsOwnBlock(t *testing.T) {
 	)
 	require.Len(t, m.blocks, 1)
 	b := m.blocks[0]
-	assert.True(t, b.shell, "not a Turn: nothing was asked for")
+	assert.True(t, b.userCommands, "not a Turn: nothing was asked for")
 	assert.Zero(t, b.n, "and it has no number to undo by")
 
 	require.Len(t, b.rows, 1)
@@ -186,7 +186,7 @@ func TestShell_APowerShellRowSaysPS(t *testing.T) {
 	assert.NotContains(t, got, "$", "not the sh mark")
 }
 
-// Nothing ever ends a shell block, so anything keyed on "not ended"
+// Nothing ever ends a user-command block, so anything keyed on "not ended"
 // would treat it as live for the rest of the session.
 func TestShell_AShellBlockDoesNotReadAsALiveTurn(t *testing.T) {
 	m := feed(t, event.UserCommandStarted{UserCommand: uuid.Must(uuid.NewV7()), Command: "ls"})

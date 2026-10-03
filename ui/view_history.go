@@ -171,8 +171,8 @@ func (m Model) drawBlock(b *turnBlock, focused *historyRow) (lines []string, cur
 	if b.seam != nil {
 		return m.railed(b, []string{m.seamLine(b.seam)}), -1
 	}
-	// A shell block has no prompt: nobody asked for anything.
-	if !b.shell {
+	// A user-command block has no prompt: nobody asked for anything.
+	if !b.userCommands {
 		for _, gl := range wrapPlain(b.prompt, m.blockWidth()) {
 			add(styleGoal.Render(gl))
 		}
@@ -303,8 +303,8 @@ func (m Model) railStyle(b *turnBlock) lipgloss.Style {
 	switch {
 	case b.seam != nil:
 		return styleFaint
-	case b.shell:
-		// Nothing ends a shell block, so the live colour would stay on
+	case b.userCommands:
+		// Nothing ends a user-command block, so the live colour would stay on
 		// it for the rest of the session.
 		return styleMuted
 	case !b.ended:

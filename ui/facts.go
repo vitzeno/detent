@@ -215,7 +215,7 @@ func (m *Model) addToolCall(v event.ToolCallProposed) {
 func (m *Model) addUserCommand(v event.UserCommandStarted) {
 	b := m.cur
 	if b == nil {
-		b = m.commandBlock()
+		b = m.userCommandBlock()
 	}
 	b.rev++
 	b.rows = append(b.rows, &historyRow{
@@ -224,13 +224,13 @@ func (m *Model) addUserCommand(v event.UserCommandStarted) {
 	m.trackNewest()
 }
 
-// commandBlock is where commands land between Turns. Reused while it is
+// userCommandBlock is where commands land between Turns. Reused while it is
 // the newest, so a burst of them reads as one sitting.
-func (m *Model) commandBlock() *turnBlock {
-	if n := len(m.blocks); n > 0 && m.blocks[n-1].shell {
+func (m *Model) userCommandBlock() *turnBlock {
+	if n := len(m.blocks); n > 0 && m.blocks[n-1].userCommands {
 		return m.blocks[n-1]
 	}
-	b := &turnBlock{shell: true}
+	b := &turnBlock{userCommands: true}
 	m.blocks = append(m.blocks, b)
 	return b
 }
