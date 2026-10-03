@@ -34,6 +34,7 @@
 //	view_history.go the history pane
 //	view_detail.go  the output pane
 //	view_ask.go     the question boxes
+//	cache.go        the keys that let a block, history and the output pane skip a redraw
 //
 // # What leaves this package
 //

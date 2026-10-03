@@ -2,6 +2,9 @@ package ui
 
 import "slices"
 
+// What each drawing cache is keyed on. Miss an input and the pane renders
+// stale, so every key has a test that each input moves it.
+
 // blockKey is everything a block's drawing depends on. Comparable, so
 // a hit is one equality check. Miss it and the pane renders stale.
 type blockKey struct {
