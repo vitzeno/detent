@@ -54,7 +54,7 @@ func (s Skill) Lower(a Args) (string, error) {
 		}
 		file := e.Dir + "/SKILL.md"
 		more := "[%d more lines, read on with read_file on " + strings.ReplaceAll(file, "%", "%%") + " at offset %d]"
-		return window(1, 500, more, "[the skill is empty]") + " " + path(file) + "; find " + path(e.Dir) +
+		return window(1, 500, more, "[the skill is empty]") + " " + path(file) + " && find " + path(e.Dir) +
 			" -type f ! -name SKILL.md | sort | awk 'NR == 1 { print \"\\n[other files in this skill]\" } NR <= 50'", nil
 	}
 	return "", fmt.Errorf("no skill named %q", name)

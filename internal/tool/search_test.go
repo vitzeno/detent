@@ -44,13 +44,35 @@ func TestReadFile_StopsUnderTheCaptureCap(t *testing.T) {
 	assert.Contains(t, run(t, ReadFile{}, Args{"path": long}), "[line cut]", "one huge line still shows something")
 }
 
-func TestReadFile_TakesAPathThatLooksLikeAFlag(t *testing.T) {
-	dir := tree(t, map[string]string{"-n.txt": "ok\n"})
-	cmd, err := ReadFile{}.Lower(Args{"path": "-n.txt"})
-	require.NoError(t, err)
-	out, err := shIn(dir, cmd)
-	require.NoError(t, err, out)
-	assert.Equal(t, "ok\n", out)
+// awk reads a leading - as a flag and name=value as an assignment, and
+// either way would report a real file as empty.
+func TestReadFile_TakesAPathThatLooksLikeSomethingElse(t *testing.T) {
+	for _, name := range []string{"-n.txt", "year=2024/d.csv", "a=b"} {
+		dir := tree(t, map[string]string{name: "ok\n"})
+		cmd, err := ReadFile{}.Lower(Args{"path": name})
+		require.NoError(t, err)
+		out, err := shIn(dir, cmd)
+		require.NoError(t, err, out)
+		assert.Equal(t, "ok\n", out, name)
+	}
+}
+
+// A pipeline reports its last stage, which used to turn a failed search into "no matches".
+func TestSearch_FailsWhenTheSearchDoes(t *testing.T) {
+	dir := tree(t, map[string]string{"f.txt": "x\n"})
+	for name, c := range map[string]struct {
+		tool Tool
+		args Args
+	}{
+		"grep a missing path": {Grep{}, Args{"pattern": "x", "path": filepath.Join(dir, "nope")}},
+		"grep a bad regex":    {Grep{}, Args{"pattern": "(", "path": dir}},
+		"find a missing path": {FindFiles{}, Args{"pattern": "*", "path": filepath.Join(dir, "nope")}},
+	} {
+		cmd, err := c.tool.Lower(c.args)
+		require.NoError(t, err)
+		_, err = shIn(dir, cmd)
+		assert.Error(t, err, name)
+	}
 }
 
 func TestGrep_FindsWhatItIsAskedFor(t *testing.T) {
@@ -99,10 +121,14 @@ func TestFindFiles_MatchesNamesOrPaths(t *testing.T) {
 func TestSearch_QuotesHostilePatterns(t *testing.T) {
 	dir := tree(t, map[string]string{"f.txt": "x\n"})
 	for _, p := range []string{"$(touch pwned)", "'; touch pwned; '", "`touch pwned`"} {
-		run(t, Grep{}, Args{"pattern": p, "path": dir, "include": p})
-		run(t, FindFiles{}, Args{"pattern": p, "path": dir})
+		grep, err := Grep{}.Lower(Args{"pattern": p, "include": p})
+		require.NoError(t, err)
+		find, err := FindFiles{}.Lower(Args{"pattern": p})
+		require.NoError(t, err)
+		_, _ = shIn(dir, grep)
+		_, _ = shIn(dir, find)
 	}
-	_, err := os.Stat("pwned")
+	_, err := os.Stat(filepath.Join(dir, "pwned"))
 	assert.True(t, os.IsNotExist(err))
 }
 

@@ -17,7 +17,7 @@ func TestWebSearch_LowersToOneReadableCurl(t *testing.T) {
 	cmd, err := WebSearch{}.Lower(Args{"query": "containerd rootless snapshot"})
 	require.NoError(t, err)
 
-	assert.Equal(t, "curl -sS --max-time 30 -H 'x-no-cache: true' "+
+	assert.Equal(t, "curl -fsS --max-time 30 -H 'x-no-cache: true' "+
 		"'https://r.jina.ai/https://lite.duckduckgo.com/lite/?q=containerd+rootless+snapshot'", cmd)
 	assert.NotContains(t, cmd, "\n", "the row shows this on one line")
 	assert.Less(t, len(cmd), 200, "a human has to be able to read what they approve")

@@ -2,6 +2,7 @@ package tool
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -10,20 +11,20 @@ func quote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// heredoc writes body to path untouched: the delimiter is quoted so
+// heredoc writes body to path byte for byte: the delimiter is quoted so
 // nothing expands, and grown until the body cannot end it early.
 func heredoc(path, body string) string {
 	if body == "" {
 		return ": > " + quote(path) // a heredoc would write a newline
 	}
-	delim := "DETENT_EOF"
-	for n := 0; containsLine(body, delim); n++ {
-		delim = fmt.Sprintf("DETENT_EOF_%d", n)
-	}
+	delim := delimFor(body, "DETENT_EOF")
+	// A heredoc always ends in a newline, so one the body lacks is cut off again.
+	trim := ""
 	if !strings.HasSuffix(body, "\n") {
 		body += "\n"
+		trim = fmt.Sprintf(` && body=$(cat %[1]s) && printf '%%s' "$body" > %[1]s`, quote(path))
 	}
-	return fmt.Sprintf("cat > %s <<'%s'\n%s%s", quote(path), delim, body, delim)
+	return fmt.Sprintf("cat > %s <<'%s'%s\n%s%s", quote(path), delim, trim, body, delim)
 }
 
 // containsLine reports whether delim appears as a line of its own,
@@ -41,12 +42,22 @@ func containsLine(body, delim string) bool {
 // its footer is never what the capture cuts off.
 const outputBudget = 7 * 1024
 
-// window prints max lines from start, stopping early at outputBudget bytes. more
+// window prints limit lines from start, stopping early at outputBudget bytes. more
 // gets the count left and the line to resume from, empty is for no input.
-func window(start, max int, more, empty string) string {
+func window(start, limit int, more, empty string) string {
 	return fmt.Sprintf("awk -v s=%d -v n=%d -v b=%d -v more=%s -v empty=%s %s",
-		start, max, outputBudget, quote(more+`\n`), quote(empty+`\n`), quote(windowScript))
+		start, limit, outputBudget, quote(awkString(more)+`\n`), quote(awkString(empty)+`\n`), quote(windowScript))
 }
+
+// keepStatus runs cmd | rest and exits with cmd's status when it is above ok,
+// since a pipeline otherwise reports only its last stage.
+func keepStatus(cmd, rest string, ok int) string {
+	return fmt.Sprintf(`t=$(mktemp); { %s; echo $? > "$t"; } | %s; rc=$(cat "$t"); rm -- "$t"; [ "$rc" -le %d ] || exit "$rc"`,
+		cmd, rest, ok)
+}
+
+// awkString escapes the backslashes awk -v would otherwise read as escapes.
+func awkString(s string) string { return strings.ReplaceAll(s, `\`, `\\`) }
 
 const windowScript = `NR < s { next }
 !stop && NR >= s + n { stop = NR }
@@ -65,11 +76,14 @@ func showDiff(before, file string) string {
 		before, path(file), window(1, 400, "[%d more lines of diff]", "[no change]"))
 }
 
-// path guards a path awk or find would read as a flag, since macOS's awk
-// takes no "--".
+// path guards a path awk or find would read as something else, since
+// macOS's awk takes no "--": a flag, a find operator or an awk assignment.
 func path(p string) string {
-	if strings.HasPrefix(p, "-") {
+	if strings.HasPrefix(p, "-") || strings.HasPrefix(p, "!") || strings.HasPrefix(p, "(") || awkAssignment.MatchString(p) {
 		p = "./" + p
 	}
 	return quote(p)
 }
+
+// awkAssignment is an operand awk takes as name=value rather than a file.
+var awkAssignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)

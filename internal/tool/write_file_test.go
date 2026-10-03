@@ -17,6 +17,9 @@ func TestWriteFile_RoundTripsThroughARealShell(t *testing.T) {
 	bodies := map[string]string{
 		"plain":                "hello\nworld\n",
 		"no trailing newline":  "no newline at the end",
+		"one byte":             "x",
+		"blank lines at end":   "a\n\n\n",
+		"crlf without final":   "a\r\nb\r",
 		"the delimiter itself": "before\nDETENT_EOF\nafter\n",
 		"every fallback too":   "DETENT_EOF\nDETENT_EOF_0\nDETENT_EOF_1\ndone\n",
 		"shell expansions":     "$(whoami) `id` ${HOME} $PATH\n",
@@ -40,11 +43,7 @@ func TestWriteFile_RoundTripsThroughARealShell(t *testing.T) {
 			got, err := os.ReadFile(path)
 			require.NoError(t, err)
 
-			want := body
-			if want != "" && !strings.HasSuffix(want, "\n") {
-				want += "\n" // heredocs are line oriented
-			}
-			assert.Equal(t, want, string(got))
+			assert.Equal(t, body, string(got))
 		})
 	}
 }
@@ -95,8 +94,22 @@ func TestWriteFile_ShowsWhatChanged(t *testing.T) {
 	require.NoError(t, err, out)
 	assert.Contains(t, out, "-two\n+2\n", "an existing one is a diff")
 
-	cmd, err := WriteFile{}.Lower(Args{"path": filepath.Join(dir, "missing", "f.txt"), "content": "x\n"})
+	for _, body := range []string{"x\n", "x"} {
+		cmd, err := WriteFile{}.Lower(Args{"path": filepath.Join(dir, "missing", "f.txt"), "content": body})
+		require.NoError(t, err)
+		_, err = exec.Command("sh", "-c", cmd).CombinedOutput()
+		assert.Error(t, err, "a write that failed must not exit 0")
+	}
+}
+
+// existed is the command's own variable, so one inherited from the environment means nothing.
+func TestWriteFile_IgnoresAnInheritedExisted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "new.txt")
+	cmd, err := WriteFile{}.Lower(Args{"path": path, "content": "one\n"})
 	require.NoError(t, err)
-	_, err = exec.Command("sh", "-c", cmd).CombinedOutput()
-	assert.Error(t, err, "a write that failed must not exit 0")
+	c := exec.Command("sh", "-c", cmd)
+	c.Env = append(os.Environ(), "existed=1")
+	out, err := c.CombinedOutput()
+	require.NoError(t, err, string(out))
+	assert.Equal(t, "created "+path+", 1 lines\n", string(out))
 }

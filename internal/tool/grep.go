@@ -49,6 +49,7 @@ func (Grep) Lower(a Args) (string, error) {
 	if g := a.String("include"); g != "" {
 		flags = append(flags, "--include="+quote(g))
 	}
-	return fmt.Sprintf("grep %s -e %s -- %s | sort -t: -k1,1 -k2,2n | %s", strings.Join(flags, " "), quote(pattern), quote(where),
-		window(1, n, "[%d more matches, narrow the pattern or the path]", "[no matches]")), nil
+	// grep exits 1 for no match and 2 for an error, which only the latter should report.
+	return keepStatus(fmt.Sprintf("grep %s -e %s -- %s", strings.Join(flags, " "), quote(pattern), quote(where)),
+		"sort -t: -k1,1 -k2,2n | "+window(1, n, "[%d more matches, narrow the pattern or the path]", "[no matches]"), 1), nil
 }

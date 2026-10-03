@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 )
@@ -22,16 +21,12 @@ type Registry struct {
 // Standard is what detent ships, plus extra built-ins such as skill.
 func Standard(extra ...Tool) *Registry {
 	r := &Registry{tools: map[string]Tool{}}
-	r.Register(Bash{})
-	r.Register(ReadFile{})
-	r.Register(WriteFile{})
-	r.Register(EditFile{})
-	r.Register(ListDir{})
-	r.Register(Grep{})
-	r.Register(FindFiles{})
-	r.Register(WebSearch{})
-	for _, t := range extra {
-		r.Register(t)
+	builtins := append([]Tool{Bash{}, ReadFile{}, WriteFile{}, EditFile{}, ListDir{}, Grep{}, FindFiles{}, WebSearch{}}, extra...)
+	for _, t := range builtins {
+		if _, dup := r.tools[t.Name()]; !dup {
+			r.order = append(r.order, t.Name())
+		}
+		r.tools[t.Name()] = t
 	}
 	r.fixed = len(r.order)
 	return r
@@ -62,11 +57,15 @@ func (r *Registry) Prepare(name string, args map[string]any) (Call, error) {
 		Args: clean, Executor: spec.Executor}, nil
 }
 
-// Register adds a tool, replacing any of the same name.
-func (r *Registry) Register(t Tool) {
+// Register adds a tool, replacing any of the same name except a built-in,
+// which always wins a collision.
+func (r *Registry) Register(t Tool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	n := t.Name()
+	if r.builtin(n) {
+		return fmt.Errorf("%s is a built-in tool and cannot be replaced", n)
+	}
 	if _, dup := r.tools[n]; !dup {
 		r.order = append(r.order, n)
 		// Sorted after the built-ins, so the order the model sees does
@@ -74,15 +73,21 @@ func (r *Registry) Register(t Tool) {
 		slices.Sort(r.order[r.fixed:])
 	}
 	r.tools[n] = t
+	return nil
 }
 
-// Unregister removes tools, as when an MCP server is dialled again and
-// its old session's tools must not outlive it.
+// builtin reports whether name is one of the tools Standard fixed in place.
+func (r *Registry) builtin(name string) bool {
+	return slices.Contains(r.order[:r.fixed], name)
+}
+
+// Unregister removes tools other than built-ins, as when an MCP server is
+// dialled again and its old session's tools must not outlive it.
 func (r *Registry) Unregister(names ...string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, n := range names {
-		if _, ok := r.tools[n]; ok {
+		if _, ok := r.tools[n]; ok && !r.builtin(n) {
 			delete(r.tools, n)
 			r.order = slices.DeleteFunc(r.order, func(o string) bool { return o == n })
 		}
@@ -164,7 +169,7 @@ func schema(s Spec) map[string]any {
 		props[p.Name] = prop
 		required = append(required, p.Name)
 	}
-	sort.Strings(required)
+	slices.Sort(required)
 	return map[string]any{
 		"type":                 "object",
 		"properties":           props,

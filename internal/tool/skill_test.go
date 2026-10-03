@@ -74,3 +74,17 @@ type fakeMCP struct{ name string }
 func (f fakeMCP) Name() string               { return f.name }
 func (f fakeMCP) Describe() Spec             { return Spec{Description: "x", Executor: "mcp"} }
 func (f fakeMCP) Lower(Args) (string, error) { return "", nil }
+
+// awk -v reads escapes, so a backslash in the skill's path must reach the footer as one.
+func TestSkill_KeepsABackslashInItsPath(t *testing.T) {
+	dir := tree(t, map[string]string{`a\b/SKILL.md`: numbered(600)})
+	out := run(t, Skill{Entries: []SkillEntry{{Name: "x", Dir: dir + `/a\b`}}}, Args{"name": "x"})
+	assert.Contains(t, out, "read_file on "+dir+`/a\b/SKILL.md at offset 501`)
+}
+
+func TestSkill_FailsWhenItsFileIsGone(t *testing.T) {
+	cmd, err := Skill{Entries: []SkillEntry{{Name: "x", Dir: t.TempDir()}}}.Lower(Args{"name": "x"})
+	require.NoError(t, err)
+	_, err = shIn("", cmd)
+	assert.Error(t, err)
+}

@@ -48,7 +48,7 @@ func (EditFile) Lower(a Args) (string, error) {
 	oldDelim, newDelim := delimFor(old, "DETENT_OLD"), delimFor(repl, "DETENT_NEW")
 	// A copy first, so the result can show the change as a diff.
 	// Each heredoc gains a newline, which the script chops, so the text arrives byte for byte.
-	return fmt.Sprintf("before=$(mktemp) && cp -- %s \"$before\" 2>/dev/null\nperl -e %s -- %s %s 3<<'%s' 4<<'%s'; rc=$?; %s\n%s\n%s\n%s\n%s",
+	return fmt.Sprintf("before=$(mktemp) && cp -- %s \"$before\" 2>/dev/null\ncommand -v perl >/dev/null || echo 'edit_file needs perl, which is not installed here: use write_file' >&2; perl -e %s -- %s %s 3<<'%s' 4<<'%s'; rc=$?; %s\n%s\n%s\n%s\n%s",
 		quote(path), quote(editScript), quote(path), all, oldDelim, newDelim, showDiff("$before", path),
 		old, oldDelim, repl, newDelim), nil
 }

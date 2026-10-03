@@ -43,6 +43,6 @@ func (FindFiles) Lower(a Args) (string, error) {
 	if strings.Contains(pattern, "/") {
 		match = "-path"
 	}
-	return fmt.Sprintf("find %s -name .git -prune -o -type f %s %s -print | sort | %s", path(where), match, quote(pattern),
-		window(1, n, "[%d more files, narrow the pattern or the path]", "[no files match]")), nil
+	return keepStatus(fmt.Sprintf("find %s -name .git -prune -o -type f %s %s -print", path(where), match, quote(pattern)),
+		"sort | "+window(1, n, "[%d more files, narrow the pattern or the path]", "[no files match]"), 0), nil
 }

@@ -2,6 +2,8 @@ package tool
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,16 +92,31 @@ func TestPrepare_LowersToCommands(t *testing.T) {
 	}
 }
 
-// A path the model chose is untrusted input that reaches `sh -c`.
+// A path the model chose is untrusted input that reaches `sh -c`, so
+// every tool taking one runs it here and nothing it names may execute.
 func TestPrepare_QuotesHostilePaths(t *testing.T) {
 	r := Standard()
 	for _, p := range []string{
-		"a b.go", "$(rm -rf /)", "`whoami`", "a'; rm -rf /; '", "--; rm -rf /", "*",
+		"a b.go", "$(touch pwned)", "`touch pwned`", "a'; touch pwned; '", "--; touch pwned", "*", "year=2024/x", "!",
 	} {
-		c, err := r.Prepare("read_file", map[string]any{"path": p})
-		require.NoError(t, err)
-		assert.Contains(t, c.Command, path(p), "%q must reach the shell as one literal", p)
-		assert.Equal(t, 1, countUnescapedQuotes(c.Command)%2+1, "quotes must balance: %s", c.Command)
+		for _, call := range []struct {
+			tool string
+			args map[string]any
+		}{
+			{"read_file", map[string]any{"path": p}},
+			{"write_file", map[string]any{"path": p, "content": "x\n"}},
+			{"edit_file", map[string]any{"path": p, "old_string": "x", "new_string": "y"}},
+			{"list_dir", map[string]any{"path": p}},
+			{"grep", map[string]any{"pattern": "x", "path": p}},
+			{"find_files", map[string]any{"pattern": "*", "path": p}},
+		} {
+			dir := t.TempDir()
+			c, err := r.Prepare(call.tool, call.args)
+			require.NoError(t, err)
+			_, _ = shIn(dir, c.Command)
+			_, err = os.Stat(filepath.Join(dir, "pwned"))
+			assert.True(t, os.IsNotExist(err), "%s ran part of %q", call.tool, p)
+		}
 	}
 }
 
@@ -151,29 +168,46 @@ func TestPrepare_TreatsNullAsAbsent(t *testing.T) {
 
 func TestRegistry_RegisterOverridesWithoutDuplicating(t *testing.T) {
 	r := Standard()
+	require.NoError(t, r.Register(fakeMCP{"srv__x"}))
 	before := len(r.Names())
-	r.Register(Bash{})
+	require.NoError(t, r.Register(fakeMCP{"srv__x"}))
 	assert.Len(t, r.Names(), before, "re-registering a name must replace, not append")
+}
+
+// Nothing a server publishes may shadow bash or any other built-in.
+func TestRegistry_ABuiltInWinsACollision(t *testing.T) {
+	r := Standard(Skill{})
+	for _, name := range []string{"bash", "read_file", "skill"} {
+		require.Error(t, r.Register(fakeMCP{name}), name)
+		got, ok := r.Lookup(name)
+		require.True(t, ok)
+		assert.NotEqual(t, "mcp", got.Describe().Executor, "%s was replaced", name)
+	}
+	r.Unregister("bash")
+	_, ok := r.Lookup("bash")
+	assert.True(t, ok, "a built-in cannot be unregistered either")
+}
+
+// The built-ins keep the order Standard gives them, and only the rest is sorted.
+func TestRegistry_KeepsBuiltInsInTheirOwnOrder(t *testing.T) {
+	r := Standard(Skill{})
+	require.NoError(t, r.Register(fakeMCP{"zz__last"}))
+	require.NoError(t, r.Register(fakeMCP{"aa__first"}))
+	assert.Equal(t, []string{
+		"bash", "read_file", "write_file", "edit_file", "list_dir", "grep", "find_files", "web_search", "skill",
+		"aa__first", "zz__last",
+	}, r.Names())
 }
 
 // A server dialled again takes its old tools with it, so the model is
 // never offered one whose session is closed.
 func TestRegistry_UnregisterRemovesFromWhatTheModelSees(t *testing.T) {
 	r := Standard()
+	require.NoError(t, r.Register(fakeMCP{"srv__x"}))
 	before := len(r.Names())
-	r.Unregister("bash", "no-such-tool")
-	_, ok := r.Lookup("bash")
+	r.Unregister("srv__x", "no-such-tool")
+	_, ok := r.Lookup("srv__x")
 	assert.False(t, ok)
 	assert.Len(t, r.Names(), before-1)
-	assert.NotContains(t, r.Names(), "bash")
-}
-
-func countUnescapedQuotes(s string) int {
-	n := 0
-	for _, r := range s {
-		if r == '\'' {
-			n++
-		}
-	}
-	return n
+	assert.NotContains(t, r.Names(), "srv__x")
 }

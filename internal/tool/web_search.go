@@ -2,6 +2,7 @@ package tool
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -34,12 +35,17 @@ func (WebSearch) Lower(a Args) (string, error) {
 	if q == "" {
 		return "", errors.New("query must not be empty")
 	}
+	// Bounds what one unapproved call can carry off the machine.
+	if len(q) > maxQueryBytes {
+		return "", fmt.Errorf("query is %d bytes, keep it under %d as you would type it", len(q), maxQueryBytes)
+	}
 	target := searchBase + url.QueryEscape(q)
 	// x-no-cache keeps a search a moment in time, not a stale answer.
-	return "curl -sS --max-time 30 -H 'x-no-cache: true' " + quote(readerPrefix+target), nil
+	return "curl -fsS --max-time 30 -H 'x-no-cache: true' " + quote(readerPrefix+target), nil
 }
 
 const (
+	maxQueryBytes = 256
 	// searchBase is a keyless engine, so nothing secret is in the
 	// command, the log, or the container.
 	searchBase = "https://lite.duckduckgo.com/lite/?q="
