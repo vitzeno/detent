@@ -174,14 +174,6 @@ func (e *Engine) Run(ctx context.Context) {
 	}
 }
 
-// messages copies the message log, since the Turn goroutine owns the
-// original while one is running.
-func (e *Engine) messages() []event.Message {
-	e.trMu.Lock()
-	defer e.trMu.Unlock()
-	return append([]event.Message(nil), e.tr.messages()...)
-}
-
 // Completer is one model round trip: a Step.
 type Completer interface {
 	Complete(ctx context.Context, msgs []event.Message, tools []map[string]any) (model.Reply, event.Usage, error)
@@ -331,6 +323,14 @@ func (e *Engine) reset() {
 	e.mu.Unlock()
 	e.bus.Publish(event.SessionReset{})
 	e.notice("info", "session reset")
+}
+
+// messages copies the message log, since the Turn goroutine owns the
+// original while one is running.
+func (e *Engine) messages() []event.Message {
+	e.trMu.Lock()
+	defer e.trMu.Unlock()
+	return append([]event.Message(nil), e.tr.messages()...)
 }
 
 func (e *Engine) current() *turnState {
