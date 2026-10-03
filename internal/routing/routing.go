@@ -11,6 +11,10 @@ import (
 	"github.com/vitzeno/detent/internal/sandbox"
 )
 
+// ErrNoSandbox is what a command gets when the sandbox was asked for and
+// never wired: failing loudly beats running it on the host instead.
+var ErrNoSandbox = errors.New("routing: no sandbox is configured")
+
 // Selector picks host or sandbox: a global toggle, with Risk
 // threaded through so a real rule can replace the body later.
 type Selector struct {
@@ -18,10 +22,6 @@ type Selector struct {
 	Sandbox  engine.Runner
 	HostOnly bool
 }
-
-// ErrNoSandbox is what a command gets when the sandbox was asked for and
-// never wired: failing loudly beats running it on the host instead.
-var ErrNoSandbox = errors.New("routing: no sandbox is configured")
 
 // Select returns the sandbox unless HostOnly is set.
 func (s Selector) Select(_ event.Risk) (engine.Runner, string) {

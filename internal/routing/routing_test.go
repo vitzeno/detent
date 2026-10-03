@@ -12,12 +12,6 @@ import (
 	"github.com/vitzeno/detent/internal/engine"
 )
 
-type stub struct{ name string }
-
-func (s stub) Run(context.Context, string, chan<- capture.StreamEvent) (capture.Result, error) {
-	return capture.Result{Stdout: s.name}, nil
-}
-
 func TestSelect(t *testing.T) {
 	host, box := stub{"host"}, stub{"sandbox"}
 	cases := []struct {
@@ -47,4 +41,10 @@ func TestSelect(t *testing.T) {
 			}
 		})
 	}
+}
+
+type stub struct{ name string }
+
+func (s stub) Run(context.Context, string, chan<- capture.StreamEvent) (capture.Result, error) {
+	return capture.Result{Stdout: s.name}, nil
 }
