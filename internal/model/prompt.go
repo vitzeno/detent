@@ -31,8 +31,8 @@ func LocalEnvironment() Environment {
 	if err != nil {
 		dir = "(unknown)"
 	}
-	// Network because this machine has one. Not Undoable: nothing
-	// checkpoints the user's own filesystem.
+	// Network because this machine has one. Not Undoable: reverting the
+	// human's files is their choice at undo time, so the model treats edits as real.
 	return Environment{OS: runtime.GOOS, Arch: runtime.GOARCH, Dir: dir, Network: true}
 }
 

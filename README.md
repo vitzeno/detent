@@ -178,7 +178,7 @@ transcript to match
 
 Commands you ran yourself go back with it, if they ran after that snapshot
 
-Your working directory is mounted at `/workspace`, outside the snapshot
+Your working directory is mounted at `/workspace`, outside the snapshot. When it is inside a git repository, detent also checkpoints your files with git, without touching your index, branch or stash, and undo asks whether to revert them too. Anything you changed after that request ended is left alone and named
 
 ## Sandboxing (**Experimental**)
 

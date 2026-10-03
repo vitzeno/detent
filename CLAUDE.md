@@ -195,7 +195,9 @@ One checkpoint, taken before the first Call runs, and the Turn is the
 only rollback target. Not per Call: a forty-call Turn would mean forty
 containerd snapshots, and "undo call #23" is not a thought anyone has.
 Rolling back truncates the transcript to where that prompt landed,
-which is a whole number of Steps by construction.
+which is a whole number of Steps by construction. Reverting the
+human's own files is a separate yes/no question, offered only when the
+Turn's checkpoint holds a tree.
 
 ## Architecture
 
@@ -244,7 +246,7 @@ shape was worth the rework:
   and no existing component at all.
 
 ```
-cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless, trust
+cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless, trust, worktree
 ui          →  event, viewspec, views, version, logging + its own subpackages
 engine      →  event, tool, model, capture, classify (via an interface)
 mcp         →  event, tool, capture, the MCP SDK
@@ -387,10 +389,18 @@ adding a fat dependency fails with the transitive import named.
   `NewTask` fails "already exists" for the rest of the session.
 
 - **`internal/worktree`**: checkpoints the human's own directory,
-  which the container snapshot never covers. Git plumbing against a
-  scratch `GIT_INDEX_FILE`, so it captures tracked *and* untracked
+  which the container snapshot never covers. `Dir` satisfies
+  `engine.Worktreer` structurally and is wired in the TUI only when the
+  working directory is inside a git work tree, in host and sandbox mode
+  alike. Git plumbing against a scratch `GIT_INDEX_FILE` seeded from the
+  real index for its stat cache, so it captures tracked *and* untracked
   files without touching the index, branch or stash, and `.gitignore`
-  is honoured for free.
+  is honoured for free (the sandbox's `.detent-sandbox/` ignores
+  itself). It runs at the work tree's root, scoped to the starting
+  directory. The engine checkpoints again as a Turn ends, so a revert
+  leaves alone anything changed after it and says so. Checkpoints are
+  unreferenced trees, so `git gc` eventually prunes them and an old one
+  reports `ErrGone`.
 
 - **`internal/classify`**: `JevJudge`, the HTTP adapter, and
   `RiskJudge`, which adapts it to the engine's hook chain. It answers.
