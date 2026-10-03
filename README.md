@@ -1,6 +1,21 @@
 # detent
 
-A terminal agent where commands run in a container and every request is checkpointed so you can undo it
+## Quick start
+
+```sh
+go install github.com/vitzeno/detent/cmd/detent@latest   # needs Go 1.26
+detent -init        # writes ~/.config/detent/config.yaml
+                    # set api_key in it, or export DETENT_API_KEY
+detent
+```
+
+It talks to OpenRouter by default so any OpenAI-compatible `/chat/completions` endpoint with tool calling works
+
+Just set `base_url` and `model` in the config for LM Studio or OpenAI
+
+Commands run on your machine, and anything flagged dangerous waits for you to approve it. On Windows that needs PowerShell 7 or Git Bash, see [Windows](#windows)
+
+## Architecture
 
 Everything is an event on a single bus and every part of detent is a subscriber
 
@@ -9,23 +24,6 @@ Nothing calls the engine itself including logging and the TUI. They just listen 
 If any of them are removed everything else runs unchanged
 
 Future extensions are expected to subscribe and publish to the event bus too
-
-Needs an OpenAI-compatible `/chat/completions` endpoint with tool calling.
-LM Studio, OpenRouter and OpenAI all work
-
-```sh
-go install github.com/vitzeno/detent/cmd/detent@latest
-
-make build && ./bin/detent            # commands run on this machine
-make install                          # onto your PATH
-./bin/detent -sandbox auto            # in a container instead, needs containerd (experimental)
-./bin/detent -prompt "find go files over 1MB"
-./bin/detent -prompt "..." -approve-all   # runs flagged commands too, for a throwaway container
-```
-
-Headless runs leave MCP out: no config is read and no server is started. MCP is TUI only
-
-## Architecture
 
 Events are split into facts and intents, facts for what happened, intents for what someone wants to happen
 
@@ -53,20 +51,15 @@ All extensions listen, publish, or both
 
 `./.detent.yaml` or `~/.config/detent/config.yaml`
 
+`detent -init` writes a commented starting config to `~/.config/detent/config.yaml` for you to set your key in. It never replaces a config you already have, and as written it changes nothing, so built-in defaults keep reaching you until you set a value
+
 A directory's own `.detent.yaml`, `.env` and `.mcp.json` can point your key at another endpoint or start programs, so the first time you run detent there it shows what they would do and asks before reading them. A yes is remembered until one of them changes. `-prompt` runs never ask and ignore them unless you pass `-trust`
 
-All keys are documented in [`detent.example.yaml`](detent.example.yaml). A key detent does not know stops it starting, with the line it is on
-
-### What leaves your machine
-
-- Your requests, the transcript and every command's output go to the model endpoint, `base_url`
-- With `jev_api_key` set, each tool call's request, command and up to 4KB of its output go to TypeSafe to be assessed and judged, whatever `log_bodies` says
-- With `views: generate`, a command you ran yourself and up to 4KB of its output go to TypeSafe too
-- `web_search` queries go to DuckDuckGo through `r.jina.ai`
+All keys are documented in [`detent.example.yaml`](internal/config/detent.example.yaml), the same file `-init` writes, an unknown key will prevent detent from starting.
 
 ## MCP
 
-Servers go in `.mcp.json`, pretty much the standard so one written for another client works here
+Server details go in `.mcp.json`, pretty much the standard so one written for another client works here too
 
 `~/.config/detent/mcp.json` and `./.mcp.json` merge, nearest wins
 Also `${VAR}` expands from the environment, so a committed file can name a token it does not hold
@@ -220,6 +213,18 @@ Declining stops that tool call, the agent reads the refusal and tries
 something else
 
 Typing while it works steers it
+
+## Headless
+
+`-prompt` runs one request without the TUI and prints what it does
+
+```sh
+detent -prompt "find go files over 1MB"
+detent -prompt "..." -unattended      # declines every flagged command instead of asking
+detent -prompt "..." -approve-all     # runs them all, only for a throwaway container
+```
+
+It exits 0 when the request is done, 1 on an error, 3 at the step limit, 4 when stopped and 130 when aborted. Headless runs leave MCP out: no config is read and no server is started
 
 ## Finishing
 
