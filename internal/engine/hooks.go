@@ -53,20 +53,30 @@ type regexHook struct{}
 func (regexHook) Name() string { return "regex" }
 
 func (regexHook) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
-	for _, p := range dangerPatterns {
-		if p.re.MatchString(c.Command) {
-			return event.Risk{Dangerous: true, Mutability: p.mut, ScopeRisk: p.scope, Note: p.note}, nil
+	tables := [][]danger{dangerPatterns}
+	// The unix table too, since a model writes bash in pwsh and Windows has sudo and git.
+	if c.Tool == tool.PowerShellName {
+		tables = [][]danger{powershellPatterns, dangerPatterns}
+	}
+	for _, table := range tables {
+		for _, p := range table {
+			if p.re.MatchString(c.Command) {
+				return event.Risk{Dangerous: true, Mutability: p.mut, ScopeRisk: p.scope, Note: p.note}, nil
+			}
 		}
 	}
 	return event.UnknownRisk(), nil
 }
 
-var dangerPatterns = []struct {
+// danger is one command shape worth a human's eye.
+type danger struct {
 	re    *regexp.Regexp
 	mut   string
 	scope float64
 	note  string
-}{
+}
+
+var dangerPatterns = []danger{
 	{regexp.MustCompile(`\brm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+|--(recursive|force)\b)`), event.MutIrreversible, 0.9, "recursive or forced delete"},
 	{regexp.MustCompile(`\b(mkfs(\.\w+)?|fdisk|dd)(\s|$)`), event.MutIrreversible, 0.95, "writes a device directly"},
 	{regexp.MustCompile(`\bchmod\s+-R\b|\bchown\s+-R\b`), event.MutSystem, 0.7, "recursive permission change"},
@@ -76,6 +86,27 @@ var dangerPatterns = []struct {
 	{regexp.MustCompile(`(curl|wget)\b[^|]*\|\s*(sudo\s+)?((ba|z|da)?sh|python3?|perl|ruby|node)\b`), event.MutSystem, 0.9, "pipes a download into an interpreter"},
 	{regexp.MustCompile(`>\s*/dev/(sd|nvme|disk)`), event.MutIrreversible, 0.95, "writes to a raw disk"},
 	{regexp.MustCompile(`\bsudo\b`), event.MutSystem, 0.7, "runs as root"},
+}
+
+// powershellPatterns are PowerShell's, case-insensitive as it is. A
+// parameter may be cut to any unambiguous prefix, so -Force is also -fo.
+var powershellPatterns = []danger{
+	{regexp.MustCompile(`(?i)\b(Remove-Item|rm|ri|rd|rmdir|del|erase)\b[^;|\n]*\s-(r(e(c(u(r(se?)?)?)?)?)?|fo(r(ce?)?)?)\b`),
+		event.MutIrreversible, 0.9, "recursive or forced delete"},
+	{regexp.MustCompile(`(?i)\b(rd|rmdir|del|erase)\b[^;|\n]*\s/[sf]\b`), event.MutIrreversible, 0.9, "recursive or forced delete"},
+	{regexp.MustCompile(`(?i)\b(Format-Volume|Clear-Disk|Initialize-Disk|Remove-Partition|diskpart)\b|\bformat(\.com)?\s+[a-z]:`),
+		event.MutIrreversible, 0.95, "formats or wipes a disk"},
+	{regexp.MustCompile(`(?i)\b(Stop-Computer|Restart-Computer)\b`), event.MutSystem, 0.8, "stops the machine"},
+	{regexp.MustCompile(`(?i)\b(Stop-Process|spps|kill)\b[^;|\n]*\s-fo(r(ce?)?)?\b|\btaskkill(\.exe)?\b[^;|\n]*\s/f\b`),
+		event.MutSystem, 0.6, "force kills processes"},
+	{regexp.MustCompile(`(?i)\b(iwr|irm|curl|wget|Invoke-WebRequest|Invoke-RestMethod|DownloadString)\b.*\|\s*(iex|Invoke-Expression)\b`),
+		event.MutSystem, 0.9, "pipes a download into an interpreter"},
+	{regexp.MustCompile(`(?i)\b(iex|Invoke-Expression)\b.*\b(iwr|irm|Invoke-WebRequest|Invoke-RestMethod|DownloadString)\b`),
+		event.MutSystem, 0.9, "runs a download as code"},
+	{regexp.MustCompile(`(?i)\b(Start-Process|saps|start)\b[^;|\n]*\s-Verb\s+['"]?RunAs\b`), event.MutSystem, 0.7, "runs elevated"},
+	{regexp.MustCompile(`(?i)\bSet-ExecutionPolicy\b`), event.MutSystem, 0.7, "changes the script execution policy"},
+	{regexp.MustCompile(`(?i)\b(Set-ItemProperty|New-ItemProperty|Remove-ItemProperty|Rename-ItemProperty|Set-Item|New-Item|Remove-Item|sp|rp|ni|si|ri)\b[^;|\n]*\b(HKLM:|Registry::HKEY_LOCAL_MACHINE)|\breg(\.exe)?\s+(add|delete|import|restore)\s+(HKLM|HKEY_LOCAL_MACHINE)\b`),
+		event.MutSystem, 0.8, "writes the machine's registry"},
 }
 
 // repeatHook notices a command run again and again in one Turn with the
