@@ -2,11 +2,14 @@ package ui
 
 import (
 	"errors"
+	"slices"
 	"strings"
+	"sync"
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/ui/markdown"
+	"github.com/vitzeno/detent/ui/theme"
 	"github.com/vitzeno/detent/views"
 	"github.com/vitzeno/detent/viewspec"
 )
@@ -59,7 +62,7 @@ func boundView(r *callRow) (*viewspec.Bound, bool) {
 			// The chain ends at raw bytes, so this is recoverable, but it
 			// is the only trace that a kind's own rendering was dropped.
 			logging.For(logging.UI).Debug("a built-in view could not draw this output",
-				logging.KeyEvent, logging.ViewInvalid, "kind", string(r.kind()),
+				logging.KeyEvent, logging.ViewInvalid, "kind", r.kind(),
 				"source", "built-in", logging.KeyReason, err.Error())
 			continue
 		}
@@ -116,27 +119,42 @@ func fallbackChain(r *callRow, output string) []*viewspec.Compiled {
 var errHides = errors.New("the view hides most of the output")
 
 // markdownWidget renders prose through glamour, which viewspec cannot
-// import. It caches its last render because Draw runs per frame.
+// import. It caches renders because Draw runs per frame, and one
+// instance serves every row, so the cache holds several.
 type markdownWidget struct {
-	raw   string
-	width int
-	out   []string
+	mu    sync.Mutex
+	cache map[markdownKey][]string
 }
+
+// markdownKey is everything a render depends on, the theme included.
+type markdownKey struct {
+	raw, style string
+	width      int
+}
+
+// maxMarkdownRenders bounds the cache. Past it, it starts over.
+const maxMarkdownRenders = 16
 
 var _ viewspec.Described = (*markdownWidget)(nil)
 
 func (w *markdownWidget) Draw(_ viewspec.Block, d viewspec.Data, f viewspec.Frame) ([]string, error) {
-	if w.out != nil && w.raw == d.Raw && w.width == f.Width {
-		return w.out, nil
+	key := markdownKey{raw: d.Raw, style: theme.Markdown, width: f.Width}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if out, ok := w.cache[key]; ok {
+		return slices.Clone(out), nil
 	}
-	rendered, err := markdown.Render(d.Raw, f.Width)
+	rendered, err := markdown.Render(d.Raw, key.style, f.Width)
 	if err != nil {
 		// Wrapped, not raw, so falling back does not overflow the pane.
 		rendered = strings.Join(wrapPlain(d.Raw, f.Width), "\n")
 	}
-	w.raw, w.width = d.Raw, f.Width
-	w.out = strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")
-	return w.out, nil
+	if w.cache == nil || len(w.cache) >= maxMarkdownRenders {
+		w.cache = map[markdownKey][]string{}
+	}
+	out := strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")
+	w.cache[key] = out
+	return slices.Clone(out), nil
 }
 
 // Describe puts markdown in the guide the judge chooses from. Without it

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/ui/theme"
 	"github.com/vitzeno/detent/viewspec"
 )
 
@@ -967,6 +968,38 @@ func TestBoundView_SkipsAViewThatHidesMostOfTheOutput(t *testing.T) {
 	assert.False(t, b.Hides())
 	assert.Equal(t, "built-in", r.viewSource)
 	assert.Contains(t, strings.Join(drawPlain(t, b), "\n"), "mouse-scroll")
+}
+
+// compileAll drops a spec that fails quietly, so pin that none does:
+// a nil floor would panic in fallbackChain.
+func TestShippedSpecs_AllCompile(t *testing.T) {
+	assert.Len(t, compiledFallback, len(byKind()))
+	assert.NotNil(t, compiledMarkdown)
+	assert.NotNil(t, compiledPlain)
+}
+
+// One widget serves every row, so two documents must not evict each
+// other, and a theme change must not serve the old colours.
+func TestMarkdownWidget_CachesPerDocumentAndStyle(t *testing.T) {
+	w := &markdownWidget{}
+	f := viewspec.Frame{Width: 60}
+	a, err := w.Draw(viewspec.Block{}, viewspec.Data{Raw: "# A\n\nfirst"}, f)
+	require.NoError(t, err)
+	_, err = w.Draw(viewspec.Block{}, viewspec.Data{Raw: "# B\n\nsecond"}, f)
+	require.NoError(t, err)
+	assert.Len(t, w.cache, 2)
+
+	a[0] = "scribbled"
+	again, err := w.Draw(viewspec.Block{}, viewspec.Data{Raw: "# A\n\nfirst"}, f)
+	require.NoError(t, err)
+	assert.NotEqual(t, "scribbled", again[0], "a caller cannot write into the cache")
+
+	was := theme.Markdown
+	t.Cleanup(func() { theme.Markdown = was })
+	theme.Markdown = "light"
+	_, err = w.Draw(viewspec.Block{}, viewspec.Data{Raw: "# A\n\nfirst"}, f)
+	require.NoError(t, err)
+	assert.Len(t, w.cache, 3, "the style is part of the key")
 }
 
 type panicWidget struct{}

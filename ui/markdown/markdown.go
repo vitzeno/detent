@@ -4,36 +4,76 @@
 package markdown
 
 import (
-	"regexp"
+	"path/filepath"
 	"strings"
 
 	"charm.land/glamour/v2"
-
-	"github.com/vitzeno/detent/ui/theme"
 )
 
-var mdPathRe = regexp.MustCompile(`(?i)\.md(own)?\b`)
-
 // Wants reports whether content deserves glamour: the command names a
-// markdown file, or the body opens like one.
+// markdown file, or names no file and the body reads like markdown.
 func Wants(command, output string) bool {
-	if mdPathRe.MatchString(command) {
+	switch named(command) {
+	case "markdown":
 		return true
+	case "other":
+		// A YAML or shell file opening with a # comment is not a heading.
+		return false
 	}
-	for _, line := range strings.Split(output, "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		return strings.HasPrefix(strings.TrimSpace(line), "#")
-	}
-	return false
+	return looksLikeMarkdown(output)
 }
 
-// Render renders prose at the given width, in the active theme's
-// glamour style rather than one sniffed from the terminal.
-func Render(body string, width int) (string, error) {
+var markdownExts = map[string]bool{".md": true, ".markdown": true, ".mdown": true, ".mkd": true}
+
+// named says what kind of file a command names: "markdown", "other",
+// or "" when it names no file at all.
+func named(command string) string {
+	kind := ""
+	for field := range strings.FieldsSeq(command) {
+		ext := strings.ToLower(filepath.Ext(strings.Trim(field, `'"`)))
+		switch {
+		case markdownExts[ext]:
+			return "markdown"
+		case len(ext) > 1 && strings.IndexFunc(ext[1:], notLetter) < 0:
+			kind = "other"
+		}
+	}
+	return kind
+}
+
+func notLetter(r rune) bool { return r < 'a' || r > 'z' }
+
+// looksLikeMarkdown wants a heading first and one more thing only
+// markdown says, since a lone # line opens most scripts and configs.
+func looksLikeMarkdown(output string) bool {
+	heading, signal := false, false
+	for line := range strings.Lines(output) {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !heading {
+			if !strings.HasPrefix(line, "# ") && !strings.HasPrefix(line, "## ") {
+				return false
+			}
+			heading = true
+			continue
+		}
+		if strings.HasPrefix(line, "## ") || strings.HasPrefix(line, "```") ||
+			strings.Contains(line, "](") || strings.Contains(line, "**") {
+			signal = true
+			break
+		}
+	}
+	return heading && signal
+}
+
+// Render renders prose at the given width in the named glamour style,
+// rather than one sniffed from the terminal. Narrower than 20 still
+// wraps at 20, and the frame around it truncates.
+func Render(body, style string, width int) (string, error) {
 	r, err := glamour.NewTermRenderer(
-		glamour.WithStandardStyle(theme.Markdown),
+		glamour.WithStandardStyle(style),
 		glamour.WithWordWrap(max(20, width)),
 	)
 	if err != nil {
