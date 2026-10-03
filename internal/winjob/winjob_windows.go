@@ -44,7 +44,7 @@ func (j *Job) limit(flags uint32) error {
 	var info windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION
 	info.BasicLimitInformation.LimitFlags = flags
 	_, err := windows.SetInformationJobObject(j.handle, windows.JobObjectExtendedLimitInformation,
-		uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info)))
+		uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))) //nolint:gosec // the Win32 call takes a pointer and a size
 	if err != nil {
 		return fmt.Errorf("winjob: %w", err)
 	}
