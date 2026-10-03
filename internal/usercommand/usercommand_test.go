@@ -33,18 +33,18 @@ func TestWatch_RunsACommandAndTellsTheModel(t *testing.T) {
 	assert.Equal(t, "sandbox", started.Runner)
 
 	ended := c.await(t, event.UserCommandEndedKind).(event.UserCommandEnded)
-	assert.Equal(t, started.UserCommand, ended.UserCommand, "one Shell, correlated by id")
+	assert.Equal(t, started.UserCommand, ended.UserCommand, "one user command, correlated by id")
 	assert.Equal(t, "M ui/keys.go\n", ended.Result.Stdout)
 
 	note := c.await(t, event.NoteContextKind).(event.NoteContext)
 	assert.Equal(t, "[human ran a command in the sandbox]\n$ git status --short\nexit 0\nM ui/keys.go", note.Text)
 
 	chunks := c.of(event.OutputChunkKind)
-	require.Len(t, chunks, 1, "live output rides on OutputChunk, keyed by the Shell's id")
+	require.Len(t, chunks, 1, "live output rides on OutputChunk, keyed by the user command's id")
 	chunk, ok := chunks[0].(event.OutputChunk)
 	require.True(t, ok)
 	assert.Equal(t, started.UserCommand, chunk.UserCommand)
-	assert.Equal(t, uuid.Nil, chunk.ToolCall, "a Shell is not a Call, so nothing keyed by Call counts it")
+	assert.Equal(t, uuid.Nil, chunk.ToolCall, "a user command is not a tool call, so nothing keyed by tool call counts it")
 	assert.Equal(t, []string{"git status --short"}, r.commands())
 }
 
@@ -60,7 +60,7 @@ func TestWatch_AsksTheEngineToAppendRatherThanAppending(t *testing.T) {
 	c.await(t, event.NoteContextKind)
 
 	for _, k := range c.kinds() {
-		assert.NotEqual(t, event.AppendedKind, k, "humanshell never writes the transcript itself")
+		assert.NotEqual(t, event.AppendedKind, k, "usercommand never writes the transcript itself")
 	}
 }
 
@@ -182,7 +182,7 @@ func TestWatch_APanickingRunnerEndsTheCommandOnly(t *testing.T) {
 
 	bus.Publish(event.RunCommand{Text: "after"})
 	assert.Eventually(t, func() bool { return len(c.of(event.UserCommandStartedKind)) == 2 },
-		3*time.Second, time.Millisecond, "the subscriber is still listening")
+		3*time.Second, 10*time.Millisecond, "the subscriber is still listening")
 }
 
 // The caller closes the output channel, so a Runner's early error costs
@@ -327,7 +327,7 @@ func (c *collector) await(t *testing.T, k event.Kind) event.Event {
 			return true
 		}
 		return false
-	}, 3*time.Second, time.Millisecond, "waiting for %s; saw %v", k, c.kinds())
+	}, 3*time.Second, 10*time.Millisecond, "waiting for %s; saw %v", k, c.kinds())
 	return found
 }
 

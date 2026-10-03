@@ -24,9 +24,8 @@ const (
 	stoppedByHuman = "stopped by the human"
 )
 
-// Runner executes one command. Declared here rather than imported, so
-// this package depends on event and capture alone. It sends nothing on
-// events after it returns, and the caller closes events.
+// Runner executes one command, declared here so this package needs only event
+// and capture. It sends nothing on events after it returns, and the caller closes events.
 type Runner interface {
 	Run(ctx context.Context, command string, events chan<- capture.StreamEvent) (capture.Result, error)
 }
