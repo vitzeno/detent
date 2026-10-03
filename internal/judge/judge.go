@@ -29,6 +29,10 @@ const maxJudging = 4
 // is worth less than the heuristic now.
 const judgeTimeout = 20 * time.Second
 
+// stderrShare is the part of the sample kept for stderr's tail, so a long
+// stdout cannot push the error that decides the status out of view.
+const stderrShare = 1024
+
 // ResultJudge judges one finished tool call.
 type ResultJudge struct {
 	Asker classify.Asker
@@ -182,6 +186,21 @@ func heuristic(res event.Result) event.ToolCallJudged {
 	return out
 }
 
+// output caps what the judge is shown. A judgement is about shape and
+// outcome, neither of which needs a megabyte.
+func output(r event.Result) string {
+	outLimit := viewgen.MaxJudgeBytes - min(len(r.Stderr), stderrShare)
+	stdout := headOf(r.Stdout, outLimit)
+	stderr := r.Stderr
+	if errLimit := viewgen.MaxJudgeBytes - min(len(r.Stdout), outLimit); len(stderr) > errLimit {
+		stderr = "…[truncated]\n" + tailOf(stderr, errLimit)
+	}
+	if stdout != "" && stderr != "" {
+		return stdout + "\n" + stderr
+	}
+	return stdout + stderr
+}
+
 func resultQuestions() classify.Questions {
 	return classify.Questions{
 		"result_status": {
@@ -207,25 +226,6 @@ func resultQuestions() classify.Questions {
 			Noul: &classify.NoulQuestion{},
 		},
 	}
-}
-
-// stderrShare is the part of the sample kept for stderr's tail, so a long
-// stdout cannot push the error that decides the status out of view.
-const stderrShare = 1024
-
-// output caps what the judge is shown. A judgement is about shape and
-// outcome, neither of which needs a megabyte.
-func output(r event.Result) string {
-	outLimit := viewgen.MaxJudgeBytes - min(len(r.Stderr), stderrShare)
-	stdout := headOf(r.Stdout, outLimit)
-	stderr := r.Stderr
-	if errLimit := viewgen.MaxJudgeBytes - min(len(r.Stdout), outLimit); len(stderr) > errLimit {
-		stderr = "…[truncated]\n" + tailOf(stderr, errLimit)
-	}
-	if stdout != "" && stderr != "" {
-		return stdout + "\n" + stderr
-	}
-	return stdout + stderr
 }
 
 // headOf and tailOf cut s to at most n bytes on a rune boundary.

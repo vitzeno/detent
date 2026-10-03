@@ -215,14 +215,42 @@ func TestWatch_ItsContextEndingCancelsWhatIsInFlight(t *testing.T) {
 	waitFor(t, asker.quit)
 }
 
-// quittingAsker blocks until its ctx ends, and says when it has.
-type quittingAsker struct{ asked, quit chan struct{} }
+// Shown only "bash", the judge classified a shape without knowing
+// which command printed it.
+func TestWatch_TheJudgeSeesTheCommand(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	asker := recordingAsker{states: make(chan classify.State, 1)}
+	defer Watch(t.Context(), bus, asker)()
 
-func (q *quittingAsker) Ask(ctx context.Context, _ classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
-	q.asked <- struct{}{}
-	<-ctx.Done()
-	close(q.quit)
-	return nil, classify.Usage{}, ctx.Err()
+	call := uuid.Must(uuid.NewV7())
+	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "list it"})
+	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "ls -la"}})
+	ran(bus, call, event.Result{Stdout: "total 0\n"})
+
+	select {
+	case s := <-asker.states:
+		m, ok := s.(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "ls -la", m["command"])
+	case <-time.After(3 * time.Second):
+		t.Fatal("the judge was never asked")
+	}
+}
+
+// A tool call that was declined or abandoned never ran, so nobody asks about it.
+func TestWatch_AToolCallThatNeverRanIsNotJudged(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	asker := recordingAsker{states: make(chan classify.State, 1)}
+	defer Watch(t.Context(), bus, asker)()
+	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "p"})
+	bus.Publish(event.ToolCallEnded{ToolCall: uuid.Must(uuid.NewV7()), Result: event.Result{Err: "declined"}})
+	select {
+	case <-asker.states:
+		t.Fatal("judged a Call that never ran")
+	case <-time.After(200 * time.Millisecond):
+	}
 }
 
 func TestOutput_KeepsTheTailOfStderr(t *testing.T) {
@@ -231,6 +259,22 @@ func TestOutput_KeepsTheTailOfStderr(t *testing.T) {
 	assert.Contains(t, got, "the error", "a long stdout must not hide why it failed")
 	assert.True(t, utf8.ValidString(got))
 	assert.Less(t, len(got), 4200)
+}
+
+// The judge is offered exactly the statuses event declares, so ui labels
+// whatever it can answer.
+func TestResultQuestions_OfferEveryStatus(t *testing.T) {
+	var offered []event.Status
+	for s := range resultQuestions()["result_status"].Choice.Criteria {
+		offered = append(offered, event.Status(s))
+	}
+	assert.ElementsMatch(t, event.Statuses(), offered)
+}
+
+// ran publishes a tool call starting and ending, as the engine does for one that ran.
+func ran(bus *event.Bus, call uuid.UUID, res event.Result) {
+	bus.Publish(event.ToolCallStarted{ToolCall: call, Runner: "host"})
+	bus.Publish(event.ToolCallEnded{ToolCall: call, Result: res})
 }
 
 func next(t *testing.T, ch <-chan event.Record) event.Event {
@@ -269,6 +313,26 @@ func waitFor(t *testing.T, ch <-chan struct{}) {
 	}
 }
 
+type fakeAsker struct {
+	answers classify.Answers
+	err     error
+}
+
+func (f fakeAsker) Ask(context.Context, classify.State, classify.Questions) (classify.Answers, classify.Usage, error) {
+	if f.err != nil {
+		return nil, classify.Usage{}, f.err
+	}
+	return f.answers, classify.Usage{}, nil
+}
+
+// recordingAsker keeps the state it was asked about.
+type recordingAsker struct{ states chan classify.State }
+
+func (r recordingAsker) Ask(_ context.Context, s classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
+	r.states <- s
+	return classify.Answers{}, classify.Usage{}, nil
+}
+
 // gatedAsker reads every request as answered once gate opens, or gives up with ctx.
 type gatedAsker struct {
 	gate  chan struct{}
@@ -285,76 +349,12 @@ func (g *gatedAsker) Ask(ctx context.Context, _ classify.State, _ classify.Quest
 	}
 }
 
-// Shown only "bash", the judge classified a shape without knowing
-// which command printed it.
-func TestWatch_TheJudgeSeesTheCommand(t *testing.T) {
-	bus := event.New()
-	defer bus.Close()
-	asker := recordingAsker{states: make(chan classify.State, 1)}
-	defer Watch(t.Context(), bus, asker)()
+// quittingAsker blocks until its ctx ends, and says when it has.
+type quittingAsker struct{ asked, quit chan struct{} }
 
-	call := uuid.Must(uuid.NewV7())
-	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "list it"})
-	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "ls -la"}})
-	ran(bus, call, event.Result{Stdout: "total 0\n"})
-
-	select {
-	case s := <-asker.states:
-		m, ok := s.(map[string]any)
-		require.True(t, ok)
-		assert.Equal(t, "ls -la", m["command"])
-	case <-time.After(3 * time.Second):
-		t.Fatal("the judge was never asked")
-	}
-}
-
-// recordingAsker keeps the state it was asked about.
-type recordingAsker struct{ states chan classify.State }
-
-func (r recordingAsker) Ask(_ context.Context, s classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
-	r.states <- s
-	return classify.Answers{}, classify.Usage{}, nil
-}
-
-type fakeAsker struct {
-	answers classify.Answers
-	err     error
-}
-
-func (f fakeAsker) Ask(context.Context, classify.State, classify.Questions) (classify.Answers, classify.Usage, error) {
-	if f.err != nil {
-		return nil, classify.Usage{}, f.err
-	}
-	return f.answers, classify.Usage{}, nil
-}
-
-// ran publishes a tool call starting and ending, as the engine does for one that ran.
-func ran(bus *event.Bus, call uuid.UUID, res event.Result) {
-	bus.Publish(event.ToolCallStarted{ToolCall: call, Runner: "host"})
-	bus.Publish(event.ToolCallEnded{ToolCall: call, Result: res})
-}
-
-// A tool call that was declined or abandoned never ran, so nobody asks about it.
-func TestWatch_AToolCallThatNeverRanIsNotJudged(t *testing.T) {
-	bus := event.New()
-	defer bus.Close()
-	asker := recordingAsker{states: make(chan classify.State, 1)}
-	defer Watch(t.Context(), bus, asker)()
-	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "p"})
-	bus.Publish(event.ToolCallEnded{ToolCall: uuid.Must(uuid.NewV7()), Result: event.Result{Err: "declined"}})
-	select {
-	case <-asker.states:
-		t.Fatal("judged a Call that never ran")
-	case <-time.After(200 * time.Millisecond):
-	}
-}
-
-// The judge is offered exactly the statuses event declares, so ui labels
-// whatever it can answer.
-func TestResultQuestions_OfferEveryStatus(t *testing.T) {
-	var offered []event.Status
-	for s := range resultQuestions()["result_status"].Choice.Criteria {
-		offered = append(offered, event.Status(s))
-	}
-	assert.ElementsMatch(t, event.Statuses(), offered)
+func (q *quittingAsker) Ask(ctx context.Context, _ classify.State, _ classify.Questions) (classify.Answers, classify.Usage, error) {
+	q.asked <- struct{}{}
+	<-ctx.Done()
+	close(q.quit)
+	return nil, classify.Usage{}, ctx.Err()
 }
