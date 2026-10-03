@@ -1,4 +1,4 @@
-// cmd/detent runs the full-screen TUI, or one request headlessly with
+// Command detent runs the full-screen TUI, or one request headlessly with
 // -prompt. It wires the engine, the bus, and whichever front-end.
 package main
 

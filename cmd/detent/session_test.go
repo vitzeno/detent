@@ -73,6 +73,7 @@ func TestSession_HostShellPicksTheToolAndThePrompt(t *testing.T) {
 			assert.Equal(t, tt.want, s.env.Shell)
 			assert.Equal(t, tt.tool, shellTool(s.env).Name())
 			runner, _ := s.runners.Select(event.UnknownRisk())
+			require.IsType(t, &host.Shell{}, runner)
 			assert.Equal(t, tt.want, runner.(*host.Shell).Dialect())
 		})
 	}

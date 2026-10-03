@@ -1,7 +1,6 @@
 package main
 
 // The flags that answer and exit, rather than starting a session.
-// main.go is left holding the wiring.
 
 import (
 	"context"
@@ -17,6 +16,7 @@ import (
 	"github.com/vitzeno/detent/internal/trust"
 )
 
+// listSessions prints what -resume can take, newest first.
 func listSessions() error {
 	events, err := store.Open(store.DefaultPath())
 	if err != nil {
