@@ -17,7 +17,7 @@ func TestShipped_EverySpecCompiles(t *testing.T) {
 		spec, ok := views.ForKind(kind)
 		require.True(t, ok, kind)
 		_, err := viewspec.Compile(spec)
-		assert.NoError(t, err, "the spec for %s output", kind)
+		require.NoError(t, err, "the spec for %s output", kind)
 	}
 	for _, command := range views.Commands() {
 		spec, ok := views.ForCommand(command)

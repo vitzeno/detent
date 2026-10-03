@@ -62,7 +62,7 @@ func TestSetup_UnwritableDirDisablesRatherThanFails(t *testing.T) {
 	require.NoError(t, os.WriteFile(file, []byte("x"), 0o644))
 
 	closer, err := logging.Setup("s5", logging.WithDir(file))
-	assert.Error(t, err, "the caller is told")
+	require.Error(t, err, "the caller is told")
 	require.NotNil(t, closer)
 	assert.NotPanics(t, func() {
 		logging.For(logging.Engine).Info("still fine")
@@ -181,7 +181,7 @@ func records(t *testing.T, dir, session string) []map[string]any {
 	}
 	require.NoError(t, err)
 	var out []map[string]any
-	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(raw)), "\n") {
 		var m map[string]any
 		if json.Unmarshal([]byte(line), &m) == nil {
 			out = append(out, m)

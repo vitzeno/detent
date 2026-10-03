@@ -29,8 +29,8 @@ func TestDescribe_EveryLoggedFactHasFields(t *testing.T) {
 // carriesData says whether an event has any exported field to log.
 func carriesData(e event.Event) bool {
 	t := reflect.TypeOf(e)
-	for i := range t.NumField() {
-		if t.Field(i).IsExported() {
+	for f := range t.Fields() {
+		if f.IsExported() {
 			return true
 		}
 	}

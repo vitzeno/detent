@@ -195,7 +195,7 @@ func TestWatch_NeverWritesTwoLevelKeys(t *testing.T) {
 
 	raw, err := os.ReadFile(filepath.Join(dir, "n.jsonl"))
 	require.NoError(t, err)
-	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(raw)), "\n") {
 		assert.Equal(t, 1, strings.Count(line, `"level":`), "duplicate level key: %s", line)
 	}
 	assert.Equal(t, "INFO", records(t, dir, "n")[0]["level"])

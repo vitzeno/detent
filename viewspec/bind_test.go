@@ -36,7 +36,7 @@ func TestBind_IsSafeOnOneCompiledAcrossGoroutines(t *testing.T) {
 			for i := range 64 {
 				wg.Go(func() {
 					b, err := c.Bind(tc.outputs[i%2])
-					if !assert.NoError(t, err) {
+					if !assert.NoError(t, err) { //nolint:testifylint // runs off the test goroutine
 						return
 					}
 					r, err := b.Draw(viewspec.Frame{Width: 40, Paint: viewspec.Plain()})

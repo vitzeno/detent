@@ -333,8 +333,8 @@ func TestRole_IsNamedOnTheWire(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(`"caution"`), &r))
 	assert.Equal(t, viewspec.RoleCaution, r)
 
-	assert.Error(t, json.Unmarshal([]byte(`"#ff0000"`), &r), "a colour is not a role")
-	assert.Error(t, json.Unmarshal([]byte(`7`), &r), "a number is not a role")
+	require.Error(t, json.Unmarshal([]byte(`"#ff0000"`), &r), "a colour is not a role")
+	require.Error(t, json.Unmarshal([]byte(`7`), &r), "a number is not a role")
 }
 
 func TestSelectableRows_ClampsWithoutKnowingTheShape(t *testing.T) {
@@ -491,7 +491,7 @@ func TestColumns_AMisreadHeaderFailsRatherThanKeepingTheRowsItFits(t *testing.T)
 	c, err := viewspec.Compile(spec)
 	require.NoError(t, err)
 	_, err = c.Bind(dfH)
-	assert.ErrorContains(t, err, "7 of 8 lines have fewer fields")
+	require.ErrorContains(t, err, "7 of 8 lines have fewer fields")
 
 	// One short line is a total or a footer, not a misread header.
 	_, err = c.Bind("NAME SIZE\na 1\nb 2\nc 3\ntotal\n")
@@ -943,7 +943,7 @@ func TestSubset_NarrowsWidgetsAndValidatesAgainstTheSame(t *testing.T) {
 	spec := viewspec.Spec{Parse: linesParse(),
 		Blocks: []viewspec.Block{{Kind: "table", Columns: []viewspec.Column{{Field: "pkg"}}}}}
 	_, err := viewspec.Compile(spec, viewspec.WithRegistry(reg))
-	assert.Error(t, err, "a kind outside the subset will not compile")
+	require.Error(t, err, "a kind outside the subset will not compile")
 
 	guide := reg.Schema()["properties"].(map[string]any)["widget_guide"].(map[string]any)
 	assert.Len(t, guide["const"].(map[string]viewspec.Description), 2,

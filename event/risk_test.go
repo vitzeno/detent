@@ -23,7 +23,7 @@ func TestRisk_WidenNeverNarrows(t *testing.T) {
 		got := dangerous.Widen(soft)
 		assert.True(t, got.Dangerous, "a hook cannot clear Dangerous")
 		assert.Equal(t, MutIrreversible, got.Mutability, "a hook cannot lower mutability")
-		assert.Equal(t, 0.9, got.ScopeRisk, "a hook cannot lower scope risk")
+		assert.InDelta(t, 0.9, got.ScopeRisk, 1e-9, "a hook cannot lower scope risk")
 		assert.True(t, got.FromJudge, "a hook cannot un-judge a verdict")
 		assert.Contains(t, got.Note, "rm -rf", "a hook cannot erase a note")
 	}
@@ -79,7 +79,7 @@ func TestRisk_WidenIsOrderIndependent(t *testing.T) {
 
 	assert.Equal(t, fwd.Dangerous, rev.Dangerous)
 	assert.Equal(t, fwd.Mutability, rev.Mutability)
-	assert.Equal(t, fwd.ScopeRisk, rev.ScopeRisk)
+	assert.InDelta(t, fwd.ScopeRisk, rev.ScopeRisk, 1e-9)
 	assert.Equal(t, fwd.FromJudge, rev.FromJudge)
 }
 
@@ -110,7 +110,7 @@ func TestRisk_ScopeStaysUnknownUntilSomethingAnswers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, UnknownRisk().Widen(tt.with).ScopeRisk)
+			assert.InDelta(t, tt.want, UnknownRisk().Widen(tt.with).ScopeRisk, 1e-9)
 		})
 	}
 }

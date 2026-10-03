@@ -62,6 +62,7 @@ func FuzzExtractNone(f *testing.F) {
 // fuzzParse binds output through p and draws every standard widget that
 // accepts what it parsed, at a few widths.
 func fuzzParse(f *testing.F, p Parse, seeds ...string) {
+	f.Helper()
 	for _, s := range seeds {
 		f.Add(s, 40)
 	}
