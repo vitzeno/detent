@@ -116,6 +116,24 @@ func TestDecide_RefusesAnOpenRecord(t *testing.T) {
 	assert.Contains(t, err.Error(), "chmod 600")
 }
 
+// What is loaded must be what was approved, so a file rewritten after
+// the question is answered changes nothing this run.
+func TestDecide_FilesAreTheBytesApproved(t *testing.T) {
+	dir, state := t.TempDir(), t.TempDir()
+	write(t, dir, ".env", "A=1\n")
+	var asked bool
+	d, err := Decide(Options{Dir: dir, State: state, Ask: answer(true, &asked), Out: &bytes.Buffer{}})
+	require.NoError(t, err)
+	write(t, dir, ".env", "A=2\n")
+	write(t, dir, ".mcp.json", `{"mcpServers":{}}`)
+	assert.Equal(t, map[string][]byte{".env": []byte("A=1\n")}, d.Files)
+
+	d, err = Decide(Options{Dir: dir, State: state, Out: &bytes.Buffer{}})
+	require.NoError(t, err)
+	require.False(t, d.Trusted)
+	assert.Nil(t, d.Files, "an untrusted directory hands over nothing")
+}
+
 func TestReader(t *testing.T) {
 	for _, c := range []struct {
 		in   string
@@ -161,7 +179,9 @@ theme: dark
 	t.Setenv("DETENT_API_KEY", "real-env-secret")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "real-aws-secret")
 
-	got := Summary(dir, []string{".detent.yaml", ".env", ".mcp.json"}, false)
+	present, files, _, err := digest(dir)
+	require.NoError(t, err)
+	got := Summary(dir, present, files, false)
 
 	for _, secret := range []string{
 		"pw-secret", "query-secret", "frag-secret", "jev-secret", "sk-yaml-secret", "jev-key-secret",
@@ -185,7 +205,9 @@ theme: dark
 func TestSummary_StripsControlSequences(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, ".mcp.json", `{"mcpServers": {"x": {"command": "sh\u001b[2K\r"}}}`)
-	got := Summary(dir, []string{".mcp.json"}, true)
+	present, files, _, err := digest(dir)
+	require.NoError(t, err)
+	got := Summary(dir, present, files, true)
 	assert.NotContains(t, got, "\x1b")
 	assert.NotContains(t, got, "\r")
 	assert.Contains(t, got, "changed since")

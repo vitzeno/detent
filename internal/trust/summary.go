@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -17,18 +15,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Summary says what the files would do, and never a secret: keys are
+// Summary says what the hashed bytes would do, and never a secret: keys are
 // "set", headers and variables are named, and URLs lose credentials and query.
-func Summary(dir string, present []string, changed bool) string {
+func Summary(dir string, present []string, files map[string][]byte, changed bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "detent: %s has its own configuration. It can change where your API key goes,\n", printable(dir))
 	b.WriteString("turn off the sandbox and start programs on this machine.\n")
 	for _, name := range present {
-		raw, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			fmt.Fprintf(&b, "  %s: unreadable\n", name)
-			continue
-		}
+		raw := files[name]
 		fmt.Fprintf(&b, "  %s\n", name)
 		var lines []string
 		switch name {

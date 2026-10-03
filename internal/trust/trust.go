@@ -39,6 +39,9 @@ type Decision struct {
 	Trusted bool
 	// Present are the repo-local files that exist, whether or not trusted.
 	Present []string
+	// Files are the bytes that were hashed, by name, and nil unless trusted.
+	// Loading these rather than the disk is what makes an approval mean anything.
+	Files map[string][]byte
 }
 
 // DefaultDir is beside the event store and the MCP tokens.
@@ -57,13 +60,13 @@ func Decide(o Options) (Decision, error) {
 	if err != nil {
 		return Decision{}, fmt.Errorf("trust: %w", err)
 	}
-	present, sum, err := digest(dir)
+	present, files, sum, err := digest(dir)
 	if err != nil {
 		return Decision{}, err
 	}
 	d := Decision{Present: present}
 	if len(present) == 0 || o.Flag {
-		d.Trusted = true
+		d.Trusted, d.Files = true, files
 		return d, nil
 	}
 	// No state dir means no record, never a relative path the repo could ship.
@@ -77,7 +80,7 @@ func Decide(o Options) (Decision, error) {
 	}
 	prior, seen := approved[dir]
 	if seen && prior == sum {
-		d.Trusted = true
+		d.Trusted, d.Files = true, files
 		return d, nil
 	}
 	names := strings.Join(present, ", ")
@@ -85,7 +88,7 @@ func Decide(o Options) (Decision, error) {
 		fmt.Fprintf(o.Out, "detent: ignoring %s in %s, not trusted. Run detent here to review them, or pass -trust\n", names, dir)
 		return d, nil
 	}
-	fmt.Fprint(o.Out, Summary(dir, present, seen))
+	fmt.Fprint(o.Out, Summary(dir, present, files, seen))
 	fmt.Fprint(o.Out, "Trust this directory? [y/N] ")
 	if !o.Ask() {
 		fmt.Fprintf(o.Out, "detent: ignoring %s, using your own configuration only\n", names)
@@ -97,7 +100,7 @@ func Decide(o Options) (Decision, error) {
 			return Decision{}, err
 		}
 	}
-	d.Trusted = true
+	d.Trusted, d.Files = true, files
 	return d, nil
 }
 
@@ -127,9 +130,10 @@ func Reader(in io.Reader) func() bool {
 	}
 }
 
-// digest names the files present and hashes each one's name and bytes.
-func digest(dir string) ([]string, string, error) {
+// digest names the files present, keeps their bytes and hashes them with their names.
+func digest(dir string) ([]string, map[string][]byte, string, error) {
 	var present []string
+	files := map[string][]byte{}
 	h := sha256.New()
 	for _, name := range Files {
 		raw, err := os.ReadFile(filepath.Join(dir, name))
@@ -137,13 +141,14 @@ func digest(dir string) ([]string, string, error) {
 		case errors.Is(err, fs.ErrNotExist):
 			continue
 		case err != nil:
-			return nil, "", fmt.Errorf("trust: %w", err)
+			return nil, nil, "", fmt.Errorf("trust: %w", err)
 		}
 		present = append(present, name)
+		files[name] = raw
 		fmt.Fprintf(h, "%s\x00%d\x00", name, len(raw))
 		h.Write(raw)
 	}
-	return present, hex.EncodeToString(h.Sum(nil)), nil
+	return present, files, hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // record is trust.json: each approved directory's digest.
