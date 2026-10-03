@@ -27,9 +27,9 @@ func TestRollback_RestoresTheTurnsCheckpoint(t *testing.T) {
 	r := rigWith(t, event.New(), fm, snap)
 
 	r.run("first request")
-	afterFirst := len(r.eng.Transcript())
+	afterFirst := len(r.eng.messages())
 	r.run("second request")
-	require.Greater(t, len(r.eng.Transcript()), afterFirst)
+	require.Greater(t, len(r.eng.messages()), afterFirst)
 
 	turns := r.of(event.TurnStartedKind)
 	require.Len(t, turns, 2)
@@ -44,8 +44,8 @@ func TestRollback_RestoresTheTurnsCheckpoint(t *testing.T) {
 	require.Len(t, restored, 1, "one restore, to the second Turn's own checkpoint")
 	assert.Equal(t, "snap-b", restored[0])
 
-	assert.Len(t, r.eng.Transcript(), afterFirst, "the transcript rewinds to where that prompt landed")
-	wellFormed(t, r.eng.Transcript())
+	assert.Len(t, r.eng.messages(), afterFirst, "the transcript rewinds to where that prompt landed")
+	wellFormed(t, r.eng.messages())
 }
 
 func TestRollback_RefusesWhatItCannotDo(t *testing.T) {
@@ -92,7 +92,7 @@ func TestRollback_ForgetsTheTurnAndEverythingAfter(t *testing.T) {
 	r.bus.Publish(event.RequestRollback{Turn: turns[1].(event.TurnStarted).Turn})
 	n := r.awaitNth(event.NoticeKind, 1).(event.Notice)
 	assert.Contains(t, n.Text, "no such request")
-	assert.Empty(t, r.eng.Transcript())
+	assert.Empty(t, r.eng.messages())
 }
 
 // TurnEnded is published a moment before the Turn's goroutine is done.
@@ -155,7 +155,7 @@ func TestRollback_UndoesATurnAfterTheSummary(t *testing.T) {
 	fresh := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}})
 	defer fresh.unsub()
 	fresh.Restore(r.records())
-	restored := sentText(fresh.Transcript())
+	restored := sentText(fresh.messages())
 	assert.Contains(t, restored, "first request")
 	assert.Contains(t, restored, "fourth request")
 	assert.NotContains(t, restored, "second request")

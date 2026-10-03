@@ -299,8 +299,8 @@ func readCall(id, path string) event.ToolRequest {
 // answered checks every tool call of a finished engine was answered.
 func answered(t *testing.T, e *Engine) {
 	t.Helper()
-	wellFormed(t, e.Transcript())
-	for _, m := range e.Transcript() {
+	wellFormed(t, e.messages())
+	for _, m := range e.messages() {
 		if m.Role == event.RoleTool {
 			require.NotEmpty(t, m.Content, "an answer may not be empty")
 		}

@@ -66,7 +66,7 @@ func TestTurn_EveryToolCallIsAnsweredHoweverItWent(t *testing.T) {
 			r.run("go")
 			answered(t, r.eng)
 
-			msgs := r.eng.Transcript()
+			msgs := r.eng.messages()
 			var answers []string
 			for _, m := range msgs {
 				if m.Role == event.RoleTool {
@@ -99,7 +99,7 @@ func TestTurn_DeclineStopsOneToolCallOnly(t *testing.T) {
 	assert.Equal(t, event.EndDone, end.Reason, "a decline does not end the Turn")
 	assert.Equal(t, []string{"ls"}, r.runner.commands(), "the declined call never ran, its sibling did")
 	answered(t, r.eng)
-	assert.Contains(t, r.eng.Transcript()[2].Content, "declined")
+	assert.Contains(t, r.eng.messages()[2].Content, "declined")
 }
 
 // Abort cancels in flight and still completes the Step.
@@ -207,7 +207,7 @@ func TestTurn_PromptMidTurnBecomesANote(t *testing.T) {
 	assert.Len(t, r.of(event.TurnStartedKind), 1, "steering must not open a second Turn")
 
 	var seen bool
-	for _, m := range r.eng.Transcript() {
+	for _, m := range r.eng.messages() {
 		seen = seen || m.Content == "use ripgrep, not find"
 	}
 	assert.True(t, seen, "the correction must reach the model")
@@ -253,14 +253,14 @@ func TestTurn_AnUnfinishedReplyIsNudgedOn(t *testing.T) {
 // The nudge is bounded, so a model that never answers still ends the Turn.
 func TestTurn_NudgingGivesUpAfterTheLimit(t *testing.T) {
 	var replies []model.Reply
-	for range DefaultNudges + 3 {
+	for range maxNudges + 3 {
 		replies = append(replies, model.Reply{Stop: "stop"})
 	}
 	r := newRig(t, replies)
 	end := r.run("fix it")
 
 	assert.Equal(t, event.EndDone, end.Reason)
-	assert.Len(t, r.of(event.StepEndedKind), DefaultNudges+1)
+	assert.Len(t, r.of(event.StepEndedKind), maxNudges+1)
 }
 
 // A panicking Runner must cost one tool call, not the session: every
@@ -274,7 +274,7 @@ func TestTurn_PanickingRunnerIsOneFailedToolCall(t *testing.T) {
 	end := r.run("go")
 	assert.Equal(t, event.EndDone, end.Reason)
 	answered(t, r.eng)
-	assert.Contains(t, r.eng.Transcript()[2].Content, "panicked")
+	assert.Contains(t, r.eng.messages()[2].Content, "panicked")
 }
 
 func TestTurn_PublishesTheFactsAFrontEndNeeds(t *testing.T) {
@@ -310,10 +310,10 @@ func TestTurn_CheckpointsOncePerTurn(t *testing.T) {
 func TestEngine_ResetForgetsTheTranscript(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
 	r.run("go")
-	require.NotEmpty(t, r.eng.Transcript())
+	require.NotEmpty(t, r.eng.messages())
 
 	r.bus.Publish(event.ResetSession{})
-	require.Eventually(t, func() bool { return len(r.eng.Transcript()) == 0 },
+	require.Eventually(t, func() bool { return len(r.eng.messages()) == 0 },
 		2*time.Second, 10*time.Millisecond)
 }
 

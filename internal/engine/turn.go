@@ -109,7 +109,7 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 
 		stepID := uuid.Must(uuid.NewV7())
 		e.bus.Publish(event.StepStarted{Turn: t.id, Step: stepID, N: step})
-		reply, used, err := e.model.Complete(ctx, e.Transcript(), e.tools.Schemas())
+		reply, used, err := e.model.Complete(ctx, e.messages(), e.tools.Schemas())
 		total = total.Add(used)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -129,7 +129,7 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 		// No calls means the model is finished asking, unless it stopped mid-thought.
 		if len(reply.Requests) == 0 {
 			e.appended(t.id, stepID, func() []event.Message { return e.tr.say(reply.Text) })
-			if reply.Unfinished() && nudges < DefaultNudges {
+			if reply.Unfinished() && nudges < maxNudges {
 				nudges++
 				e.notice("info", fmt.Sprintf("the model stopped with no answer and no call (%s), so it was told to carry on", stopReason(reply.Stop)))
 				e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(unfinishedNote) })

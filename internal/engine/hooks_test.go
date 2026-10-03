@@ -251,12 +251,12 @@ func TestStep_RefusesACommandThatKeepsRepeating(t *testing.T) {
 	r := newRig(t, repeatReplies(6))
 	r.run("check the log")
 
-	assert.LessOrEqual(t, len(r.runner.commands()), DefaultRepeatLimit+1,
+	assert.LessOrEqual(t, len(r.runner.commands()), defaultRepeatLimit+1,
 		"a command repeating forever must stop reaching the runner")
 	answered(t, r.eng)
 
 	var refused bool
-	for _, m := range r.eng.Transcript() {
+	for _, m := range r.eng.messages() {
 		refused = refused || strings.Contains(m.Content, "already run")
 	}
 	assert.True(t, refused, "the model must be told why, so it can try something else")

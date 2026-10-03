@@ -67,7 +67,7 @@ func (e *Engine) measure(sent int) event.ContextMeasured {
 	}
 	perByte := g.perByte
 	if perByte == 0 {
-		perByte = 1.0 / BytesPerToken
+		perByte = 1.0 / bytesPerToken
 	}
 	out := event.ContextMeasured{
 		Budget: e.budget(), Total: sent, Exact: sent > 0,

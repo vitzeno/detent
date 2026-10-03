@@ -70,10 +70,10 @@ func TestStep_BoundsAHugeResult(t *testing.T) {
 	var tr transcript
 	tr.user(0, "go")
 	tr.step(model.Reply{Requests: []event.ToolRequest{call("c1", "bash")}},
-		[]string{strings.Repeat("x", MaxResultBytes*3)})
+		[]string{strings.Repeat("x", maxResultBytes*3)})
 
 	got := tr.messages()[2].Content
-	assert.Less(t, len(got), MaxResultBytes+64, "one result cannot eat the whole budget")
+	assert.Less(t, len(got), maxResultBytes+64, "one result cannot eat the whole budget")
 	assert.Contains(t, got, "truncated")
 }
 
@@ -267,7 +267,7 @@ func TestReplay_UncompactedRebuildResolvesOldMarks(t *testing.T) {
 // not cost a summariser round trip every Step.
 func TestCompact_WillNotPayASummarizerForASliver(t *testing.T) {
 	const budgetTokens = 1000
-	budget := budgetTokens * BytesPerToken
+	budget := budgetTokens * bytesPerToken
 
 	var tr transcript
 	tr.user(0, strings.Repeat("o", budget/50)) // the droppable sliver
@@ -287,7 +287,7 @@ func TestCompact_WillNotPayASummarizerForASliver(t *testing.T) {
 // The guard must not stop compaction that actually works.
 func TestCompact_StillCutsWhenTheCutReachesBudget(t *testing.T) {
 	const budgetTokens = 1000
-	budget := budgetTokens * BytesPerToken
+	budget := budgetTokens * bytesPerToken
 
 	var tr transcript
 	for range 4 {

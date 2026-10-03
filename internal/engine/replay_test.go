@@ -22,7 +22,7 @@ func TestAppended_RebuildsTheTranscriptExactly(t *testing.T) {
 	})
 	r.run("do the thing")
 
-	live := r.eng.Transcript()
+	live := r.eng.messages()
 	require.NotEmpty(t, live)
 
 	rebuilt := rebuild(t, r.of(event.AppendedKind))
@@ -73,14 +73,14 @@ func TestRestore_RebuildsTheTranscriptAndTheTurnCount(t *testing.T) {
 	r.run("first request")
 	r.run("second request")
 
-	live := r.eng.Transcript()
+	live := r.eng.messages()
 	records := asRecords(r.of(event.AppendedKind), r.of(event.TurnStartedKind))
 
 	fresh := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}})
 	defer fresh.unsub()
 	fresh.Restore(records)
 
-	assert.Equal(t, live, fresh.Transcript(), "the transcript comes back whole")
+	assert.Equal(t, live, fresh.messages(), "the transcript comes back whole")
 	assert.Equal(t, 2, fresh.turns, "and the next Turn is numbered 3")
 }
 

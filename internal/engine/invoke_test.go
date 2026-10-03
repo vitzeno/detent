@@ -61,7 +61,7 @@ func TestExecute_NoInvokerIsAnAnswerNotAFailure(t *testing.T) {
 
 	assert.Equal(t, event.EndDone, end.Reason)
 	answered(t, r.eng)
-	assert.Contains(t, r.eng.Transcript()[2].Content, "No invoker")
+	assert.Contains(t, r.eng.messages()[2].Content, "No invoker")
 }
 
 // A panicking Invoker must not take the session and its checkpoints.
@@ -73,7 +73,7 @@ func TestExecute_APanickingInvokerIsAFailedToolCall(t *testing.T) {
 
 	assert.Equal(t, event.EndDone, end.Reason)
 	answered(t, r.eng)
-	assert.Contains(t, r.eng.Transcript()[2].Content, "panicked")
+	assert.Contains(t, r.eng.messages()[2].Content, "panicked")
 }
 
 // The gate itself: an MCP tool call waits for a human, and one nobody

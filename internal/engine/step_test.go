@@ -56,7 +56,7 @@ func TestStep_CapsHowManyToolCallsOneStepMayAskFor(t *testing.T) {
 	answered(t, r.eng)
 
 	var refused int
-	for _, m := range r.eng.Transcript() {
+	for _, m := range r.eng.messages() {
 		if m.Role == event.RoleTool && strings.Contains(m.Content, "at most 3 calls") {
 			refused++
 		}
@@ -122,7 +122,7 @@ func TestStep_ACommandPastItsLimitIsStoppedAndSaysSo(t *testing.T) {
 	ended := r.of(event.ToolCallEndedKind)[0].(event.ToolCallEnded)
 	assert.Equal(t, "stopped after 50ms, still running", ended.Result.Err)
 	var answer string
-	for _, m := range r.eng.Transcript() {
+	for _, m := range r.eng.messages() {
 		if m.Role == event.RoleTool {
 			answer = m.Content
 		}

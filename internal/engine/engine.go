@@ -15,22 +15,27 @@ import (
 	"github.com/vitzeno/detent/internal/tool"
 )
 
-// Defaults. MaxSteps is generous and soft: hitting it asks rather than
-// stops, because a human is watching.
 const (
-	DefaultMaxSteps = 100
-	// A Step is never split by compaction, so its results must fit the budget whole.
-	DefaultToolCallsPerStep = 10
-	DefaultRepeatLimit      = 3
-	// How many Unfinished replies in a row are nudged before one is taken as the end.
-	DefaultNudges = 2
-	// A human can stop a command sooner. This bounds the one nobody watches.
+	// DefaultCommandTimeout bounds a tool call nobody stops sooner.
 	DefaultCommandTimeout = 10 * time.Minute
+	// DefaultStopGrace is how long a cancelled Run waits for the running
+	// Turn to publish its last facts before giving up on them.
+	DefaultStopGrace = 5 * time.Second
+	// DefaultContextTokens caps the transcript, resent whole every Step.
+	// Sized for a large window, so a small local model wants context_tokens.
+	DefaultContextTokens = 200_000
 )
 
-// DefaultStopGrace is how long a cancelled Run waits for the Turn it
-// was running to publish its last facts before giving up on them.
-const DefaultStopGrace = 5 * time.Second
+const (
+	// defaultMaxSteps is soft: hitting it asks rather than stops, because a human is watching.
+	defaultMaxSteps = 100
+	// defaultToolCallsPerStep is small since compaction never splits a Step's results.
+	defaultToolCallsPerStep = 10
+	// defaultRepeatLimit is how often one command may print the same thing in a Turn.
+	defaultRepeatLimit = 3
+	// maxNudges is how many unfinished replies in a row are told to carry on.
+	maxNudges = 2
+)
 
 // Engine is one session. Run it once, in its own goroutine, and
 // everything else reaches it through the bus.
@@ -105,13 +110,13 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 	e := &Engine{
 		bus: bus, model: m, tools: tools, runners: runners,
 		session:        uuid.Must(uuid.NewV7()),
-		maxSteps:       DefaultMaxSteps,
-		maxToolCalls:   DefaultToolCallsPerStep,
+		maxSteps:       defaultMaxSteps,
+		maxToolCalls:   defaultToolCallsPerStep,
 		commandTimeout: DefaultCommandTimeout,
 		finishCheck:    true,
 		contextTokens:  DefaultContextTokens,
 		stopGrace:      DefaultStopGrace,
-		repeat:         newRepeatHook(DefaultRepeatLimit),
+		repeat:         newRepeatHook(defaultRepeatLimit),
 		past:           map[uuid.UUID]*turnState{},
 	}
 	for _, o := range opts {
@@ -169,16 +174,13 @@ func (e *Engine) Run(ctx context.Context) {
 	}
 }
 
-// Transcript copies the message log, since the Turn goroutine owns the
+// messages copies the message log, since the Turn goroutine owns the
 // original while one is running.
-func (e *Engine) Transcript() []event.Message {
+func (e *Engine) messages() []event.Message {
 	e.trMu.Lock()
 	defer e.trMu.Unlock()
 	return append([]event.Message(nil), e.tr.messages()...)
 }
-
-// Session is this engine's id.
-func (e *Engine) Session() uuid.UUID { return e.session }
 
 // Completer is one model round trip: a Step.
 type Completer interface {

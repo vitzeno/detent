@@ -47,7 +47,7 @@ func TestNoteContext_MidTurnWaitsForAStepBoundary(t *testing.T) {
 	close(r.runner.hold)
 
 	r.await(event.TurnEndedKind)
-	msgs := r.eng.Transcript()
+	msgs := r.eng.messages()
 	note, step := -1, -1
 	for i, m := range msgs {
 		switch {

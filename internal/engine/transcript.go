@@ -12,14 +12,11 @@ import (
 	"github.com/vitzeno/detent/internal/model"
 )
 
-// DefaultContextTokens caps the transcript, resent whole every Step.
-// Sized for a large window, so a small local model wants context_tokens.
 const (
-	DefaultContextTokens = 200_000
-	// BytesPerToken is the rough ratio a token budget is measured in.
-	BytesPerToken = 4
-	// MaxResultBytes bounds one result, the same bound a user command gets.
-	MaxResultBytes = capture.MaxResultBytes
+	// bytesPerToken is the rough ratio a token budget is measured in.
+	bytesPerToken = 4
+	// maxResultBytes bounds one result, the same bound a user command gets.
+	maxResultBytes = capture.MaxResultBytes
 	// minCompactShare is the fraction of the budget a cut must free to
 	// be worth a summariser round trip when it cannot reach budget.
 	minCompactShare = 10
@@ -96,7 +93,7 @@ func (e *Engine) budget() int { return e.contextTokens }
 // notice is not published for a compact that returns immediately.
 func (e *Engine) wouldCompact() bool {
 	over := false
-	e.trLock(func() { over = e.tr.bytes() > e.budget()*BytesPerToken })
+	e.trLock(func() { over = e.tr.bytes() > e.budget()*bytesPerToken })
 	return over
 }
 
@@ -207,7 +204,7 @@ func msgBytes(msgs []event.Message) int {
 
 // cutFor is how many messages compaction would fold, zero for none.
 func (t *transcript) cutFor(budgetTokens int) int {
-	budget := budgetTokens * BytesPerToken
+	budget := budgetTokens * bytesPerToken
 	if t.bytes() <= budget {
 		return 0
 	}
@@ -280,8 +277,8 @@ func unitEnd(msgs []event.Message, i int) int {
 }
 
 func bound(s string) string {
-	if len(s) <= MaxResultBytes {
+	if len(s) <= maxResultBytes {
 		return s
 	}
-	return s[:MaxResultBytes] + "\n…[truncated]"
+	return s[:maxResultBytes] + "\n…[truncated]"
 }

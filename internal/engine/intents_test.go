@@ -53,10 +53,10 @@ func TestReset_MidTurnAbortsAndForgets(t *testing.T) {
 	assert.Equal(t, event.EndAborted, end.Reason)
 	r.await(event.SessionResetKind)
 	assert.Less(t, time.Since(start), time.Second, "the reset waited on the blocked call")
-	assert.Empty(t, r.eng.Transcript())
+	assert.Empty(t, r.eng.messages())
 
 	r.run("fresh")
-	msgs := r.eng.Transcript()
+	msgs := r.eng.messages()
 	require.NotEmpty(t, msgs)
 	assert.Equal(t, "fresh", msgs[0].Content, "the next request starts from nothing")
 }
@@ -75,7 +75,7 @@ func TestRestore_HonoursUndoAndReset(t *testing.T) {
 		fresh := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}})
 		defer fresh.unsub()
 		fresh.Restore(r.records())
-		assert.Equal(t, r.eng.Transcript(), fresh.Transcript())
+		assert.Equal(t, r.eng.messages(), fresh.messages())
 		assert.Equal(t, 1, fresh.turns, "the next request is numbered 2 again")
 	})
 
@@ -89,7 +89,7 @@ func TestRestore_HonoursUndoAndReset(t *testing.T) {
 		fresh := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}})
 		defer fresh.unsub()
 		fresh.Restore(r.records())
-		assert.Equal(t, r.eng.Transcript(), fresh.Transcript())
+		assert.Equal(t, r.eng.messages(), fresh.messages())
 		assert.Equal(t, 1, fresh.turns)
 	})
 }
@@ -161,7 +161,7 @@ func TestApproval_AnAbortIsNotADecline(t *testing.T) {
 	r.bus.Publish(event.Abort{})
 	r.await(event.TurnEndedKind)
 
-	for _, m := range r.eng.Transcript() {
+	for _, m := range r.eng.messages() {
 		if m.Role == event.RoleTool {
 			assert.Contains(t, m.Content, "aborted")
 			assert.NotContains(t, m.Content, "declined")
@@ -192,7 +192,7 @@ func TestStep_ADuplicateIDIsRefusedNotMerged(t *testing.T) {
 	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("same", "ls"), bashCall("same", "pwd")}}})
 	r.run("go")
 	var answers []string
-	for _, m := range r.eng.Transcript() {
+	for _, m := range r.eng.messages() {
 		if m.Role == event.RoleTool {
 			answers = append(answers, m.Content)
 		}
