@@ -51,3 +51,60 @@ func TestUndo_AsksWhatTheCheckpointCovers(t *testing.T) {
 		})
 	}
 }
+
+// A checkpoint restores a container but cannot un-file an issue, and
+// doing less than a human expects is the worst thing here.
+func TestUndoPage_NamesWhatItCannotReverse(t *testing.T) {
+	got, _ := undoTurn(t).runUndo("/undo 1")
+	page := stripANSI(strings.Join(got.undoLines(), "\n"))
+
+	assert.Contains(t, page, "2 tool call(s) will be undone")
+	assert.Contains(t, page, "1 tool call(s) cannot be undone")
+	assert.Contains(t, page, "github__create_issue", "the standing call is not named")
+	assert.Contains(t, page, "go test ./...")
+}
+
+// Nothing to warn about, nothing said: the section only earns its
+// space when a Turn actually holds one.
+func TestUndoPage_SaysNothingWhenEverythingReverses(t *testing.T) {
+	turn := uuid.Must(uuid.NewV7())
+	m := feed(t, event.SessionStarted{Model: "m"},
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "just a command"})
+	call := uuid.Must(uuid.NewV7())
+	m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "ls"}})
+	m.apply(event.ToolCallEnded{ToolCall: call, Result: event.Result{}})
+	m.apply(event.CheckpointTaken{Turn: turn})
+	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	m.layout.width, m.layout.height = 150, 45
+	m.sizeViewport()
+
+	shown, _ := m.runUndo("/undo 1")
+	page := stripANSI(strings.Join(shown.undoLines(), "\n"))
+	assert.NotContains(t, page, "cannot be undone")
+	assert.Contains(t, page, "1 tool call(s) will be undone")
+}
+
+// undoTurn is a request holding both kinds of tool call.
+func undoTurn(t *testing.T) Model {
+	t.Helper()
+	turn := uuid.Must(uuid.NewV7())
+	m := feed(t, event.SessionStarted{Model: "m"},
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "do several things"})
+	for _, c := range []struct {
+		tool, exec string
+		args       map[string]any
+	}{
+		{"bash", "", map[string]any{"command": "go test ./..."}},
+		{"github__create_issue", "github", map[string]any{"repo": "detent"}},
+		{"write_file", "", map[string]any{"path": "notes.md"}},
+	} {
+		call := uuid.Must(uuid.NewV7())
+		m.apply(event.ToolCallProposed{ToolCall: call, Tool: c.tool, Args: c.args, Executor: c.exec})
+		m.apply(event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: "ok"}})
+	}
+	m.apply(event.CheckpointTaken{Turn: turn})
+	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	m.layout.width, m.layout.height = 150, 45
+	m.sizeViewport()
+	return m
+}
