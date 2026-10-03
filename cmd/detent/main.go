@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -473,7 +474,11 @@ func containerRemover(socket string) func(context.Context, string) error {
 		return nil
 	}
 	return func(ctx context.Context, id string) error {
-		return sandbox.Forget(ctx, socket, sandbox.DefaultNamespace, id)
+		err := sandbox.Forget(ctx, socket, sandbox.DefaultNamespace, id)
+		if errors.Is(err, sandbox.ErrSessionLive) {
+			return fmt.Errorf("%w: %w", forget.ErrLive, err)
+		}
+		return err
 	}
 }
 

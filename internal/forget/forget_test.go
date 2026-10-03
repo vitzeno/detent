@@ -3,6 +3,7 @@ package forget
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -16,9 +17,15 @@ import (
 
 func TestForget_DeletesAndSaysSo(t *testing.T) {
 	store := &fakeSessions{gone: true}
+	var mu sync.Mutex
 	var removed []string
 	r := start(t, store, uuid.Must(uuid.NewV7()),
-		WithContainers(func(_ context.Context, id string) error { removed = append(removed, id); return nil }))
+		WithContainers(func(_ context.Context, id string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			removed = append(removed, id)
+			return nil
+		}))
 
 	target := uuid.Must(uuid.NewV7())
 	r.bus.Publish(event.DeleteSession{Session: target})
@@ -27,7 +34,9 @@ func TestForget_DeletesAndSaysSo(t *testing.T) {
 	assert.Equal(t, "info", n.Level)
 	assert.Contains(t, n.Text, target.String())
 	assert.Equal(t, []uuid.UUID{target}, store.calls())
+	mu.Lock()
 	assert.Equal(t, []string{target.String()}, removed, "the container stayed")
+	mu.Unlock()
 
 	select {
 	case <-r.relisted:
@@ -83,6 +92,50 @@ func TestForget_AContainerThatStaysIsStillADelete(t *testing.T) {
 	n := r.notice(t)
 	assert.Contains(t, n.Text, "container stayed")
 	require.Len(t, store.calls(), 1, "the delete itself should still have happened")
+}
+
+// Another detent with the session open is the one thing the container
+// can tell, so the events must still be there when it says so.
+func TestForget_RefusesASessionOpenElsewhere(t *testing.T) {
+	store := &fakeSessions{gone: true}
+	r := start(t, store, uuid.Must(uuid.NewV7()),
+		WithContainers(func(context.Context, string) error {
+			return fmt.Errorf("%w: sandbox: session is already running somewhere", ErrLive)
+		}))
+	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
+
+	n := r.notice(t)
+	assert.Equal(t, "error", n.Level)
+	assert.Contains(t, n.Text, "another detent")
+	assert.Empty(t, store.calls(), "its history went while it was open")
+}
+
+// Stop must wait for a delete in flight, or it runs on against a store
+// the caller is about to close.
+func TestWatch_StopWaitsForADeleteInFlight(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	entered, release := make(chan struct{}), make(chan struct{})
+	store := &fakeSessions{gone: true}
+	stop := Watch(bus, store, uuid.Must(uuid.NewV7()),
+		WithContainers(func(context.Context, string) error {
+			close(entered)
+			<-release
+			return nil
+		}))
+	bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
+	<-entered
+
+	stopped := make(chan struct{})
+	go func() { stop(); close(stopped) }()
+	select {
+	case <-stopped:
+		t.Fatal("stop returned with a delete still running")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(release)
+	<-stopped
+	assert.Len(t, store.calls(), 1)
 }
 
 // No sandbox this run, by omitting the option or passing nil, means

@@ -4,6 +4,7 @@ package forget
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,20 +12,26 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
+// ErrLive is what a container remover wraps when another detent still
+// holds the session, which stops the delete before the events go.
+var ErrLive = errors.New("open in another detent")
+
+// containerTimeout bounds removing one container, which talks to containerd.
+const containerTimeout = 30 * time.Second
+
 // Watch answers DeleteSession and reports the outcome either way.
-// current is the running session, the one thing that cannot go.
+// current is the running session, the one thing that cannot go. The
+// stop waits for a delete in flight.
 func Watch(bus *event.Bus, sessions Sessions, current uuid.UUID, opts ...Option) func() {
 	w := watcher{sessions: sessions, current: current}
 	for _, o := range opts {
 		o(&w)
 	}
-	intents, stop := bus.Subscribe(event.Only(event.DeleteSessionKind))
-	go func() {
-		for rec := range intents {
-			w.forget(bus, rec.Event.(event.DeleteSession).Session)
+	return bus.Handle(event.Only(event.DeleteSessionKind), func(rec event.Record) {
+		if v, ok := rec.Event.(event.DeleteSession); ok {
+			w.forget(bus, v.Session)
 		}
-	}()
-	return stop
+	})
 }
 
 // Sessions is the store, declared at its consumer so the one path
@@ -59,6 +66,14 @@ func (w watcher) forget(bus *event.Bus, id uuid.UUID) {
 		return
 	}
 
+	// The container first: only it can tell that another detent has
+	// this session open, and by then its events must still be there.
+	stayed := w.container(id)
+	if errors.Is(stayed, ErrLive) {
+		fail(bus, "session "+id.String()+" is open in another detent, so it was not deleted")
+		return
+	}
+
 	gone, err := w.sessions.Delete(id)
 	switch {
 	case err != nil:
@@ -69,10 +84,9 @@ func (w watcher) forget(bus *event.Bus, id uuid.UUID) {
 		return
 	}
 
-	// Best effort past here: the session is already gone, and a
-	// container left behind is a leak rather than a lie. -prune has it.
-	if err := w.container(id); err != nil {
-		fail(bus, "deleted, but its container stayed: "+err.Error())
+	// A container left behind is a leak rather than a lie. -prune has it.
+	if stayed != nil {
+		fail(bus, "deleted, but its container stayed: "+stayed.Error())
 	} else {
 		bus.Publish(event.Notice{Level: "info", Text: "deleted " + id.String()})
 	}
@@ -83,7 +97,7 @@ func (w watcher) container(id uuid.UUID) error {
 	if w.containers == nil {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), containerTimeout)
 	defer cancel()
 	return w.containers(ctx, id.String())
 }
