@@ -59,6 +59,27 @@ func FuzzExtractNone(f *testing.F) {
 	fuzzParse(f, Parse{Kind: "none"}, "anything\n")
 }
 
+func FuzzNumber(f *testing.F) {
+	for _, s := range []string{"45%", "1,024", "1.2G", "926Gi", "12ms", "-3.5", "1e5", "1E", "2.5e-3K",
+		"1000E", "", "-", ".", "+1,5", "1e400", "nan", "inf"} {
+		f.Add(s, 1.5)
+	}
+	f.Add("", math.MaxFloat64)
+	f.Add("", -1e-300)
+	f.Fuzz(func(t *testing.T, s string, x float64) {
+		if v := number(s); math.IsInf(v, 0) || math.IsNaN(v) {
+			t.Fatalf("number(%q) = %v", s, v)
+		}
+		if math.IsInf(x, 0) || math.IsNaN(x) {
+			return
+		}
+		printed := strconv.FormatFloat(x, 'f', -1, 64)
+		if got := number(printed); got != x {
+			t.Fatalf("number(%q) = %v, want %v", printed, got, x)
+		}
+	})
+}
+
 // fuzzParse binds output through p and draws every standard widget that
 // accepts what it parsed, at a few widths.
 func fuzzParse(f *testing.F, p Parse, seeds ...string) {
@@ -143,25 +164,4 @@ func drawAny(t *testing.T, spec Spec, output string, width int) {
 			t.Fatalf("%s: cursor line %d past %d lines", spec.Blocks[0].Kind, r.CursorLine, len(r.Lines))
 		}
 	}
-}
-
-func FuzzNumber(f *testing.F) {
-	for _, s := range []string{"45%", "1,024", "1.2G", "926Gi", "12ms", "-3.5", "1e5", "1E", "2.5e-3K",
-		"1000E", "", "-", ".", "+1,5", "1e400", "nan", "inf"} {
-		f.Add(s, 1.5)
-	}
-	f.Add("", math.MaxFloat64)
-	f.Add("", -1e-300)
-	f.Fuzz(func(t *testing.T, s string, x float64) {
-		if v := number(s); math.IsInf(v, 0) || math.IsNaN(v) {
-			t.Fatalf("number(%q) = %v", s, v)
-		}
-		if math.IsInf(x, 0) || math.IsNaN(x) {
-			return
-		}
-		printed := strconv.FormatFloat(x, 'f', -1, 64)
-		if got := number(printed); got != x {
-			t.Fatalf("number(%q) = %v, want %v", printed, got, x)
-		}
-	})
 }
