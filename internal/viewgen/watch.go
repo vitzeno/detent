@@ -14,25 +14,19 @@ import (
 // a redraw cannot fire a second model call: a redraw is not an event.
 // Cancelling ctx abandons compositions in flight, as the stop does.
 func (g *Generator) Watch(ctx context.Context, bus *event.Bus) func() {
-	facts, unsub := bus.Subscribe(event.Only(
-		event.TurnStartedKind, event.ToolCallProposedKind,
-		event.ToolCallEndedKind, event.ToolCallJudgedKind,
-		event.UserCommandStartedKind, event.UserCommandEndedKind))
 	ctx, cancel := context.WithCancel(ctx)
 	w := &watcher{gen: g, bus: bus, ctx: ctx, calls: map[uuid.UUID]*pending{},
 		commands: map[uuid.UUID]string{}, slots: make(chan struct{}, maxComposing)}
-	looped := make(chan struct{})
-	go func() {
-		defer close(looped)
-		for rec := range facts {
-			w.take(rec.Event)
-		}
-	}()
+	unhandle := bus.Handle(event.Only(
+		event.TurnStartedKind, event.ToolCallProposedKind,
+		event.ToolCallEndedKind, event.ToolCallJudgedKind,
+		event.UserCommandStartedKind, event.UserCommandEndedKind), func(rec event.Record) {
+		w.take(rec.Event)
+	})
 	// Stopping cancels compositions in flight and waits for them.
 	return func() {
-		unsub()
+		unhandle()
 		cancel()
-		<-looped
 		w.wg.Wait()
 	}
 }

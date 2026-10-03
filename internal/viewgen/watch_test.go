@@ -200,10 +200,12 @@ func TestWatch_StopCancelsCompositionInFlight(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("stop waited on a composition nobody wants any more")
 	}
+	settled := make(chan struct{})
+	go func() { bus.Settle(3 * time.Second); close(settled) }()
 	select {
 	case rec := <-views:
 		t.Fatalf("a stopped composer published %s", rec.Event.Kind())
-	case <-time.After(200 * time.Millisecond):
+	case <-settled:
 	}
 }
 
