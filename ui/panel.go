@@ -104,8 +104,8 @@ func (m Model) contextDetail() string {
 func (m *Model) helpLines() []string {
 	out := []string{styleGoal.Render("commands"), ""}
 	for _, c := range append(slashCommands(), m.skillCmds...) {
-		out = append(out, fmt.Sprintf("  %s  %s", styleGoal.Render(padWidth(c.Name, 12)),
-			styleFaint.Render(c.Desc)))
+		out = append(out, fmt.Sprintf("  %s  %s", styleGoal.Render(padWidth(c.name, 12)),
+			styleFaint.Render(c.desc)))
 	}
 	return append(out, "", styleGoal.Render("keys"), "",
 		"  "+styleFaint.Render("tab       move between input, history and output"),

@@ -36,7 +36,7 @@ func TestSkill_OffersOnlyWhatTheHumanMayAskFor(t *testing.T) {
 	m := withSkills(event.New())
 	var names []string
 	for _, c := range matchSlash("/", m.skillCmds) {
-		names = append(names, c.Name)
+		names = append(names, c.name)
 	}
 	assert.Contains(t, names, "/release")
 	assert.NotContains(t, names, "/tidy", "a model-only skill has no command")
@@ -44,7 +44,7 @@ func TestSkill_OffersOnlyWhatTheHumanMayAskFor(t *testing.T) {
 
 	c, ok := lookupSlash("/help", m.skillCmds)
 	require.True(t, ok)
-	assert.Equal(t, "show slash commands", c.Desc)
+	assert.Equal(t, "show slash commands", c.desc)
 }
 
 // Typed words are matched lowercased, so a capitalised skill must still

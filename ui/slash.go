@@ -19,8 +19,8 @@ const maxSlashRows = 6
 // slashCmd is one available command. run receives the whole input
 // line, so a command can take an argument (/undo 2).
 type slashCmd struct {
-	Name string
-	Desc string
+	name string
+	desc string
 	run  func(m Model, input string) (Model, tea.Cmd)
 	// answers is set when the outcome comes back over the bus.
 	answers bool
@@ -30,38 +30,38 @@ type slashCmd struct {
 // the registry contains /help, which would be an initialisation cycle.
 func slashCommands() []slashCmd {
 	return []slashCmd{
-		{Name: "/quit", Desc: "quit detent", run: func(m Model, _ string) (Model, tea.Cmd) {
+		{name: "/quit", desc: "quit detent", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.onQuit("/quit")
 		}},
-		{Name: "/abort", Desc: "stop the running request", run: func(m Model, _ string) (Model, tea.Cmd) {
+		{name: "/abort", desc: "stop the running request", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.abortRunning()
 		}},
-		{Name: "/context", Desc: "show what fills the model's context, and what to trim", run: func(m Model, _ string) (Model, tea.Cmd) {
+		{name: "/context", desc: "show what fills the model's context, and what to trim", run: func(m Model, _ string) (Model, tea.Cmd) {
 			next, cmd := m.openPanel(panelContext)
 			// Measured afresh, since a server may have connected since the last Step.
 			return next, tea.Batch(cmd, m.send(event.MeasureContext{}))
 		}},
-		{Name: "/status", Desc: "show what detent is and what it has done", run: func(m Model, _ string) (Model, tea.Cmd) {
+		{name: "/status", desc: "show what detent is and what it has done", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.openPanel(panelStatus)
 		}},
-		{Name: "/sessions", Desc: "list the sessions that can be resumed", run: Model.listSessions},
-		{Name: "/skills", Desc: "show the skills this session found", run: func(m Model, _ string) (Model, tea.Cmd) {
+		{name: "/sessions", desc: "list the sessions that can be resumed", run: Model.listSessions},
+		{name: "/skills", desc: "show the skills this session found", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.openPanel(panelSkills)
 		}},
-		{Name: "/mcp", Desc: "show the MCP servers, or /mcp auth <server> to sign in again", run: Model.listServers},
-		{Name: "/rename", Desc: "name this session, e.g. /rename the sandbox bug",
+		{name: "/mcp", desc: "show the MCP servers, or /mcp auth <server> to sign in again", run: Model.listServers},
+		{name: "/rename", desc: "name this session, e.g. /rename the sandbox bug",
 			run: Model.renameSession, answers: true},
-		{Name: "/undo", Desc: "undo a request and everything after it, e.g. /undo 2", run: Model.runUndo},
-		{Name: "/delete", Desc: "delete a stored session, e.g. /delete the sandbox bug",
+		{name: "/undo", desc: "undo a request and everything after it, e.g. /undo 2", run: Model.runUndo},
+		{name: "/delete", desc: "delete a stored session, e.g. /delete the sandbox bug",
 			run: Model.runForget, answers: true},
-		{Name: "/shell", Desc: "type commands instead of requests (shift+tab)",
+		{name: "/shell", desc: "type commands instead of requests (shift+tab)",
 			run: func(m Model, _ string) (Model, tea.Cmd) {
 				return m.toggleEntry()
 			}},
-		{Name: "/new", Desc: "forget the conversation and start over", run: func(m Model, _ string) (Model, tea.Cmd) {
+		{name: "/new", desc: "forget the conversation and start over", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.startOver()
 		}},
-		{Name: "/help", Desc: "show slash commands", run: func(m Model, _ string) (Model, tea.Cmd) {
+		{name: "/help", desc: "show slash commands", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.openPanel(panelHelp)
 		}},
 	}
@@ -81,7 +81,7 @@ func skillCommands(skills []event.SkillSummary) []slashCmd {
 			continue
 		}
 		skill := s.Name
-		out = append(out, slashCmd{Name: name, Desc: "skill: " + s.Description,
+		out = append(out, slashCmd{name: name, desc: "skill: " + s.Description,
 			run: func(m Model, input string) (Model, tea.Cmd) { return m.useSkill(skill, input) }})
 	}
 	return out
@@ -108,7 +108,7 @@ func (m Model) runSlash(input string) (Model, tea.Cmd) {
 	// Nothing is claimed for a command that has not finished: one that
 	// opened a question, or one whose reply comes over the bus.
 	if next.notice.text == "" && next.mode == modeInput && !c.answers {
-		next.noteOK(c.Name)
+		next.noteOK(c.name)
 	}
 	return next, cmd
 }
@@ -126,7 +126,7 @@ func matchSlash(input string, extra []slashCmd) []slashCmd {
 	}
 	var out []slashCmd
 	for _, c := range append(slashCommands(), extra...) {
-		if strings.HasPrefix(c.Name, strings.ToLower(input)) {
+		if strings.HasPrefix(c.name, strings.ToLower(input)) {
 			out = append(out, c)
 		}
 	}
@@ -141,7 +141,7 @@ func lookupSlash(input string, extra []slashCmd) (slashCmd, bool) {
 	}
 	name := strings.ToLower(fields[0])
 	for _, c := range append(slashCommands(), extra...) {
-		if c.Name == name {
+		if c.name == name {
 			return c, true
 		}
 	}
@@ -169,8 +169,8 @@ func slashDropdown(cmds []slashCmd, cursor int) string {
 			mark, style = "▸ ", styleRowCursor
 		}
 		// Pad before styling, or the escape bytes count toward the width.
-		label := style.Render(fmt.Sprintf("%-10s", c.Name))
-		fmt.Fprintf(&b, "  %s%s %s\n", style.Render(mark), label, styleMuted.Render(c.Desc))
+		label := style.Render(fmt.Sprintf("%-10s", c.name))
+		fmt.Fprintf(&b, "  %s%s %s\n", style.Render(mark), label, styleMuted.Render(c.desc))
 	}
 	if more := slashMoreLine(len(cmds), start, end); more != "" {
 		b.WriteString(more + "\n")

@@ -147,7 +147,7 @@ func (p *prompt) Accept() bool {
 	if !p.Open() {
 		return false
 	}
-	p.input.SetValue(p.matches[p.cursor].Name + " ")
+	p.input.SetValue(p.matches[p.cursor].name + " ")
 	p.Close()
 	return true
 }
