@@ -138,3 +138,50 @@ func TestClip(t *testing.T) {
 	assert.Equal(t, "éééé…", clip(strings.Repeat("é", 8), 4), "cut by rune, never mid-character")
 	assert.Equal(t, "cat <<EOF …", clip("cat <<EOF\nbody\nEOF", 40))
 }
+
+// What the model wrote is shown escaped, never sent to the terminal it is asking on.
+const hostile = "echo hi\x1b[2J\x1b]52;c;cm0gLXJmIH4=\x07\rrm -rf ~ \u202etxt.exe"
+
+func assertDefused(t *testing.T, got string) {
+	t.Helper()
+	for _, raw := range []string{"\x1b", "\x07", "\r", "\u202e"} {
+		assert.NotContains(t, got, raw)
+	}
+	for _, shown := range []string{"^[[2J", "^[]52;c;cm0gLXJmIH4=^G", "^Mrm -rf ~", `\u202etxt.exe`} {
+		assert.Contains(t, got, shown)
+	}
+}
+
+func TestAsk_ShowsControlsInTheCommandEscaped(t *testing.T) {
+	var out bytes.Buffer
+	Ask(strings.NewReader("n\n"), &out)(event.ApprovalAsked{Tool: "bash",
+		Args: map[string]any{"command": hostile}, Rationale: "flag " + hostile})
+	assertDefused(t, out.String())
+	assert.Contains(t, out.String(), "flagged: flag echo hi^[[2J")
+}
+
+func TestHandle_DefusesWhatAModelOrCommandWrote(t *testing.T) {
+	cases := []struct {
+		name string
+		ev   event.Event
+		err  bool
+	}{
+		{"proposed call", event.ToolCallProposed{Tool: "bash", Args: map[string]any{"command": hostile}}, false},
+		{"model text", event.ModelText{Text: hostile}, false},
+		{"call ended with an error", event.ToolCallEnded{Result: event.Result{Err: hostile}}, false},
+		{"notice", event.Notice{Level: "warn", Text: hostile}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			p := &Printer{bus: event.New(), out: &out, errOut: &errOut}
+			t.Cleanup(p.bus.Close)
+			p.handle(c.ev)
+			got := out.String()
+			if c.err {
+				got = errOut.String()
+			}
+			assertDefused(t, got)
+		})
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/termsafe"
 )
 
 // Approver answers one dangerous call.
@@ -64,9 +65,9 @@ func Ask(in io.Reader, out io.Writer) Approver {
 	r := bufio.NewReader(in)
 	return func(a event.ApprovalAsked) bool {
 		// The same rendering the row shows, rather than a raw map.
-		fmt.Fprintf(out, "\n!! %s\n", event.Command(a.Tool, a.Args))
+		fmt.Fprintf(out, "\n!! %s\n", termsafe.Printable(event.Command(a.Tool, a.Args)))
 		if a.Rationale != "" {
-			fmt.Fprintf(out, "   flagged: %s\n", a.Rationale)
+			fmt.Fprintf(out, "   flagged: %s\n", termsafe.Printable(a.Rationale))
 		}
 		fmt.Fprint(out, "[y] run   [n] skip: ")
 		line, err := r.ReadString('\n')
@@ -97,13 +98,13 @@ func (p *Printer) handle(ev event.Event) (event.EndReason, bool) {
 		if v.Sandbox {
 			where = "sandbox"
 		}
-		fmt.Fprintf(p.errOut, "detent: model %s, commands run on the %s\n", v.Model, where)
+		fmt.Fprintf(p.errOut, "detent: model %s, commands run on the %s\n", termsafe.Printable(v.Model), where)
 	case event.ToolCallProposed:
 		fmt.Fprintf(p.out, "  → %s\n", clip(event.Command(v.Tool, v.Args), 120))
 	case event.ToolCallEnded:
-		fmt.Fprintln(p.out, "    "+outcome(v.Result))
+		fmt.Fprintln(p.out, "    "+termsafe.Printable(outcome(v.Result)))
 	case event.ModelText:
-		fmt.Fprintf(p.out, "\n%s\n", v.Text)
+		fmt.Fprintf(p.out, "\n%s\n", termsafe.Printable(v.Text))
 	case event.ApprovalAsked:
 		p.bus.Publish(event.ResolveApproval{ToolCall: v.ToolCall, Approved: p.approve(v)})
 	case event.BoundReached:
@@ -111,16 +112,17 @@ func (p *Printer) handle(ev event.Event) (event.EndReason, bool) {
 		fmt.Fprintf(p.out, "\nstopped after %d steps\n", v.Steps)
 		p.bus.Publish(event.Continue{Turn: v.Turn, Approved: false})
 	case event.Notice:
-		fmt.Fprintf(p.errOut, "detent: %s: %s\n", v.Level, v.Text)
+		fmt.Fprintf(p.errOut, "detent: %s: %s\n", v.Level, termsafe.Printable(v.Text))
 	case event.TurnEnded:
 		return v.Reason, true
 	}
 	return "", false
 }
 
-// clip keeps a tool call to one line of at most n runes.
+// clip keeps a tool call to one line of at most n runes, defused.
 func clip(s string, n int) string {
 	first, _, more := strings.Cut(s, "\n")
+	first = termsafe.Printable(first)
 	r := []rune(first)
 	if len(r) > n {
 		return string(r[:n]) + "…"
