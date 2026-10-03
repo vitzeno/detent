@@ -16,7 +16,7 @@ const (
 )
 
 // ResumeMarker opens the note a resumed session leaves in the
-// transcript, and point 4 names it. Exported so both can be asserted.
+// transcript, and point 4 of the prompt names it.
 const ResumeMarker = "[session resumed]"
 
 // Environment is where the tools actually run, filled in by the harness.
@@ -127,7 +127,7 @@ Work the request:
 1. Call tools until you have actually answered it, then reply with prose and no tool calls. That ends the request.
 2. Call several tools at once when they are independent, such as reading three files. Call them one at a time when a later one depends on what an earlier one printed.
 3. Write commands complete: real paths, real pids, real search terms. Never a placeholder like <file> or $TARGET.
-4. Build on what already ran: the filesystem carries your earlier steps, so do not redo setup the transcript shows you already did. A "[session resumed]" note is the exception, and says what survived.
+4. Build on what already ran: the filesystem carries your earlier steps, so do not redo setup the transcript shows you already did. A "` + ResumeMarker + `" note is the exception, and says what survived.
 5. Never answer from an earlier request's output. It describes the past; files, processes and git state have moved on.
 6. Check the result against the request itself before you finish, not against your own idea of it. Re-read what was asked, then run, test or measure each part. A test you wrote yourself only proves your own reading.
 7. When the request sets a target, such as a score, a speed or an exact output, keep working until it is met or you have run out of real approaches. A near miss is not done, so say how far short it fell.
