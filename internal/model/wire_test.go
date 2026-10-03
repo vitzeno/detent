@@ -183,6 +183,26 @@ func TestEnvironment_SaysWhatChanges(t *testing.T) {
 	}
 }
 
+func TestSystemPrompt_SpeaksTheShellsDialect(t *testing.T) {
+	sh := systemPrompt(Environment{OS: "linux", Arch: "amd64", Dir: "/x"})
+	assert.Equal(t, sh, systemPrompt(Environment{OS: "linux", Arch: "amd64", Dir: "/x", Shell: ShellSh}),
+		"sh named or not is the same prompt")
+	assert.Contains(t, sh, "Each command runs through a fresh `sh -c` starting in that directory. ")
+	assert.Contains(t, sh, "9. Prefer a specific tool over bash when one fits.")
+	assert.Contains(t, sh, "Never through bash with echo, printf, cat, tee, sed -i or a > redirect")
+
+	ps := systemPrompt(Environment{OS: "windows", Arch: "amd64", Dir: `C:\x`, Shell: ShellPwsh})
+	assert.Contains(t, ps, "PowerShell 7")
+	assert.Contains(t, ps, "9. Prefer a specific tool over powershell when one fits.")
+	assert.Contains(t, ps, "Never through powershell with Set-Content")
+	assert.NotContains(t, ps, "bash", "every mention of bash is replaced, or the model calls a tool it has not got")
+	assert.NotContains(t, ps, "sh -c")
+
+	gb := systemPrompt(Environment{OS: "windows", Arch: "amd64", Dir: `C:\x`, Shell: ShellGitBash})
+	assert.Contains(t, gb, "Git Bash")
+	assert.Contains(t, gb, "over bash when", "Git Bash keeps the bash tool")
+}
+
 func TestLocalEnvironment_DescribesThisMachine(t *testing.T) {
 	env := LocalEnvironment()
 	assert.NotEmpty(t, env.OS)

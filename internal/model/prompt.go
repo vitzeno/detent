@@ -22,7 +22,16 @@ type Environment struct {
 	Undoable bool
 	// Timeout is how long a command may run before it is stopped, 0 when unsaid.
 	Timeout time.Duration
+	// Shell is what commands run in, named as host_shell names it. Empty is sh.
+	Shell string
 }
+
+// The shells Environment.Shell names.
+const (
+	ShellSh      = "sh"
+	ShellPwsh    = "pwsh"
+	ShellGitBash = "gitbash"
+)
 
 // LocalEnvironment describes this process's own machine: right when
 // unsandboxed, and the fallback when the harness says nothing.
@@ -52,7 +61,32 @@ func Brief(d time.Duration) string {
 	return s
 }
 
-func systemPrompt(env Environment) string { return env.preamble() + agentPrompt }
+func systemPrompt(env Environment) string { return env.preamble() + env.rules() }
+
+// pwshRules are rules 9 and 10 for PowerShell, which names its own tool and its own ways to write a file.
+var pwshRules = strings.NewReplacer(
+	"over bash when", "over powershell when",
+	"Never through bash with echo, printf, cat, tee, sed -i or a > redirect",
+	"Never through powershell with Set-Content, Add-Content, Out-File, New-Item or a > redirect",
+)
+
+func (e Environment) rules() string {
+	if e.Shell == ShellPwsh {
+		return pwshRules.Replace(agentPrompt)
+	}
+	return agentPrompt
+}
+
+// shellLine says what each command runs through.
+func (e Environment) shellLine() string {
+	switch e.Shell {
+	case ShellPwsh:
+		return "Each command runs through a fresh PowerShell 7 (`pwsh`) starting in that directory, so write PowerShell, not POSIX sh. "
+	case ShellGitBash:
+		return "Each command runs through a fresh Git Bash `bash -c` starting in that directory, on Windows. "
+	}
+	return "Each command runs through a fresh `sh -c` starting in that directory. "
+}
 
 // preamble states the facts a command depends on: whose flags, where
 // it starts, what survives, what can be undone.
@@ -78,7 +112,7 @@ func (e Environment) preamble() string {
 		b.WriteString("Everything you do for one request is checkpointed together, and the human can undo the whole request.\n")
 	}
 
-	b.WriteString("Each command runs through a fresh `sh -c` starting in that directory. " +
+	b.WriteString(e.shellLine() +
 		"A bare `cd` does not carry to the next command, but files you create or change do, and so does anything you install.\n")
 	if e.Timeout > 0 {
 		fmt.Fprintf(&b, "A command still running after %s is stopped. Run anything longer in the background and check on it.\n", Brief(e.Timeout))
