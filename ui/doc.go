@@ -12,7 +12,7 @@
 //	model_turn.go   turnBlock and callRow, what history is a list of
 //
 //	facts.go        facts in: the one place Model learns anything
-//	intents.go      intents out: the one place it asks for anything
+//	intents.go      intents out, though every publish anywhere goes through send
 //	keys.go         which pane owns a keystroke
 //	nav.go          what a keystroke moves
 //

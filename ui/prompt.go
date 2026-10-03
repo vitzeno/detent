@@ -28,7 +28,8 @@ type prompt struct {
 
 func newPrompt() prompt {
 	ta := textarea.New()
-	ta.CharLimit = 4000
+	// No limit: a cut paste would send the model less than the human did.
+	ta.CharLimit = 0
 	ta.ShowLineNumbers = false
 	// Enter submits, so a newline moves off it. shift+enter needs the
 	// Kitty protocol, the other two work everywhere.

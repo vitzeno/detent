@@ -47,6 +47,27 @@ func TestSkill_OffersOnlyWhatTheHumanMayAskFor(t *testing.T) {
 	assert.Equal(t, "show slash commands", c.Desc)
 }
 
+// Typed words are matched lowercased, so a capitalised skill must still
+// be reachable, while the model is asked for it by its real name.
+func TestSkill_ACapitalisedNameIsReachable(t *testing.T) {
+	cmds := skillCommands([]event.SkillSummary{{Name: "Release", UserInvocable: true}})
+	c, ok := lookupSlash("/Release", cmds)
+	require.True(t, ok)
+	assert.Len(t, matchSlash("/rel", cmds), 1)
+
+	bus := event.New()
+	asked, unsub := bus.Subscribe(event.Only(event.SubmitPromptKind))
+	defer unsub()
+	_, cmd := c.run(New(context.Background(), bus, SessionInfo{}), "/release")
+	run(cmd)
+	select {
+	case rec := <-asked:
+		assert.Equal(t, "Load the Release skill and follow it.", rec.Event.(event.SubmitPrompt).Text)
+	case <-time.After(2 * time.Second):
+		t.Fatal("/release published nothing")
+	}
+}
+
 func TestSkillsPage_SaysWhereEachCameFrom(t *testing.T) {
 	m := withSkills(event.New())
 	got := stripANSI(strings.Join(m.skillLines(), "\n"))

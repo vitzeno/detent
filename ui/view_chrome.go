@@ -30,7 +30,7 @@ func (m Model) sessionBar() string {
 }
 
 // contextGauge is how full the transcript budget is, which is what
-// decides when a Turn stalls to compact. Raw totals live in /usage.
+// decides when a Turn stalls to compact. Raw totals live in /status.
 func (m Model) contextGauge() string {
 	budget := m.run.ContextTokens
 	if budget <= 0 || m.context <= 0 {
@@ -192,14 +192,17 @@ func (m Model) statusBar() string {
 		status.Notice{Text: m.notice.text, Bad: m.notice.bad}, m.waiting)
 }
 
-// statusHint mirrors handleKey's owner() so the hint never falls out of
-// sync with what actually routes the keystroke.
+// statusHint mirrors handleKey: the three questions it intercepts
+// first, then owner(), so the hint names what the key will do.
 func (m Model) statusHint() string {
 	if m.mode == modeUndo {
 		return "[n/enter] container only · [y] revert your files too · [esc] cancel"
 	}
 	if m.mode == modeBound {
 		return "[y/enter] keep going · [n] stop here"
+	}
+	if m.mode == modeForget {
+		return "[y] delete · [↑/↓] read · any other key cancels"
 	}
 	switch m.owner() {
 	case ownerConfirm:

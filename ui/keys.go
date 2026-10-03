@@ -313,7 +313,7 @@ func (m Model) onEscape() (tea.Model, tea.Cmd) {
 		return m, m.send(event.CancelCommand{})
 	}
 	if m.cur != nil {
-		return m, m.send(event.Abort{Turn: m.cur.id})
+		return m.abortRunning()
 	}
 	return m, nil
 }

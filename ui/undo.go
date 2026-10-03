@@ -16,6 +16,11 @@ import (
 // runUndo handles /undo [n], where n is a request number as history
 // shows it. No argument means the last one that can be undone.
 func (m Model) runUndo(input string) (tea.Model, tea.Cmd) {
+	// The engine refuses a rollback mid-Turn, so say so before asking.
+	if m.cur != nil {
+		m.noteErr("a request is running: /abort it first")
+		return m, nil
+	}
 	b, err := m.undoTarget(input)
 	if err != "" {
 		m.noteErr(err)

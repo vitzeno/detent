@@ -128,6 +128,23 @@ func TestKeys_NewIsRefusedWhileATurnRuns(t *testing.T) {
 	assert.Empty(t, k.m.blocks)
 }
 
+func TestUndo_IsRefusedWhileATurnRuns(t *testing.T) {
+	_, evs := aTurn("slow")
+	m := feed(t, evs...)
+	next, cmd := m.runUndo("/undo")
+	got := next.(Model)
+	assert.Nil(t, cmd)
+	assert.Equal(t, modeInput, got.mode, "no page offering what the engine will refuse")
+	assert.Contains(t, got.notice.text, "abort")
+}
+
+// Every key but y cancels a delete, so the hint must not offer tab.
+func TestStatusHint_SaysWhatCancelsADelete(t *testing.T) {
+	m := feed(t)
+	m.mode = modeForget
+	assert.Equal(t, "[y] delete · [↑/↓] read · any other key cancels", m.statusHint())
+}
+
 // A Turn whose block is already gone still ends: nothing may be left
 // spinning on it.
 func TestApply_EndingAnUnknownTurnStillSettles(t *testing.T) {

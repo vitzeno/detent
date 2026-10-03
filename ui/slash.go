@@ -68,7 +68,8 @@ func slashCommands() []slashCmd {
 func skillCommands(skills []event.SkillSummary) []slashCmd {
 	var out []slashCmd
 	for _, s := range skills {
-		name := "/" + s.Name
+		// Typed words are matched lowercased, so the name is too.
+		name := "/" + strings.ToLower(s.Name)
 		if !s.UserInvocable {
 			continue
 		}
