@@ -53,7 +53,8 @@ func (WriteFile) Run(ctx context.Context, a Args) capture.Result {
 	content := a.String("content")
 	before, existed := "", false
 	if info, err := os.Stat(p); err == nil && !info.IsDir() {
-		// A FIFO or a huge file is refused, and one it cannot read is written without a diff as the command's is.
+		// A FIFO or a huge file is refused, and an unreadable one is written without a
+		// diff, as the command does.
 		switch b, err := readCapped(ctx, p, maxEditBytes); {
 		case ctx.Err() != nil:
 			return stopped("write_file", "", ctx.Err())

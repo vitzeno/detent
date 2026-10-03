@@ -15,8 +15,8 @@ import (
 // MinTruncate is the narrowest Truncate will cut to.
 const MinTruncate = 4
 
-// Split divides total by weights (<= 0 counts as 1), each share at least least.
-// A floored share leaves the pool and the rest is re-split, so shares sum to total if it covers every floor.
+// Split divides total by weights (<= 0 counts as 1), each share at least least, and
+// re-splits what a floored share leaves, so shares sum to total when it covers every floor.
 func Split(total int, weights []int, least int) []int {
 	if len(weights) == 0 {
 		return nil

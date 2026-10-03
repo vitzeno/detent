@@ -107,7 +107,7 @@ func (e Environment) shellLine() string {
 	return "Each command runs through a fresh `sh -c` starting in that directory. "
 }
 
-// pwshRules are rules 9 and 10 for PowerShell, which names its own tool and its own ways to write a file.
+// pwshRules are rules 9 and 10 for PowerShell, naming its tool and how it writes files.
 var pwshRules = strings.NewReplacer(
 	"over bash when", "over powershell when",
 	"Never through bash with echo, printf, cat, tee, sed -i or a > redirect",

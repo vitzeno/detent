@@ -14,9 +14,8 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Proves the endpoint does tool calling, using .detent.yaml like the harness:
-//
-//	DETENT_LIVE=1 go test ./internal/model/ -run TestLive -v
+// Proves the endpoint does tool calling, reading .detent.yaml like the harness.
+// Run it with DETENT_LIVE=1 go test ./internal/model/ -run TestLive -v
 func TestLive_ToolCallsRoundTrip(t *testing.T) {
 	if os.Getenv("DETENT_LIVE") == "" {
 		t.Skip("set DETENT_LIVE=1 to run against a real endpoint")

@@ -6,9 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// The property the whole safety story rests on: a hook may add to the
-// verdict and may never take away from it. It holds because Widen is
-// arithmetic, not because anything remembers to check.
+// The safety story rests on this: a hook may add to a verdict, never take from
+// it, and it holds because Widen is arithmetic, not because anything checks.
 func TestRisk_WidenNeverNarrows(t *testing.T) {
 	dangerous := Risk{Dangerous: true, Mutability: MutIrreversible, ScopeRisk: 0.9,
 		Note: "rm -rf", FromJudge: true}

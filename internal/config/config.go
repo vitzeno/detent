@@ -96,8 +96,8 @@ type Config struct {
 
 	// LogLevel is "debug", "info", "warn" or "error".
 	LogLevel string `yaml:"log_level"`
-	// LogBodies lets prompts, replies and command output into the log.
-	// Off by default: they carry secrets and bulk. A pointer so env can turn off what the file turned on.
+	// LogBodies lets prompts, replies and output into the log, off by default for
+	// secrets and bulk. A pointer, so env can turn off what the file turned on.
 	LogBodies *bool `yaml:"log_bodies"`
 	// LogDir holds one JSONL file per session, empty for logging.DefaultDir.
 	LogDir string `yaml:"log_dir"`

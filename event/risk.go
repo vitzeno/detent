@@ -28,9 +28,8 @@ type Risk struct {
 // UnknownRisk starts every chain.
 func UnknownRisk() Risk { return Risk{ScopeRisk: -1} }
 
-// Widen folds one hook's answer in, and only ever adds: Dangerous ORs,
-// ScopeRisk maxes, Mutability climbs. A hook cannot soften a confirm
-// even if it returns one saying so.
+// Widen folds one hook's answer in and only ever adds: Dangerous ORs, ScopeRisk
+// maxes, Mutability climbs. No hook can soften a confirm, whatever it returns.
 func (r Risk) Widen(o Risk) Risk {
 	r.Dangerous = r.Dangerous || o.Dangerous
 	r.FromJudge = r.FromJudge || o.FromJudge

@@ -48,7 +48,7 @@ func Find(dir, global string) ([]File, error) {
 	var found []File
 	var errs []error
 	dirs := gitroot.Dirs(dir)
-	// A project file may link only within its own repository, never to a key elsewhere on this machine.
+	// A project file may link only within its own repository, never to a key elsewhere.
 	within := dirs[len(dirs)-1]
 	// Nearest first, so the file that matters most is the last to be cut.
 	for _, d := range dirs {

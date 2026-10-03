@@ -9,9 +9,8 @@ import (
 // queueDepth: past this, a lagging subscriber drops lossy events.
 const queueDepth = 512
 
-// Bus fans Records out. Publish never blocks, so publishing from
-// inside a handler is safe. Each subscriber has its own queue, and a
-// lagging one grows it and drops only Lossy events past queueDepth.
+// Bus fans Records out. Publish never blocks, so a handler may publish, and a
+// lagging subscriber's queue grows, dropping only Lossy events past queueDepth.
 type Bus struct {
 	mu      sync.Mutex
 	subs    map[int]*sub

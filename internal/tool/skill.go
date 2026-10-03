@@ -96,7 +96,7 @@ func (s Skill) Run(ctx context.Context, a Args) capture.Result {
 			others.add(p)
 		}
 	}
-	// The listing is a courtesy, so a directory it cannot read is left out as the command leaves it.
+	// The listing is a courtesy, so an unreadable directory is left out, as the command does.
 	if err := walkFiles(ctx, guard(e.Dir), nil, other, func(string, error) {}); err != nil {
 		return stopped("skill", out, err)
 	}

@@ -7,9 +7,8 @@ import (
 	"strings"
 )
 
-// Number is the release. Set it at build time for anything else:
-//
-//	go build -ldflags "-X github.com/vitzeno/detent/version.Number=1.2.0"
+// Number is the release, set at build time for anything else with
+// go build -ldflags "-X github.com/vitzeno/detent/version.Number=1.2.0"
 var Number = "0.2.0"
 
 // String is the number plus the build's revision when known, marked

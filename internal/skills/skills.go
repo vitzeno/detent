@@ -33,7 +33,8 @@ type Skill struct {
 	Root string
 	// Project is false for a skill from the human's home directory.
 	Project bool
-	// ModelInvocable is false when only the human may ask for it, UserInvocable false when only the model may.
+	// ModelInvocable is false when only the human may ask for it, UserInvocable
+	// when only the model may.
 	ModelInvocable bool
 	UserInvocable  bool
 }
