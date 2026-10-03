@@ -183,6 +183,8 @@ In the sandbox, undo also restores the container to its snapshot, and commands y
 
 Commands run on this machine, since the sandbox needs containerd. The model's commands and yours go to PowerShell 7 (`winget install Microsoft.PowerShell`), or to Git Bash if that is all you have, and its shell tool is called `powershell` rather than `bash`. `host_shell: gitbash` prefers Git Bash, and `host_shell: sh` works anywhere a POSIX shell is on PATH
 
+Install with `go install github.com/vitzeno/detent/cmd/detent@latest`, or `make install` from a checkout, which works from PowerShell or cmd as well as Git Bash. The other make targets need Git Bash
+
 Windows support is new and has not yet been run on Windows itself
 
 ## Sandboxing (**Experimental**)
