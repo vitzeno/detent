@@ -83,7 +83,7 @@ func TestSkill_KeepsABackslashInItsPath(t *testing.T) {
 func TestSkill_FailsWhenItsFileIsGone(t *testing.T) {
 	cmd, err := Skill{Entries: []SkillEntry{{Name: "x", Dir: t.TempDir()}}}.Lower(Args{"name": "x"})
 	require.NoError(t, err)
-	_, err = shIn("", cmd)
+	_, err = shIn(t, "", cmd)
 	assert.Error(t, err)
 }
 

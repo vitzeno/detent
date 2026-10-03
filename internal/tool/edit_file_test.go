@@ -86,5 +86,5 @@ func runEdit(t *testing.T, a Args) ([]byte, error) {
 	t.Helper()
 	cmd, err := EditFile{}.Lower(a)
 	require.NoError(t, err)
-	return exec.Command("sh", "-c", cmd).CombinedOutput()
+	return exec.CommandContext(t.Context(), "sh", "-c", cmd).CombinedOutput()
 }

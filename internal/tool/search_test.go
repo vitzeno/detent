@@ -51,7 +51,7 @@ func TestReadFile_TakesAPathThatLooksLikeSomethingElse(t *testing.T) {
 		dir := tree(t, map[string]string{name: "ok\n"})
 		cmd, err := ReadFile{}.Lower(Args{"path": name})
 		require.NoError(t, err)
-		out, err := shIn(dir, cmd)
+		out, err := shIn(t, dir, cmd)
 		require.NoError(t, err, out)
 		assert.Equal(t, "ok\n", out, name)
 	}
@@ -70,7 +70,7 @@ func TestSearch_FailsWhenTheSearchDoes(t *testing.T) {
 	} {
 		cmd, err := c.tool.Lower(c.args)
 		require.NoError(t, err)
-		_, err = shIn(dir, cmd)
+		_, err = shIn(t, dir, cmd)
 		assert.Error(t, err, name)
 	}
 }
@@ -125,8 +125,8 @@ func TestSearch_QuotesHostilePatterns(t *testing.T) {
 		require.NoError(t, err)
 		find, err := FindFiles{}.Lower(Args{"pattern": p})
 		require.NoError(t, err)
-		_, _ = shIn(dir, grep)
-		_, _ = shIn(dir, find)
+		_, _ = shIn(t, dir, grep)
+		_, _ = shIn(t, dir, find)
 	}
 	_, err := os.Stat(filepath.Join(dir, "pwned"))
 	assert.True(t, os.IsNotExist(err))
@@ -171,13 +171,14 @@ func run(t *testing.T, tl Tool, a Args) string {
 	t.Helper()
 	cmd, err := tl.Lower(a)
 	require.NoError(t, err)
-	out, err := shIn("", cmd)
+	out, err := shIn(t, "", cmd)
 	require.NoError(t, err, out)
 	return out
 }
 
-func shIn(dir, cmd string) (string, error) {
-	c := exec.Command("sh", "-c", cmd)
+func shIn(t *testing.T, dir, cmd string) (string, error) {
+	t.Helper()
+	c := exec.CommandContext(t.Context(), "sh", "-c", cmd)
 	c.Dir = dir
 	out, err := c.Output()
 	return string(out), err

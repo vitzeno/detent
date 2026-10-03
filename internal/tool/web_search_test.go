@@ -54,7 +54,7 @@ func TestWebSearch_HostileQueriesCannotEscapeTheShell(t *testing.T) {
 
 			// true, not curl: the shell has finished expanding by the
 			// time it runs anything, so the network adds nothing.
-			c := exec.Command("sh", "-c", strings.Replace(cmd, "curl", "true", 1))
+			c := exec.CommandContext(t.Context(), "sh", "-c", strings.Replace(cmd, "curl", "true", 1))
 			c.Dir = dir
 			_, _ = c.CombinedOutput()
 

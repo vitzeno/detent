@@ -115,7 +115,7 @@ func TestPrepare_QuotesHostilePaths(t *testing.T) {
 			dir := t.TempDir()
 			c, err := r.Prepare(call.tool, call.args)
 			require.NoError(t, err)
-			_, _ = shIn(dir, c.Command)
+			_, _ = shIn(t, dir, c.Command)
 			_, err = os.Stat(filepath.Join(dir, "pwned"))
 			assert.True(t, os.IsNotExist(err), "%s ran part of %q", call.tool, p)
 		}

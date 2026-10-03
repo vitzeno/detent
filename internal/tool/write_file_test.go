@@ -37,7 +37,7 @@ func TestWriteFile_RoundTripsThroughARealShell(t *testing.T) {
 			cmd, err := WriteFile{}.Lower(Args{"path": path, "content": body})
 			require.NoError(t, err)
 
-			out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
+			out, err := exec.CommandContext(t.Context(), "sh", "-c", cmd).CombinedOutput()
 			require.NoError(t, err, "shell said: %s", out)
 
 			got, err := os.ReadFile(path)
@@ -55,7 +55,7 @@ func TestWriteFile_QuotesHostilePaths(t *testing.T) {
 		cmd, err := WriteFile{}.Lower(Args{"path": path, "content": "ok\n"})
 		require.NoError(t, err)
 
-		out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
+		out, err := exec.CommandContext(t.Context(), "sh", "-c", cmd).CombinedOutput()
 		require.NoError(t, err, "shell said: %s", out)
 
 		got, err := os.ReadFile(path)
@@ -82,7 +82,7 @@ func TestWriteFile_ShowsWhatChanged(t *testing.T) {
 	write := func(body string) (string, error) {
 		cmd, err := WriteFile{}.Lower(Args{"path": path, "content": body})
 		require.NoError(t, err)
-		out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
+		out, err := exec.CommandContext(t.Context(), "sh", "-c", cmd).CombinedOutput()
 		return string(out), err
 	}
 
@@ -97,7 +97,7 @@ func TestWriteFile_ShowsWhatChanged(t *testing.T) {
 	for _, body := range []string{"x\n", "x"} {
 		cmd, err := WriteFile{}.Lower(Args{"path": filepath.Join(dir, "missing", "f.txt"), "content": body})
 		require.NoError(t, err)
-		_, err = exec.Command("sh", "-c", cmd).CombinedOutput()
+		_, err = exec.CommandContext(t.Context(), "sh", "-c", cmd).CombinedOutput()
 		assert.Error(t, err, "a write that failed must not exit 0")
 	}
 }
@@ -107,7 +107,7 @@ func TestWriteFile_IgnoresAnInheritedExisted(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "new.txt")
 	cmd, err := WriteFile{}.Lower(Args{"path": path, "content": "one\n"})
 	require.NoError(t, err)
-	c := exec.Command("sh", "-c", cmd)
+	c := exec.CommandContext(t.Context(), "sh", "-c", cmd)
 	c.Env = append(os.Environ(), "existed=1")
 	out, err := c.CombinedOutput()
 	require.NoError(t, err, string(out))
