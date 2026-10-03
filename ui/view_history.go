@@ -231,7 +231,7 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 	// nothing ran and there is no exit code to report.
 	if r.prose != "" {
 		note := ""
-		if k := r.kind(); k != "" && k != "text" {
+		if k := r.kind(); k != "" && k != event.RendersText {
 			note = styleFaint.Render("  " + status.KindLabel(k))
 		}
 		return []string{fmt.Sprintf("%s%s %s%s", mark, styleGoal.Render("❯"),
