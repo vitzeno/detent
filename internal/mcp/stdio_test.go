@@ -124,7 +124,7 @@ var fakeServer = sync.OnceValues(func() (string, error) {
 	bin := filepath.Join(buildDir, "fakeserver")
 	out, err := exec.Command("go", "build", "-o", bin, "./testdata/fakeserver").CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("building testdata/fakeserver: %v\n%s", err, out)
+		return "", fmt.Errorf("building testdata/fakeserver: %w\n%s", err, out)
 	}
 	return bin, nil
 })

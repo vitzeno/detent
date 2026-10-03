@@ -69,7 +69,7 @@ func TestHTTP_HeadersStayWithTheirOrigin(t *testing.T) {
 		}
 		resp, err := client.Do(req)
 		require.NoError(t, err)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 
 	get("")

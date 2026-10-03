@@ -190,10 +190,10 @@ func (s *Saved) config(redirect string) *oauth2.Config {
 // freePort picks the redirect's port now, since the SDK takes the URI up
 // front. Another process may take it first, and PKCE makes a code it steals useless.
 func freePort() (int, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := new(net.ListenConfig).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		return 0, err
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }() // only its port was wanted
 	return ln.Addr().(*net.TCPAddr).Port, nil
 }

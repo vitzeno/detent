@@ -54,7 +54,7 @@ func (t Tokens) Load(server, resource string) (*Saved, error) {
 	info, err := os.Stat(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return nil, nil
+		return nil, nil //nolint:nilnil // no token yet means signing in, not failing
 	case err != nil:
 		return nil, fmt.Errorf("mcp: %s token: %w", server, err)
 	}
@@ -71,7 +71,7 @@ func (t Tokens) Load(server, resource string) (*Saved, error) {
 		return nil, fmt.Errorf("mcp: %s token: %w", server, err)
 	}
 	if s.Resource != canonical(resource) {
-		return nil, nil
+		return nil, nil //nolint:nilnil // a token for another URL is no token for this one
 	}
 	return &s, nil
 }
@@ -88,7 +88,7 @@ func (t Tokens) Save(server, resource string, s *Saved) error {
 	}
 	next := *s
 	next.Resource = canonical(resource)
-	raw, err := json.MarshalIndent(next, "", "  ")
+	raw, err := json.MarshalIndent(next, "", "  ") //nolint:gosec // the client secret is meant to be kept, in a 0600 file
 	if err != nil {
 		return fmt.Errorf("mcp: %s token: %w", server, err)
 	}
@@ -97,9 +97,9 @@ func (t Tokens) Save(server, resource string, s *Saved) error {
 	if err != nil {
 		return fmt.Errorf("mcp: %s token: %w", server, err)
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }() // gone already once renamed
 	if _, err := tmp.Write(raw); err != nil {
-		tmp.Close()
+		_ = tmp.Close() // the write error is the one worth reporting
 		return fmt.Errorf("mcp: %s token: %w", server, err)
 	}
 	if err := tmp.Close(); err != nil {

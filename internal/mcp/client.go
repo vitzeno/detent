@@ -101,7 +101,8 @@ type Stdio struct {
 
 // Transport is separate from Connect so a test can supply its own.
 func (s Stdio) Transport() sdk.Transport {
-	cmd := exec.Command(s.Command, s.Args...)
+	// Transport takes no ctx: the session's Close ends the process group instead.
+	cmd := exec.Command(s.Command, s.Args...) //nolint:noctx // see above
 	// Never nil, which exec reads as the whole of detent's environment.
 	cmd.Env = append([]string{}, s.Env...)
 	st := &stdioTransport{stderr: &tail{max: stderrTail}}

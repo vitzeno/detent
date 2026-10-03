@@ -156,7 +156,7 @@ func (s *SignIns) fetcher(server string, port int, fixed bool) auth.Authorizatio
 		// Loopback only: served on every interface, the redirect hands
 		// the code to the network.
 		addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
-		ln, err := net.Listen("tcp", addr)
+		ln, err := new(net.ListenConfig).Listen(ctx, "tcp", addr)
 		switch {
 		case err != nil && fixed:
 			return nil, fmt.Errorf("listening for the sign-in: %w; free port %d or change callbackPort", err, port)
@@ -171,7 +171,7 @@ func (s *SignIns) fetcher(server string, port int, fixed bool) auth.Authorizatio
 		back := make(chan callback, 1)
 		srv := &http.Server{Handler: s.callback(server, addr, want, back), ReadHeaderTimeout: 5 * time.Second}
 		go func() { _ = srv.Serve(ln) }()
-		defer srv.Close()
+		defer func() { _ = srv.Close() }() // the code has arrived or never will
 
 		s.waiting(server, args.URL)
 		defer s.waiting(server, "")

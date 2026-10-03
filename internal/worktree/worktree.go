@@ -343,7 +343,7 @@ func copyFile(from, to string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(to, b, 0o600)
+	return os.WriteFile(to, b, 0o600) //nolint:gosec // both paths are git's index and our own temp dir
 }
 
 // keepEnv is the git environment that says how git is installed rather

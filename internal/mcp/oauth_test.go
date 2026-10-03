@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -249,10 +250,10 @@ func TestSignIn_RefusesAStrayRedirect(t *testing.T) {
 			back := u.Query().Get("redirect_uri") + "?code=forged&state=wrong"
 			if resp, err := http.Get(back); err == nil {
 				stray <- resp.StatusCode
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 			if resp, err := http.Get(link); err == nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 		}
 	}()
@@ -278,7 +279,7 @@ func TestSignIn_HonoursClaudeCodesOAuthFields(t *testing.T) {
 
 	redirect, err := url.Parse(f.redirect)
 	require.NoError(t, err)
-	assert.Equal(t, fmt.Sprint(port), redirect.Port())
+	assert.Equal(t, strconv.Itoa(port), redirect.Port())
 	// A set: the SDK merges scopes with any granted before, in no order.
 	assert.ElementsMatch(t, []string{"read", "write"}, strings.Fields(f.scope))
 }
@@ -303,7 +304,7 @@ func TestSignIns_OpensOnlyAWaitingLink(t *testing.T) {
 	r := rig(t, Tokens{Dir: t.TempDir()})
 	opened := make(chan string, 1)
 	r.signins.open = func(link string) error { opened <- link; return nil }
-	assert.Error(t, r.signins.Open("notion"), "nothing is waiting yet")
+	require.Error(t, r.signins.Open("notion"), "nothing is waiting yet")
 
 	waiting, stop := r.bus.Subscribe(event.Only(event.AuthorizationWaitingKind))
 	defer stop()
@@ -513,7 +514,7 @@ func browse(t *testing.T, bus *event.Bus) {
 		for rec := range waiting {
 			if resp, err := http.Get(rec.Event.(event.AuthorizationWaiting).URL); err == nil {
 				_, _ = io.Copy(io.Discard, resp.Body)
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 		}
 	}()

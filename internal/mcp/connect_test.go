@@ -212,7 +212,7 @@ func TestMain(m *testing.M) {
 	}
 	buildDir = dir
 	code := m.Run()
-	os.RemoveAll(dir)
+	_ = os.RemoveAll(dir)
 	os.Exit(code)
 }
 

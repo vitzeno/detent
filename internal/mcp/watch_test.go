@@ -83,11 +83,11 @@ func TestRedialer_SignsInAfresh(t *testing.T) {
 		assert.NotContains(t, name, "notion__ping_", "a stale copy is still offered")
 	}
 
-	assert.ErrorContains(t, redial("nobody"), "no MCP server is called nobody")
-	assert.ErrorContains(t, redial("local"), "launched, not reached")
+	require.ErrorContains(t, redial("nobody"), "no MCP server is called nobody")
+	require.ErrorContains(t, redial("local"), "launched, not reached")
 
 	require.True(t, r.signins.claim("notion"))
-	assert.ErrorContains(t, redial("notion"), "already", "two dials of one server raced")
+	require.ErrorContains(t, redial("notion"), "already", "two dials of one server raced")
 	r.signins.release("notion")
 }
 

@@ -116,7 +116,7 @@ func TestServer_ToolsStopsOnACursorThatNeverEnds(t *testing.T) {
 	for name, next := range map[string]func(cursor string) string{
 		"a cycle":    func(c string) string { return map[string]string{"": "A", "A": "B", "B": "A"}[c] },
 		"no end":     func(c string) string { return c + "x" },
-		"one repeat": func(c string) string { return "A" },
+		"one repeat": func(string) string { return "A" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			srv := sdk.NewServer(&sdk.Implementation{Name: "loop", Version: "1"},

@@ -110,8 +110,14 @@ func TestDecide_RefusesAnOpenRecord(t *testing.T) {
 }
 
 func TestReader(t *testing.T) {
-	for in, want := range map[string]bool{"y\n": true, "YES\n": true, " y \n": true, "n\n": false, "\n": false, "": false, "yy\n": false} {
-		assert.Equal(t, want, Reader(strings.NewReader(in))(), "%q", in)
+	for _, c := range []struct {
+		in   string
+		want bool
+	}{
+		{"y\n", true}, {"YES\n", true}, {" y \n", true},
+		{"n\n", false}, {"\n", false}, {"", false}, {"yy\n", false},
+	} {
+		assert.Equal(t, c.want, Reader(strings.NewReader(c.in))(), "%q", c.in)
 	}
 }
 
