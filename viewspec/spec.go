@@ -3,6 +3,11 @@
 // standard library and nothing else.
 package viewspec
 
+import (
+	"maps"
+	"slices"
+)
+
 // Version is the spec format this package understands.
 const Version = 1
 
@@ -99,6 +104,39 @@ type Sort struct {
 type Accent struct {
 	Field string          `json:"field"`
 	Map   map[string]Role `json:"map"`
+}
+
+// Clone is a deep copy, so editing it cannot reach a spec it was copied from.
+func (s Spec) Clone() Spec {
+	s.Parse.Fields = slices.Clone(s.Parse.Fields)
+	s.Blocks = cloneBlocks(s.Blocks)
+	return s
+}
+
+func cloneBlocks(in []Block) []Block {
+	if in == nil {
+		return nil
+	}
+	out := make([]Block, len(in))
+	for i, b := range in {
+		b.Columns = slices.Clone(b.Columns)
+		if b.Sort != nil {
+			sort := *b.Sort
+			b.Sort = &sort
+		}
+		if b.Accent != nil {
+			b.Accent = &Accent{Field: b.Accent.Field, Map: maps.Clone(b.Accent.Map)}
+		}
+		if b.Panes != nil {
+			panes := make([]Pane, len(b.Panes))
+			for j, p := range b.Panes {
+				panes[j] = Pane{Weight: p.Weight, Blocks: cloneBlocks(p.Blocks)}
+			}
+			b.Panes = panes
+		}
+		out[i] = b
+	}
+	return out
 }
 
 // title returns what a column is headed by, defaulting to its field.

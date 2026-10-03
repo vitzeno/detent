@@ -81,6 +81,29 @@ func TestHeader_RepeatedTitlesKeepEveryColumn(t *testing.T) {
 	}
 }
 
+func TestSpec_CloneSharesNothing(t *testing.T) {
+	orig := viewspec.Spec{Parse: viewspec.Parse{Kind: "columns", Fields: []string{"a"}},
+		Blocks: []viewspec.Block{{Kind: "row", Panes: []viewspec.Pane{
+			{Blocks: []viewspec.Block{{Kind: "table", Columns: cols("a"),
+				Sort:   &viewspec.Sort{Field: "a"},
+				Accent: &viewspec.Accent{Field: "a", Map: map[string]viewspec.Role{"x": viewspec.RoleSafe}}}}},
+		}}}}
+	c := orig.Clone()
+	c.Parse.Fields[0] = "z"
+	inner := &c.Blocks[0].Panes[0].Blocks[0]
+	inner.Columns[0].Field = "z"
+	inner.Sort.Field = "z"
+	inner.Accent.Map["x"] = viewspec.RoleDanger
+	c.Blocks[0].Panes[0].Weight = 9
+
+	assert.Equal(t, "a", orig.Parse.Fields[0])
+	was := orig.Blocks[0].Panes[0]
+	assert.Equal(t, 0, was.Weight)
+	assert.Equal(t, "a", was.Blocks[0].Columns[0].Field)
+	assert.Equal(t, "a", was.Blocks[0].Sort.Field)
+	assert.Equal(t, viewspec.RoleSafe, was.Blocks[0].Accent.Map["x"])
+}
+
 func TestCompile_NamesTheBlockThatFailed(t *testing.T) {
 	_, err := viewspec.Compile(viewspec.Spec{Parse: colsParse(), Blocks: []viewspec.Block{
 		{Kind: "list", Field: "a"}, {Kind: "list", Field: "b"}, {Kind: "nope"}}})
