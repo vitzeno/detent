@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/capture"
 )
 
 // Stored sessions hold this text, so it is pinned exactly rather than
@@ -60,9 +61,10 @@ func TestTranscribe_ReadsAsATerminalDoes(t *testing.T) {
 // One loud command must not crowd out the transcript, which is resent
 // whole every Step.
 func TestTranscribe_BoundsOneLoudCommand(t *testing.T) {
-	got := transcribe("yes", "host", event.Result{Stdout: strings.Repeat("y\n", 8000)})
-	assert.LessOrEqual(t, len(got), maxNoteBytes+len("\n…[truncated]"))
-	assert.True(t, strings.HasSuffix(got, "…[truncated]"))
+	got := transcribe("yes", "host", event.Result{Stdout: strings.Repeat("y\n", 8000), Stderr: "the error\n"})
+	assert.LessOrEqual(t, len(got), capture.MaxResultBytes+len("\n…[truncated]…\n"))
+	assert.Contains(t, got, "…[truncated]…")
+	assert.True(t, strings.HasSuffix(got, "the error"), "the tail, where a failure usually is, survives the cut")
 	assert.Contains(t, got, "[human ran a command on the host]", "the lead line survives the cut")
 }
 

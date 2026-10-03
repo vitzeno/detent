@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/capture"
 	"github.com/vitzeno/detent/internal/model"
 )
 
@@ -15,9 +16,8 @@ const (
 	DefaultContextTokens = 200_000
 	// BytesPerToken is the rough ratio a token budget is measured in.
 	BytesPerToken = 4
-	// MaxResultBytes bounds one result, so one loud command cannot
-	// crowd out the rest of the transcript.
-	MaxResultBytes = 4 * 1024
+	// MaxResultBytes bounds one result, the same bound a human's Shell gets.
+	MaxResultBytes = capture.MaxResultBytes
 	// minCompactShare is the fraction of the budget a cut must free to
 	// be worth a summariser round trip when it cannot reach budget.
 	minCompactShare = 10
