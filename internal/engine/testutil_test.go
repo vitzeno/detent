@@ -306,3 +306,15 @@ func answered(t *testing.T, e *Engine) {
 		}
 	}
 }
+
+// compact drops whole Steps off the front until the transcript fits.
+// Whole, because half a Step is a transcript no endpoint accepts.
+func (t *transcript) compact(ctx context.Context, budgetTokens int, s Summarizer) (dropped int, note string) {
+	cut := t.cutFor(budgetTokens)
+	if cut == 0 {
+		return 0, ""
+	}
+	note = summarise(ctx, s, t.msgs[:cut])
+	t.fold(cut, note)
+	return cut, note
+}

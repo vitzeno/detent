@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/capture"
 	"github.com/vitzeno/detent/internal/model"
@@ -53,6 +55,57 @@ const (
 type start struct {
 	at, n  int
 	prompt string
+}
+
+// appended mutates the transcript and publishes what went in, so a
+// replay puts the same messages back rather than reformatting them.
+func (e *Engine) appended(turn, step uuid.UUID, fn func() []event.Message) {
+	var added []event.Message
+	e.trLock(func() { added = fn() })
+	if len(added) > 0 {
+		e.bus.Publish(event.Appended{Turn: turn, Step: step, Messages: added})
+	}
+}
+
+// compact summarises outside the transcript's lock, since that is a model
+// call. Only this goroutine mutates the transcript mid-Turn, so the cut holds.
+func (e *Engine) compact(ctx context.Context, t *turnState) {
+	if !e.wouldCompact() {
+		return
+	}
+	var cut int
+	var gone []event.Message
+	e.trLock(func() {
+		cut = e.tr.cutFor(e.budget())
+		gone = append(gone, e.tr.msgs[:cut]...)
+	})
+	if cut == 0 {
+		return
+	}
+	e.bus.Publish(event.Notice{Level: "info", Text: "compacting the transcript"})
+	note := summarise(ctx, e.summarizer, gone)
+	e.trLock(func() { e.tr.fold(cut, note) })
+	e.bus.Publish(event.Compacted{Turn: t.id, Dropped: cut, Note: note})
+}
+
+// budget is the transcript ceiling. New sets a default and the option
+// ignores anything below one, so it is always positive.
+func (e *Engine) budget() int { return e.contextTokens }
+
+// wouldCompact reports whether the transcript is over budget, so the
+// notice is not published for a compact that returns immediately.
+func (e *Engine) wouldCompact() bool {
+	over := false
+	e.trLock(func() { over = e.tr.bytes() > e.budget()*BytesPerToken })
+	return over
+}
+
+// trLock runs fn holding the transcript lock. Never used around
+// anything blocking: a model call takes seconds.
+func (e *Engine) trLock(fn func()) {
+	e.trMu.Lock()
+	defer e.trMu.Unlock()
+	fn()
 }
 
 // step appends one Step atomically, filling any missing answer, since
@@ -150,18 +203,6 @@ func msgBytes(msgs []event.Message) int {
 		}
 	}
 	return n
-}
-
-// compact drops whole Steps off the front until the transcript fits.
-// Whole, because half a Step is a transcript no endpoint accepts.
-func (t *transcript) compact(ctx context.Context, budgetTokens int, s Summarizer) (dropped int, note string) {
-	cut := t.cutFor(budgetTokens)
-	if cut == 0 {
-		return 0, ""
-	}
-	note = summarise(ctx, s, t.msgs[:cut])
-	t.fold(cut, note)
-	return cut, note
 }
 
 // cutFor is how many messages compaction would fold, zero for none.

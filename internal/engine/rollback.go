@@ -76,3 +76,9 @@ func (e *Engine) revertFiles(ctx context.Context, t *turnState) {
 func (e *Engine) worktree() (Worktreer, bool) {
 	return e.worktreer, e.worktreer != nil
 }
+
+func (e *Engine) snapshotter() (Snapshotter, bool) {
+	r, _ := e.runners.Select(event.UnknownRisk())
+	s, ok := r.(Snapshotter)
+	return s, ok
+}
