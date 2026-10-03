@@ -67,8 +67,7 @@ func shape(t *testing.T, ty reflect.Type, path string) []string {
 	switch ty.Kind() {
 	case reflect.Struct:
 		var out []string
-		for i := range ty.NumField() {
-			f := ty.Field(i)
+		for f := range ty.Fields() {
 			if !f.IsExported() {
 				continue
 			}
