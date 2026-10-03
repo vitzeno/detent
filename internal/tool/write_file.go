@@ -1,14 +1,20 @@
 package tool
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/capture"
 )
 
 // WriteFile writes a whole file. edit_file changes part of one.
 type WriteFile struct{}
+
+var _ Native = WriteFile{}
 
 func (WriteFile) Name() string { return "write_file" }
 
@@ -25,9 +31,9 @@ func (WriteFile) Describe() Spec {
 }
 
 func (WriteFile) Lower(a Args) (string, error) {
-	path := a.String("path")
-	if path == "" {
-		return "", errors.New("path must not be empty")
+	path, err := writeArgs(a)
+	if err != nil {
+		return "", err
 	}
 	// A file that was there is shown as a diff. A new one is only counted:
 	// the model has just written every line of it.
@@ -35,4 +41,39 @@ func (WriteFile) Lower(a Args) (string, error) {
 	return fmt.Sprintf("before=$(mktemp); existed=; [ -f %[1]s ] && cp -- %[1]s \"$before\" && existed=1\n%[2]s\n"+
 		`rc=$?; if [ $rc -eq 0 ] && [ -z "$existed" ]; then %[3]s; rm -- "$before"; exit 0; fi; `+"%[4]s",
 		quote(path), heredoc(path, a.String("content")), created, showDiff("$before", path)), nil
+}
+
+// Run writes the file here and reports it as the command does.
+func (WriteFile) Run(_ context.Context, a Args) capture.Result {
+	p, err := writeArgs(a)
+	if err != nil {
+		return failed(2, "write_file: %v", err)
+	}
+	content := a.String("content")
+	before, existed := "", false
+	if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
+		b, err := os.ReadFile(p)
+		before, existed = string(b), err == nil
+	}
+	if err := writeAsShell(p, content); err != nil {
+		return failed(2, "write_file: %v", err) // dash's status for a redirection it cannot open
+	}
+	if !existed {
+		return capture.Result{Stdout: fmt.Sprintf("created %s, %d lines\n", p, strings.Count(content, "\n"))}
+	}
+	return capture.Result{Stdout: changeShown(p, before, content)}
+}
+
+func writeArgs(a Args) (string, error) {
+	p := a.String("path")
+	if p == "" {
+		return "", errors.New("path must not be empty")
+	}
+	return p, nil
+}
+
+// writeAsShell writes as a shell redirect does: truncating in place, or
+// creating with 0666 less the umask.
+func writeAsShell(p, s string) error {
+	return os.WriteFile(p, []byte(s), 0o666) //nolint:gosec // the mode a command's own redirect would give it
 }

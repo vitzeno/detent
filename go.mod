@@ -7,6 +7,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.9
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
+	github.com/aymanbagabas/go-udiff v0.4.1
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/containerd/containerd v1.7.36
 	github.com/google/uuid v1.6.0

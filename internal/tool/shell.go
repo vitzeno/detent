@@ -73,8 +73,14 @@ END {
 // then removes the copy and exits with rc, which the caller set from the change.
 func showDiff(before, file string) string {
 	return fmt.Sprintf(`[ $rc -eq 0 ] && diff -u -L %[2]s -L %[2]s "%[1]s" %[2]s | %[3]s; rm -- "%[1]s"; exit $rc`,
-		before, path(file), window(1, 400, "[%d more lines of diff]", "[no change]"))
+		before, path(file), window(1, diffWindow, diffMore, diffEmpty))
 }
+
+const (
+	diffWindow = 400
+	diffMore   = "[%d more lines of diff]"
+	diffEmpty  = "[no change]"
+)
 
 // path guards a path awk or find would read as something else, since
 // macOS's awk takes no "--": a flag, a find operator or an awk assignment.
