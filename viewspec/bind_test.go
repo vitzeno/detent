@@ -15,10 +15,11 @@ import (
 // binding fails the whole view rather than one block.
 func TestBind_UnresolvedBindingDropsTheView(t *testing.T) {
 	tests := []struct {
-		name  string
-		spec  viewspec.Spec
-		field string
-		at    string // "compile" or "bind"
+		name   string
+		spec   viewspec.Spec
+		output string // goTest when empty
+		field  string
+		at     string // "compile" or "bind"
 	}{
 		{
 			name: "unknown block kind", at: "compile",
@@ -72,16 +73,16 @@ func TestBind_UnresolvedBindingDropsTheView(t *testing.T) {
 				{Kind: "list", Field: "pkg", OnEnter: "go test {id}"}}},
 		},
 		{
-			name: "a row widget with no rows", at: "bind",
+			name: "a row widget with no rows", at: "bind", output: "nothing matches this\n",
 			spec: viewspec.Spec{Parse: linesParse(),
 				Blocks: []viewspec.Block{{Kind: "list", Field: "pkg"}}},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			output := goTest
-			if strings.Contains(tc.name, "no rows") {
-				output = "nothing matches this\n"
+			output := tc.output
+			if output == "" {
+				output = goTest
 			}
 			c, err := viewspec.Compile(tc.spec)
 			if tc.at == "compile" {

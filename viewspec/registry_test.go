@@ -75,7 +75,7 @@ func TestRegistry_EveryBuiltinDescribesItself(t *testing.T) {
 
 // A kind that cannot be drawn without a field says so, and the slot count
 // decides the block's shape: one fills Field, more fill Columns.
-func TestSchema_KindsStateWhatTheyCannotBeDrawnWithout(t *testing.T) {
+func TestDescribe_KindsStateWhatTheyCannotBeDrawnWithout(t *testing.T) {
 	reg := viewspec.Standard()
 	for kind, want := range map[string][]string{
 		"list":      {"field"},
