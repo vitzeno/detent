@@ -28,16 +28,22 @@ registering one more `Assessor`.
 make build         # go build -o bin/detent ./cmd/detent
 make install       # build, then copy it to go env GOBIN (or GOPATH/bin)
 make run           # launch the TUI (go run, no build step)
-make test          # go test ./...
+make test          # go test -race ./..., as CI runs it
+make test-fast     # go test ./..., no race detector
 make vet           # go vet ./...
-make fmt           # gofmt -w .
+make lint          # golangci-lint run, configured in .golangci.yml
+make vuln          # govulncheck ./...
+make fmt           # gofmt -w over tracked files
 make fmt-check     # fail if anything isn't gofmt'd
+make tidy-check    # fail if go mod tidy would change anything
 ```
 
 Run one request headlessly: `./bin/detent -prompt "..."`, with
 `-unattended` to decline every flagged Call instead of asking, or
 `-approve-all` to run them all, for a throwaway container like a
-benchmark's. Headless runs do not load MCP configuration or connect to MCP
+benchmark's. Both need `-prompt`. A headless run exits 0 when the request
+is done, 1 on an error, 3 at the step bound, 4 when stopped and 130 when
+aborted. Headless runs do not load MCP configuration or connect to MCP
 servers. MCP is available in the TUI.
 `-sessions` lists what can be resumed and `-resume <id>` (or
 `-resume last`) continues one.
@@ -54,8 +60,9 @@ CI (`.github/workflows/ci.yaml`) runs `go test -race -cover` on ubuntu
 and macos, gofmt/vet/`go mod tidy`, and a five-target cross-build with
 `CGO_ENABLED=0`. Windows is cross-built but never tested, since every
 command goes through `sh -c` and the sandbox talks to containerd over
-a unix socket. Keeping `CGO_ENABLED=0` green is what makes a pure-Go
-SQLite driver the only option when persistence lands.
+a unix socket. Keeping `CGO_ENABLED=0` green is why the store uses
+`modernc.org/sqlite`, a pure-Go driver. `govulncheck` is not in CI yet:
+three containerd 1.7 advisories have no fix short of containerd v2.
 
 ## Configuration
 
@@ -66,8 +73,11 @@ key. Relevant env vars: `DETENT_BASE_URL`, `DETENT_MODEL`,
 `DETENT_API_KEY` (falls back to `OPENROUTER_API_KEY` then
 `OPENAI_API_KEY`), `TYPESAFE_API_KEY` (enables the Jev hook),
 `DETENT_CONTEXT_TOKENS`, `DETENT_THEME` (one of `ui/theme.Themes`'
-names). A `.env` in the repo root is also loaded at startup, and real
-env vars always win over it.
+names). The full list is `envKeys` in `internal/config/resolve.go`.
+Boolean variables take 1/0, true/false, yes/no or on/off. A `.env` in
+the working directory is also loaded at startup, and real env vars
+always win over it. An unknown key in the config file is an error that
+names its line, so a typo cannot silently do nothing.
 
 At startup `main.go` pings the endpoint's `/models` and fails fast
 with a clear message. Don't remove it: it's the difference between a
@@ -178,7 +188,7 @@ which is a whole number of Steps by construction.
 
 ## Architecture
 
-**Everything is an event.** 29 facts and 17 intents are the entire
+**Everything is an event.** 30 facts and 17 intents are the entire
 interface between components. Facts are past tense, intents are
 imperative, and either may come from anyone: the engine publishes most
 facts, but a subscriber answering a question publishes one too. An extension
@@ -195,7 +205,7 @@ subscribers:
 | `logging` | the JSONL stream | nothing else notices |
 | `internal/store` | the SQLite log, answers `ListSessions` | resume stops, nothing else |
 | `internal/judge` | scores a finished Call, may `RequestStop` | rows lose their verdict |
-| `internal/viewgen` | composes the view for an output | rows fall back to text |
+| `internal/viewgen` | composes the view for an output, and draws shipped and saved ones with no key | rows fall back to text |
 | `internal/mcp` | answers `ListServers`, signs in on `AuthorizeServer` | `/mcp` draws nothing, no server signs in |
 | `internal/forget` | answers `DeleteSession` | `/delete` does nothing |
 | `internal/humanshell` | runs `RunCommand`, the human's own | shift+tab stops working |
@@ -231,10 +241,10 @@ forget      →  event (the store and sandbox arrive as arguments)
 humanshell  →  event, capture (the runner arrives as an argument)
 tool        →  event
 model       →  event
-event       →  the standard library, plus viewspec
+event       →  the standard library, plus viewspec and google/uuid
 viewspec    →  the standard library, nothing else
 views       →  viewspec
-logging     →  the standard library
+logging     →  the standard library, plus event
 config      →  engine, model, classify, sandbox (for their defaults only)
 host        →  capture
 sandbox     →  capture (never host or engine)
@@ -256,9 +266,12 @@ adding a fat dependency fails with the transitive import named.
   its own queue: a lagging one grows it and drops only events that say
   they are `Lossy`, which is `OutputChunk` and nothing else. A dropped
   live line costs a redraw. A dropped `CallEnded` is a row that never
-  finishes. `Record` carries a gapless `Ordinal`, so a subscriber
-  that filters or drops can be told apart from one that lost
-  something. Ids are `uuid.UUID` directly, with no
+  finishes. `Record` carries a gapless `Ordinal`, and every subscriber
+  receives records in ordinal order, so live order and replay order
+  agree and a subscriber that filters or drops can be told apart from
+  one that lost something. `Bus.Handle` subscribes a function rather
+  than a channel, and `Settle` then waits until it has returned, which
+  is what a test needs to mean "processed" rather than "received". Ids are `uuid.UUID` directly, with no
   wrapper type: `google/uuid`'s v7 is monotonic within a millisecond
   as well as across them, which matters because a Step mints all its
   Call ids inside one.
@@ -272,8 +285,13 @@ adding a fat dependency fails with the transitive import named.
   that publishes the moment it returns cannot lose the intent.
   `Abort` is handled in `dispatch` rather than queued to the Turn: a
   blocked Call never reaches a boundary, and the inbox is only drained
-  at one. Read-only Calls run concurrently. Anything else runs
-  serially in the order asked. Every Call is bounded by `commandTimeout`
+  at one. Intents name their Turn and one naming another is dropped,
+  so a late verdict cannot stop the next request. Contiguous Calls
+  whose tool declares them read-only run concurrently, and anything
+  else runs alone in the order asked: parallelism comes from the tool,
+  never from a hook, so a judge saying "reads only" cannot make `bash`
+  parallel. The repeat check counts runs per Turn that printed the
+  same thing, so rerunning tests after a fix is never refused. Every Call is bounded by `commandTimeout`
   (10m, `command_timeout`), host and sandbox alike, and one stopped by
   it says how long it ran. A declined Call returns a result saying
   so and its siblings still run: **declining stops a Call, not a
@@ -282,7 +300,9 @@ adding a fat dependency fails with the transitive import named.
   Turn that ran anything not read-only is asked once to check its work
   against the request before it ends (`finish_check`). `MaxSteps` defaults to 100 and is soft: hitting it publishes
   `BoundReached` and waits, because a human is watching and stopping
-  dead is worse than asking.
+  dead is worse than asking. Undo (`RolledBack`) and reset
+  (`SessionReset`) are facts, so a resumed session replays them rather
+  than bringing back what the human threw away.
 
 - **`internal/tool`**: the closed set a model may call, each lowered
   to one shell command so the sandbox stays the only executor. A Tool
@@ -298,7 +318,8 @@ adding a fat dependency fails with the transitive import named.
   asserting on it. `web_search` is what proves the rule holds even for
   the network: it lowers to one curl against a **keyless** engine, so
   there is no API key to put in the container, in the command, or in
-  the log. Reading a result stays an ordinary `bash` curl, which is the
+  the log. It reads results through `r.jina.ai`, so two third parties
+  see every query, and a query is capped at 256 bytes. Reading a result stays an ordinary `bash` curl, which is the
   distinction worth keeping: searching is the harness reaching out,
   fetching is a command, and only the second goes through flagging.
 
@@ -310,16 +331,23 @@ adding a fat dependency fails with the transitive import named.
   `Err` set: the assistant message already named that id, so dropping
   it leaves the transcript owing an answer. `Environment` is what the
   prompt says about where commands run. Describing this process while
-  they run in a container is how BSD flags end up in a Linux one.
+  they run in a container is how BSD flags end up in a Linux one. A
+  429 or 5xx is retried twice, honouring `Retry-After`, and `Ping`
+  sends the same key and headers `Complete` does.
 
 - **`internal/capture`**: the bounded-output primitives every backend
-  shares: `Result`, `StreamEvent`, `MaxOutputBytes`, `ScanCapped`. No
-  `exec.Cmd` or containerd knowledge of its own.
+  shares: `Result`, `StreamEvent`, `MaxOutputBytes`, `ScanCapped`
+  (which says when it truncated) and `Clip` (head and tail, on a rune
+  boundary). The caller of a Runner closes its output channel once
+  `Run` returns, never the Runner. No `exec.Cmd` or containerd
+  knowledge of its own.
 
 - **`internal/host`**: runs a command on this machine, all in
   `shell.go`. Not the only `exec.Command`: a stdio MCP server, the
   worktree's git and opening a sign-in link each start their own
-  process. A non-zero exit is a `Result`, not an error.
+  process. A non-zero exit is a `Result`, not an error. A command runs
+  in its own process group, so a timeout or abort kills its children
+  too, and detent's own API keys are removed from its environment.
 
 - **`internal/sandbox`**: `Container`, a session-scoped containerd
   Runner, one per session so filesystem state accumulates. Imports
@@ -329,7 +357,8 @@ adding a fat dependency fails with the transitive import named.
   Output is captured by shell-redirecting into files and polling them
   (`tail.go`), not containerd's FIFO streaming: a FIFO needs the shim
   and the reader on the same kernel, which stops holding once the
-  daemon runs inside a VM. **`Run` is serialised by a mutex**: one
+  daemon runs inside a VM. **`Run` is serialised** by a slot that
+  also covers `Snapshot` and `Rollback` and gives up with its ctx: one
   task and one spec per container, so parallel Calls overwrote each
   other's and returned exit 0 with no output. Real parallelism needs
   one long-lived task and `task.Exec` per Call. **A rollback does not revert the
@@ -340,8 +369,11 @@ adding a fat dependency fails with the transitive import named.
   ids are per session, so a killed process leaves leftovers its own
   resume would collide with: `clearStale` removes them at startup, and
   `Prune` (behind `-prune`) does the same for sessions nobody resumes.
-  Both refuse a container whose task still runs, which is another
-  detent holding that session rather than a leftover.
+  Both refuse a container whose task still runs, or whose holder label
+  names a live process on this host, which is another detent holding
+  that session rather than a leftover. A cancelled task is killed and
+  waited for on a context the cancel does not end, or the next
+  `NewTask` fails "already exists" for the rest of the session.
 
 - **`internal/worktree`**: checkpoints the human's own directory,
   which the container snapshot never covers. Git plumbing against a
@@ -352,7 +384,10 @@ adding a fat dependency fails with the transitive import named.
 - **`internal/classify`**: `JevJudge`, the HTTP adapter, and
   `RiskJudge`, which adapts it to the engine's hook chain. It answers.
   It never decides, because `Widen` folds its answer with everyone
-  else's.
+  else's. A failed request is an error the engine shows once a Turn,
+  and adds nothing to the verdict. With a key set, every Call's request,
+  command and up to 4KB of its output go to TypeSafe, whatever
+  `log_bodies` says.
 
 - **`internal/mcp`**: tools an MCP server holds, so a credentialed
   service can be called without its credentials entering the sandbox.
@@ -369,7 +404,11 @@ adding a fat dependency fails with the transitive import named.
   checkpoint can undo, so `mcpFloor` confirms every one: `Widen` makes
   that stick, since a server's own `readOnlyHint` can only widen a
   verdict. A tool arrives as `server__name`, sanitised to what an
-  endpoint accepts, and a built-in always wins a collision. Its schema
+  endpoint accepts, and a built-in always wins a collision:
+  `tool.Registry.Register` refuses to replace one. A sign-in token is
+  saved under the server's name and URL, so a project file reusing a
+  name for another URL never receives it, and configured headers go
+  only to the configured origin. Its schema
   is passed through rather than rebuilt, so those tools are not offered
   as `strict` and `Prepare` leaves their arguments to the server, which
   the spec says must validate them anyway.
@@ -381,6 +420,9 @@ adding a fat dependency fails with the transitive import named.
   than replacing it. `SessionStarted.Instructions` names what was read.
   Capped at 128KB (about 32k tokens), outermost file cut first. The cap
   is fixed, not scaled to `context_tokens`, so a small window feels it.
+  A project file that links outside the repository is refused, since
+  this read sits outside the sandbox, and one unreadable file no longer
+  drops the others.
 
 - **`internal/skills`**: Agent Skills, found in `.agents/skills` and
   `.claude/skills` from the git root down, then the human's own. Parsing
@@ -389,7 +431,8 @@ adding a fat dependency fails with the transitive import named.
   `mcpFloor` would flag every load. Its `name` is an enum, so under strict
   mode the endpoint refuses a skill that does not exist. In the sandbox a
   skill outside the working directory is a read-only mount
-  (`sandbox.WithReadOnly`).
+  (`sandbox.WithReadOnly`). A project skill that links outside the
+  repository is skipped with a warning.
 
 - **`/context`** is measured by the engine, the only part that sees a
   whole request. `ContextMeasured` is published after every Step, scaled
@@ -407,31 +450,38 @@ adding a fat dependency fails with the transitive import named.
   diagnostic outliving the thing it describes is the point of one. The
   store and the container remover are taken rather than imported, so
   the one path that destroys things tests with nothing to destroy. The
-  running session is refused: its store and container are both open.
+  container goes first, so a session another detent holds is refused
+  before any event is deleted, and the running session is refused: its
+  store and container are both open.
 
 - **`internal/headless`**: one prompt on a terminal, no TUI. A bus
   subscriber like any front-end, which is what makes it a fair test of
-  the engine's interface.
+  the engine's interface. `New` subscribes a `Printer` before the
+  engine runs, so it misses nothing, and `Run` sends the prompt.
 
 - **`internal/viewgen`**: writes a spec by asking the judge closed
   questions and assembling the answers, rather than asking a model to
   write JSON. That path existed, ran 31s median against 300ms, and
   could name a widget, a role or a field that did not exist. All three
   happened. None is representable from a list the program built.
+  Without a key it still draws shipped and saved views (`Unjudged`),
+  and `views: generate` sends a Shell's command and up to 4KB of its
+  output to the judge.
 
 - **`ui`**: the TUI, and nothing but a projection of the event
   stream. `SessionStarted` is the one description of a run: model,
   sandbox, network, step bound, whether anything is recording it and
   how much it resumed from. `ui.SessionInfo` carries only what no
   fact does, so the panes and the log cannot disagree about what ran. `facts.go` folds facts in and is the one place it learns
-  anything. `intents.go` publishes and is the one place it asks for
-  anything. Seven `tea.Cmd` constructors and eight message types
+  anything. `Model.send` is the one place it asks for anything, and
+  `intents.go` holds most of its callers. Seven `tea.Cmd` constructors and eight message types
   collapsed to one of each, so a test drives it with a sequence of
   events and no harness at all. `ui/doc.go` is the file map and the
   naming rules. Read it before adding a file.
 
   **Drawing costs what is on screen, not what the session has done.**
-  Five things hold that, and `ui/bench_test.go` catches a regression:
+  Five things hold that. Tests in `render_test.go` catch a regression
+  and `ui/bench_test.go` measures it:
   `nextFact` coalesces facts over a 2ms window, `sizeViewport` lays
   history out once and `View` reads what it left, only the tail is
   drawn while following, each block caches its drawing under
@@ -441,7 +491,15 @@ adding a fat dependency fails with the transitive import named.
   alone, since `historyTail` may never visit the ones before it, and
   a whole-history pass belongs in `historyAll`. A cache key must name
   every input its content depends on: miss one and the pane renders
-  stale, which is why both keys are mutation tested.
+  stale, which is why `blockKey`, `histKey` and `detailKey` are
+  mutation tested. Each block keeps its own revision, so a live line
+  redraws its block and no other.
+
+  **The approval box is the safety story's one screen.** Control and
+  escape characters in anything the model wrote are shown, never sent
+  to the terminal, and a command taller than the box shows a "more"
+  marker and is not approved until its last line has been on screen.
+  A view that panics while drawing falls back to plain text.
 
   **A thing leaves `ui` when it stops needing Model.** That is why
   `island`, `layout`, `markdown`, `status`, `theme` and `welcome` are
@@ -461,8 +519,13 @@ adding a fat dependency fails with the transitive import named.
   column `df` prints: `45%`, `1.2G` and `1,024` all came back 0 and
   drew an empty bar rather than an error anyone could see. Three calls
   priced by frequency: `Compile` once per spec, `Bind` once per
-  output, `Draw` per frame. `Painter` is on `Frame`, not `Compiled`,
-  so the first two are pure data and test with no styling at all.
+  output, `Draw` per frame, though a few widgets still read numbers
+  and times as they draw. `Painter` is on `Frame`, not `Compiled`, so
+  the first two are pure data and test with no styling at all. `Bind`
+  leaves `Compiled` untouched, so one may be bound from several
+  goroutines, and no drawn line is wider than `Frame.Width`. Ordinary
+  output never panics: every extractor and `number` has a fuzz target
+  in `fuzz_test.go`.
   `Frame.Height` says how tall the pane is for widgets that can grow
   into it and **clips nothing**, because clipping is what would stop a
   long view scrolling. A widget must implement `Widget`. `Validator`,
@@ -472,14 +535,16 @@ adding a fat dependency fails with the transitive import named.
   it elsewhere drew a spec that looked right and did nothing when the
   human pressed enter.
 
-- **`logging`**: the structured log, stdlib only so anything may
-  import it. **One JSONL stream per session**, never one file per
+- **`logging`**: the structured log, importing only the standard
+  library and `event`, so anything but `event` may import it
+  (`TestPackage_ImportsOnlyStdlibAndEvent`). Files are owner-only. **One JSONL stream per session**, never one file per
   component: the unit anyone investigates is a step, and a step
   crosses four or five components, so splitting by component would
   make filtering easy and correlating impossible. `events.go` is the
   closed vocabulary. An event name is a record's primary key, since a
   query cannot match free text reliably. `Body` withholds prompts,
-  replies and output unless `log_bodies` is set.
+  replies and output unless `log_bodies` is set, and free text such as
+  a notice or an error is cut to a snippet.
 
 - **`views`**: every spec detent ships, keyed by command name
   (`ForCommand`) and by judged output shape (`ForKind`). Imports
@@ -493,8 +558,7 @@ adding a fat dependency fails with the transitive import named.
   once from `SessionStarted` so it cannot drift, while a `turns` table
   would be a mutable aggregate over several facts and would. The
   schema lives in `migrations/*.sql`, embedded, versioned by SQLite's
-  own
-  `PRAGMA user_version` rather than a migration library. Each file
+  own `PRAGMA user_version` rather than a migration library. Each file
   applies in one transaction with its version bump, so a half-applied
   migration cannot be recorded as done. Encoding is **not** here: a
   store holding its own type list would decode every old record and
@@ -503,7 +567,11 @@ adding a fat dependency fails with the transitive import named.
   subscriber, wired beside `logging.Watch`. It skips `OutputChunk`
   because a replayed Call has already finished and `CallEnded` carries
   the whole output. It also answers `ListSessions` over the bus, since
-  `ui` cannot import it to ask directly.
+  `ui` cannot import it to ask directly. Its pragmas (`foreign_keys`,
+  `busy_timeout`, WAL) are in the DSN and the pool holds one connection,
+  because a pragma set by `Exec` reaches one pooled connection and a
+  delete's cascade silently skipped the rest. WAL leaves `-wal` and
+  `-shm` files beside `events.db`.
 
 - **`version`**: what this build calls itself, and nothing else.
 
