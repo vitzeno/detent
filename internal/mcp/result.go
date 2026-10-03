@@ -69,8 +69,8 @@ func embedded(v *sdk.EmbeddedResource) string {
 	return fmt.Sprintf("[resource %s, %s]", v.Resource.URI, size(len(v.Resource.Blob)))
 }
 
-// bound caps a result and says so: losing the tail silently is how a
-// model reasons off a lie.
+// bound caps what reaches the transcript, not what the SDK already read, and
+// says so: losing the tail silently is how a model reasons off a lie.
 func bound(s string) (string, bool) {
 	if len(s) <= capture.MaxOutputBytes {
 		return s, false

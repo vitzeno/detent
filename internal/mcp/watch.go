@@ -8,9 +8,8 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// Watch answers ListServers, and the two intents a sign-in takes:
-// AuthorizeServer dials a server again, OpenAuthorization opens its link.
-// The stop waits for sign-ins in flight, which give up once ctx ends.
+// Watch answers ListServers, AuthorizeServer by redialling and OpenAuthorization.
+// Its stop waits for sign-ins in flight, which give up once ctx ends.
 func Watch(ctx context.Context, bus *event.Bus, in *Invokers, redial func(context.Context, string) error,
 	signins *SignIns) func() {
 	ctx, cancel := context.WithCancel(ctx)
