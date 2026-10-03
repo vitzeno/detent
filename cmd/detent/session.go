@@ -213,10 +213,8 @@ func (s *session) wire() context.Context {
 	ctx, stop := context.WithCancel(context.Background()) //nolint:gosec // sd.close calls stop
 	s.sd.stop = stop
 
-	// Wired before Run so nothing published at startup is missed, and
-	// unwatched by shutdown after it drains, so the last record lands.
-	// Those doing network or process work take ctx, which shutdown ends
-	// first. logging and store take none: they must outlive it.
+	// Wired before Run so nothing at startup is missed. ctx goes to those doing
+	// network or process work, and logging and store outlive it to keep the last records.
 	s.sd.unwatch = append(s.sd.unwatch, logging.Watch(s.bus))
 	if s.events != nil {
 		s.sd.unwatch = append(s.sd.unwatch, store.Watch(s.bus, s.events, s.id))
