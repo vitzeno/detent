@@ -15,6 +15,19 @@ var (
 	_ Described = deltaWidget{}
 )
 
+func (deltaWidget) Describe() Description {
+	return Description{
+		What: "what a number moved to, with the direction and the size of the move worked out for you",
+		Needs: []Slot{
+			{Name: "label", What: "names each row"},
+			{Name: "from", What: "the number before"},
+			{Name: "to", What: "the number after"},
+		},
+		NotFor:   "a single number with nothing to compare against, which is bar",
+		Examples: []string{"benchmark before and after", "quota used against limit"},
+	}
+}
+
 func (deltaWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 3 {
 		return errors.New("delta needs a label column, a from column and a to column")
@@ -57,16 +70,3 @@ func (deltaWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 }
 
 func (deltaWidget) CursorLine(b Block, d Data, f Frame) int { return chartCursor(b, d, f) }
-
-func (deltaWidget) Describe() Description {
-	return Description{
-		What: "what a number moved to, with the direction and the size of the move worked out for you",
-		Needs: []Slot{
-			{Name: "label", What: "names each row"},
-			{Name: "from", What: "the number before"},
-			{Name: "to", What: "the number after"},
-		},
-		NotFor:   "a single number with nothing to compare against, which is bar",
-		Examples: []string{"benchmark before and after", "quota used against limit"},
-	}
-}

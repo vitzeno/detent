@@ -14,6 +14,16 @@ var (
 	_ Described = panelWidget{}
 )
 
+func (panelWidget) Describe() Description {
+	return Description{
+		What: "frames one pane of blocks in a border, with its title written into the top edge",
+		// No Slots: this needs panes, which hold blocks,
+		// so nothing can compose one from field choices alone.
+		NotFor:   "putting two things side by side, which is row",
+		Examples: []string{"a summary set apart from the listing beneath it"},
+	}
+}
+
 func (panelWidget) Draw(Block, Data, Frame) ([]string, error) {
 	return nil, errors.New("a panel is arranged by the interpreter, not drawn")
 }
@@ -43,16 +53,6 @@ func (panelWidget) Arrange(cols [][]string, widths []int, b Block, f Frame) ([]s
 	}
 	return append(lines,
 		f.Paint.Paint(RoleFaint, "╰"+strings.Repeat("─", f.Width-2)+"╯")), []int{1}
-}
-
-func (panelWidget) Describe() Description {
-	return Description{
-		What: "frames one pane of blocks in a border, with its title written into the top edge",
-		// No Slots: this needs panes, which hold blocks,
-		// so nothing can compose one from field choices alone.
-		NotFor:   "putting two things side by side, which is row",
-		Examples: []string{"a summary set apart from the listing beneath it"},
-	}
 }
 
 // panelTop writes the title into the top edge, the way a fieldset does.

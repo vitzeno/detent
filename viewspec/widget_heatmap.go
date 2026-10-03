@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+var shades = []rune("·░▒▓█")
+
 // heatmap shades a grid of two fields crossed against each other. A
 // third column is the value, and without one it counts rows per cell.
 type heatmapWidget struct{}
@@ -15,6 +17,18 @@ var (
 	_ Validator = heatmapWidget{}
 	_ Described = heatmapWidget{}
 )
+
+func (heatmapWidget) Describe() Description {
+	return Description{
+		What: "a shaded grid of two fields crossed against each other, darker where there is more",
+		Needs: []Slot{
+			{Name: "row", What: "the value naming each row of the grid"},
+			{Name: "column", What: "the value naming each column"},
+		},
+		NotFor:   "one field summarised on its own, which is histogram",
+		Examples: []string{"commits by weekday and hour", "errors by host and service"},
+	}
+}
 
 func (heatmapWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 && len(b.Columns) != 3 {
@@ -30,8 +44,6 @@ func (heatmapWidget) Validate(b Block, fields []string) error {
 	}
 	return checkShared(b, fields)
 }
-
-var shades = []rune("·░▒▓█")
 
 func (heatmapWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	rowF, colF := b.Columns[0].Field, b.Columns[1].Field
@@ -86,18 +98,6 @@ func (heatmapWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 				f.Paint.Paint(RoleAccent, band.String()))
 	}
 	return lines, nil
-}
-
-func (heatmapWidget) Describe() Description {
-	return Description{
-		What: "a shaded grid of two fields crossed against each other, darker where there is more",
-		Needs: []Slot{
-			{Name: "row", What: "the value naming each row of the grid"},
-			{Name: "column", What: "the value naming each column"},
-		},
-		NotFor:   "one field summarised on its own, which is histogram",
-		Examples: []string{"commits by weekday and hour", "errors by host and service"},
-	}
 }
 
 // spread pads each rune of a header out to the cell width, so the

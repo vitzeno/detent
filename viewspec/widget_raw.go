@@ -14,35 +14,6 @@ type rawWidget struct{ mode string }
 
 var _ Described = rawWidget{}
 
-func (w rawWidget) Draw(_ Block, d Data, f Frame) ([]string, error) {
-	body := d.Raw
-	if w.mode == "json" {
-		if pretty, ok := indentJSON(body); ok {
-			body = pretty
-		}
-	}
-	src := splitLines(body)
-	if w.mode == "diff" && f.Width >= splitMinWidth {
-		return splitDiff(src, f), nil
-	}
-	out := make([]string, 0, len(src))
-	var h hunk
-	for i, l := range src {
-		switch w.mode {
-		case "diff":
-			out = append(out, f.Paint.Paint(diffRole(&h, l), f.Paint.Truncate(l, f.Width)))
-		case "errors":
-			out = append(out, f.Paint.Paint(severityRole(l), f.Paint.Truncate(l, f.Width)))
-		case "code":
-			gutter := f.Paint.Paint(RoleFaint, fmt.Sprintf("%4d ", i+1))
-			out = append(out, gutter+f.Paint.Truncate(l, max(1, f.Width-5)))
-		default:
-			out = append(out, f.Paint.Truncate(l, f.Width))
-		}
-	}
-	return out, nil
-}
-
 func (w rawWidget) Describe() Description {
 	d := w.describe()
 	d.Raw = true
@@ -81,6 +52,35 @@ func (w rawWidget) describe() Description {
 		NotFor:   "output with a shape worth drawing; reach for this when nothing else fits",
 		Examples: []string{"a build log", "tail -n 200 app.log"},
 	}
+}
+
+func (w rawWidget) Draw(_ Block, d Data, f Frame) ([]string, error) {
+	body := d.Raw
+	if w.mode == "json" {
+		if pretty, ok := indentJSON(body); ok {
+			body = pretty
+		}
+	}
+	src := splitLines(body)
+	if w.mode == "diff" && f.Width >= splitMinWidth {
+		return splitDiff(src, f), nil
+	}
+	out := make([]string, 0, len(src))
+	var h hunk
+	for i, l := range src {
+		switch w.mode {
+		case "diff":
+			out = append(out, f.Paint.Paint(diffRole(&h, l), f.Paint.Truncate(l, f.Width)))
+		case "errors":
+			out = append(out, f.Paint.Paint(severityRole(l), f.Paint.Truncate(l, f.Width)))
+		case "code":
+			gutter := f.Paint.Paint(RoleFaint, fmt.Sprintf("%4d ", i+1))
+			out = append(out, gutter+f.Paint.Truncate(l, max(1, f.Width-5)))
+		default:
+			out = append(out, f.Paint.Truncate(l, f.Width))
+		}
+	}
+	return out, nil
 }
 
 // diffRole classifies one unified-diff line, h tracking the hunk it

@@ -13,6 +13,14 @@ var (
 	_ Described = tableWidget{}
 )
 
+func (tableWidget) Describe() Description {
+	return Description{
+		What:     "rows in aligned columns, for reading several fields per record",
+		NotFor:   "comparing one number across rows, where bar shows the shape at a glance",
+		Examples: []string{"docker ps", "ps aux", "a package list with status and duration"},
+	}
+}
+
 func (tableWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows
@@ -56,14 +64,6 @@ func (tableWidget) CursorLine(_ Block, d Data, f Frame) int {
 		return n + 1 // the header sits above the rows
 	}
 	return -1
-}
-
-func (tableWidget) Describe() Description {
-	return Description{
-		What:     "rows in aligned columns, for reading several fields per record",
-		NotFor:   "comparing one number across rows, where bar shows the shape at a glance",
-		Examples: []string{"docker ps", "ps aux", "a package list with status and duration"},
-	}
 }
 
 // tableColumns is the block's own columns, or every parsed field in

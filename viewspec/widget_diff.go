@@ -13,47 +13,6 @@ const splitMinWidth = 100
 
 var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
 
-// hunk counts down the lines its @@ header promised, so a removed line
-// reading "-- comment" is not taken for a file header.
-type hunk struct{ old, new int }
-
-func (h *hunk) open() bool { return h.old > 0 || h.new > 0 }
-
-// start reads a hunk header, returning where each side's lines begin.
-func (h *hunk) start(l string) (oldAt, newAt int, ok bool) {
-	m := hunkHeader.FindStringSubmatch(l)
-	if m == nil {
-		return 0, 0, false
-	}
-	count := func(s string) int {
-		if s == "" {
-			return 1
-		}
-		n, _ := strconv.Atoi(s)
-		return n
-	}
-	oldAt, _ = strconv.Atoi(m[1])
-	newAt, _ = strconv.Atoi(m[3])
-	h.old, h.new = count(m[2]), count(m[4])
-	return oldAt, newAt, true
-}
-
-// take consumes one body line, reporting which sides it belongs to.
-func (h *hunk) take(l string) (removed, added bool) {
-	switch {
-	case strings.HasPrefix(l, "-"):
-		h.old--
-		return true, false
-	case strings.HasPrefix(l, "+"):
-		h.new--
-		return false, true
-	case l == "" || strings.HasPrefix(l, " "):
-		h.old--
-		h.new--
-	}
-	return false, false
-}
-
 // splitDiff draws a unified diff as two columns, the old file on the
 // left and the new on the right, removed and added lines side by side.
 func splitDiff(lines []string, f Frame) []string {
@@ -137,4 +96,45 @@ func splitDiff(lines []string, f Frame) []string {
 	}
 	flush()
 	return out
+}
+
+// hunk counts down the lines its @@ header promised, so a removed line
+// reading "-- comment" is not taken for a file header.
+type hunk struct{ old, new int }
+
+func (h *hunk) open() bool { return h.old > 0 || h.new > 0 }
+
+// start reads a hunk header, returning where each side's lines begin.
+func (h *hunk) start(l string) (oldAt, newAt int, ok bool) {
+	m := hunkHeader.FindStringSubmatch(l)
+	if m == nil {
+		return 0, 0, false
+	}
+	count := func(s string) int {
+		if s == "" {
+			return 1
+		}
+		n, _ := strconv.Atoi(s)
+		return n
+	}
+	oldAt, _ = strconv.Atoi(m[1])
+	newAt, _ = strconv.Atoi(m[3])
+	h.old, h.new = count(m[2]), count(m[4])
+	return oldAt, newAt, true
+}
+
+// take consumes one body line, reporting which sides it belongs to.
+func (h *hunk) take(l string) (removed, added bool) {
+	switch {
+	case strings.HasPrefix(l, "-"):
+		h.old--
+		return true, false
+	case strings.HasPrefix(l, "+"):
+		h.new--
+		return false, true
+	case l == "" || strings.HasPrefix(l, " "):
+		h.old--
+		h.new--
+	}
+	return false, false
 }

@@ -6,6 +6,9 @@ import (
 	"strings"
 )
 
+// stackRoles cycle when no accent map names a colour per label.
+var stackRoles = []Role{RoleAccent, RoleSafe, RoleCaution, RoleDanger, RoleMuted}
+
 // stack draws one line of proportional segments, for composition
 // rather than comparison, and a legend naming them.
 type stackWidget struct{}
@@ -14,6 +17,18 @@ var (
 	_ Validator = stackWidget{}
 	_ Described = stackWidget{}
 )
+
+func (stackWidget) Describe() Description {
+	return Description{
+		What: "one band split into proportional segments with a legend, for what a whole is made of",
+		Needs: []Slot{
+			{Name: "label", What: "names each segment"},
+			{Name: "value", What: "how much of the whole it is"},
+		},
+		NotFor:   "comparing rows against each other, which is bar",
+		Examples: []string{"disk used by directory", "lines by language", "time by phase"},
+	}
+}
 
 func (stackWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
@@ -29,9 +44,6 @@ func (stackWidget) Validate(b Block, fields []string) error {
 	}
 	return checkShared(b, fields)
 }
-
-// stackRoles cycle when no accent map names a colour per label.
-var stackRoles = []Role{RoleAccent, RoleSafe, RoleCaution, RoleDanger, RoleMuted}
 
 func (stackWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	if len(d.Rows) == 0 {
@@ -66,18 +78,6 @@ func (stackWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	}
 	lines := titleLine(b, f)
 	return append(lines, band.String(), strings.TrimRight(legend.String(), " ")), nil
-}
-
-func (stackWidget) Describe() Description {
-	return Description{
-		What: "one band split into proportional segments with a legend, for what a whole is made of",
-		Needs: []Slot{
-			{Name: "label", What: "names each segment"},
-			{Name: "value", What: "how much of the whole it is"},
-		},
-		NotFor:   "comparing rows against each other, which is bar",
-		Examples: []string{"disk used by directory", "lines by language", "time by phase"},
-	}
 }
 
 // shareWidth splits total width by each row's share, then hands the

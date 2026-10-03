@@ -8,6 +8,17 @@ var (
 	_ Described = listWidget{}
 )
 
+func (listWidget) Describe() Description {
+	return Description{
+		What: "one field per line, for a set of names or paths",
+		Needs: []Slot{
+			{Name: "field", What: "the value to list, one per line"},
+		},
+		NotFor:   "paths whose nesting matters, which tree draws",
+		Examples: []string{"changed files", "branch names"},
+	}
+}
+
 func (listWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows
@@ -31,14 +42,3 @@ func (listWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 }
 
 func (listWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }
-
-func (listWidget) Describe() Description {
-	return Description{
-		What: "one field per line, for a set of names or paths",
-		Needs: []Slot{
-			{Name: "field", What: "the value to list, one per line"},
-		},
-		NotFor:   "paths whose nesting matters, which tree draws",
-		Examples: []string{"changed files", "branch names"},
-	}
-}

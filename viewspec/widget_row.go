@@ -14,6 +14,16 @@ var (
 	_ Described = rowWidget{}
 )
 
+func (rowWidget) Describe() Description {
+	return Description{
+		What: "lays its panes side by side, for putting a summary next to the thing it summarises",
+		// No Slots: this needs panes, which hold blocks,
+		// so nothing can compose one from field choices alone.
+		NotFor:   "blocks that simply follow one another, which stack without a row",
+		Examples: []string{"a meter beside the table it counts", "a chart beside its legend"},
+	}
+}
+
 func (rowWidget) Draw(Block, Data, Frame) ([]string, error) {
 	return nil, errors.New("a row is arranged by the interpreter, not drawn")
 }
@@ -52,16 +62,6 @@ func (rowWidget) Arrange(cols [][]string, widths []int, _ Block, f Frame) ([]str
 		lines[row] = strings.TrimRight(line.String(), " ")
 	}
 	return lines, make([]int, len(cols))
-}
-
-func (rowWidget) Describe() Description {
-	return Description{
-		What: "lays its panes side by side, for putting a summary next to the thing it summarises",
-		// No Slots: this needs panes, which hold blocks,
-		// so nothing can compose one from field choices alone.
-		NotFor:   "blocks that simply follow one another, which stack without a row",
-		Examples: []string{"a meter beside the table it counts", "a chart beside its legend"},
-	}
 }
 
 // paneWidths shares the row across its panes by weight, with a floor

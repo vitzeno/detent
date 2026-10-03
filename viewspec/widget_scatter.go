@@ -6,6 +6,15 @@ import (
 	"strings"
 )
 
+// brailleBits maps a dot's row and column inside a cell onto its bit.
+// The order is the Unicode block's own, which is not the reading order.
+var brailleBits = [4][2]byte{
+	{0x01, 0x08},
+	{0x02, 0x10},
+	{0x04, 0x20},
+	{0x40, 0x80},
+}
+
 // scatter plots two numeric fields against each other in braille, two
 // by four dots per cell, so it reads as a curve rather than bars.
 type scatterWidget struct{}
@@ -14,6 +23,18 @@ var (
 	_ Validator = scatterWidget{}
 	_ Described = scatterWidget{}
 )
+
+func (scatterWidget) Describe() Description {
+	return Description{
+		What: "a braille plot of one numeric field against another, for a relationship or a curve",
+		Needs: []Slot{
+			{Name: "x", What: "the horizontal number"},
+			{Name: "y", What: "the vertical number"},
+		},
+		NotFor:   "one series read in order, which is sparkline",
+		Examples: []string{"size against modified time", "latency against request count"},
+	}
+}
 
 func (scatterWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
@@ -28,15 +49,6 @@ func (scatterWidget) Validate(b Block, fields []string) error {
 		}
 	}
 	return checkShared(b, fields)
-}
-
-// brailleBits maps a dot's row and column inside a cell onto its bit.
-// The order is the Unicode block's own, which is not the reading order.
-var brailleBits = [4][2]byte{
-	{0x01, 0x08},
-	{0x02, 0x10},
-	{0x04, 0x20},
-	{0x40, 0x80},
 }
 
 func (scatterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
@@ -74,18 +86,6 @@ func (scatterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	}
 	return append(lines, f.Paint.Paint(RoleFaint,
 		fmt.Sprintf("%s %g..%g   %s %g..%g", xf, xlo, xhi, yf, ylo, yhi))), nil
-}
-
-func (scatterWidget) Describe() Description {
-	return Description{
-		What: "a braille plot of one numeric field against another, for a relationship or a curve",
-		Needs: []Slot{
-			{Name: "x", What: "the horizontal number"},
-			{Name: "y", What: "the vertical number"},
-		},
-		NotFor:   "one series read in order, which is sparkline",
-		Examples: []string{"size against modified time", "latency against request count"},
-	}
 }
 
 // scatterRows is how tall the plot draws. Height is resolution here:

@@ -14,6 +14,17 @@ var (
 	_ Described = statWidget{}
 )
 
+func (statWidget) Describe() Description {
+	return Description{
+		Summarises: true,
+		What:       "one counted number drawn large with a label, for the headline figure of a pane",
+		// No Slots: this needs a title, which is prose,
+		// so nothing can compose one from field choices alone.
+		NotFor:   "a proportion you want drawn as a bar, which is meter",
+		Examples: []string{"how many containers are running", "how many files changed"},
+	}
+}
+
 func (statWidget) Validate(b Block, fields []string) error {
 	if b.Title == "" {
 		return errors.New("stat needs a title to label the number")
@@ -59,17 +70,6 @@ func (statWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		out = append(out, f.Paint.Paint(RoleAccent, line))
 	}
 	return append(out, label), nil
-}
-
-func (statWidget) Describe() Description {
-	return Description{
-		Summarises: true,
-		What:       "one counted number drawn large with a label, for the headline figure of a pane",
-		// No Slots: this needs a title, which is prose,
-		// so nothing can compose one from field choices alone.
-		NotFor:   "a proportion you want drawn as a bar, which is meter",
-		Examples: []string{"how many containers are running", "how many files changed"},
-	}
 }
 
 // bigDigits is a three-row box-drawing face for the glyphs a counted

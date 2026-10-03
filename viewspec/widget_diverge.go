@@ -15,6 +15,19 @@ var (
 	_ Described = divergeWidget{}
 )
 
+func (divergeWidget) Describe() Description {
+	return Description{
+		What: "two numbers per row drawn either side of a centre line, for a pair that opposes",
+		Needs: []Slot{
+			{Name: "label", What: "names each row"},
+			{Name: "left", What: "the number growing leftward"},
+			{Name: "right", What: "the number growing rightward"},
+		},
+		NotFor:   "a single number per row, which is bar",
+		Examples: []string{"git diff --numstat added against removed", "passed against failed"},
+	}
+}
+
 func (divergeWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 3 {
 		return errors.New("diverge needs a label column and two value columns")
@@ -61,16 +74,3 @@ func (divergeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 }
 
 func (divergeWidget) CursorLine(b Block, d Data, f Frame) int { return chartCursor(b, d, f) }
-
-func (divergeWidget) Describe() Description {
-	return Description{
-		What: "two numbers per row drawn either side of a centre line, for a pair that opposes",
-		Needs: []Slot{
-			{Name: "label", What: "names each row"},
-			{Name: "left", What: "the number growing leftward"},
-			{Name: "right", What: "the number growing rightward"},
-		},
-		NotFor:   "a single number per row, which is bar",
-		Examples: []string{"git diff --numstat added against removed", "passed against failed"},
-	}
-}

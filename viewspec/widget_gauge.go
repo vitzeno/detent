@@ -16,6 +16,18 @@ var (
 	_ Described = gaugeWidget{}
 )
 
+func (gaugeWidget) Describe() Description {
+	return Description{
+		What: "one row per gauge on a fixed 0 to 100 scale, coloured green, amber then red as it fills",
+		Needs: []Slot{
+			{Name: "label", What: "labels each gauge"},
+			{Name: "value", What: "the percentage, 0 to 100"},
+		},
+		NotFor:   "a number that is not a percentage, where bar's relative scale is the readable one",
+		Examples: []string{"df -h use%", "battery or memory percentages"},
+	}
+}
+
 func (gaugeWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
 		return errors.New("gauge needs a label column and a percentage column")
@@ -63,18 +75,6 @@ func (gaugeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 }
 
 func (gaugeWidget) CursorLine(b Block, d Data, f Frame) int { return chartCursor(b, d, f) }
-
-func (gaugeWidget) Describe() Description {
-	return Description{
-		What: "one row per gauge on a fixed 0 to 100 scale, coloured green, amber then red as it fills",
-		Needs: []Slot{
-			{Name: "label", What: "labels each gauge"},
-			{Name: "value", What: "the percentage, 0 to 100"},
-		},
-		NotFor:   "a number that is not a percentage, where bar's relative scale is the readable one",
-		Examples: []string{"df -h use%", "battery or memory percentages"},
-	}
-}
 
 // gaugeRole is the thresholds a filling disk is usually read against.
 func gaugeRole(pct float64) Role {

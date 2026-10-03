@@ -12,6 +12,16 @@ var (
 	_ Described = dotsWidget{}
 )
 
+func (dotsWidget) Describe() Description {
+	return Description{
+		What: "one row per line led by a coloured status glyph, for output about health",
+		// No Slots: this needs an accent mapping values to roles, which is data rather than a field,
+		// so nothing can compose one from field choices alone.
+		NotFor:   "rows with several fields worth reading, which is a table",
+		Examples: []string{"systemctl list-units", "docker ps status", "a service health check"},
+	}
+}
+
 func (dotsWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows
@@ -46,13 +56,3 @@ func (dotsWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 }
 
 func (dotsWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }
-
-func (dotsWidget) Describe() Description {
-	return Description{
-		What: "one row per line led by a coloured status glyph, for output about health",
-		// No Slots: this needs an accent mapping values to roles, which is data rather than a field,
-		// so nothing can compose one from field choices alone.
-		NotFor:   "rows with several fields worth reading, which is a table",
-		Examples: []string{"systemctl list-units", "docker ps status", "a service health check"},
-	}
-}

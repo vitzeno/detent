@@ -15,6 +15,18 @@ var (
 	_ Described = badgesWidget{}
 )
 
+func (badgesWidget) Describe() Description {
+	return Description{
+		Summarises: true,
+		What:       "each distinct value of one field with how many rows have it",
+		Needs: []Slot{
+			{Name: "field", What: "the value to count distinct values of"},
+		},
+		NotFor:   "showing the rows themselves, since this only summarises them",
+		Examples: []string{"git status codes", "container states"},
+	}
+}
+
 func (badgesWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows
@@ -39,16 +51,4 @@ func (badgesWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		parts = append(parts, f.Paint.Paint(role, fmt.Sprintf("%s %d", k, counts[k])))
 	}
 	return []string{strings.Join(parts, "  ")}, nil
-}
-
-func (badgesWidget) Describe() Description {
-	return Description{
-		Summarises: true,
-		What:       "each distinct value of one field with how many rows have it",
-		Needs: []Slot{
-			{Name: "field", What: "the value to count distinct values of"},
-		},
-		NotFor:   "showing the rows themselves, since this only summarises them",
-		Examples: []string{"git status codes", "container states"},
-	}
 }

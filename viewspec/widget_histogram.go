@@ -15,6 +15,17 @@ var (
 	_ Described = histogramWidget{}
 )
 
+func (histogramWidget) Describe() Description {
+	return Description{
+		What: "groups rows by a field and charts how many fell in each, counting them for you",
+		Needs: []Slot{
+			{Name: "field", What: "the value to group and count rows by"},
+		},
+		NotFor:   "a number the rows already carry, which is bar",
+		Examples: []string{"commits per author", "processes per user", "responses per status code"},
+	}
+}
+
 func (histogramWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows
@@ -53,15 +64,4 @@ func (histogramWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		lines = append(lines, lay.row(k, n, RoleAccent, notes[i], f))
 	}
 	return lines, nil
-}
-
-func (histogramWidget) Describe() Description {
-	return Description{
-		What: "groups rows by a field and charts how many fell in each, counting them for you",
-		Needs: []Slot{
-			{Name: "field", What: "the value to group and count rows by"},
-		},
-		NotFor:   "a number the rows already carry, which is bar",
-		Examples: []string{"commits per author", "processes per user", "responses per status code"},
-	}
 }

@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+var sparkCells = []rune("▁▂▃▄▅▆▇█")
+
 // sparklineWidget draws one numeric field as a bar strip, scaled to
 // the values present rather than to zero. The shape is the point.
 type sparklineWidget struct{}
@@ -14,14 +16,24 @@ var (
 	_ Described = sparklineWidget{}
 )
 
+func (sparklineWidget) Describe() Description {
+	return Description{
+		Summarises: true,
+		What:       "one compact strip showing the shape of a numeric field across rows",
+		Needs: []Slot{
+			{Name: "field", What: "the number to plot across rows"},
+		},
+		NotFor:   "comparing individual rows, where bar is readable and this is not",
+		Examples: []string{"a latency series", "sizes over time"},
+	}
+}
+
 func (sparklineWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows
 	}
 	return needField(b.Field, fields)
 }
-
-var sparkCells = []rune("▁▂▃▄▅▆▇█")
 
 func (sparklineWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	values := make([]float64, 0, len(d.Rows))
@@ -46,16 +58,4 @@ func (sparklineWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	}
 	return []string{line + f.Paint.Paint(RoleFaint,
 		fmt.Sprintf("  %g–%g", lo, hi))}, nil
-}
-
-func (sparklineWidget) Describe() Description {
-	return Description{
-		Summarises: true,
-		What:       "one compact strip showing the shape of a numeric field across rows",
-		Needs: []Slot{
-			{Name: "field", What: "the number to plot across rows"},
-		},
-		NotFor:   "comparing individual rows, where bar is readable and this is not",
-		Examples: []string{"a latency series", "sizes over time"},
-	}
 }

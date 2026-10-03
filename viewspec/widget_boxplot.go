@@ -15,6 +15,18 @@ var (
 	_ Described = boxplotWidget{}
 )
 
+func (boxplotWidget) Describe() Description {
+	return Description{
+		What: "each group's spread on one line: whiskers to the extremes, a box over the middle half, a bright median",
+		Needs: []Slot{
+			{Name: "group", What: "the group each row belongs to"},
+			{Name: "value", What: "the number to spread"},
+		},
+		NotFor:   "one number per row, which is bar",
+		Examples: []string{"latency per endpoint", "test time per package", "file size per directory"},
+	}
+}
+
 func (boxplotWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
 		return errors.New("boxplot needs a group column and a value column")
@@ -62,18 +74,6 @@ func (boxplotWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 				f.Paint.Paint(RoleFaint, pad(notes[i], lay.note, f.Paint)))
 	}
 	return lines, nil
-}
-
-func (boxplotWidget) Describe() Description {
-	return Description{
-		What: "each group's spread on one line: whiskers to the extremes, a box over the middle half, a bright median",
-		Needs: []Slot{
-			{Name: "group", What: "the group each row belongs to"},
-			{Name: "value", What: "the number to spread"},
-		},
-		NotFor:   "one number per row, which is bar",
-		Examples: []string{"latency per endpoint", "test time per package", "file size per directory"},
-	}
 }
 
 // quantile reads q through an already sorted slice, interpolating so a

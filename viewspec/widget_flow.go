@@ -12,6 +12,17 @@ var (
 	_ Described = flowWidget{}
 )
 
+func (flowWidget) Describe() Description {
+	return Description{
+		What: "one field filled across the pane in as many columns as fit, the way ls does",
+		Needs: []Slot{
+			{Name: "field", What: "the value to fill the pane with"},
+		},
+		NotFor:   "values whose nesting matters, which is tree",
+		Examples: []string{"a long list of short names", "branch names", "installed packages"},
+	}
+}
+
 func (flowWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows
@@ -46,17 +57,6 @@ func (flowWidget) CursorLine(b Block, d Data, f Frame) int {
 	}
 	_, height := flowShape(b, d, f)
 	return f.Cursor % height
-}
-
-func (flowWidget) Describe() Description {
-	return Description{
-		What: "one field filled across the pane in as many columns as fit, the way ls does",
-		Needs: []Slot{
-			{Name: "field", What: "the value to fill the pane with"},
-		},
-		NotFor:   "values whose nesting matters, which is tree",
-		Examples: []string{"a long list of short names", "branch names", "installed packages"},
-	}
 }
 
 // flowShape is the cell width and how many lines tall the grid runs.

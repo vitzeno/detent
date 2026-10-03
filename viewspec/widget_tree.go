@@ -15,6 +15,17 @@ var (
 	_ Described = treeWidget{}
 )
 
+func (treeWidget) Describe() Description {
+	return Description{
+		What: "a hierarchy, from a depth field or from a path's slashes",
+		Needs: []Slot{
+			{Name: "field", What: "the path or name at each node"},
+		},
+		NotFor:   "a flat set of names with no nesting, which is a list",
+		Examples: []string{"tree", "find . -name '*.go'", "an indented outline"},
+	}
+}
+
 func (treeWidget) Validate(b Block, fields []string) error {
 	if len(fields) == 0 {
 		return ErrNoRows
@@ -50,17 +61,6 @@ func (treeWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 }
 
 func (treeWidget) CursorLine(_ Block, d Data, f Frame) int { return rowCursor(d, f) }
-
-func (treeWidget) Describe() Description {
-	return Description{
-		What: "a hierarchy, from a depth field or from a path's slashes",
-		Needs: []Slot{
-			{Name: "field", What: "the path or name at each node"},
-		},
-		NotFor:   "a flat set of names with no nesting, which is a list",
-		Examples: []string{"tree", "find . -name '*.go'", "an indented outline"},
-	}
-}
 
 // treeDepths caps each depth at what the frame can indent, since a depth
 // field comes from output and a huge one would allocate without bound.

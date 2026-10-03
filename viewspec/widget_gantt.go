@@ -15,6 +15,19 @@ var (
 	_ Described = ganttWidget{}
 )
 
+func (ganttWidget) Describe() Description {
+	return Description{
+		What: "one bar per row placed where it started and drawn as long as it ran",
+		Needs: []Slot{
+			{Name: "label", What: "names each bar"},
+			{Name: "start", What: "when it began"},
+			{Name: "length", What: "how long it ran"},
+		},
+		NotFor:   "lengths with no start, which is bar",
+		Examples: []string{"systemd-analyze blame", "per-package test time", "build phases"},
+	}
+}
+
 func (ganttWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 3 {
 		return errors.New("gantt needs a label column, a start column and a length column")
@@ -67,16 +80,3 @@ func (ganttWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 }
 
 func (ganttWidget) CursorLine(b Block, d Data, f Frame) int { return chartCursor(b, d, f) }
-
-func (ganttWidget) Describe() Description {
-	return Description{
-		What: "one bar per row placed where it started and drawn as long as it ran",
-		Needs: []Slot{
-			{Name: "label", What: "names each bar"},
-			{Name: "start", What: "when it began"},
-			{Name: "length", What: "how long it ran"},
-		},
-		NotFor:   "lengths with no start, which is bar",
-		Examples: []string{"systemd-analyze blame", "per-package test time", "build phases"},
-	}
-}

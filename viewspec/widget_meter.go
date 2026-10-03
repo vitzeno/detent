@@ -5,6 +5,10 @@ import (
 	"fmt"
 )
 
+// meterFloor keeps a meter legible in a narrow pane rather than
+// letting the label squeeze the bar out of existence.
+const meterFloor = 8
+
 // meter draws a proportion counted from rows, so a Title containing a
 // number cannot change what the bar says.
 type meterWidget struct{}
@@ -13,6 +17,17 @@ var (
 	_ Validator = meterWidget{}
 	_ Described = meterWidget{}
 )
+
+func (meterWidget) Describe() Description {
+	return Description{
+		Summarises: true,
+		What:       "one proportion counted from the rows, as a bar and a fraction",
+		// No Slots: this needs a count_where filter and an of denominator, which are values rather than fields,
+		// so nothing can compose one from field choices alone.
+		NotFor:   "a value per row, which is bar",
+		Examples: []string{"how many tests passed", "how many files are staged"},
+	}
+}
 
 func (meterWidget) Validate(b Block, fields []string) error {
 	if b.CountWhere == "" {
@@ -23,10 +38,6 @@ func (meterWidget) Validate(b Block, fields []string) error {
 	}
 	return checkCount(b, fields)
 }
-
-// meterFloor keeps a meter legible in a narrow pane rather than
-// letting the label squeeze the bar out of existence.
-const meterFloor = 8
 
 func (meterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 	hit, _ := parseMatch(b.CountWhere)
@@ -55,15 +66,4 @@ func (meterWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		f.Paint.Paint(role, repeat("█", filled)) +
 		f.Paint.Paint(RoleFaint, repeat("░", cells-filled)) +
 		f.Paint.Paint(RoleDefault, note)}, nil
-}
-
-func (meterWidget) Describe() Description {
-	return Description{
-		Summarises: true,
-		What:       "one proportion counted from the rows, as a bar and a fraction",
-		// No Slots: this needs a count_where filter and an of denominator, which are values rather than fields,
-		// so nothing can compose one from field choices alone.
-		NotFor:   "a value per row, which is bar",
-		Examples: []string{"how many tests passed", "how many files are staged"},
-	}
 }

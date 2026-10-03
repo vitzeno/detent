@@ -18,6 +18,18 @@ var (
 	_ Described = timelineWidget{}
 )
 
+func (timelineWidget) Describe() Description {
+	return Description{
+		What: "one marker per row on a shared axis, for events that have a moment but no length",
+		Needs: []Slot{
+			{Name: "label", What: "names each event"},
+			{Name: "time", What: "when it happened"},
+		},
+		NotFor:   "events that lasted, which is gantt",
+		Examples: []string{"git log dates", "docker events", "journalctl timestamps"},
+	}
+}
+
 func (timelineWidget) Validate(b Block, fields []string) error {
 	if len(b.Columns) != 2 {
 		return errors.New("timeline needs a label column and a time column")
@@ -77,18 +89,6 @@ func (timelineWidget) CursorLine(b Block, d Data, f Frame) int {
 		return at
 	}
 	return at + 1
-}
-
-func (timelineWidget) Describe() Description {
-	return Description{
-		What: "one marker per row on a shared axis, for events that have a moment but no length",
-		Needs: []Slot{
-			{Name: "label", What: "names each event"},
-			{Name: "time", What: "when it happened"},
-		},
-		NotFor:   "events that lasted, which is gantt",
-		Examples: []string{"git log dates", "docker events", "journalctl timestamps"},
-	}
 }
 
 // timeLayouts are the shapes a shell prints a moment in, tried in order
