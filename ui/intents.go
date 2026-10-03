@@ -156,6 +156,12 @@ func (m Model) abortRunning() (tea.Model, tea.Cmd) {
 // startOver forgets the transcript. The container keeps running: the
 // conversation and the environment are different things.
 func (m Model) startOver() (tea.Model, tea.Cmd) {
+	// The engine only aborts a running Turn on reset, so clearing here
+	// would show a fresh conversation the model does not have.
+	if m.cur != nil {
+		m.noteErr("a request is running: /abort it first")
+		return m, nil
+	}
 	m.blocks, m.cur = nil, nil
 	m.nav = navState{follow: true}
 	m.calls, m.steps, m.errors, m.views, m.tokens = 0, 0, 0, 0, 0

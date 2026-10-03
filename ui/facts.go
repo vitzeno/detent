@@ -160,13 +160,13 @@ func (m *Model) apply(ev event.Event) {
 }
 
 func (m *Model) endTurn(v event.TurnEnded) {
-	b := m.block(v.Turn)
-	if b == nil {
-		return
-	}
-	b.ended, b.end, b.summary, b.used = true, v.Reason, v.Summary, v.Usage
-	if v.Reason == event.EndError {
-		b.err = v.Summary
+	// The block may be gone already, but the Turn still ended and
+	// nothing may be left waiting on it.
+	if b := m.block(v.Turn); b != nil {
+		b.ended, b.end, b.summary, b.used = true, v.Reason, v.Summary, v.Usage
+		if v.Reason == event.EndError {
+			b.err = v.Summary
+		}
 	}
 	m.cur, m.asking, m.bound = nil, nil, nil
 	m.waiting = false

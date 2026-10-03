@@ -105,6 +105,42 @@ func TestKeys_ProposedTextCannotDriveTheTerminal(t *testing.T) {
 	assert.Contains(t, ansi.Strip(view), "^[]52;c;", "it is shown instead")
 }
 
+// The engine only aborts a Turn on reset, so /new must not clear a
+// screen whose conversation the model would keep.
+func TestKeys_NewIsRefusedWhileATurnRuns(t *testing.T) {
+	k := newKeyed(t)
+	turn := uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, N: 1, Prompt: "slow"})
+	for _, r := range "/new" {
+		k.press(t, string(r))
+	}
+	k.press(t, "enter")
+	assert.Len(t, k.m.blocks, 1, "history stays")
+	assert.Contains(t, k.m.notice.text, "abort")
+
+	k.m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	for _, r := range "/new" {
+		k.press(t, string(r))
+	}
+	k.press(t, "enter")
+	_, ok := k.intent(t).(event.ResetSession)
+	require.True(t, ok, "idle, it resets")
+	assert.Empty(t, k.m.blocks)
+}
+
+// A Turn whose block is already gone still ends: nothing may be left
+// spinning on it.
+func TestApply_EndingAnUnknownTurnStillSettles(t *testing.T) {
+	_, evs := aTurn("going")
+	m := feed(t, evs...)
+	m.blocks = nil
+	m.apply(event.TurnEnded{Turn: uuid.Must(uuid.NewV7()), Reason: event.EndAborted})
+	assert.Nil(t, m.cur)
+	assert.False(t, m.waiting)
+	assert.False(t, m.spinning())
+	assert.Equal(t, ownerInput, m.owner())
+}
+
 func TestKeys_BoundIsAnswered(t *testing.T) {
 	k := newKeyed(t)
 	turn := uuid.Must(uuid.NewV7())
