@@ -44,16 +44,26 @@ func (WriteFile) Lower(a Args) (string, error) {
 }
 
 // Run writes the file here and reports it as the command does.
-func (WriteFile) Run(_ context.Context, a Args) capture.Result {
+func (WriteFile) Run(ctx context.Context, a Args) capture.Result {
 	p, err := writeArgs(a)
 	if err != nil {
 		return failed(2, "write_file: %v", err)
 	}
 	content := a.String("content")
 	before, existed := "", false
-	if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
-		b, err := os.ReadFile(p)
-		before, existed = string(b), err == nil
+	if info, err := os.Stat(p); err == nil && !info.IsDir() {
+		// A FIFO or a huge file is refused, and one it cannot read is written without a diff as the command's is.
+		switch b, err := readCapped(ctx, p, maxEditBytes); {
+		case ctx.Err() != nil:
+			return stopped("write_file", "", ctx.Err())
+		case err == nil:
+			before, existed = string(b), true
+		case !info.Mode().IsRegular() || info.Size() > maxEditBytes:
+			return failed(2, "write_file: %v", err)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return stopped("write_file", "", err)
 	}
 	if err := writeAsShell(p, content); err != nil {
 		return failed(2, "write_file: %v", err) // dash's status for a redirection it cannot open

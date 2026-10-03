@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"syscall"
 
@@ -73,12 +72,15 @@ open($f, ">", $p) or die "edit_file: $p: $!\n"; binmode $f; print $f $s; close $
 print "replaced " . @at . " in $p\n";`
 
 // Run is editScript in Go, with the same messages and exit statuses.
-func (EditFile) Run(_ context.Context, a Args) capture.Result {
+func (EditFile) Run(ctx context.Context, a Args) capture.Result {
 	p, old, repl, err := editArgs(a)
 	if err != nil {
 		return failed(2, "edit_file: %v", err)
 	}
-	b, err := os.ReadFile(p)
+	b, err := readCapped(ctx, p, maxEditBytes)
+	if ctx.Err() != nil {
+		return stopped("edit_file", "", ctx.Err())
+	}
 	if err != nil {
 		return failed(perlStatus(err), "edit_file: %v", err)
 	}
@@ -89,6 +91,12 @@ func (EditFile) Run(_ context.Context, a Args) capture.Result {
 		return failed(255, "edit_file: old_string is not in %s", p)
 	case n > 1 && !a.Bool("replace_all", false):
 		return failed(255, "edit_file: old_string is in %s %d times, so give more context or set replace_all", p, n)
+	}
+	if grown := int64(len(before)) + int64(n)*int64(len(repl)-len(old)); grown > maxEditBytes {
+		return failed(255, "edit_file: %s would grow to %d MB, more than edit_file writes (%d MB), so change it with a command", p, grown>>20, maxEditBytes>>20)
+	}
+	if err := ctx.Err(); err != nil {
+		return stopped("edit_file", "", err)
 	}
 	after := strings.Replace(before, old, repl, n)
 	if err := writeAsShell(p, after); err != nil {
