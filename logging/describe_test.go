@@ -26,17 +26,6 @@ func TestDescribe_EveryLoggedFactHasFields(t *testing.T) {
 	}
 }
 
-// carriesData says whether an event has any exported field to log.
-func carriesData(e event.Event) bool {
-	t := reflect.TypeOf(e)
-	for f := range t.Fields() {
-		if f.IsExported() {
-			return true
-		}
-	}
-	return false
-}
-
 // Anything logging imports, everything that logs imports too, and event
 // is the one module package it may take. event logging would be a cycle.
 func TestPackage_ImportsOnlyStdlibAndEvent(t *testing.T) {
@@ -52,4 +41,15 @@ func TestPackage_ImportsOnlyStdlibAndEvent(t *testing.T) {
 			assert.True(t, allowed[imp], "logging imports %s", imp)
 		}
 	}
+}
+
+// carriesData says whether an event has any exported field to log.
+func carriesData(e event.Event) bool {
+	t := reflect.TypeOf(e)
+	for f := range t.Fields() {
+		if f.IsExported() {
+			return true
+		}
+	}
+	return false
 }
