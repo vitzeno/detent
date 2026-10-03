@@ -35,8 +35,7 @@ func WithContainers(remove func(ctx context.Context, sessionID string) error) Op
 	return func(w *watcher) { w.containers = remove }
 }
 
-// Watch answers DeleteSession and reports the outcome either way.
-// current is the running session, the one thing that cannot go. The
+// Watch answers DeleteSession, refusing current, the running session. The
 // stop waits for a delete in flight, and cancelling ctx abandons one.
 func Watch(ctx context.Context, bus *event.Bus, sessions Sessions, current uuid.UUID, opts ...Option) func() {
 	w := watcher{ctx: ctx, sessions: sessions, current: current}
