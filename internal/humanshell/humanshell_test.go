@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -40,7 +41,10 @@ func TestWatch_RunsACommandAndTellsTheModel(t *testing.T) {
 
 	chunks := c.of(event.OutputChunkKind)
 	require.Len(t, chunks, 1, "live output rides on OutputChunk, keyed by the Shell's id")
-	assert.Equal(t, started.Shell, chunks[0].(event.OutputChunk).Call)
+	chunk, ok := chunks[0].(event.OutputChunk)
+	require.True(t, ok)
+	assert.Equal(t, started.Shell, chunk.Shell)
+	assert.Equal(t, uuid.Nil, chunk.Call, "a Shell is not a Call, so nothing keyed by Call counts it")
 	assert.Equal(t, []string{"git status --short"}, r.commands())
 }
 

@@ -113,7 +113,7 @@ func (s *shell) run(ctx context.Context, id uuid.UUID, command string) {
 	go func() {
 		defer close(relayed)
 		for l := range lines {
-			s.bus.Publish(event.OutputChunk{Call: id, Line: l.Line, Stderr: l.Stderr})
+			s.bus.Publish(event.OutputChunk{Shell: id, Line: l.Line, Stderr: l.Stderr})
 		}
 	}()
 

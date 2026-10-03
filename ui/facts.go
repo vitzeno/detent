@@ -236,7 +236,7 @@ func (m *Model) shellBlock() *turnBlock {
 const maxLiveLines = 200
 
 func (m *Model) addLine(v event.OutputChunk) {
-	r := m.row(v.Call)
+	r := m.row(v.Source())
 	if r == nil {
 		return
 	}

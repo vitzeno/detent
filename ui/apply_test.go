@@ -63,6 +63,18 @@ func TestApply_CountsWhatStatusReports(t *testing.T) {
 }
 
 // Live output is routed by call, because parallel calls interleave.
+// The human's own command streams under its Shell id, into its own row.
+func TestApply_AShellsLiveOutputReachesItsRow(t *testing.T) {
+	shell := uuid.Must(uuid.NewV7())
+	m := feed(t,
+		event.ShellStarted{Shell: shell, Command: "go test ./...", Runner: "host"},
+		event.OutputChunk{Shell: shell, Line: "ok  ./ui"},
+	)
+	rows := m.rows()
+	require.Len(t, rows, 1)
+	assert.Equal(t, []string{"ok  ./ui"}, rows[0].live)
+}
+
 func TestApply_DemultiplexesLiveOutput(t *testing.T) {
 	_, evs := aTurn("read two files")
 	a, b := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())

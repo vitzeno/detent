@@ -268,11 +268,21 @@ type CallStarted struct {
 func (CallStarted) Kind() Kind { return CallStartedKind }
 
 // OutputChunk is one live line, and the only lossy event. Parallel
-// Calls interleave, so route by Call rather than assume one is running.
+// Calls interleave, so route by id rather than assume one is running.
 type OutputChunk struct {
+	// Exactly one is set: a Call the model asked for, or the human's Shell.
 	Call   uuid.UUID
+	Shell  uuid.UUID
 	Line   string
 	Stderr bool
+}
+
+// Source is whichever of Call and Shell printed the line.
+func (o OutputChunk) Source() uuid.UUID {
+	if o.Shell != uuid.Nil {
+		return o.Shell
+	}
+	return o.Call
 }
 
 func (OutputChunk) Kind() Kind  { return OutputChunkKind }
