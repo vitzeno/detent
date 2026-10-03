@@ -29,12 +29,8 @@ func (e *Engine) rollback(ctx context.Context, req event.RequestRollback) {
 	} else if _, has := e.snapshotter(); has {
 		e.notice("warn", "this request had no checkpoint, so the sandbox keeps what it did")
 	}
-	if req.RevertFiles && t.tree != "" {
-		if w, has := e.worktree(); has {
-			if err := w.Restore(ctx, t.tree); err != nil {
-				e.notice("warn", "files were left as they are: "+err.Error())
-			}
-		}
+	if req.RevertFiles {
+		e.revertFiles(ctx, t)
 	}
 	var rewound bool
 	e.trLock(func() { rewound = e.tr.truncate(t.mark) })
@@ -58,6 +54,20 @@ func (e *Engine) forgetFrom(id uuid.UUID) {
 		}
 	}
 	e.turns = from.n - 1
+}
+
+// revertFiles puts the human's own directory back. What changed after the
+// last Turn ended is theirs, so it stays and the notice names it.
+func (e *Engine) revertFiles(ctx context.Context, t *turnState) {
+	w, has := e.worktree()
+	if !has || t.tree == "" {
+		e.notice("warn", "your files were not checkpointed for this request, so they stay as they are")
+		return
+	}
+	if err := w.Restore(ctx, t.tree, e.settled); err != nil {
+		e.notice("warn", "your files were not all reverted: "+err.Error())
+	}
+	e.settled = t.tree
 }
 
 func (e *Engine) worktree() (Worktreer, bool) {

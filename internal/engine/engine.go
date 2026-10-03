@@ -60,6 +60,9 @@ type Engine struct {
 	stopGrace     time.Duration
 
 	worktreer Worktreer
+	// settled is the tree as the last Turn left it, so a rollback can tell
+	// the human's later edits from the Turn's own.
+	settled string
 
 	// How this run describes itself, for the fact published at start.
 	modelName string
@@ -208,10 +211,10 @@ type Snapshotter interface {
 }
 
 // Worktreer checkpoints the human's own files, which the container
-// snapshot never covers.
+// snapshot never covers. Restore leaves alone what changed since seen.
 type Worktreer interface {
-	Checkpoint(ctx context.Context) string
-	Restore(ctx context.Context, id string) error
+	Checkpoint(ctx context.Context) (string, error)
+	Restore(ctx context.Context, id, seen string) error
 }
 
 // dispatch routes one intent. A running Turn owns the transcript, so
@@ -320,6 +323,7 @@ func (e *Engine) reset() {
 	e.trLock(func() { e.tr.reset() })
 	e.repeat.forget()
 	e.turns = 0
+	e.settled = ""
 	e.mu.Lock()
 	clear(e.past)
 	e.mu.Unlock()

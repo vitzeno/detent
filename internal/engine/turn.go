@@ -78,16 +78,16 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 		t.drain()
 
 		if t.aborted.Load() || ctx.Err() != nil {
-			e.endTurn(t, event.EndAborted, "", total)
+			e.endTurn(ctx, t, event.EndAborted, "", total)
 			return
 		}
 		if why := t.takeStop(); why != "" {
-			e.endTurn(t, event.EndStopped, why, total)
+			e.endTurn(ctx, t, event.EndStopped, why, total)
 			return
 		}
 		if step > limit {
 			if !e.askContinue(ctx, t, step-1) {
-				e.endTurn(t, event.EndBound, "", total)
+				e.endTurn(ctx, t, event.EndBound, "", total)
 				return
 			}
 			limit += e.maxSteps
@@ -103,11 +103,11 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 		total = total.Add(used)
 		if err != nil {
 			if ctx.Err() != nil {
-				e.endTurn(t, event.EndAborted, "", total)
+				e.endTurn(ctx, t, event.EndAborted, "", total)
 				return
 			}
 			e.notice("error", err.Error())
-			e.endTurn(t, event.EndError, err.Error(), total)
+			e.endTurn(ctx, t, event.EndError, err.Error(), total)
 			return
 		}
 		e.bus.Publish(event.StepEnded{Turn: t.id, Step: stepID, Usage: used, Calls: len(reply.Calls), Stop: reply.Stop})
@@ -131,7 +131,7 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 				e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(finishNote) })
 				continue
 			}
-			e.endTurn(t, event.EndDone, reply.Text, total)
+			e.endTurn(ctx, t, event.EndDone, reply.Text, total)
 			return
 		}
 		nudges = 0
@@ -159,8 +159,9 @@ func stopReason(s string) string {
 
 // endTurn flushes queued notes before closing, or a correction typed
 // as the last Step finished never reaches the next Turn.
-func (e *Engine) endTurn(t *turnState, why event.EndReason, summary string, used event.Usage) {
+func (e *Engine) endTurn(ctx context.Context, t *turnState, why event.EndReason, summary string, used event.Usage) {
 	t.drain()
+	e.settle(ctx, t)
 	for _, n := range t.takeNotes() {
 		e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(n) })
 	}
@@ -179,11 +180,29 @@ func (e *Engine) checkpoint(ctx context.Context, t *turnState) {
 		t.snap = id
 	}
 	if w, ok := e.worktree(); ok {
-		t.tree = w.Checkpoint(ctx)
+		id, err := w.Checkpoint(ctx)
+		if err != nil && ctx.Err() == nil {
+			e.notice("warn", "no checkpoint of your files for this request, so undo cannot revert them: "+err.Error())
+		}
+		t.tree = id
 	}
 	if t.snap != "" || t.tree != "" {
 		e.bus.Publish(event.CheckpointTaken{Turn: t.id, Snapshot: t.snap, Tree: t.tree})
 	}
+}
+
+// settle records the files as this Turn left them, before TurnEnded, so
+// a rollback sent on seeing it already knows. An aborted Turn still settles.
+func (e *Engine) settle(ctx context.Context, t *turnState) {
+	w, ok := e.worktree()
+	if !ok || t.tree == "" {
+		return
+	}
+	id, err := w.Checkpoint(context.WithoutCancel(ctx))
+	if err != nil {
+		e.notice("warn", "could not record your files after this request, so undo may revert later edits: "+err.Error())
+	}
+	e.settled = id
 }
 
 // askContinue pauses at the bound and waits. Stopping dead would throw
