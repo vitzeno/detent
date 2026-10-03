@@ -16,6 +16,13 @@ func (e *Engine) rollback(ctx context.Context, req event.RequestRollback) {
 		e.notice("error", "no such request to undo")
 		return
 	}
+	// Refused before anything is restored, so a refusal leaves nothing half undone.
+	var reachable bool
+	e.trLock(func() { reachable = e.tr.reaches(t.mark) })
+	if !reachable {
+		e.notice("error", "that request was compacted into a summary of earlier work, so it can no longer be undone")
+		return
+	}
 	if t.snap != "" {
 		s, has := e.snapshotter()
 		if !has {
@@ -32,11 +39,7 @@ func (e *Engine) rollback(ctx context.Context, req event.RequestRollback) {
 	if req.RevertFiles {
 		e.revertFiles(ctx, t)
 	}
-	var rewound bool
-	e.trLock(func() { rewound = e.tr.truncate(t.mark) })
-	if !rewound {
-		e.notice("warn", "that request was compacted away, so the model still remembers a summary of it")
-	}
+	e.trLock(func() { e.tr.truncate(t.mark) })
 	e.forgetFrom(req.Turn)
 	e.bus.Publish(event.RolledBack{Turn: req.Turn, RevertFiles: req.RevertFiles})
 }

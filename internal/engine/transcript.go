@@ -111,14 +111,21 @@ func (t *transcript) messages() []event.Message { return t.msgs }
 // so it stays valid however much the front is rewritten.
 func (t *transcript) mark() int { return len(t.msgs) + t.dropped }
 
+// reaches reports whether a mark is still a position. One a compaction
+// folded into its note is not, since the note cannot be cut in half.
+func (t *transcript) reaches(to int) bool {
+	at := to - t.dropped
+	// At 0 after a compaction the mark is inside what the note stands for.
+	return at >= 0 && at <= len(t.msgs) && (at > 0 || t.dropped == 0)
+}
+
 // truncate rewinds to a mark, taken at a Turn boundary so it cannot
 // land inside a Step. A mark compaction has eaten is a no-op, reported.
 func (t *transcript) truncate(to int) bool {
-	at := to - t.dropped
-	// At 0 after a compaction the mark is inside what the note stands for.
-	if at < 0 || at > len(t.msgs) || (at == 0 && t.dropped > 0) {
+	if !t.reaches(to) {
 		return false
 	}
+	at := to - t.dropped
 	t.msgs = t.msgs[:at]
 	t.protect = min(t.protect, at)
 	for i, s := range t.starts {
