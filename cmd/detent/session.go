@@ -90,10 +90,16 @@ func (s *session) openSandbox() error {
 	home, _ := os.UserHomeDir()
 	s.found = findSkills(s.local.Dir, home, s.cfg.SandboxWorkspace, sandboxed)
 	s.warnings = append(s.warnings, s.found.warnings...)
-	s.runners = routing.Selector{Host: host.NewShell(), HostOnly: !sandboxed}
 	if !sandboxed {
+		shell, err := host.Find(s.cfg.HostShell)
+		if err != nil {
+			return err
+		}
+		s.runners = routing.Selector{Host: shell, HostOnly: true}
+		s.env.Shell = shell.Dialect()
 		return nil
 	}
+	s.runners = routing.Selector{Host: host.NewShell()}
 
 	socket := s.cfg.SandboxSocket
 	if socket == "" {
@@ -187,7 +193,7 @@ func (s *session) buildEngine() error {
 
 	// Connected before the engine, which takes the registry by value.
 	// Headless reads none: config expands secrets, servers start processes.
-	s.tools = tool.Standard(s.found.skillTools()...)
+	s.tools = tool.StandardFor(shellTool(s.env), s.found.skillTools()...)
 	s.configured, err = loadMCPConfig(s.o.prompt == "", mcppkg.Files(s.trusted.Trusted))
 	if err != nil {
 		return err
@@ -205,6 +211,14 @@ func (s *session) buildEngine() error {
 	s.eng = engine.New(s.bus, client, s.tools, s.runners, opts...)
 	s.eng.Restore(s.restore)
 	return nil
+}
+
+// shellTool is what the model runs commands with, named for the shell they run in.
+func shellTool(env model.Environment) tool.Tool {
+	if env.Shell == model.ShellPwsh {
+		return tool.PowerShell{}
+	}
+	return tool.Bash{}
 }
 
 // wire connects the subscribers every run has and returns the session's

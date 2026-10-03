@@ -12,6 +12,7 @@ import (
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/headless"
 	mcppkg "github.com/vitzeno/detent/internal/mcp"
+	"github.com/vitzeno/detent/internal/model"
 	"github.com/vitzeno/detent/internal/usercommand"
 	"github.com/vitzeno/detent/ui"
 )
@@ -50,6 +51,7 @@ func (s *session) runTUI(ctx context.Context) error {
 	info := ui.SessionInfo{
 		Image: s.cfg.SandboxImage, Mount: s.cfg.SandboxWorkspace,
 		Runtime: s.cfg.SandboxRuntime, Network: s.cfg.SandboxNetwork,
+		PowerShell: s.env.Shell == model.ShellPwsh,
 	}
 	// Built before the engine runs: SessionStarted is published once,
 	// and a front-end that subscribes afterwards loses it.
