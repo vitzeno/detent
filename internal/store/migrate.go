@@ -15,9 +15,8 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-// step is one migration, a SQL file or a Go function for what SQL cannot
-// say, numbered by its place. Either way it runs in one transaction with
-// its version bump, so a half-applied step is never recorded as done.
+// step is one migration, SQL or Go for what SQL cannot say. It runs in one
+// transaction with its version bump, so a half-applied step is never recorded.
 type step struct {
 	name string
 	sql  string

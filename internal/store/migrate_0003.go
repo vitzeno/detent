@@ -8,9 +8,8 @@ import (
 	"fmt"
 )
 
-// toolCallNames rewrites records saved before Call became ToolCall and
-// Shell became UserCommand, so every record on disk is in today's shape.
-// It also renames the lifted call column and marks every session as at 3.
+// toolCallNames rewrites records saved before Call became ToolCall and Shell
+// became UserCommand, renames the lifted column and marks every session as at 3.
 func toolCallNames(ctx context.Context, tx *sql.Tx) error {
 	if _, err := tx.ExecContext(ctx, `ALTER TABLE events RENAME COLUMN call TO tool_call`); err != nil {
 		return err

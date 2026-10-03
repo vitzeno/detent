@@ -1,9 +1,8 @@
 package store
 
 const (
-	// A header is written once and only its resumed count moves, so a second
-	// run keeps its clock and the detent that started it. Its new records are
-	// written at this build's schema, so that moves too.
+	// A later run moves only resumed and schema, so a header keeps its start
+	// time and the detent that began it.
 	upsertSession = `INSERT INTO sessions (id, started, model, judge, sandbox, network, resumed, detent, schema)
 	  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	  ON CONFLICT(id) DO UPDATE SET resumed = excluded.resumed, schema = excluded.schema`
