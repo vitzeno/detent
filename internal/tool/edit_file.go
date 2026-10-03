@@ -54,23 +54,6 @@ func (EditFile) Lower(a Args) (string, error) {
 		old, oldDelim, repl, newDelim), nil
 }
 
-// editScript does the replacement in perl, which every Debian and Ubuntu
-// image carries, matching literally with index rather than a regex.
-const editScript = `use strict; local $/;
-my ($p, $all) = @ARGV;
-open(my $fo, "<&=", 3) or die "edit_file: $!\n"; binmode $fo; my $o = <$fo>; chop $o;
-open(my $fn, "<&=", 4) or die "edit_file: $!\n"; binmode $fn; my $n = <$fn>; chop $n;
-open(my $f, "<", $p) or die "edit_file: $p: $!\n"; binmode $f; my $s = <$f>; close $f;
-$s = "" unless defined $s;
-my @at; my $i = 0;
-while (($i = index($s, $o, $i)) >= 0) { push @at, $i; $i += length $o }
-die "edit_file: old_string is not in $p\n" unless @at;
-die "edit_file: old_string is in $p " . @at . " times, so give more context or set replace_all\n" if @at > 1 && !$all;
-@at = ($at[0]) unless $all;
-substr($s, $_, length $o) = $n for reverse @at;
-open($f, ">", $p) or die "edit_file: $p: $!\n"; binmode $f; print $f $s; close $f or die "edit_file: $p: $!\n";
-print "replaced " . @at . " in $p\n";`
-
 // Run is editScript in Go, with the same messages and exit statuses.
 func (EditFile) Run(ctx context.Context, a Args) capture.Result {
 	p, old, repl, err := editArgs(a)
@@ -117,6 +100,23 @@ func editArgs(a Args) (p, old, repl string, err error) {
 	}
 	return p, old, repl, nil
 }
+
+// editScript does the replacement in perl, which every Debian and Ubuntu
+// image carries, matching literally with index rather than a regex.
+const editScript = `use strict; local $/;
+my ($p, $all) = @ARGV;
+open(my $fo, "<&=", 3) or die "edit_file: $!\n"; binmode $fo; my $o = <$fo>; chop $o;
+open(my $fn, "<&=", 4) or die "edit_file: $!\n"; binmode $fn; my $n = <$fn>; chop $n;
+open(my $f, "<", $p) or die "edit_file: $p: $!\n"; binmode $f; my $s = <$f>; close $f;
+$s = "" unless defined $s;
+my @at; my $i = 0;
+while (($i = index($s, $o, $i)) >= 0) { push @at, $i; $i += length $o }
+die "edit_file: old_string is not in $p\n" unless @at;
+die "edit_file: old_string is in $p " . @at . " times, so give more context or set replace_all\n" if @at > 1 && !$all;
+@at = ($at[0]) unless $all;
+substr($s, $_, length $o) = $n for reverse @at;
+open($f, ">", $p) or die "edit_file: $p: $!\n"; binmode $f; print $f $s; close $f or die "edit_file: $p: $!\n";
+print "replaced " . @at . " in $p\n";`
 
 // perlStatus is the status perl's die exits with: errno when one is set.
 func perlStatus(err error) int {

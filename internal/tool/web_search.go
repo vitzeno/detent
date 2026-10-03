@@ -14,6 +14,18 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
+const (
+	maxQueryBytes = 256
+	searchTimeout = 30 * time.Second
+	// searchBase is a keyless engine, so nothing secret is in the
+	// command, the log, or the container.
+	searchBase = "https://lite.duckduckgo.com/lite/?q="
+)
+
+// readerPrefix is a third party returning the page as markdown, so every
+// query transits Jina too. A var so a test can stand in for it.
+var readerPrefix = "https://r.jina.ai/"
+
 // WebSearch is one search, lowered to one curl so the sandbox stays
 // the only executor and no API key ever enters the container.
 type WebSearch struct{}
@@ -87,15 +99,3 @@ func searchURL(a Args) (string, error) {
 	}
 	return readerPrefix + searchBase + url.QueryEscape(q), nil
 }
-
-const (
-	maxQueryBytes = 256
-	searchTimeout = 30 * time.Second
-	// searchBase is a keyless engine, so nothing secret is in the
-	// command, the log, or the container.
-	searchBase = "https://lite.duckduckgo.com/lite/?q="
-)
-
-// readerPrefix is a third party returning the page as markdown, so every
-// query transits Jina too. A var so a test can stand in for it.
-var readerPrefix = "https://r.jina.ai/"

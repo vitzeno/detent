@@ -15,6 +15,9 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
+// listEntries is the most entries a listing shows.
+const listEntries = 1000
+
 // ListDir lists a directory. It lowers to a command so a sandboxed
 // session sees the container's filesystem, not the host's.
 type ListDir struct{}
@@ -105,9 +108,6 @@ type listed struct {
 	info   fs.FileInfo
 	target string
 }
-
-// listEntries is the most entries a listing shows.
-const listEntries = 1000
 
 // listing draws one line per entry with sizes aligned, through the same
 // window as a read so a huge directory still ends in a footer.

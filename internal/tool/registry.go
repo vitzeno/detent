@@ -35,6 +35,17 @@ func StandardFor(shell Tool, extra ...Tool) *Registry {
 	return r
 }
 
+// Call is one validated, lowered tool call.
+type Call struct {
+	Tool       string
+	Command    string
+	Mutability string
+	Args       Args
+	// Executor is empty for a shell command, and otherwise names what
+	// runs it instead.
+	Executor string
+}
+
 // Prepare validates a call and lowers it. Every error here reaches the
 // model as a tool result, so each says what to do instead.
 func (r *Registry) Prepare(name string, args map[string]any) (Call, error) {
@@ -77,11 +88,6 @@ func (r *Registry) Register(t Tool) error {
 	}
 	r.tools[n] = t
 	return nil
-}
-
-// builtin reports whether name is one of the tools Standard fixed in place.
-func (r *Registry) builtin(name string) bool {
-	return slices.Contains(r.order[:r.fixed], name)
 }
 
 // Unregister removes tools other than built-ins, as when an MCP server is
@@ -142,15 +148,9 @@ func (r *Registry) Native(name string) (Native, bool) {
 	return n, ok
 }
 
-// Call is one validated, lowered tool call.
-type Call struct {
-	Tool       string
-	Command    string
-	Mutability string
-	Args       Args
-	// Executor is empty for a shell command, and otherwise names what
-	// runs it instead.
-	Executor string
+// builtin reports whether name is one of the tools Standard fixed in place.
+func (r *Registry) builtin(name string) bool {
+	return slices.Contains(r.order[:r.fixed], name)
 }
 
 // schema renders a Spec as JSON Schema. Strict mode wants every property

@@ -11,6 +11,16 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
+// catalogBudget bounds the list of skills in the tool's description.
+const catalogBudget = 8000
+
+const (
+	skillEmpty  = "[the skill is empty]"
+	skillOthers = "[other files in this skill]"
+	// skillFiles is how many of a skill's other files it lists.
+	skillFiles = 50
+)
+
 // Skill loads a skill found at startup by reading its SKILL.md where
 // commands run, so loading one is a read like any other.
 type Skill struct {
@@ -27,9 +37,6 @@ type SkillEntry struct {
 	Dir         string
 	Hidden      bool
 }
-
-// catalogBudget bounds the list of skills in the tool's description.
-const catalogBudget = 8000
 
 func (Skill) Name() string { return "skill" }
 
@@ -99,29 +106,6 @@ func (s Skill) Run(ctx context.Context, a Args) capture.Result {
 	return capture.Result{Stdout: out}
 }
 
-const (
-	skillEmpty  = "[the skill is empty]"
-	skillOthers = "[other files in this skill]"
-	// skillFiles is how many of a skill's other files it lists.
-	skillFiles = 50
-)
-
-// skillMore is the footer for a long SKILL.md, naming where to read on.
-func skillMore(file string) string {
-	return "[%d more lines, read on with read_file on " + strings.ReplaceAll(file, "%", "%%") + " at offset %d]"
-}
-
-// entry is the skill a call names.
-func (s Skill) entry(a Args) (SkillEntry, error) {
-	name := a.String("name")
-	for _, e := range s.Entries {
-		if e.Name == name {
-			return e, nil
-		}
-	}
-	return SkillEntry{}, fmt.Errorf("no skill named %q", name)
-}
-
 // catalog lists each skill on a line, shortening every description
 // alike when the list would outgrow catalogBudget.
 func (s Skill) catalog() string {
@@ -141,4 +125,20 @@ func (s Skill) catalog() string {
 			return b.String()
 		}
 	}
+}
+
+// entry is the skill a call names.
+func (s Skill) entry(a Args) (SkillEntry, error) {
+	name := a.String("name")
+	for _, e := range s.Entries {
+		if e.Name == name {
+			return e, nil
+		}
+	}
+	return SkillEntry{}, fmt.Errorf("no skill named %q", name)
+}
+
+// skillMore is the footer for a long SKILL.md, naming where to read on.
+func skillMore(file string) string {
+	return "[%d more lines, read on with read_file on " + strings.ReplaceAll(file, "%", "%%") + " at offset %d]"
 }

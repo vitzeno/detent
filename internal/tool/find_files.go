@@ -12,6 +12,11 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
+const (
+	findMore  = "[%d more files, narrow the pattern or the path]"
+	findEmpty = "[no files match]"
+)
+
 // FindFiles lists files by name, sorted, skipping .git.
 type FindFiles struct{}
 
@@ -86,18 +91,10 @@ func (FindFiles) Run(ctx context.Context, a Args) capture.Result {
 	return res
 }
 
-const (
-	findMore  = "[%d more files, narrow the pattern or the path]"
-	findEmpty = "[no files match]"
-)
-
 type findQuery struct {
 	pattern, where string
 	limit          int
 }
-
-// byPath is whether the pattern names a path rather than a file name.
-func (f findQuery) byPath() bool { return strings.Contains(f.pattern, "/") }
 
 // findArgs is what both ways of finding accept.
 func findArgs(a Args) (findQuery, error) {
@@ -113,3 +110,6 @@ func findArgs(a Args) (findQuery, error) {
 	}
 	return f, nil
 }
+
+// byPath is whether the pattern names a path rather than a file name.
+func (f findQuery) byPath() bool { return strings.Contains(f.pattern, "/") }

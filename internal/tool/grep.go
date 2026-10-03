@@ -18,6 +18,11 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
+const (
+	grepMore  = "[%d more matches, narrow the pattern or the path]"
+	grepEmpty = "[no matches]"
+)
+
 // Grep searches file contents. Declared read-only, it runs beside other
 // reads and skips the checks a bash grep would pay for.
 type Grep struct{}
@@ -111,11 +116,6 @@ func (Grep) Run(ctx context.Context, a Args) capture.Result {
 	}
 	return res
 }
-
-const (
-	grepMore  = "[%d more matches, narrow the pattern or the path]"
-	grepEmpty = "[no matches]"
-)
 
 type grepQuery struct {
 	pattern, where, include string

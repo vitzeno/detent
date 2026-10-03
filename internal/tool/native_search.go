@@ -9,14 +9,6 @@ import (
 	"unicode"
 )
 
-// found spells a path under root as find and grep -r print it.
-func found(root, name string) string {
-	if strings.HasSuffix(root, "/") {
-		return root + name
-	}
-	return root + "/" + name
-}
-
 // walkFiles visits each regular file under dir but not symlinks, as find and
 // grep -r do, in no order, going on past a directory it cannot read.
 func walkFiles(ctx context.Context, dir string, skip func(name string) bool, visit func(p string), fail func(p string, err error)) error {
@@ -52,6 +44,14 @@ func walkFiles(ctx context.Context, dir string, skip func(name string) bool, vis
 			return nil
 		}
 	}
+}
+
+// found spells a path under root as find and grep -r print it.
+func found(root, name string) string {
+	if strings.HasSuffix(root, "/") {
+		return root + name
+	}
+	return root + "/" + name
 }
 
 // fnmatch is fnmatch(3) with no flags, as find and grep --include read a

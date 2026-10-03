@@ -9,6 +9,11 @@ import (
 	"github.com/vitzeno/detent/internal/capture"
 )
 
+const (
+	readMore  = "[%d more lines, read on with offset %d]"
+	readEmpty = "[the file has %d lines]"
+)
+
 // ReadFile reads one file. Sandboxed, this reads the container's
 // filesystem, which is why it lowers to a command like everything else.
 type ReadFile struct{}
@@ -56,11 +61,6 @@ func (ReadFile) Run(ctx context.Context, a Args) capture.Result {
 	}
 	return capture.Result{Stdout: out}
 }
-
-const (
-	readMore  = "[%d more lines, read on with offset %d]"
-	readEmpty = "[the file has %d lines]"
-)
 
 // readArgs is what both ways of reading accept.
 func readArgs(a Args) (p string, from, n int, err error) {
