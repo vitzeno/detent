@@ -2,6 +2,7 @@ package viewgen
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,10 +58,9 @@ func (s *Store) Save(key string, spec *viewspec.Spec) error {
 	if err != nil {
 		return fmt.Errorf("viewgen: spec temp: %w", err)
 	}
-	defer os.Remove(tmp.Name())
+	defer os.Remove(tmp.Name()) //nolint:errcheck // gone already once renamed
 	if _, err := tmp.Write(append(raw, '\n')); err != nil {
-		tmp.Close()
-		return fmt.Errorf("viewgen: writing spec: %w", err)
+		return fmt.Errorf("viewgen: writing spec: %w", errors.Join(err, tmp.Close()))
 	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("viewgen: writing spec: %w", err)

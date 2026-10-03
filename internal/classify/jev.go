@@ -113,7 +113,7 @@ func (j *JevJudge) Ask(ctx context.Context, state State, qs Questions) (Answers,
 	if err != nil {
 		return nil, Usage{}, fmt.Errorf("classify: request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // reading it was what mattered
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	latency := time.Since(t0)

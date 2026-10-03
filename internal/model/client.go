@@ -75,7 +75,7 @@ func (c *Client) Ping(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("model: ping %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // reading it was what mattered
 	// Drained, within a bound, so the first Step can reuse the connection.
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
@@ -152,7 +152,7 @@ func (c *Client) post(ctx context.Context, body []byte) (Reply, event.Usage, err
 	if err != nil {
 		return Reply{}, event.Usage{}, fmt.Errorf("model: %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // reading it was what mattered
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return Reply{}, event.Usage{}, fmt.Errorf("model: read: %w", err)
