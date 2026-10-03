@@ -277,9 +277,8 @@ func (m *Model) rolledBack(id uuid.UUID) {
 	m.noteOK("undone")
 }
 
-// block and row find what an event is about, and mark its block for a
-// redraw since the caller is about to change it. Linear: a map would
-// have to be kept in step with the slice that draws them.
+// block and row find what an event is about and mark its block to redraw.
+// Linear: a map would have to be kept in step with the slice that draws them.
 func (m *Model) block(id uuid.UUID) *turnBlock {
 	if id == uuid.Nil {
 		return nil
