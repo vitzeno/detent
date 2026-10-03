@@ -16,9 +16,9 @@ LM Studio, OpenRouter and OpenAI all work
 ```sh
 go install github.com/vitzeno/detent/cmd/detent@latest
 
-make build && ./bin/detent            # sandboxed, needs containerd
+make build && ./bin/detent            # commands run on this machine
 make install                          # onto your PATH
-./bin/detent -sandbox host            # no container
+./bin/detent -sandbox auto            # in a container instead, needs containerd (experimental)
 ./bin/detent -prompt "find go files over 1MB"
 ./bin/detent -prompt "..." -approve-all   # runs flagged commands too, for a throwaway container
 ```
@@ -144,7 +144,7 @@ Each one is a shell command underneath, so it runs in the sandbox like everythin
 
 A command still running after 10 minutes is stopped, and the model is told so along with what it printed. `command_timeout` in the config changes it
 
-`web_search` is a curl to DuckDuckGo, read through `r.jina.ai`, so there is no API key but it needs the sandbox to have network, which is the default
+`web_search` is a curl to DuckDuckGo, read through `r.jina.ai`, so there is no API key. In the sandbox it needs network, which is the default there
 
 ## Your own commands
 
@@ -173,14 +173,15 @@ So it knows what you checked instead of checking again
 
 ## Undoing
 
-`/undo 2` restores the container to before your second request and trims the
-transcript to match
+`/undo 2` trims the transcript to before your second request
 
-Commands you ran yourself go back with it, if they ran after that snapshot
+When the directory is inside a git repository, detent checkpoints your files with git before each request, without touching your index, branch or stash, and undo asks whether to revert them too. Anything you changed after that request ended is left alone and named
 
-Your working directory is mounted at `/workspace`, outside the snapshot. When it is inside a git repository, detent also checkpoints your files with git, without touching your index, branch or stash, and undo asks whether to revert them too. Anything you changed after that request ended is left alone and named
+In the sandbox, undo also restores the container to its snapshot, and commands you ran yourself go back with it. Your working directory is mounted at `/workspace`, outside that snapshot, so the git checkpoint is what covers it there too
 
 ## Sandboxing (**Experimental**)
+
+Commands run on this machine by default. `-sandbox auto`, or `sandbox_mode: auto` in the config, runs them in a containerd container instead
 
 ```sh
 brew install colima

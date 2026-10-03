@@ -41,7 +41,7 @@ func parseFlags() options {
 	flag.BoolVar(&o.approveAll, "approve-all", false, "with -prompt, run every flagged command without asking, only where nothing can be harmed, like a throwaway container")
 	flag.IntVar(&o.steps, "steps", -1, "steps per request before it asks to continue (default: config file)")
 	flag.StringVar(&o.themeName, "theme", "", "color scheme: "+strings.Join(theme.Names(), ", ")+" (default: env, else config file, else "+config.DefaultTheme+")")
-	flag.StringVar(&o.sandboxMode, "sandbox", "", "sandbox mode: auto, host (default: env, else config file, else auto)")
+	flag.StringVar(&o.sandboxMode, "sandbox", "", "sandbox mode: host, or auto for the experimental containerd sandbox (default: env, else config file, else host)")
 	flag.StringVar(&o.sandboxSocket, "sandbox-socket", "", "containerd socket path (default: env, else config file, else OS-conventional)")
 	flag.StringVar(&o.resume, "resume", "", "continue a stored session by id or name, or \"last\"")
 	flag.BoolVar(&o.sessions, "sessions", false, "list the sessions that can be resumed, and exit")

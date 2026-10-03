@@ -46,7 +46,7 @@ theme: ""              # dark, light, solarized, dracula (dark)
 
 # --- Sandbox ---
 
-sandbox_mode: ""       # auto or host (auto)
+sandbox_mode: ""       # host, or auto for the experimental sandbox (host)
 sandbox_socket: ""     # containerd socket, empty guesses per OS
 sandbox_image: ""      # fully qualified ref (Ubuntu with git and curl)
 sandbox_runtime: ""    # OCI runtime, e.g. io.containerd.runsc.v1 (runc)

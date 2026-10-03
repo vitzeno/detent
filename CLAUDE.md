@@ -99,7 +99,9 @@ ones.
 
 ### The sandbox VM
 
-`sandbox_mode: auto` needs colima running with a containerd socket at
+Commands run on the host by default (`sandbox_mode: host`), since the
+sandbox is experimental. `sandbox_mode: auto` opts in, and needs colima
+running with a containerd socket at
 `~/.colima/default/containerd.sock`. The runtime does not matter:
 colima forwards that socket whether it was started with `--runtime
 docker` or `--runtime containerd`.

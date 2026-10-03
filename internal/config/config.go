@@ -157,7 +157,8 @@ func Default() Config {
 		Views:         DefaultViews,
 		LogLevel:      DefaultLogLevel,
 
-		SandboxMode:      SandboxAuto,
+		// The sandbox is experimental, so commands run here unless asked for it.
+		SandboxMode:      SandboxHost,
 		SandboxImage:     sandbox.DefaultImage,
 		SandboxNetwork:   sandbox.NetworkHost,
 		SandboxWorkspace: DefaultSandboxWorkspace,
