@@ -12,6 +12,9 @@ import (
 	"github.com/vitzeno/detent/termsafe"
 )
 
+// MinTruncate is the narrowest Truncate will cut to.
+const MinTruncate = 4
+
 // Split divides total proportionally to weights, each share at least
 // least, and weights <= 0 count as 1. A floored share leaves the pool and
 // what it took is re-split, so shares sum to total while total >= least*len(weights).
@@ -20,6 +23,18 @@ func Split(total int, weights []int, least int) []int {
 		return nil
 	}
 	return split(total, weights, least, make([]int, len(weights)), make([]bool, len(weights)))
+}
+
+// Row joins pre-rendered, equal-height blocks left to right. It only
+// arranges, and never truncates.
+func Row(blocks ...string) string {
+	return lipgloss.JoinHorizontal(lipgloss.Top, blocks...)
+}
+
+// Truncate fits s into one line of at most w cells, so no tail lands
+// outside the caller's frame. It cuts graphemes, never mid-character.
+func Truncate(s string, w int) string {
+	return ansi.Truncate(termsafe.Printable(flatten(s)), max(w, MinTruncate), "…")
 }
 
 func split(total int, weights []int, least int, out []int, floored []bool) []int {
@@ -73,21 +88,6 @@ func split(total int, weights []int, least int, out []int, floored []bool) []int
 		}
 	}
 	return out
-}
-
-// Row joins pre-rendered, equal-height blocks left to right. It only
-// arranges, and never truncates.
-func Row(blocks ...string) string {
-	return lipgloss.JoinHorizontal(lipgloss.Top, blocks...)
-}
-
-// MinTruncate is the narrowest Truncate will cut to.
-const MinTruncate = 4
-
-// Truncate fits s into one line of at most w cells, so no tail lands
-// outside the caller's frame. It cuts graphemes, never mid-character.
-func Truncate(s string, w int) string {
-	return ansi.Truncate(termsafe.Printable(flatten(s)), max(w, MinTruncate), "…")
 }
 
 // flatten collapses a multi-line string into one, indentation and all.

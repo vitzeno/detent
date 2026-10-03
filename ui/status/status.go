@@ -24,15 +24,6 @@ func RefreshStyles() {
 	muted, faint, safe, caution, danger, hint = bake(theme.Current())
 }
 
-func bake(p theme.Theme) (muted, faint, safe, caution, danger, hint lipgloss.Style) {
-	return lipgloss.NewStyle().Foreground(p.TextMuted),
-		lipgloss.NewStyle().Foreground(p.TextFaint),
-		lipgloss.NewStyle().Foreground(p.Safe),
-		lipgloss.NewStyle().Foreground(p.Caution).Bold(true),
-		lipgloss.NewStyle().Foreground(p.Danger).Bold(true),
-		lipgloss.NewStyle().Foreground(p.TextFaint).Italic(true)
-}
-
 // Row is one history row's render inputs.
 type Row struct {
 	Running   bool
@@ -164,4 +155,13 @@ func Tokens(n int) string {
 	default:
 		return fmt.Sprintf("%.1fM", float64(n)/1000000)
 	}
+}
+
+func bake(p theme.Theme) (muted, faint, safe, caution, danger, hint lipgloss.Style) {
+	return lipgloss.NewStyle().Foreground(p.TextMuted),
+		lipgloss.NewStyle().Foreground(p.TextFaint),
+		lipgloss.NewStyle().Foreground(p.Safe),
+		lipgloss.NewStyle().Foreground(p.Caution).Bold(true),
+		lipgloss.NewStyle().Foreground(p.Danger).Bold(true),
+		lipgloss.NewStyle().Foreground(p.TextFaint).Italic(true)
 }

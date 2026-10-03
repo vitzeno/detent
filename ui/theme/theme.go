@@ -9,6 +9,21 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// DefaultName is the theme active until Apply, and used when unset.
+// Duplicated as config.DefaultTheme rather than imported.
+const DefaultName = "dark"
+
+// Themes is every built-in scheme, keyed by name.
+var Themes = map[string]Theme{
+	"dark":      dark,
+	"light":     light,
+	"solarized": solarized,
+	"dracula":   dracula,
+}
+
+// active is the palette Apply last set, the default until it is called.
+var active = Themes[DefaultName]
+
 // Theme is one named color scheme.
 type Theme struct {
 	Accent                                    color.Color
@@ -22,12 +37,18 @@ type Theme struct {
 	Markdown string
 }
 
-// active is the palette Apply last set, the default until it is called.
-var active = Themes[DefaultName]
+// Names lists every valid theme name, sorted.
+func Names() []string {
+	return slices.Sorted(maps.Keys(Themes))
+}
 
-// DefaultName is the theme active until Apply, and used when unset.
-// Duplicated as config.DefaultTheme rather than imported.
-const DefaultName = "dark"
+// Current is the active theme.
+func Current() Theme { return active }
+
+// Apply makes t the active theme. Callers must also refresh any style
+// already baked from the old colors, as ui.RefreshStyles does. Not safe
+// for concurrent use: call it once, before the TUI starts.
+func Apply(t Theme) { active = t }
 
 var dark = Theme{
 	Accent:      lipgloss.Color("#45D6C4"),
@@ -80,24 +101,3 @@ var dracula = Theme{
 	Background:  lipgloss.Color("#282A36"),
 	Markdown:    "dracula",
 }
-
-// Themes is every built-in scheme, keyed by name.
-var Themes = map[string]Theme{
-	"dark":      dark,
-	"light":     light,
-	"solarized": solarized,
-	"dracula":   dracula,
-}
-
-// Names lists every valid theme name, sorted.
-func Names() []string {
-	return slices.Sorted(maps.Keys(Themes))
-}
-
-// Current is the active theme.
-func Current() Theme { return active }
-
-// Apply makes t the active theme. Callers must also refresh any style
-// already baked from the old colors, as ui.RefreshStyles does. Not safe
-// for concurrent use: call it once, before the TUI starts.
-func Apply(t Theme) { active = t }

@@ -21,6 +21,8 @@ const (
 	compactBelow = 22
 )
 
+var brand, primary, muted, faint, safe, caution, hint = bake(theme.Current())
+
 // Facts is what the pane reports about this run.
 type Facts struct {
 	Version string
@@ -97,22 +99,10 @@ func Track(frame int) []string {
 	return []string{t.String(), pawl}
 }
 
-var brand, primary, muted, faint, safe, caution, hint = bake(theme.Current())
-
 // RefreshStyles rebuilds this package's styles from the current
 // theme. Call it after theme.Apply.
 func RefreshStyles() {
 	brand, primary, muted, faint, safe, caution, hint = bake(theme.Current())
-}
-
-func bake(p theme.Theme) (brand, primary, muted, faint, safe, caution, hint lipgloss.Style) {
-	return lipgloss.NewStyle().Foreground(p.Accent).Bold(true),
-		lipgloss.NewStyle().Foreground(p.TextPrimary),
-		lipgloss.NewStyle().Foreground(p.TextMuted),
-		lipgloss.NewStyle().Foreground(p.TextFaint),
-		lipgloss.NewStyle().Foreground(p.Safe),
-		lipgloss.NewStyle().Foreground(p.Caution).Bold(true),
-		lipgloss.NewStyle().Foreground(p.TextFaint).Italic(true)
 }
 
 // banner is the namesake mechanism, the name, and one line on what the
@@ -224,6 +214,16 @@ func sessionID(f Facts) string {
 	return primary.Render(f.Session)
 }
 
+// allTime says nothing rather than zero until a listing arrives:
+// "0 sessions" would read as none recorded, not as not yet asked.
+func allTime(f Facts) string {
+	if f.Sessions == 0 {
+		return faint.Render("—")
+	}
+	return primary.Render(plural(f.Sessions, "session")) +
+		faint.Render("  resume one with /sessions")
+}
+
 // examples gives a first goal to copy rather than a blank box.
 func examples(width int) []string {
 	out := make([]string, 0, 4)
@@ -273,16 +273,6 @@ func centreVertically(lines []string, height int) []string {
 	return append(make([]string, pad), lines...)
 }
 
-// allTime says nothing rather than zero until a listing arrives:
-// "0 sessions" would read as none recorded, not as not yet asked.
-func allTime(f Facts) string {
-	if f.Sessions == 0 {
-		return faint.Render("—")
-	}
-	return primary.Render(plural(f.Sessions, "session")) +
-		faint.Render("  resume one with /sessions")
-}
-
 // plural counts a thing without the "(s)" hedge.
 func plural(n int, thing string) string {
 	if n == 1 {
@@ -297,4 +287,14 @@ func countLines(sections [][]string) int {
 		n += len(s)
 	}
 	return n
+}
+
+func bake(p theme.Theme) (brand, primary, muted, faint, safe, caution, hint lipgloss.Style) {
+	return lipgloss.NewStyle().Foreground(p.Accent).Bold(true),
+		lipgloss.NewStyle().Foreground(p.TextPrimary),
+		lipgloss.NewStyle().Foreground(p.TextMuted),
+		lipgloss.NewStyle().Foreground(p.TextFaint),
+		lipgloss.NewStyle().Foreground(p.Safe),
+		lipgloss.NewStyle().Foreground(p.Caution).Bold(true),
+		lipgloss.NewStyle().Foreground(p.TextFaint).Italic(true)
 }
