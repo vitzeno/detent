@@ -8,6 +8,20 @@ import (
 	"time"
 )
 
+// timeLayouts are the shapes a shell prints a moment in, tried in order
+// before a duration and then a plain number.
+var timeLayouts = []string{
+	time.RFC3339Nano,
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05",
+	"2006/01/02 15:04:05",
+	"2006-01-02",
+	"Jan _2 15:04:05",
+	"Jan _2 15:04",
+	"15:04:05",
+	"15:04",
+}
+
 // timeline places each row at the moment it happened on one shared
 // axis, for events with no length.
 type timelineWidget struct{}
@@ -89,20 +103,6 @@ func (timelineWidget) CursorLine(b Block, d Data, f Frame) int {
 		return at
 	}
 	return at + 1
-}
-
-// timeLayouts are the shapes a shell prints a moment in, tried in order
-// before a duration and then a plain number.
-var timeLayouts = []string{
-	time.RFC3339Nano,
-	"2006-01-02 15:04:05",
-	"2006-01-02T15:04:05",
-	"2006/01/02 15:04:05",
-	"2006-01-02",
-	"Jan _2 15:04:05",
-	"Jan _2 15:04",
-	"15:04:05",
-	"15:04",
 }
 
 // instant reads a field as a point on an axis, in seconds. Unreadable

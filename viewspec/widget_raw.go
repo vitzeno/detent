@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+var (
+	errorLine   = regexp.MustCompile(`(?i)\b(error|fail|panic|traceback|exception)\b`)
+	warningLine = regexp.MustCompile(`(?i)\b(warn(ing)?|deprecat|retry)\b`)
+)
+
 // rawWidget draws bytes: a log verbatim, a diff classified, code with
 // a line gutter. It reads no fields, so it works under any parse.
 type rawWidget struct{ mode string }
@@ -112,11 +117,6 @@ func diffRole(h *hunk, l string) Role {
 	}
 	return RoleDefault
 }
-
-var (
-	errorLine   = regexp.MustCompile(`(?i)\b(error|fail|panic|traceback|exception)\b`)
-	warningLine = regexp.MustCompile(`(?i)\b(warn(ing)?|deprecat|retry)\b`)
-)
 
 // severityRole colours whole lines, not matches: a traceback reads as
 // a unit, and half-painted lines read as noise.

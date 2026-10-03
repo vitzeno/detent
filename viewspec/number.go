@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+// multipliers are 1024-based, since that is what -h means in the
+// commands that print them.
+const multipliers = "KMGTPE"
+
 // number reads a quantity the way a shell prints one: 45%, 1,024, 1.2G or
 // 1e5, with 1,5 read as 15. Unreadable or infinite is 0, never a failed view.
 func number(s string) float64 {
@@ -52,10 +56,6 @@ func splitNumber(s string) (digits, unit string) {
 	}
 	return s[:i], strings.TrimSpace(s[i:])
 }
-
-// multipliers are 1024-based, since that is what -h means in the
-// commands that print them.
-const multipliers = "KMGTPE"
 
 // scale reads a unit suffix, counting only a single uppercase multiplier:
 // "12ms" is 12, since a lowercase m is milli as often as not.

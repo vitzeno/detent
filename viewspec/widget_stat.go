@@ -5,6 +5,25 @@ import (
 	"strconv"
 )
 
+// bigDigits is a three-row box-drawing face for the glyphs a counted
+// number can contain.
+var bigDigits = map[rune][3]string{
+	'0': {"┌─┐", "│ │", "└─┘"},
+	'1': {" ┐ ", " │ ", " ╵ "},
+	'2': {"┌─┐", "┌─┘", "└─╴"},
+	'3': {"┌─┐", "╶─┤", "└─┘"},
+	'4': {"╷ ╷", "└─┤", "  ╵"},
+	'5': {"┌─╴", "└─┐", "└─┘"},
+	'6': {"┌─╴", "├─┐", "└─┘"},
+	'7': {"┌─┐", "  │", "  ╵"},
+	'8': {"┌─┐", "├─┤", "└─┘"},
+	'9': {"┌─┐", "└─┤", "└─┘"},
+	'/': {"  ╱", " ╱ ", "╱  "},
+	'%': {"▪ ╱", " ╱ ", "╱ ▪"},
+	'.': {"   ", "   ", " ▪ "},
+	'-': {"   ", "╶─╴", "   "},
+}
+
 // stat is one number drawn large in three rows of box glyphs, since a
 // terminal has one cell size and size has to come from the glyphs.
 type statWidget struct{}
@@ -70,25 +89,6 @@ func (statWidget) Draw(b Block, d Data, f Frame) ([]string, error) {
 		out = append(out, f.Paint.Paint(RoleAccent, line))
 	}
 	return append(out, label), nil
-}
-
-// bigDigits is a three-row box-drawing face for the glyphs a counted
-// number can contain.
-var bigDigits = map[rune][3]string{
-	'0': {"┌─┐", "│ │", "└─┘"},
-	'1': {" ┐ ", " │ ", " ╵ "},
-	'2': {"┌─┐", "┌─┘", "└─╴"},
-	'3': {"┌─┐", "╶─┤", "└─┘"},
-	'4': {"╷ ╷", "└─┤", "  ╵"},
-	'5': {"┌─╴", "└─┐", "└─┘"},
-	'6': {"┌─╴", "├─┐", "└─┘"},
-	'7': {"┌─┐", "  │", "  ╵"},
-	'8': {"┌─┐", "├─┤", "└─┘"},
-	'9': {"┌─┐", "└─┤", "└─┘"},
-	'/': {"  ╱", " ╱ ", "╱  "},
-	'%': {"▪ ╱", " ╱ ", "╱ ▪"},
-	'.': {"   ", "   ", " ▪ "},
-	'-': {"   ", "╶─╴", "   "},
 }
 
 // bigNumber renders s three rows tall, or reports that it holds a

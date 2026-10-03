@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+var errNoWidth = errors.New("no width to chart in")
+
 // checkShared validates the bindings any row widget may carry.
 func checkShared(b Block, fields []string) error {
 	if b.Accent != nil {
@@ -179,8 +181,6 @@ func pad(s string, w int, p Painter) string {
 	}
 	return s
 }
-
-var errNoWidth = errors.New("no width to chart in")
 
 // barLayout is the label, bar and value columns every row-per-bar
 // widget shares, so stacking two of them in one view lines them up.

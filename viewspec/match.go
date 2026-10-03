@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+// placeholder is the only templating there is: a field name in braces,
+// substituted from one row, so a spec stays readable by hand.
+var placeholder = regexp.MustCompile(`\{([a-z_][a-z0-9_]*)\}`)
+
 // matcher is a "field=value" filter. The zero value matches nothing,
 // and parseMatch("") returns one that matches everything.
 type matcher struct {
@@ -65,10 +69,6 @@ func checkCount(b Block, fields []string) error {
 	}
 	return nil
 }
-
-// placeholder is the only templating there is: a field name in braces,
-// substituted from one row, so a spec stays readable by hand.
-var placeholder = regexp.MustCompile(`\{([a-z_][a-z0-9_]*)\}`)
 
 func substitute(tmpl string, r Row) (string, error) {
 	var missing string
