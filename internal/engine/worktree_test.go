@@ -17,16 +17,6 @@ import (
 	"github.com/vitzeno/detent/internal/worktree"
 )
 
-// dirRunner runs each command in one directory, as the host runner does in the workspace.
-type dirRunner struct{ dir string }
-
-func (r dirRunner) Run(ctx context.Context, cmd string, _ chan<- capture.StreamEvent) (capture.Result, error) {
-	c := exec.CommandContext(ctx, "sh", "-c", cmd)
-	c.Dir = r.dir
-	out, err := c.CombinedOutput()
-	return capture.Result{Stdout: string(out)}, err
-}
-
 // Undo with your files too: what the Turn wrote goes back, and what the
 // human wrote after it stays.
 func TestRollback_RevertsTheHumansDirectory(t *testing.T) {
@@ -81,6 +71,16 @@ func TestRollback_SaysWhenFilesWereNotCheckpointed(t *testing.T) {
 	r.await(event.RolledBackKind)
 	n := r.await(event.NoticeKind).(event.Notice)
 	assert.Contains(t, n.Text, "not checkpointed")
+}
+
+// dirRunner runs each command in one directory, as the host runner does in the workspace.
+type dirRunner struct{ dir string }
+
+func (r dirRunner) Run(ctx context.Context, cmd string, _ chan<- capture.StreamEvent) (capture.Result, error) {
+	c := exec.CommandContext(ctx, "sh", "-c", cmd)
+	c.Dir = r.dir
+	out, err := c.CombinedOutput()
+	return capture.Result{Stdout: string(out)}, err
 }
 
 func gitRepo(t *testing.T) string {

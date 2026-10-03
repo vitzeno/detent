@@ -394,16 +394,6 @@ func TestSessionStarted_ReportsTheDefaultBudgetWhenUnset(t *testing.T) {
 	assert.Equal(t, DefaultContextTokens, started.ContextTokens)
 }
 
-// markdownTool stands in for one that knows its output is a document,
-// since none of the shipped tools claims a shape today.
-type markdownTool struct{}
-
-func (markdownTool) Name() string { return "declares_markdown" }
-func (markdownTool) Describe() tool.Spec {
-	return tool.Spec{Description: "x", Mutability: event.MutRead, Renders: event.RendersMarkdown}
-}
-func (markdownTool) Lower(tool.Args) (string, error) { return "true", nil }
-
 // A Turn that changed something is asked once to check its work before it
 // ends, and the model's second answer is the one that stands.
 func TestTurn_AChangingTurnIsAskedToCheckOnce(t *testing.T) {
@@ -441,3 +431,15 @@ func TestTurn_AReadOnlyTurnIsNotAskedToCheck(t *testing.T) {
 	assert.Len(t, r.of(event.StepEndedKind), 2)
 	assert.Empty(t, r.of(event.NoticeKind))
 }
+
+// markdownTool stands in for one that knows its output is a document,
+// since none of the shipped tools claims a shape today.
+type markdownTool struct{}
+
+func (markdownTool) Name() string { return "declares_markdown" }
+
+func (markdownTool) Describe() tool.Spec {
+	return tool.Spec{Description: "x", Mutability: event.MutRead, Renders: event.RendersMarkdown}
+}
+
+func (markdownTool) Lower(tool.Args) (string, error) { return "true", nil }

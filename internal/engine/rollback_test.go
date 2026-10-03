@@ -108,39 +108,6 @@ func TestTurn_AnIntentSentOnSeeingTheEndFindsTheTurnOver(t *testing.T) {
 	r.await(event.RolledBackKind)
 }
 
-// compactedRig runs three Turns, and the second compacts the first into a summary.
-func compactedRig(t *testing.T) (*rig, *snapRunner, []uuid.UUID) {
-	t.Helper()
-	snap := &snapRunner{fakeRunner: &fakeRunner{out: strings.Repeat("x", 4000) + "\n"}}
-	fm := &fakeModel{replies: []model.Reply{
-		{Requests: []event.ToolRequest{bashCall("a", "one")}},
-		{Text: "first done"},
-		{Text: "second done"},
-		{Text: "third done"},
-	}}
-	r := rigWith(t, event.New(), fm, snap,
-		WithContextTokens(200), WithSummarizer(stubSummarizer{out: "earlier work"}))
-	r.run("first request")
-	r.run("second request")
-	r.run("third request")
-	require.Len(t, r.of(event.CompactedKind), 1, "the test needs the first Turn compacted, and only it")
-
-	var ids []uuid.UUID
-	for _, ev := range r.of(event.TurnStartedKind) {
-		ids = append(ids, ev.(event.TurnStarted).Turn)
-	}
-	require.Len(t, ids, 3)
-	return r, snap, ids
-}
-
-func sentText(msgs []event.Message) string {
-	var b strings.Builder
-	for _, m := range msgs {
-		b.WriteString(m.Content + "\n")
-	}
-	return b.String()
-}
-
 // The summary cannot be cut in half, so a Turn inside it is refused
 // before the sandbox is touched, rather than left half undone.
 func TestRollback_RefusesATurnCompactedIntoTheSummary(t *testing.T) {
@@ -193,4 +160,37 @@ func TestRollback_UndoesATurnAfterTheSummary(t *testing.T) {
 	assert.Contains(t, restored, "fourth request")
 	assert.NotContains(t, restored, "second request")
 	assert.NotContains(t, restored, "third request")
+}
+
+// compactedRig runs three Turns, and the second compacts the first into a summary.
+func compactedRig(t *testing.T) (*rig, *snapRunner, []uuid.UUID) {
+	t.Helper()
+	snap := &snapRunner{fakeRunner: &fakeRunner{out: strings.Repeat("x", 4000) + "\n"}}
+	fm := &fakeModel{replies: []model.Reply{
+		{Requests: []event.ToolRequest{bashCall("a", "one")}},
+		{Text: "first done"},
+		{Text: "second done"},
+		{Text: "third done"},
+	}}
+	r := rigWith(t, event.New(), fm, snap,
+		WithContextTokens(200), WithSummarizer(stubSummarizer{out: "earlier work"}))
+	r.run("first request")
+	r.run("second request")
+	r.run("third request")
+	require.Len(t, r.of(event.CompactedKind), 1, "the test needs the first Turn compacted, and only it")
+
+	var ids []uuid.UUID
+	for _, ev := range r.of(event.TurnStartedKind) {
+		ids = append(ids, ev.(event.TurnStarted).Turn)
+	}
+	require.Len(t, ids, 3)
+	return r, snap, ids
+}
+
+func sentText(msgs []event.Message) string {
+	var b strings.Builder
+	for _, m := range msgs {
+		b.WriteString(m.Content + "\n")
+	}
+	return b.String()
 }

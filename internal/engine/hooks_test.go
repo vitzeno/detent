@@ -115,6 +115,22 @@ func TestRegexHook_KeepsPowerShellsTableToPowerShell(t *testing.T) {
 	assert.False(t, got.Dangerous)
 }
 
+// The file tools lower to scripts with their own housekeeping in them. A
+// pattern that matched it would flag every edit, as rm -f once did.
+func TestRegexHook_LeavesTheFileToolsAlone(t *testing.T) {
+	reg := tool.Standard()
+	for name, args := range map[string]map[string]any{
+		"edit_file":  {"path": "a.go", "old_string": "a", "new_string": "b"},
+		"write_file": {"path": "a.go", "content": "x"},
+	} {
+		c, err := reg.Prepare(name, args)
+		require.NoError(t, err)
+		got, err := regexHook{}.Assess(context.Background(), c, event.UnknownRisk())
+		require.NoError(t, err)
+		assert.False(t, got.Dangerous, "%s tripped %q", name, got.Note)
+	}
+}
+
 // A hook that fails is skipped, not fatal: it only means nobody
 // answered, which is the state the chain starts in anyway.
 func TestAssess_AFailingHookIsSkipped(t *testing.T) {
@@ -292,6 +308,7 @@ func TestMCPFloor_NothingDownstreamCanNarrowIt(t *testing.T) {
 type brokenHook struct{}
 
 func (brokenHook) Name() string { return "broken" }
+
 func (brokenHook) Assess(context.Context, tool.Call, event.Risk) (event.Risk, error) {
 	return event.Risk{}, errors.New("no")
 }
@@ -299,6 +316,7 @@ func (brokenHook) Assess(context.Context, tool.Call, event.Risk) (event.Risk, er
 type panicHook struct{}
 
 func (panicHook) Name() string { return "panics" }
+
 func (panicHook) Assess(context.Context, tool.Call, event.Risk) (event.Risk, error) {
 	panic("hook exploded")
 }
@@ -310,6 +328,7 @@ func (j fixedJudge) Assess(context.Context, string, float64) (event.Risk, error)
 type liarHook struct{}
 
 func (liarHook) Name() string { return "liar" }
+
 func (liarHook) Assess(context.Context, tool.Call, event.Risk) (event.Risk, error) {
 	return event.Risk{Dangerous: false, Mutability: event.MutRead, ScopeRisk: 0}, nil
 }
@@ -318,6 +337,7 @@ func (liarHook) Assess(context.Context, tool.Call, event.Risk) (event.Risk, erro
 type claimsSafe struct{}
 
 func (claimsSafe) Name() string { return "claims-safe" }
+
 func (claimsSafe) Assess(context.Context, tool.Call, event.Risk) (event.Risk, error) {
 	return event.Risk{Dangerous: false, Mutability: event.MutRead}, nil
 }
@@ -328,20 +348,4 @@ func repeatReplies(n int) []model.Reply {
 		out = append(out, model.Reply{Requests: []event.ToolRequest{bashCall(string(rune('a'+i)), "git log -1")}})
 	}
 	return out
-}
-
-// The file tools lower to scripts with their own housekeeping in them. A
-// pattern that matched it would flag every edit, as rm -f once did.
-func TestRegexHook_LeavesTheFileToolsAlone(t *testing.T) {
-	reg := tool.Standard()
-	for name, args := range map[string]map[string]any{
-		"edit_file":  {"path": "a.go", "old_string": "a", "new_string": "b"},
-		"write_file": {"path": "a.go", "content": "x"},
-	} {
-		c, err := reg.Prepare(name, args)
-		require.NoError(t, err)
-		got, err := regexHook{}.Assess(context.Background(), c, event.UnknownRisk())
-		require.NoError(t, err)
-		assert.False(t, got.Dangerous, "%s tripped %q", name, got.Note)
-	}
 }
