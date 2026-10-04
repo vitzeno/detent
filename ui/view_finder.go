@@ -15,13 +15,11 @@ import (
 // The finder's box: hits on the left, the selected one drawn on the right,
 // floated over the panes, which stay in view round it, dimmed.
 
-// finderChrome is the box's lines that are not hits: title, query, two
-// rules and the key line, inside the island's border.
-const finderChrome = 5
-
-// The box keeps at least this much room, so a small terminal gives up its
-// padding before the box gives up its list.
 const (
+	// finderChrome is the box's lines that hold no hit: title, query, two
+	// rules and the key line.
+	finderChrome = 5
+	// A small terminal gives up the padding before the box gets this small.
 	finderMinWidth = 60
 	finderMinBody  = 4
 )
@@ -32,7 +30,7 @@ func (m Model) withFinder(base string) string {
 		return base
 	}
 	lines := strings.Split(base, "\n")
-	// The panes start under the session bar and fill finderArea's height.
+	// The panes start under the session bar.
 	for i := 1; i <= m.finderArea() && i < len(lines); i++ {
 		lines[i] = styleFaint.Render(ansi.Strip(lines[i]))
 	}
@@ -43,47 +41,21 @@ func (m Model) withFinder(base string) string {
 	).Render()
 }
 
-// finderArea is the height of the panes the box floats over.
-func (m Model) finderArea() int { return m.nav.histHeight + islandOverhead }
-
-// finderPadding is the gap on each side and above and below: an eighth of
-// the width and a sixth of the height, less when the box would get too small.
-func (m Model) finderPadding() (x, y int) {
-	x = min(m.layout.width/8, max(0, (m.layout.width-finderMinWidth)/2))
-	y = min(m.finderArea()/6, max(0, (m.finderArea()-2-finderChrome-finderMinBody)/2))
-	return x, y
-}
-
-func (m Model) finderWidth() int {
-	x, _ := m.finderPadding()
-	return max(minPaneWidth, m.layout.width-2*x)
-}
-
-func (m Model) finderHeight() int {
-	_, y := m.finderPadding()
-	return m.finderArea() - 2*y
-}
-
-func (m Model) finderBodyHeight() int { return max(1, m.finderHeight()-2-finderChrome) }
-func (m Model) finderListWidth() int  { return island.Inner(m.finderWidth()) * 2 / 5 }
-func (m Model) finderPreviewWidth() int {
-	return max(1, island.Inner(m.finderWidth())-m.finderListWidth()-3)
-}
-
 func (m Model) finderBox() string {
 	inner := island.Inner(m.finderWidth())
 	rule := styleFaint.Render(strings.Repeat("─", inner))
+	next := finderKindNames[(m.finder.kind+1)%finderKind(len(finderKindNames))]
+	keys := "enter jump · ctrl+r " + next + " · ↑↓ move · ctrl+u/d scroll · esc back"
+
 	lines := []string{m.finderQueryLine(inner), rule}
 	lines = append(lines, m.finderBodyLines()...)
-	lines = append(lines, rule, styleFaint.Render(layout.Truncate(
-		"enter jump · ctrl+r "+finderKindNames[(m.finder.kind+1)%finderKind(len(finderKindNames))]+
-			" · ↑↓ move · ctrl+u/d scroll · esc back", inner)))
+	lines = append(lines, rule, styleFaint.Render(layout.Truncate(keys, inner)))
 	return island.Render(m.finderTitle(), palette.Accent, lines, m.finderWidth(), m.finderHeight()-2)
 }
 
 func (m Model) finderTitle() string {
 	title := styleBrand.Render("finder") + styleFaint.Render(" · "+finderKindNames[m.finder.kind])
-	// An approval waits for the finder to close, so say one is there.
+	// A question waits for the finder to close, so say one is there.
 	if m.asking != nil || m.bound != nil {
 		title += styleCaution.Render(" · a question is waiting, esc to answer it")
 	}
@@ -100,7 +72,7 @@ func (m Model) finderQueryLine(width int) string {
 	return left + strings.Repeat(" ", gap) + count
 }
 
-// finderBodyLines is the list beside the preview, one row of each per line.
+// finderBodyLines sets the list and the preview side by side.
 func (m Model) finderBodyLines() []string {
 	height, listW, prevW := m.finderBodyHeight(), m.finderListWidth(), m.finderPreviewWidth()
 	list := m.finderListLines(listW, height)
@@ -131,7 +103,7 @@ func (m Model) finderBodyLines() []string {
 	return out
 }
 
-// finderListLines is the window of hits that keeps the cursor on screen.
+// finderListLines is the window of hits that keeps the cursor in view.
 func (m Model) finderListLines(width, height int) []string {
 	if len(m.finder.hits) == 0 {
 		msg := "nothing matches"
@@ -155,8 +127,8 @@ func (m Model) finderListLines(width, height int) []string {
 	return out
 }
 
-// finderGlyph says what matched: a request by its number, a command, or a
-// line of what something printed.
+// finderGlyph says what matched: a request's number, a command, or a line
+// of output.
 func (m Model) finderGlyph(h finderHit) string {
 	switch {
 	case h.kind == finderPrompts:
@@ -171,23 +143,11 @@ func (m Model) finderGlyph(h finderHit) string {
 	return styleFaint.Render("›")
 }
 
-// finderPreview is what the selected hit shows on the right, and the line
-// to centre on.
+// finderPreview is the selected hit drawn as the output pane would, and
+// the line to centre on.
 func (m Model) finderPreview(h finderHit, width int) (lines []string, match int) {
 	if h.kind == finderPrompts {
-		lines = wrapPlain(oneLine(strings.TrimSpace(h.block.prompt)), width)
-		for i := range lines {
-			lines[i] = styleGoal.Render(lines[i])
-		}
-		lines = append(lines, "")
-		for _, r := range h.block.rows {
-			text := r.command
-			if r.prose != "" {
-				text = "❯ " + plainProse(r.prose)
-			}
-			lines = append(lines, styleFaint.Render(layout.Truncate(text, width)))
-		}
-		return lines, 0
+		return m.requestPreview(h.block, width), 0
 	}
 	switch r := h.row; {
 	case r.signin != nil:
@@ -207,6 +167,51 @@ func (m Model) finderPreview(h finderHit, width int) (lines []string, match int)
 	return lines, 0
 }
 
+// requestPreview is a request's prompt, then a line per row it made.
+func (m Model) requestPreview(b *turnBlock, width int) []string {
+	lines := wrapPlain(oneLine(strings.TrimSpace(b.prompt)), width)
+	for i := range lines {
+		lines[i] = styleGoal.Render(lines[i])
+	}
+	lines = append(lines, "")
+	for _, r := range b.rows {
+		text := r.command
+		if r.prose != "" {
+			text = "❯ " + plainProse(r.prose)
+		}
+		lines = append(lines, styleFaint.Render(layout.Truncate(text, width)))
+	}
+	return lines
+}
+
+// finderArea is the height of the panes the box floats over.
+func (m Model) finderArea() int { return m.nav.histHeight + islandOverhead }
+
+// finderPadding is an eighth of the width each side and a sixth of the
+// panes above and below, less when the box would get too small.
+func (m Model) finderPadding() (x, y int) {
+	x = min(m.layout.width/8, max(0, (m.layout.width-finderMinWidth)/2))
+	y = min(m.finderArea()/6, max(0, (m.finderArea()-2-finderChrome-finderMinBody)/2))
+	return x, y
+}
+
+func (m Model) finderWidth() int {
+	x, _ := m.finderPadding()
+	return max(minPaneWidth, m.layout.width-2*x)
+}
+
+func (m Model) finderHeight() int {
+	_, y := m.finderPadding()
+	return m.finderArea() - 2*y
+}
+
+func (m Model) finderBodyHeight() int { return max(1, m.finderHeight()-2-finderChrome) }
+func (m Model) finderListWidth() int  { return island.Inner(m.finderWidth()) * 2 / 5 }
+
+func (m Model) finderPreviewWidth() int {
+	return max(1, island.Inner(m.finderWidth())-m.finderListWidth()-3)
+}
+
 // previewStart puts the match a third of the way down, moved by scroll,
 // and never past either end.
 func previewStart(n, match, height, scroll int) int {
@@ -214,7 +219,7 @@ func previewStart(n, match, height, scroll int) int {
 	return min(max(top, 0), max(0, n-height))
 }
 
-// highlight draws label in width cells with the runes at pos picked out,
+// highlight fits label to width cells with the runes at pos picked out,
 // sliding right when the match would fall past the edge.
 func highlight(label string, pos []int, width int) string {
 	runes := []rune(label)
@@ -232,6 +237,7 @@ func highlight(label string, pos []int, width int) string {
 		b.WriteString(styleFaint.Render("…"))
 		used++
 	}
+	// Runs of matched or unmatched runes are styled whole, not a rune at a time.
 	var run []rune
 	runHit := false
 	flush := func() {

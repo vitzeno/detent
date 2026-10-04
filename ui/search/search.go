@@ -7,31 +7,22 @@ import (
 	"unicode"
 )
 
-// Hit is one match: higher scores rank first, and Pos are the matched rune
-// offsets in the text, ascending, for highlighting.
+// Hit is one match. Higher scores rank first, and Pos are the matched rune
+// offsets, ascending, for highlighting.
 type Hit struct {
 	Score int
 	Pos   []int
 }
 
-// maxRunes bounds what Fuzzy reads of one text. A command past it is a
-// heredoc, and its head is what anyone remembers.
-const maxRunes = 2048
+// Text is output made ready for many queries. Lowering it is most of what
+// a search costs, so it happens once rather than once a key.
+type Text struct{ raw, lower string }
 
-// Scoring, after fzf's first algorithm: a match is worth more at a word's
-// start or a camel hump, and in a run, and less across a gap.
-const (
-	scoreMatch       = 16
-	bonusBoundary    = 8
-	bonusCamel       = 7
-	bonusConsecutive = 4
-	bonusFirstRune   = 2 // multiplies the first query rune's bonus
-	penaltyGapStart  = 3
-	penaltyGapExtend = 1
-)
+// NewText prepares s for Lines.
+func NewText(s string) Text { return Text{raw: s, lower: strings.ToLower(s)} }
 
 // Fuzzy reports whether each term of query appears in text in order, not
-// necessarily together. Case counts only once the query has an upper-case letter.
+// necessarily together. Case counts once the query has an upper-case letter.
 func Fuzzy(query, text string) (Hit, bool) {
 	terms := strings.Fields(query)
 	if len(terms) == 0 {
@@ -54,28 +45,11 @@ func Fuzzy(query, text string) (Hit, bool) {
 	return hit, true
 }
 
-// Text is output made ready for many queries. Lowering it is most of what a
-// search costs, so it happens once rather than once a key.
-type Text struct{ raw, lower string }
-
-// NewText prepares s for Lines.
-func NewText(s string) Text { return Text{raw: s, lower: strings.ToLower(s)} }
-
-// Line is line i of the text as it was given.
-func (t Text) Line(i int) string {
-	rest := t.raw
-	for range i {
-		_, rest, _ = strings.Cut(rest, "\n")
-	}
-	line, _, _ := strings.Cut(rest, "\n")
-	return line
-}
-
 // Lines finds the first line of text holding every term of query literally,
 // and returns its index with the matched offsets in that line.
 func Lines(query, text string) (int, Hit, bool) { return NewText(text).Lines(query) }
 
-// Lines is the package's Lines over prepared text.
+// Lines is Lines over text already prepared.
 func (t Text) Lines(query string) (int, Hit, bool) {
 	terms := strings.Fields(query)
 	if len(terms) == 0 {
@@ -93,7 +67,7 @@ func (t Text) Lines(query string) (int, Hit, bool) {
 	if !containsAll(hay, needles) {
 		return 0, Hit{}, false
 	}
-	// Lowering never adds or removes a newline, so the two keep in line step.
+	// Lowering never adds or removes a newline, so the two keep line step.
 	raw := t.raw
 	for i := 0; ; i++ {
 		hl, hrest, more := strings.Cut(hay, "\n")
@@ -110,14 +84,31 @@ func (t Text) Lines(query string) (int, Hit, bool) {
 	}
 }
 
-func containsAll(s string, terms []string) bool {
-	for _, term := range terms {
-		if !strings.Contains(s, term) {
-			return false
-		}
+// Line is line i of the text as it was given.
+func (t Text) Line(i int) string {
+	rest := t.raw
+	for range i {
+		_, rest, _ = strings.Cut(rest, "\n")
 	}
-	return true
+	line, _, _ := strings.Cut(rest, "\n")
+	return line
 }
+
+// maxRunes bounds what Fuzzy reads. A command past it is a heredoc, and its
+// head is what anyone remembers.
+const maxRunes = 2048
+
+// Scoring, after fzf's first algorithm: a match is worth more at a word's
+// start, a camel hump or in a run, and less across a gap.
+const (
+	scoreMatch       = 16
+	bonusBoundary    = 8
+	bonusCamel       = 7
+	bonusConsecutive = 4
+	bonusFirstRune   = 2 // multiplies the first rune's bonus
+	penaltyGapStart  = 3
+	penaltyGapExtend = 1
+)
 
 // fuzzyTerm finds the tightest window holding term: the earliest end going
 // forward, then the latest start going back from there.
@@ -179,8 +170,8 @@ func bonusAt(text []rune, p int) int {
 	return 0
 }
 
-// literal matches each term as a run of line's runes, compared a rune at a
-// time so the offsets stay true whatever lower-casing does to a rune's width.
+// literal matches each term as a run of line's runes. Compared rune by rune,
+// so offsets hold whatever lowering does to a rune's width.
 func literal(terms []string, line string, exact bool) (Hit, bool) {
 	hay := []rune(line)
 	var hit Hit
@@ -190,11 +181,13 @@ func literal(terms []string, line string, exact bool) (Hit, bool) {
 		if at < 0 {
 			return Hit{}, false
 		}
-		for i := range needle {
-			hit.Pos = merge(hit.Pos, []int{at + i})
+		run := make([]int, len(needle))
+		for i := range run {
+			run[i] = at + i
 		}
-		// Scored as a fuzzy run would be, so a whole word typed and found
-		// is never outranked by the same letters scattered.
+		hit.Pos = merge(hit.Pos, run)
+		// Scored as a fuzzy run, so a whole word is never outranked by its
+		// letters scattered.
 		hit.Score += len(needle)*(scoreMatch+bonusConsecutive) + bonusAt(hay, at)*bonusFirstRune
 	}
 	return hit, true
@@ -211,6 +204,15 @@ func index(hay, needle []rune, exact bool) int {
 		}
 	}
 	return -1
+}
+
+func containsAll(s string, terms []string) bool {
+	for _, term := range terms {
+		if !strings.Contains(s, term) {
+			return false
+		}
+	}
+	return true
 }
 
 func same(q, r rune, exact bool) bool {

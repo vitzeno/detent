@@ -14,51 +14,6 @@ import (
 	"github.com/vitzeno/detent/event"
 )
 
-// A session of three requests, each one command, so a hit names its row.
-func finderSession(t *testing.T) (*keyed, []uuid.UUID) {
-	t.Helper()
-	k := newKeyed(t)
-	var calls []uuid.UUID
-	for i, c := range []struct{ prompt, command, out string }{
-		{"why does redis refuse tls", "redis-cli --tls info", "# Server\nredis_version:7.2.4\ntls-port:6380\n"},
-		{"list the go files", "find . -name '*.go'", "main.go\nui/model.go\n"},
-		{"run the tests", "go test ./...", "ok  ui\nFAIL engine\n"},
-	} {
-		turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-		calls = append(calls, call)
-		for _, e := range []event.Event{
-			event.TurnStarted{Turn: turn, N: i + 1, Prompt: c.prompt},
-			event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": c.command}},
-			event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: c.out}},
-			event.TurnEnded{Turn: turn, Reason: event.EndDone},
-		} {
-			k.m.apply(e)
-		}
-	}
-	k.m.sizeViewport()
-	return k, calls
-}
-
-// finderType types text a rune at a time.
-func (k *keyed) finderType(t *testing.T, text string) {
-	t.Helper()
-	for _, r := range text {
-		k.send(t, tea.KeyPressMsg{Code: r, Text: string(r)})
-	}
-}
-
-func (k *keyed) ctrl(t *testing.T, r rune) {
-	t.Helper()
-	k.send(t, tea.KeyPressMsg{Code: r, Mod: tea.ModCtrl})
-}
-
-func (k *keyed) send(t *testing.T, msg tea.KeyPressMsg) {
-	t.Helper()
-	var cmd tea.Cmd
-	k.m, cmd = k.m.update(msg)
-	runCmd(cmd)
-}
-
 func TestFinder_JumpsToTheHitAndStopsFollowing(t *testing.T) {
 	k, calls := finderSession(t)
 	require.True(t, k.m.nav.follow)
@@ -206,4 +161,49 @@ func TestHighlight_FitsItsWidthAndKeepsTheMatchInView(t *testing.T) {
 			assert.Contains(t, out, "needle", "width %d", w)
 		}
 	}
+}
+
+// A session of three requests, each one command, so a hit names its row.
+func finderSession(t *testing.T) (*keyed, []uuid.UUID) {
+	t.Helper()
+	k := newKeyed(t)
+	var calls []uuid.UUID
+	for i, c := range []struct{ prompt, command, out string }{
+		{"why does redis refuse tls", "redis-cli --tls info", "# Server\nredis_version:7.2.4\ntls-port:6380\n"},
+		{"list the go files", "find . -name '*.go'", "main.go\nui/model.go\n"},
+		{"run the tests", "go test ./...", "ok  ui\nFAIL engine\n"},
+	} {
+		turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+		calls = append(calls, call)
+		for _, e := range []event.Event{
+			event.TurnStarted{Turn: turn, N: i + 1, Prompt: c.prompt},
+			event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": c.command}},
+			event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: c.out}},
+			event.TurnEnded{Turn: turn, Reason: event.EndDone},
+		} {
+			k.m.apply(e)
+		}
+	}
+	k.m.sizeViewport()
+	return k, calls
+}
+
+// finderType types text a rune at a time.
+func (k *keyed) finderType(t *testing.T, text string) {
+	t.Helper()
+	for _, r := range text {
+		k.send(t, tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+}
+
+func (k *keyed) ctrl(t *testing.T, r rune) {
+	t.Helper()
+	k.send(t, tea.KeyPressMsg{Code: r, Mod: tea.ModCtrl})
+}
+
+func (k *keyed) send(t *testing.T, msg tea.KeyPressMsg) {
+	t.Helper()
+	var cmd tea.Cmd
+	k.m, cmd = k.m.update(msg)
+	runCmd(cmd)
 }

@@ -13,10 +13,10 @@ import (
 	"github.com/vitzeno/detent/ui/search"
 )
 
-// The finder: ctrl+r over this session's history, then a jump to the hit.
+// The finder: ctrl+r over this session's history, then a jump to a hit.
 // It reads blocks and moves nav, and publishes nothing.
 
-// finderKind is what the finder searches, cycled by pressing ctrl+r again.
+// finderKind is what the finder searches. ctrl+r again cycles it.
 type finderKind int
 
 const (
@@ -28,24 +28,22 @@ const (
 
 var finderKindNames = [...]string{"all", "prompts", "commands", "output"}
 
-func (k finderKind) wants(of finderKind) bool { return k == finderAll || k == of }
-
 // finderHit is one line of the finder's list.
 type finderHit struct {
 	kind finderKind
-	// row is where a jump lands, held by pointer so an undo can't retarget it.
+	// row is where a jump lands, a pointer so an undo can't retarget it.
 	row   *historyRow
 	block *turnBlock
-	// label is the one line the list shows, defused, and pos its matched runes.
+	// label is the line shown, defused, and pos its matched runes.
 	label string
 	pos   []int
 	score int
-	// order is the row's place in history, so a tie goes to the newer one.
+	// order is the row's place in history, so a tie goes to the newer.
 	order int
 }
 
-// openFinder starts the finder over the panes. Only from the input state, so
-// a key meant for a question can never open it.
+// openFinder opens only from the input state, so a key meant for a
+// question can never open it.
 func (m Model) openFinder(query string) (Model, tea.Cmd) {
 	if m.mode != modeInput {
 		return m, nil
@@ -94,34 +92,14 @@ func (m Model) finderKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// closeFinder puts the bar back, and with restore the cursor too. A question
-// that arrived meanwhile is raised now, since backToInput raises it.
-func (m Model) closeFinder(restore bool) Model {
-	saved := m.finder.saved
-	m.finder = finderState{}
-	m.backToInput()
-	if !restore {
-		return m
-	}
-	m.nav.cursor = min(saved.cursor, max(0, len(m.rows())-1))
-	m.nav.follow, m.nav.histOffset = saved.follow, saved.histOffset
-	if saved.follow {
-		m.trackNewest()
-	}
-	if m.mode == modeInput && saved.focus != focusInput {
-		m.nav.focus = saved.focus
-		m.prompt.Blur()
-	}
-	return m
-}
-
-// jump closes the finder on the hit's row, with following off so nothing
-// new pulls the cursor away from what was looked for.
+// jump closes on the hit's row with following off, so nothing new pulls
+// the cursor away from what was found.
 func (m Model) jump() Model {
-	if m.finder.cursor >= len(m.finder.hits) {
+	h, ok := m.finderSelected()
+	if !ok {
 		return m.closeFinder(true)
 	}
-	h, query := m.finder.hits[m.finder.cursor], m.finder.query
+	query := m.finder.query
 	m = m.closeFinder(false)
 	i := slices.Index(m.rows(), h.row)
 	if i < 0 {
@@ -142,12 +120,96 @@ func (m Model) jump() Model {
 	return m
 }
 
-// scrollOutputTo brings the first line of the drawn output holding query
-// into view. The drawn lines, since a view need not keep the output's.
-func (m *Model) scrollOutputTo(query string) {
-	if line, _, ok := search.Lines(query, ansi.Strip(m.viewContent)); ok {
-		m.output.SetYOffset(max(0, line-scrollMargin))
+// closeFinder puts the bar back, and with restore the cursor too. Any
+// question that waited is raised by backToInput.
+func (m Model) closeFinder(restore bool) Model {
+	saved := m.finder.saved
+	m.finder = finderState{}
+	m.backToInput()
+	if !restore {
+		return m
 	}
+	m.nav.cursor = min(saved.cursor, max(0, len(m.rows())-1))
+	m.nav.follow, m.nav.histOffset = saved.follow, saved.histOffset
+	if saved.follow {
+		m.trackNewest()
+	}
+	if m.mode == modeInput && saved.focus != focusInput {
+		m.nav.focus = saved.focus
+		m.prompt.Blur()
+	}
+	return m
+}
+
+// finderHits is every match, best first. Prompts and commands are short,
+// so fuzzy. Output is long, so a literal line.
+func (m Model) finderHits(query string, kind finderKind) []finderHit {
+	var hits []finderHit
+	fuzzy := func(k finderKind, text string, r *historyRow, b *turnBlock, order int) {
+		label := oneLine(strings.TrimSpace(text))
+		if h, ok := search.Fuzzy(query, label); ok {
+			hits = append(hits, finderHit{kind: k, row: r, block: b,
+				label: label, pos: h.Pos, score: h.Score, order: order})
+		}
+	}
+	order := 0
+	for _, b := range m.blocks {
+		// A block with no rows has nowhere for the cursor to land.
+		if len(b.rows) == 0 {
+			continue
+		}
+		if b.prompt != "" && kind.wants(finderPrompts) {
+			fuzzy(finderPrompts, b.prompt, b.rows[0], b, order)
+		}
+		for _, r := range b.rows {
+			if r.command != "" && kind.wants(finderCommands) {
+				fuzzy(finderCommands, r.command, r, b, order)
+			}
+			if query != "" && kind.wants(finderOutput) {
+				if h, ok := outputHit(query, r); ok {
+					h.block, h.order = b, order
+					hits = append(hits, h)
+				}
+			}
+			order++
+		}
+	}
+	slices.SortStableFunc(hits, func(a, b finderHit) int {
+		return cmp.Or(cmp.Compare(b.score, a.score), cmp.Compare(b.order, a.order),
+			cmp.Compare(a.kind, b.kind))
+	})
+	return hits
+}
+
+// outputHit is the first line of a row's output holding every term. One
+// per row, so a log repeating a word buries nothing.
+func outputHit(query string, r *historyRow) (finderHit, bool) {
+	text := r.searchable()
+	line, h, ok := text.Lines(query)
+	if !ok {
+		return finderHit{}, false
+	}
+	raw := text.Line(line)
+	label := strings.TrimLeft(raw, " ")
+	shift := utf8.RuneCountInString(raw) - utf8.RuneCountInString(label)
+	pos := make([]int, len(h.Pos))
+	for i, p := range h.Pos {
+		pos[i] = p - shift
+	}
+	return finderHit{kind: finderOutput, row: r, label: label, pos: pos, score: h.Score}, true
+}
+
+// searchable is the row's output, or its live tail, defused and prepared.
+// Kept once the row has finished, since it no longer changes.
+func (r *historyRow) searchable() search.Text {
+	if r.running {
+		return search.NewText(termsafe.Printable(strings.Join(r.live, "\n")))
+	}
+	if r.found == nil || r.foundOf != r.result {
+		t := search.NewText(termsafe.Printable(r.text()))
+		r.found, r.foundOf = &t, r.result
+	}
+	return *r.found
 }
 
 func (m *Model) refreshFinder() {
@@ -160,7 +222,7 @@ func (m *Model) moveFinder(d int) {
 	m.finder.scroll = 0
 }
 
-// scrollFinder moves the preview, held to what the preview has to show.
+// scrollFinder moves the preview, held within what it has to show.
 func (m *Model) scrollFinder(d int) {
 	h, ok := m.finderSelected()
 	if !ok {
@@ -180,81 +242,18 @@ func (m Model) finderSelected() (finderHit, bool) {
 	return m.finder.hits[m.finder.cursor], true
 }
 
-// finderHits matches query against every block, best first. Prompts and
-// commands are short, so fuzzy. Output is long, so a literal line.
-func (m Model) finderHits(query string, kind finderKind) []finderHit {
-	var hits []finderHit
-	order := 0
-	for _, b := range m.blocks {
-		// A block with no rows has nowhere for the cursor to land.
-		if len(b.rows) == 0 {
-			continue
-		}
-		if b.prompt != "" && kind.wants(finderPrompts) {
-			label := oneLine(strings.TrimSpace(b.prompt))
-			if h, ok := search.Fuzzy(query, label); ok {
-				hits = append(hits, finderHit{kind: finderPrompts, row: b.rows[0], block: b,
-					label: label, pos: h.Pos, score: h.Score, order: order})
-			}
-		}
-		for _, r := range b.rows {
-			if r.command != "" && kind.wants(finderCommands) {
-				label := oneLine(strings.TrimSpace(r.command))
-				if h, ok := search.Fuzzy(query, label); ok {
-					hits = append(hits, finderHit{kind: finderCommands, row: r, block: b,
-						label: label, pos: h.Pos, score: h.Score, order: order})
-				}
-			}
-			if query != "" && kind.wants(finderOutput) {
-				if hit, ok := outputHit(query, r); ok {
-					hit.block, hit.order = b, order
-					hits = append(hits, hit)
-				}
-			}
-			order++
-		}
+// scrollOutputTo shows the first drawn line holding query. Drawn, since a
+// view need not keep the output's lines.
+func (m *Model) scrollOutputTo(query string) {
+	if line, _, ok := search.Lines(query, ansi.Strip(m.viewContent)); ok {
+		m.output.SetYOffset(max(0, line-scrollMargin))
 	}
-	slices.SortStableFunc(hits, func(a, b finderHit) int {
-		return cmp.Or(cmp.Compare(b.score, a.score), cmp.Compare(b.order, a.order),
-			cmp.Compare(a.kind, b.kind))
-	})
-	return hits
 }
 
-// outputHit is the first line of a row's output, or the model's words,
-// holding every term. One per row, so a log repeating a word buries nothing.
-func outputHit(query string, r *historyRow) (finderHit, bool) {
-	text := r.searchable()
-	line, h, ok := text.Lines(query)
-	if !ok {
-		return finderHit{}, false
-	}
-	raw := text.Line(line)
-	label := strings.TrimLeft(raw, " ")
-	shift := utf8.RuneCountInString(raw) - utf8.RuneCountInString(label)
-	pos := make([]int, len(h.Pos))
-	for i, p := range h.Pos {
-		pos[i] = p - shift
-	}
-	return finderHit{kind: finderOutput, row: r, label: label, pos: pos, score: h.Score}, true
-}
+func (k finderKind) wants(of finderKind) bool { return k == finderAll || k == of }
 
-// searchable is the row's output, or its live tail while it runs, defused
-// and prepared. Kept once the row has finished, since it no longer changes.
-func (r *historyRow) searchable() search.Text {
-	if r.running {
-		return search.NewText(termsafe.Printable(strings.Join(r.live, "\n")))
-	}
-	if r.found == nil || r.foundOf != r.result {
-		t := search.NewText(termsafe.Printable(r.text()))
-		r.found, r.foundOf = &t, r.result
-	}
-	return *r.found
-}
-
-// oneLine defuses s and folds it onto a line, a rune for a rune, so offsets
-// found in it are offsets in what is drawn. It trims nothing: a typed space
-// is a space.
+// oneLine defuses s onto one line, rune for rune, so offsets in it are
+// offsets in what is drawn. It trims nothing: a typed space is a space.
 func oneLine(s string) string {
 	return strings.NewReplacer("\n", " ", "\r", " ").Replace(termsafe.Printable(s))
 }
