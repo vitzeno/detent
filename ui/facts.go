@@ -111,6 +111,8 @@ func (m *Model) apply(ev event.Event) {
 			r.running = false
 			result := styled(v.Result)
 			r.result = &result
+			r.created = createdDiff(r.wrote, result)
+			r.wrote = nil
 			m.calls++
 			if result.Err != "" || result.ExitCode != 0 {
 				m.errors++
@@ -210,8 +212,8 @@ func (m *Model) addToolCall(v event.ToolCallProposed) {
 	m.cur.rev++
 	m.cur.rows = append(m.cur.rows, &historyRow{
 		id: v.ToolCall, command: event.Command(v.Tool, v.Args), tool: v.Tool,
-		headline: headline(v.Tool, v.Args),
-		renders:  v.Renders, executor: v.Executor,
+		headline: headline(v.Tool, v.Args), wrote: wroteBy(v),
+		renders: v.Renders, executor: v.Executor,
 	})
 	m.trackNewest()
 }
@@ -342,4 +344,24 @@ func (m *Model) setCur(b *turnBlock) {
 func styled(r event.Result) event.Result {
 	r.Stdout, r.Stderr, r.Err = termsafe.Styled(r.Stdout), termsafe.Styled(r.Stderr), termsafe.Printable(r.Err)
 	return r
+}
+
+// wroteBy keeps a write_file call's content, until its result says whether
+// the file it wrote was new.
+func wroteBy(v event.ToolCallProposed) *written {
+	path, _ := v.Args["path"].(string)
+	content, ok := v.Args["content"].(string)
+	if v.Tool != "write_file" || !ok || content == "" {
+		return nil
+	}
+	return &written{path: termsafe.Printable(path), content: termsafe.Printable(content)}
+}
+
+// createdDiff is a new file's content as a diff, empty for anything else: an
+// edit already comes back as one, and a failure is shown as it is.
+func createdDiff(w *written, r event.Result) string {
+	if w == nil || r.ExitCode != 0 || r.Err != "" || !strings.HasPrefix(r.Stdout, newFileReport) {
+		return ""
+	}
+	return addedDiff(w)
 }

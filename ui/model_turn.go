@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
@@ -52,6 +55,10 @@ type historyRow struct {
 	// tool is the tool's name, empty for a command the human ran, and
 	// headline its arguments as history leads with them.
 	tool, headline string
+	// wrote is what write_file was given, kept until its result says whether
+	// the file was new, when created becomes that content as a diff.
+	wrote   *written
+	created string
 	// renders is the shape the tool declared, which beats a judged
 	// guess because the tool knows and the judge is estimating.
 	renders event.RenderKind
@@ -94,6 +101,13 @@ type verdict struct {
 	fromJudge  bool
 }
 
+// written is a write_file call's path and content, defused.
+type written struct{ path, content string }
+
+// newFileReport is how write_file says it created a file, rather than
+// showing a diff the model would pay to read (internal/tool/write_file.go).
+const newFileReport = "created "
+
 // text is what the row draws in the output pane.
 func (r *historyRow) text() string {
 	if r.prose != "" {
@@ -101,6 +115,9 @@ func (r *historyRow) text() string {
 	}
 	if r.result == nil {
 		return ""
+	}
+	if r.created != "" {
+		return r.created
 	}
 	return outputOf(r.result)
 }
@@ -134,4 +151,16 @@ func outputOf(r *event.Result) string {
 		return r.Stderr
 	}
 	return r.Stdout
+}
+
+// addedDiff is a new file as a unified diff that adds every line, so the
+// human sees it as they would an edit.
+func addedDiff(w *written) string {
+	lines := strings.Split(strings.TrimSuffix(w.content, "\n"), "\n")
+	var b strings.Builder
+	fmt.Fprintf(&b, "--- %s\n+++ %s\n@@ -0,0 +1,%d @@\n", w.path, w.path, len(lines))
+	for _, l := range lines {
+		b.WriteString("+" + l + "\n")
+	}
+	return b.String()
 }

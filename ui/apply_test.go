@@ -506,3 +506,28 @@ func TestOutput_KeepsColourAndShowsOtherEscapes(t *testing.T) {
 		assert.NotContains(t, text, "\x1b]", "and never sent")
 	}
 }
+
+// write_file tells the model only that it created a file, which it has just
+// written. The human sees the new file as a diff that adds every line.
+func TestWriteFile_ANewFileIsShownAsADiff(t *testing.T) {
+	ended := func(stdout string, code int) Model {
+		turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+		return sized(t, 120, 40, event.TurnStarted{Turn: turn, N: 1, Prompt: "go"},
+			event.ToolCallProposed{ToolCall: call, Tool: "write_file", Renders: event.RendersDiff,
+				Args: map[string]any{"path": "notes.md", "content": "one\ntwo\x1b]52;c;x\x07\n"}},
+			event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: stdout, ExitCode: code}})
+	}
+
+	m := ended("created notes.md, 2 lines\n", 0)
+	r := m.rows()[0]
+	assert.Equal(t, "--- notes.md\n+++ notes.md\n@@ -0,0 +1,2 @@\n+one\n+two^[]52;c;x^G\n", r.text(),
+		"every line added, and what the model wrote is defused")
+	assert.Nil(t, r.wrote, "the content is not kept twice")
+	assert.Contains(t, stripANSI(m.viewContent), "+one", "the output pane draws it")
+	assert.Equal(t, "created notes.md, 2 lines\n", r.result.Stdout, "the result itself is untouched")
+
+	edit := "--- notes.md\n+++ notes.md\n@@ -1 +1 @@\n-old\n+new\n"
+	assert.Equal(t, edit, ended(edit, 0).rows()[0].text(), "an edit already is a diff")
+	assert.Equal(t, "created notes.md, 2 lines\n", ended("created notes.md, 2 lines\n", 1).rows()[0].text(),
+		"a failure is shown as it came")
+}
