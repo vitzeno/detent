@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,7 +34,8 @@ const (
 // shutdown closes what a session opened. run() fills its fields as it
 // opens each thing, so an early return closes only what was reached.
 type shutdown struct {
-	session uuid.UUID
+	// session is the one to resume, moved by /new while the TUI runs.
+	session *latestSession
 	// userCommand stops the human's own command. Not in unwatch: that list
 	// runs after the drain, and a fact published then reaches nobody.
 	userCommand func()
@@ -136,7 +138,29 @@ func (s shutdown) report(w io.Writer, errs []error) {
 		fmt.Fprintln(w, "detent: session was not recorded, so there is nothing to resume")
 		return
 	}
-	fmt.Fprintf(w, "detent: session saved, resume with: detent -resume %s\n", s.session)
+	fmt.Fprintf(w, "detent: session saved, resume with: detent -resume %s\n", s.session.get())
+}
+
+// latestSession is the session SessionStarted last named. Set from the bus,
+// read at shutdown, so it is guarded.
+type latestSession struct {
+	mu sync.Mutex
+	id uuid.UUID
+}
+
+func (l *latestSession) set(id uuid.UUID) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.id = id
+}
+
+func (l *latestSession) get() uuid.UUID {
+	if l == nil {
+		return uuid.Nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.id
 }
 
 // bounded puts a deadline on a close that has none. Invokers.Close is

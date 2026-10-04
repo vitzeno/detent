@@ -43,7 +43,7 @@ func TestSession_PhasesRunOneRequestEndToEnd(t *testing.T) {
 	require.NoError(t, <-ping(cfg))
 
 	s := &session{o: options{prompt: "say done"}, cfg: cfg, id: uuid.Must(uuid.NewV7())}
-	s.sd.session = s.id
+	s.sd.session = &latestSession{id: s.id}
 	defer func() { s.sd.close() }()
 	require.NoError(t, s.openSandbox())
 	assert.False(t, s.env.Sandboxed, "host mode runs here")

@@ -42,9 +42,13 @@ func Watch(ctx context.Context, bus *event.Bus, sessions Sessions, current uuid.
 	for _, o := range opts {
 		o(&w)
 	}
-	return bus.Handle(event.Only(event.DeleteSessionKind), func(rec event.Record) {
-		if v, ok := rec.Event.(event.DeleteSession); ok {
+	return bus.Handle(event.Only(event.DeleteSessionKind, event.SessionStartedKind), func(rec event.Record) {
+		switch v := rec.Event.(type) {
+		case event.DeleteSession:
 			w.forget(bus, v.Session)
+		case event.SessionStarted:
+			// After /new the running session is the new one, and the old can go.
+			w.current = v.Session
 		}
 	})
 }

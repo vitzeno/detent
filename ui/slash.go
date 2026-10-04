@@ -62,7 +62,7 @@ func slashCommands() []slashCmd {
 			run: func(m Model, _ string) (Model, tea.Cmd) {
 				return m.toggleEntry()
 			}},
-		{name: "/new", desc: "forget the conversation and start over", run: func(m Model, _ string) (Model, tea.Cmd) {
+		{name: "/new", desc: "start a new session, leaving this one to resume", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.startOver()
 		}},
 		{name: "/help", desc: "show slash commands", run: func(m Model, _ string) (Model, tea.Cmd) {

@@ -86,7 +86,7 @@ func run() error {
 	s.warn(logErr)
 	defer func() { _ = closeLog() }()
 	// Deferred after the log, so the log outlives everything it closes.
-	s.sd.session = id
+	s.sd.session = &latestSession{id: id}
 	defer func() { s.sd.close() }()
 
 	if err := s.openSandbox(); err != nil {

@@ -248,3 +248,38 @@ func TestWatch_RenameSaysWhetherItTook(t *testing.T) {
 	assert.Equal(t, "error", got.Level)
 	assert.Contains(t, got.Text, "newest session")
 }
+
+// /new publishes the next session's SessionStarted, and from there records go
+// under its id. The old session stays whole, so resuming it brings it back.
+func TestWatch_ANewSessionLeavesTheOldOneWhole(t *testing.T) {
+	s := open(t)
+	old, next := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	bus := event.New()
+	stop := store.Watch(bus, s, old)
+	before, after := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	for _, e := range []event.Event{
+		event.SessionStarted{Session: old, Model: "m"},
+		event.TurnStarted{Turn: before, N: 1, Prompt: "before"},
+		event.TurnEnded{Turn: before, Reason: event.EndDone},
+		event.SessionStarted{Session: next, Model: "m"},
+		event.TurnStarted{Turn: after, N: 1, Prompt: "after"},
+	} {
+		bus.Publish(e)
+	}
+	bus.Drain(3 * time.Second)
+	stop()
+
+	kept, err := s.Replay(old)
+	require.NoError(t, err)
+	require.Len(t, kept, 3, "the old session ends where it left off")
+	assert.Equal(t, before, kept[1].Event.(event.TurnStarted).Turn)
+
+	got, err := s.Replay(next)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, after, got[1].Event.(event.TurnStarted).Turn)
+
+	all, err := s.Sessions()
+	require.NoError(t, err)
+	assert.Len(t, all, 2, "both can be resumed")
+}

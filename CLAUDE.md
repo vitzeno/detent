@@ -362,9 +362,12 @@ adding a fat dependency fails with the transitive import named.
   Turn that ran anything not read-only is asked once to check its work
   against the request before it ends (`finish_check`). `MaxSteps` defaults to 100 and is soft: hitting it publishes
   `BoundReached` and waits, because a human is watching and stopping
-  dead is worse than asking. Undo (`RolledBack`) and reset
-  (`SessionReset`) are facts, so a resumed session replays them rather
-  than bringing back what the human threw away. So is a crash's end: a
+  dead is worse than asking. Undo (`RolledBack`) is a fact, so a resumed
+  session replays it rather than bringing back what the human threw away.
+  `/new` starts another session under a new id: the engine publishes its
+  `SessionStarted`, the store, log and `forget` follow it, and the old
+  session is left whole and resumable. `SessionReset` is only read from
+  sessions stored before that. A crash's end is a fact too: a
   resumed session's `Run` ends whatever the old process left open (its
   Turn, tool calls and the human's command) with ordinary facts the store
   records, and tells the model its last request was cut off.

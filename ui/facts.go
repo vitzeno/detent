@@ -42,6 +42,10 @@ func (m *Model) apply(ev event.Event) {
 	m.histRev++
 	switch v := ev.(type) {
 	case event.SessionStarted:
+		// Another id is /new: the old session stays stored, and history starts again.
+		if m.run.Session != uuid.Nil && v.Session != m.run.Session {
+			m.clearHistory()
+		}
 		m.run = v
 		m.skillCmds = skillCommands(v.Skills)
 		m.prompt.SetExtraCommands(m.skillCmds)

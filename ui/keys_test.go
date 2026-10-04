@@ -158,12 +158,13 @@ func TestKeys_ProposedTextCannotDriveTheTerminal(t *testing.T) {
 	assert.Contains(t, ansi.Strip(view), "^[]52;c;", "it is shown instead")
 }
 
-// The engine aborts a running Turn on reset and clears its transcript once
-// it ends, so /new clears the screen at once in either case.
+// The engine aborts a running Turn on /new and starts a new session, and
+// history starts again when that session does.
 func TestKeys_NewResetsWhetherOrNotATurnRuns(t *testing.T) {
 	for _, running := range []bool{true, false} {
 		k := newKeyed(t)
 		turn := uuid.Must(uuid.NewV7())
+		k.m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7())})
 		k.m.apply(event.TurnStarted{Turn: turn, N: 1, Prompt: "slow"})
 		if !running {
 			k.m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
@@ -174,6 +175,7 @@ func TestKeys_NewResetsWhetherOrNotATurnRuns(t *testing.T) {
 		k.press(t, "enter")
 		_, ok := k.intent(t).(event.ResetSession)
 		require.True(t, ok, "running=%v resets", running)
+		k.m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7())})
 		assert.Empty(t, k.m.blocks)
 	}
 }

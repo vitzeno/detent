@@ -4,6 +4,7 @@
 package logging
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -51,9 +52,10 @@ func Setup(session string, opts ...Option) (func() error, error) {
 	}
 	lvl, lvlErr := parseLevel(o.level)
 	bodies.Store(o.bodies)
-	slog.SetDefault(slog.New(slog.NewJSONHandler(f, &slog.HandlerOptions{
+	current.Store(session)
+	slog.SetDefault(slog.New(sessionHandler{slog.NewJSONHandler(f, &slog.HandlerOptions{
 		Level: lvl,
-	})).With(KeySession, session))
+	})}))
 	closer := func() error {
 		// A late write after this goes nowhere rather than to a closed file.
 		slog.SetDefault(slog.New(slog.DiscardHandler))
@@ -115,4 +117,26 @@ func parseLevel(s string) (slog.Level, error) {
 func disable(err error) (func() error, error) {
 	slog.SetDefault(slog.New(slog.DiscardHandler))
 	return func() error { return nil }, err
+}
+
+// current is the session records are filed under. /new moves it, so it is
+// read as each record is written rather than fixed into a logger.
+var current atomic.Value
+
+// sessionHandler adds the current session to every record.
+type sessionHandler struct{ slog.Handler }
+
+func (h sessionHandler) Handle(ctx context.Context, r slog.Record) error {
+	if s, ok := current.Load().(string); ok {
+		r.AddAttrs(slog.String(KeySession, s))
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h sessionHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return sessionHandler{h.Handler.WithAttrs(attrs)}
+}
+
+func (h sessionHandler) WithGroup(name string) slog.Handler {
+	return sessionHandler{h.Handler.WithGroup(name)}
 }

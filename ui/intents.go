@@ -149,10 +149,9 @@ func (m Model) abortRunning() (Model, tea.Cmd) {
 	return m, m.send(event.Abort{Turn: m.cur.id})
 }
 
-// startOver forgets the transcript. The container keeps running: the
-// conversation and the environment are different things.
+// startOver asks for a new session. History clears when it starts, and the
+// container keeps running: the conversation and the environment differ.
 func (m Model) startOver() (Model, tea.Cmd) {
-	m.clearHistory()
 	m.backToInput()
 	return m, m.send(event.ResetSession{})
 }

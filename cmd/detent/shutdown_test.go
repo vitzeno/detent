@@ -129,24 +129,24 @@ func TestShutdown_ReportsHowItWentAndHowToResume(t *testing.T) {
 	}{
 		{
 			name: "a session that was recorded",
-			sd:   shutdown{session: id, bus: event.New(), events: &store.Store{}},
+			sd:   shutdown{session: &latestSession{id: id}, bus: event.New(), events: &store.Store{}},
 			want: []string{"session saved", "-resume " + id.String()},
 		},
 		{
 			name: "a session nothing was writing down",
-			sd:   shutdown{session: id, bus: event.New()},
+			sd:   shutdown{session: &latestSession{id: id}, bus: event.New()},
 			want: []string{"not recorded"},
 			gone: []string{"-resume"},
 		},
 		{
 			name: "something did not close",
-			sd:   shutdown{session: id, bus: event.New(), events: &store.Store{}},
+			sd:   shutdown{session: &latestSession{id: id}, bus: event.New(), events: &store.Store{}},
 			errs: []error{errors.New("mcp servers did not close in 5s")},
 			want: []string{"mcp servers did not close", "-resume " + id.String()},
 		},
 		{
 			name: "-sessions, -prune and -mcp, which ran no session",
-			sd:   shutdown{session: id},
+			sd:   shutdown{session: &latestSession{id: id}},
 			gone: []string{"session", "-resume"},
 		},
 	}

@@ -17,6 +17,10 @@ func Watch(bus *event.Bus) func() {
 	// The stop waits for the last record to be written, not merely
 	// received: a log that loses its tail at exit is worse than a slow one.
 	return bus.Handle(worthKeeping, func(rec event.Record) {
+		// A new session files its records, this one included, under its own id.
+		if v, ok := rec.Event.(event.SessionStarted); ok && v.Session != uuid.Nil {
+			current.Store(v.Session.String())
+		}
 		level, fields := describe(rec.Event)
 		log.Log(context.Background(), level, string(rec.Event.Kind()),
 			append([]any{KeyEvent, string(rec.Event.Kind()), KeyOrdinal, rec.Ordinal}, fields...)...)

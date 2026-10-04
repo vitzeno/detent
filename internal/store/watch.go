@@ -15,6 +15,11 @@ func Watch(bus *event.Bus, s *Store, session uuid.UUID) func() {
 		if s.serve(bus, rec.Event) {
 			return
 		}
+		// /new starts another session, and its records, this first one
+		// included, go under its id. The old session is left as it was.
+		if v, ok := rec.Event.(event.SessionStarted); ok && v.Session != uuid.Nil {
+			session = v.Session
+		}
 		if err := s.Append(session, rec); err != nil {
 			if failed == 0 {
 				logging.For(logging.Store).Error("this session is not being recorded",

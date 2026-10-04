@@ -215,6 +215,11 @@ func (s *session) wire() context.Context {
 	// Wired before Run so nothing at startup is missed. ctx goes to those doing
 	// network or process work, and logging and store outlive it to keep the last records.
 	s.sd.unwatch = append(s.sd.unwatch, logging.Watch(s.bus))
+	s.sd.unwatch = append(s.sd.unwatch, s.bus.Handle(event.Only(event.SessionStartedKind), func(rec event.Record) {
+		if v, ok := rec.Event.(event.SessionStarted); ok && v.Session != uuid.Nil {
+			s.sd.session.set(v.Session)
+		}
+	}))
 	if s.events != nil {
 		s.sd.unwatch = append(s.sd.unwatch, store.Watch(s.bus, s.events, s.id))
 	}

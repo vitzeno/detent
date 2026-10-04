@@ -141,14 +141,7 @@ func (e *Engine) Run(ctx context.Context) {
 	defer e.unsub()
 	// Read before SessionStarted goes out, since anything may follow that.
 	open := e.leftOpen
-	_, mode := e.runners.Select(event.UnknownRisk())
-	e.bus.Publish(event.SessionStarted{
-		Session: e.session, Model: e.modelName, Judge: e.judgeName,
-		Sandbox: mode == "sandbox",
-		Network: e.network, MaxSteps: e.maxSteps,
-		Recorded: e.recorded, Resumed: e.resumed,
-		ContextTokens: e.budget(), Instructions: e.instructions, Skills: e.skills,
-	})
+	e.started()
 	e.endLeftOpen(open)
 	e.bus.Publish(e.measure(0))
 	done := make(chan struct{}, 1)
@@ -319,6 +312,8 @@ func (e *Engine) turnDone(ctx context.Context, done chan struct{}) {
 }
 
 // reset forgets the transcript and says so, so a replay forgets it too.
+// reset starts a new session under a new id. The old one is left stored as
+// it was, so it can still be resumed.
 func (e *Engine) reset() {
 	e.trLock(func() { e.tr.reset() })
 	e.repeat.forget()
@@ -327,8 +322,22 @@ func (e *Engine) reset() {
 	e.mu.Lock()
 	clear(e.past)
 	e.mu.Unlock()
-	e.bus.Publish(event.SessionReset{})
-	e.notice("info", "session reset")
+	e.session, e.resumed = uuid.Must(uuid.NewV7()), 0
+	e.started()
+	e.bus.Publish(e.measure(0))
+	e.notice("info", "new session")
+}
+
+// started describes this session, which is also what moves the store onto it.
+func (e *Engine) started() {
+	_, mode := e.runners.Select(event.UnknownRisk())
+	e.bus.Publish(event.SessionStarted{
+		Session: e.session, Model: e.modelName, Judge: e.judgeName,
+		Sandbox: mode == "sandbox",
+		Network: e.network, MaxSteps: e.maxSteps,
+		Recorded: e.recorded, Resumed: e.resumed,
+		ContextTokens: e.budget(), Instructions: e.instructions, Skills: e.skills,
+	})
 }
 
 // messages copies the message log, since the Turn goroutine owns the

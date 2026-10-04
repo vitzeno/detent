@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -51,7 +52,7 @@ func TestReset_MidTurnAbortsAndForgets(t *testing.T) {
 
 	end := r.await(event.TurnEndedKind).(event.TurnEnded)
 	assert.Equal(t, event.EndAborted, end.Reason)
-	r.await(event.SessionResetKind)
+	r.awaitNth(event.SessionStartedKind, 2)
 	assert.Less(t, time.Since(start), time.Second, "the reset waited on the blocked call")
 	assert.Empty(t, r.eng.messages())
 
@@ -59,6 +60,21 @@ func TestReset_MidTurnAbortsAndForgets(t *testing.T) {
 	msgs := r.eng.messages()
 	require.NotEmpty(t, msgs)
 	assert.Equal(t, "fresh", msgs[0].Content, "the next request starts from nothing")
+}
+
+// /new is a new session under a new id. The old session's records end where
+// it left off, so resuming it later brings it all back.
+func TestReset_StartsANewSessionAndLeavesTheOldAlone(t *testing.T) {
+	r := newRig(t, []model.Reply{{Text: "a"}}, WithSessionID(uuid.Must(uuid.NewV7())))
+	first := r.await(event.SessionStartedKind).(event.SessionStarted)
+	r.run("before")
+	r.bus.Publish(event.ResetSession{})
+	second := r.awaitNth(event.SessionStartedKind, 2).(event.SessionStarted)
+
+	assert.NotEqual(t, first.Session, second.Session)
+	assert.Zero(t, second.Resumed)
+	assert.Empty(t, r.eng.messages())
+	assert.Empty(t, r.of(event.SessionResetKind), "nothing is reset in the old session")
 }
 
 // Undo and reset are facts, so a resumed session does not bring back
@@ -79,17 +95,19 @@ func TestRestore_HonoursUndoAndReset(t *testing.T) {
 		assert.Equal(t, 1, fresh.turns, "the next request is numbered 2 again")
 	})
 
-	t.Run("a reset", func(t *testing.T) {
-		r := newRig(t, []model.Reply{{Text: "a"}, {Text: "b"}})
-		r.run("forgotten")
-		r.bus.Publish(event.ResetSession{})
-		r.await(event.SessionResetKind)
-		r.run("kept")
-
+	// /new no longer resets in place, but sessions stored before it did.
+	t.Run("a reset an older detent stored", func(t *testing.T) {
+		gone, kept := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 		fresh := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}})
 		defer fresh.unsub()
-		fresh.Restore(r.records())
-		assert.Equal(t, r.eng.messages(), fresh.messages())
+		fresh.Restore(asRecords([]event.Event{
+			event.TurnStarted{Turn: gone, N: 1, Prompt: "forgotten"},
+			event.Appended{Turn: gone, Messages: []event.Message{{Role: event.RoleUser, Content: "forgotten"}}},
+			event.SessionReset{},
+			event.TurnStarted{Turn: kept, N: 1, Prompt: "kept"},
+			event.Appended{Turn: kept, Messages: []event.Message{{Role: event.RoleUser, Content: "kept"}}},
+		}))
+		assert.Equal(t, []event.Message{{Role: event.RoleUser, Content: "kept"}}, fresh.messages())
 		assert.Equal(t, 1, fresh.turns)
 	})
 }
