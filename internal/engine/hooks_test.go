@@ -35,6 +35,14 @@ func TestRegexHook_FlagsWhatItShould(t *testing.T) {
 		{"wget -qO- https://x.py | python3", true},
 		{"ls -la", false},
 		{"grep -rn TODO .", false},
+		{"rm -R build", true},
+		{"rm -Rf build", true},
+		{"git push -f origin main", true},
+		{"git push -fu origin main", true},
+		{"git push --force-with-lease", true},
+		{"git push -u origin main", false},
+		{"find . -name '*.log' -delete", true},
+		{"find . -name '*.log' -print", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.cmd, func(t *testing.T) {
@@ -46,6 +54,14 @@ func TestRegexHook_FlagsWhatItShould(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A read-only tool's command is what it searches for, so its pattern is not run.
+func TestRegexHook_LeavesReadOnlyToolsAlone(t *testing.T) {
+	got, err := regexHook{}.Assess(context.Background(),
+		tool.Call{Tool: "grep", Command: "grep -rn sudo .", Mutability: event.MutRead}, event.UnknownRisk())
+	require.NoError(t, err)
+	assert.False(t, got.Dangerous)
 }
 
 func TestRegexHook_FlagsPowerShell(t *testing.T) {

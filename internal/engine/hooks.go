@@ -53,6 +53,10 @@ type regexHook struct{}
 func (regexHook) Name() string { return "regex" }
 
 func (regexHook) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
+	// A read-only tool's command holds what it looks for, and `grep sudo` runs nothing.
+	if c.Mutability == event.MutRead {
+		return event.UnknownRisk(), nil
+	}
 	tables := [][]danger{dangerPatterns}
 	// The unix table too, since a model writes bash in pwsh and Windows has sudo and git.
 	if c.Tool == tool.PowerShellName {
@@ -77,12 +81,13 @@ type danger struct {
 }
 
 var dangerPatterns = []danger{
-	{regexp.MustCompile(`\brm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+|--(recursive|force)\b)`), event.MutIrreversible, 0.9, "recursive or forced delete"},
+	{regexp.MustCompile(`\brm\s+(-[a-zA-Z]*[rRf][a-zA-Z]*\s+|--(recursive|force)\b)`), event.MutIrreversible, 0.9, "recursive or forced delete"},
+	{regexp.MustCompile(`\bfind\b[^;|&\n]*\s-delete\b`), event.MutIrreversible, 0.9, "deletes what find matches"},
 	{regexp.MustCompile(`\b(mkfs(\.\w+)?|fdisk|dd)(\s|$)`), event.MutIrreversible, 0.95, "writes a device directly"},
 	{regexp.MustCompile(`\bchmod\s+-R\b|\bchown\s+-R\b`), event.MutSystem, 0.7, "recursive permission change"},
 	{regexp.MustCompile(`\b(shutdown|reboot|halt|poweroff)\b`), event.MutSystem, 0.8, "stops the machine"},
 	{regexp.MustCompile(`\bkill(all)?\s+-9\b`), event.MutSystem, 0.6, "force kills processes"},
-	{regexp.MustCompile(`\bgit\s+(push\s+.*--force|reset\s+--hard|clean\s+-[a-z]*f)`), event.MutIrreversible, 0.8, "discards git history or work"},
+	{regexp.MustCompile(`\bgit\s+(push\b[^;|&\n]*(\s--force|\s-[a-zA-Z]*f)|reset\s+--hard|clean\s+-[a-z]*f)`), event.MutIrreversible, 0.8, "discards git history or work"},
 	{regexp.MustCompile(`(curl|wget)\b[^|]*\|\s*(sudo\s+)?((ba|z|da)?sh|python3?|perl|ruby|node)\b`), event.MutSystem, 0.9, "pipes a download into an interpreter"},
 	{regexp.MustCompile(`>\s*/dev/(sd|nvme|disk)`), event.MutIrreversible, 0.95, "writes to a raw disk"},
 	{regexp.MustCompile(`\bsudo\b`), event.MutSystem, 0.7, "runs as root"},
