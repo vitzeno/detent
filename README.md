@@ -4,8 +4,7 @@
 
 ```sh
 go install github.com/vitzeno/detent/cmd/detent@latest   # needs Go 1.26
-detent -init        # writes ~/.config/detent/config.yaml
-                    # set api_key in it, or export DETENT_API_KEY
+detent -init        # writes ~/.config/detent/config.yaml, set api_key in it, or export DETENT_API_KEY
 detent
 ```
 
@@ -21,6 +20,119 @@ Commands run on your machine, and anything flagged dangerous waits for you to ap
     <td width="50%"><img src=".github/assets/finder.png" alt="The finder over a session, matches on the left and the selected one drawn on the right"><br><sub><b>Finder</b>: ctrl+r over the session, then jump to it</sub></td>
   </tr>
 </table>
+
+## Configuration
+
+`./.detent.yaml` or `~/.config/detent/config.yaml`
+
+`detent -init` writes a commented starter config to `~/.config/detent/config.yaml` for you to set your key in.
+
+A directory's own `.detent.yaml`, `.env` and `.mcp.json` can point your key at another endpoint and will take precedence over the global config.
+
+All keys are documented in [`detent.example.yaml`](internal/config/detent.example.yaml), the same file `-init` writes, an unknown key will prevent detent from starting.
+
+## MCP
+
+Server details go in `.mcp.json`, pretty much the standard so one written for another client works here too
+
+`~/.config/detent/mcp.json` and `./.mcp.json` merge, nearest wins
+Also `${VAR}` expands from the environment, so a committed file can name a token it does not hold
+
+```json
+{
+	"mcpServers": {
+		"github": {
+			"command": "docker",
+			"args": ["run", "-i", "--rm", "ghcr.io/github/github-mcp-server"]
+		},
+		"linear": { "type": "http", "url": "https://mcp.linear.app/mcp" }
+	}
+}
+```
+
+`detent -mcp` connects and lists mcp tools. `/mcp` shows the same from inside the TUI.
+
+A remote server that answers 401 gets a sign-in link in the output pane. `o` opens it in default browser and `c` copies it
+
+Returned tokens are kept in `~/.local/state/detent/mcp/`
+
+`/mcp auth <server>` signs in again
+
+## Skills
+
+A skill is a folder with a `SKILL.md`, they follow the [Agent Skills](https://agentskills.io) format, so ones written for Claude Code, Codex or Cursor work here as well.
+
+```
+.agents/skills/release/
+├── SKILL.md
+└── scripts/tag.sh
+```
+
+detent looks in `.agents/skills/` and `.claude/skills/` from the git root down, then in `~/.agents/skills/` and `~/.claude/skills/`. If two share a name, the project's wins
+
+The model only sees names and descriptions until a request fits one, then it loads that skill. You can ask for one yourself with `/release cut v2.1`, and `/skills` lists what was found
+
+`disable-model-invocation: true` keeps a skill for you to call by hand, `user-invocable: false` leaves it to the model
+
+Scripts in a skill run like any other command, through the same approvals. In the sandbox your own skills are mounted read-only
+
+## Instructions
+
+detent reads the instruction files a project keeps for coding agents and adds them to the model's prompt
+
+`AGENTS.md`, or `CLAUDE.md` where a directory has no `AGENTS.md`, in each directory from the git root down to where you started detent. The nearest one wins where they disagree
+
+`~/.config/detent/AGENTS.md` is your own, read first in every project
+
+## Tools
+
+| Tool         | Does                              |
+| ------------ | --------------------------------- |
+| `bash`       | runs a command                    |
+| `read_file`  | reads a file, a window at a time  |
+| `write_file` | writes a whole file               |
+| `edit_file`  | replaces an exact piece of a file |
+| `list_dir`   | lists a directory                 |
+| `grep`       | searches file contents            |
+| `find_files` | finds files by name               |
+| `web_search` | searches the web                  |
+| `skill`      | loads a skill, when there are any |
+
+On this machine the file tools, `skill` and `web_search` run as Go inside detent, so they behave the same on macOS, Linux and Windows. In the sandbox each one is a shell command instead
+
+`edit_file` and `write_file` come back as a diff, drawn side by side when the pane is wide enough
+
+A command still running after 10 minutes is stopped, and the model is told so along with what it printed. `command_timeout` in the config changes this duration
+
+`web_search` is a curl to DuckDuckGo, read through `r.jina.ai`, so there is no API key. In the sandbox it needs network, which is the default there
+
+## Your own commands
+
+`shift+tab` switches the input bar between prompt and shell. The border
+turns amber and the prompt becomes `$` for visual distinction.
+
+Anything you run is fed to the model afterwards as a message in the transcript
+
+```
+[human ran a command in the sandbox]
+$ git status --short
+exit 0
+ M ui/keys.go
+```
+
+## Finder
+
+`ctrl+r` opens a fuzzy finder over everything in this session, press enter to jump to it in history.
+
+Pressing `ctrl+r` again narrows search to requests, commands or outputs
+
+## Undoing
+
+`/undo 2` trims the transcript to before your second request
+
+When the directory is inside a git repository, detent checkpoints your files with git before each request, without touching your index, branch or stash.
+
+In sandbox mode undo also restores the container to its snapshot, and commands you ran yourself go back with it. Your working directory is mounted at `/workspace`
 
 ## Architecture
 
@@ -53,126 +165,6 @@ Either can come from anyone. The engine publishes most facts, but the store, the
 `ui` imports nothing under `internal/`, both sides import `event`, which depends on the standard library and `viewspec`
 
 All extensions listen, publish, or both
-
-## Configuration
-
-`./.detent.yaml` or `~/.config/detent/config.yaml`
-
-`detent -init` writes a commented starting config to `~/.config/detent/config.yaml` for you to set your key in. It never replaces a config you already have, and as written it changes nothing, so built-in defaults keep reaching you until you set a value
-
-A directory's own `.detent.yaml`, `.env` and `.mcp.json` can point your key at another endpoint or start programs, so the first time you run detent there it shows what they would do and asks before reading them. A yes is remembered until one of them changes. `-prompt` runs never ask and ignore them unless you pass `-trust`
-
-All keys are documented in [`detent.example.yaml`](internal/config/detent.example.yaml), the same file `-init` writes, an unknown key will prevent detent from starting.
-
-## MCP
-
-Server details go in `.mcp.json`, pretty much the standard so one written for another client works here too
-
-`~/.config/detent/mcp.json` and `./.mcp.json` merge, nearest wins
-Also `${VAR}` expands from the environment, so a committed file can name a token it does not hold
-
-```json
-{
-	"mcpServers": {
-		"github": {
-			"command": "docker",
-			"args": ["run", "-i", "--rm", "ghcr.io/github/github-mcp-server"]
-		},
-		"linear": { "type": "http", "url": "https://mcp.linear.app/mcp" }
-	}
-}
-```
-
-`./bin/detent -mcp` connects and lists what each offers. `/mcp` shows the
-same from inside
-
-A remote server that answers 401 gets a sign-in link in the output pane. `o` opens
-it, `c` copies it, and the token is kept in `~/.local/state/detent/mcp/` so the
-next launch does not ask again. Claude Code's `oauth` object (`clientId`,
-`clientSecret`, `callbackPort`, `scopes`) is read for providers that need it.
-`/mcp auth <server>` signs in again
-
-These tool calls run in detent's process, not the container, and no checkpoint
-undoes one. So every MCP tool call is confirmed, whatever the server says about
-itself
-
-## Skills
-
-A skill is a folder with a `SKILL.md` in it: a name, a description, and instructions for one kind of task. They follow the [Agent Skills](https://agentskills.io) format, so ones written for Claude Code, Codex or Cursor work here as they are
-
-```
-.agents/skills/release/
-├── SKILL.md
-└── scripts/tag.sh
-```
-
-detent looks in `.agents/skills/` and `.claude/skills/` from the git root down, then in `~/.agents/skills/` and `~/.claude/skills/`. If two share a name, the project's wins
-
-The model only sees names and descriptions until a request fits one, then it loads that skill. You can ask for one yourself with `/release cut v2.1`, and `/skills` lists what was found
-
-`disable-model-invocation: true` keeps a skill for you to call by hand, `user-invocable: false` leaves it to the model
-
-Scripts in a skill run like any other command, through the same approvals. In the sandbox your own skills are mounted read-only
-
-## Instructions
-
-detent reads the instruction files a project keeps for coding agents and adds them to the model's prompt
-
-`AGENTS.md`, or `CLAUDE.md` where a directory has no `AGENTS.md`, in each directory from the git root down to where you started detent. The nearest one wins where they disagree
-
-`~/.config/detent/AGENTS.md` is your own, read first in every project
-
-Together they are capped at 128KB, about 32k tokens, cutting the outermost file first. That suits a large-window model, but on a small local one the files can take most of the context, so keep them short there. `/status` lists which were read
-
-## Tools
-
-| Tool         | Does                              |
-| ------------ | --------------------------------- |
-| `bash`       | runs a command                    |
-| `read_file`  | reads a file, a window at a time  |
-| `write_file` | writes a whole file               |
-| `edit_file`  | replaces an exact piece of a file |
-| `list_dir`   | lists a directory                 |
-| `grep`       | searches file contents            |
-| `find_files` | finds files by name               |
-| `web_search` | searches the web                  |
-| `skill`      | loads a skill, when there are any |
-
-On this machine the file tools, `skill` and `web_search` run as Go inside detent, so they behave the same on macOS, Linux and Windows. In the sandbox each one is a shell command instead, and either way it goes through the same checks. The read-only ones run together
-
-`edit_file` and `write_file` come back as a diff, drawn side by side when the pane is wide enough
-
-A command still running after 10 minutes is stopped, and the model is told so along with what it printed. `command_timeout` in the config changes it
-
-`web_search` is a curl to DuckDuckGo, read through `r.jina.ai`, so there is no API key. In the sandbox it needs network, which is the default there
-
-## Your own commands
-
-`shift+tab` switches the input bar between prompt and shell. The border
-turns amber and the prompt becomes `$` for visual distinction.
-
-Anything you run is fed to the model afterwards as a message in the transcript
-
-```
-[human ran a command in the sandbox]
-$ git status --short
-exit 0
- M ui/keys.go
-```
-
-## Finder
-
-`ctrl+r` opens a fuzzy finder over everything in this session, press enter to jump to it in history.
-
-Pressing `ctrl+r` again narrows search to requests, commands or outputs
-
-## Undoing
-
-`/undo 2` trims the transcript to before your second request
-
-When the directory is inside a git repository, detent checkpoints your files with git before each request, without touching your index, branch or stash.
-
-In sandbox mode undo also restores the container to its snapshot, and commands you ran yourself go back with it. Your working directory is mounted at `/workspace`
 
 ## Windows
 
