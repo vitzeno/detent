@@ -13,10 +13,10 @@ import (
 	"github.com/vitzeno/detent/ui/search"
 )
 
-// The finder: ctrl+r over this session's history, then a jump to a hit.
+// The finder: ctrl+f over this session's history, then a jump to a hit.
 // It reads blocks and moves nav, and publishes nothing.
 
-// finderKind is what the finder searches. ctrl+r again cycles it.
+// finderKind is what the finder searches. ctrl+f again cycles it.
 type finderKind int
 
 const (
@@ -63,7 +63,7 @@ func (m Model) finderKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m.closeFinder(true), nil
 	case "enter":
 		return m.jump(), nil
-	case "ctrl+r":
+	case "ctrl+f":
 		m.finder.kind = (m.finder.kind + 1) % finderKind(len(finderKindNames))
 		m.refreshFinder()
 	case "up", "ctrl+p":

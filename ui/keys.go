@@ -41,7 +41,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m.finderKey(msg)
 	}
 	switch msg.String() {
-	case "ctrl+r":
+	case "ctrl+f":
 		return m.openFinder("")
 	case "esc":
 		return m.onEscape()

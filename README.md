@@ -17,7 +17,7 @@ Commands run on your machine, and anything flagged dangerous waits for you to ap
 <table>
   <tr>
     <td width="50%"><img src=".github/assets/welcome.png" alt="detent's welcome screen: the model, where commands run, and the session it resumed"><br><sub><b>Welcome</b>: the model, where commands run, and what it resumed</sub></td>
-    <td width="50%"><img src=".github/assets/finder.png" alt="The finder over a session, matches on the left and the selected one drawn on the right"><br><sub><b>Finder</b>: ctrl+r over the session, then jump to it</sub></td>
+    <td width="50%"><img src=".github/assets/finder.png" alt="The finder over a session, matches on the left and the selected one drawn on the right"><br><sub><b>Finder</b>: ctrl+f over the session, then jump to it</sub></td>
   </tr>
 </table>
 
@@ -122,9 +122,9 @@ exit 0
 
 ## Finder
 
-`ctrl+r` opens a fuzzy finder over everything in this session, press enter to jump to it in history.
+`ctrl+f` opens a fuzzy finder over everything in this session, press enter to jump to it in history.
 
-Pressing `ctrl+r` again narrows search to requests, commands or outputs
+Pressing `ctrl+f` again narrows search to requests, commands or outputs
 
 ## Undoing
 

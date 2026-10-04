@@ -199,7 +199,7 @@ func (m Model) statusHint() string {
 		return "a question is waiting · send or clear what you typed to see it"
 	}
 	if m.mode == modeFinder {
-		return "[enter] jump · [ctrl+r] kind · [↑/↓] move · [esc] back"
+		return "[enter] jump · [ctrl+f] kind · [↑/↓] move · [esc] back"
 	}
 	if m.mode == modeUndo {
 		return m.undoKeys(" · ")

@@ -18,7 +18,7 @@ func TestFinder_JumpsToTheHitAndStopsFollowing(t *testing.T) {
 	k, calls := finderSession(t)
 	require.True(t, k.m.nav.follow)
 
-	k.ctrl(t, 'r')
+	k.ctrl(t, 'f')
 	require.Equal(t, modeFinder, k.m.mode)
 	k.finderType(t, "redis tls")
 	require.Equal(t, "redis tls", k.m.finder.query, "a typed space is kept")
@@ -35,7 +35,7 @@ func TestFinder_JumpsToTheHitAndStopsFollowing(t *testing.T) {
 func TestFinder_EscPutsEverythingBack(t *testing.T) {
 	k, _ := finderSession(t)
 	before := k.m.nav
-	k.ctrl(t, 'r')
+	k.ctrl(t, 'f')
 	k.finderType(t, "list")
 	k.press(t, "down")
 	k.press(t, "esc")
@@ -51,10 +51,10 @@ func TestFinder_EscPutsEverythingBack(t *testing.T) {
 // often its output repeats the word.
 func TestFinder_OutputHitsAreOneLinePerRow(t *testing.T) {
 	k, calls := finderSession(t)
-	k.ctrl(t, 'r')
-	k.ctrl(t, 'r') // prompts
-	k.ctrl(t, 'r') // commands
-	k.ctrl(t, 'r') // output
+	k.ctrl(t, 'f')
+	k.ctrl(t, 'f') // prompts
+	k.ctrl(t, 'f') // commands
+	k.ctrl(t, 'f') // output
 	require.Equal(t, finderOutput, k.m.finder.kind)
 	k.finderType(t, "6380")
 
@@ -71,7 +71,7 @@ func TestFinder_OutputHitsAreOneLinePerRow(t *testing.T) {
 // up waits for it to close.
 func TestFinder_AQuestionWaitsUntilItCloses(t *testing.T) {
 	k, _ := finderSession(t)
-	k.ctrl(t, 'r')
+	k.ctrl(t, 'f')
 	k.m.apply(event.ApprovalAsked{ToolCall: uuid.Must(uuid.NewV7()), Tool: "bash",
 		Args: map[string]any{"command": "rm -rf build"}})
 	require.Equal(t, modeFinder, k.m.mode)
@@ -92,7 +92,7 @@ func TestFinder_AQuestionWaitsUntilItCloses(t *testing.T) {
 // The list holds still while the agent works, as history does.
 func TestFinder_NewRowsDoNotMoveTheList(t *testing.T) {
 	k, _ := finderSession(t)
-	k.ctrl(t, 'r')
+	k.ctrl(t, 'f')
 	k.finderType(t, "go")
 	k.press(t, "down")
 	hits, cursor := len(k.m.finder.hits), k.m.finder.cursor
@@ -107,7 +107,7 @@ func TestFinder_NewRowsDoNotMoveTheList(t *testing.T) {
 
 func TestFinder_SaysWhenAHitWasUndone(t *testing.T) {
 	k, _ := finderSession(t)
-	k.ctrl(t, 'r')
+	k.ctrl(t, 'f')
 	k.finderType(t, "go test")
 	require.NotEmpty(t, k.m.finder.hits)
 	k.m.apply(event.RolledBack{Turn: k.m.finder.hits[0].block.id})
@@ -132,7 +132,7 @@ func TestFinder_DrawsInsideTheScreen(t *testing.T) {
 		k, _ := finderSession(t)
 		k.m.layout.width = w
 		k.m.sizeViewport()
-		k.ctrl(t, 'r')
+		k.ctrl(t, 'f')
 		k.finderType(t, "tls")
 
 		screen := strings.Split(k.m.withFinder(k.m.baseView()), "\n")

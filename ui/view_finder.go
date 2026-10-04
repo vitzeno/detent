@@ -45,7 +45,7 @@ func (m Model) finderBox() string {
 	inner := island.Inner(m.finderWidth())
 	rule := styleFaint.Render(strings.Repeat("─", inner))
 	next := finderKindNames[(m.finder.kind+1)%finderKind(len(finderKindNames))]
-	keys := "enter jump · ctrl+r " + next + " · ↑↓ move · ctrl+u/d scroll · esc back"
+	keys := "enter jump · ctrl+f " + next + " · ↑↓ move · ctrl+u/d scroll · esc back"
 
 	lines := []string{m.finderQueryLine(inner), rule}
 	lines = append(lines, m.finderBodyLines()...)

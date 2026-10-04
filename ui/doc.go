@@ -19,7 +19,7 @@
 //	prompt.go       the input box and its slash dropdown
 //	slash.go        the slash registry
 //	panel.go        the /status, /help, /sessions, /mcp and /skills pages
-//	finder.go       ctrl+r: what the finder matches and where a jump lands
+//	finder.go       ctrl+f: what the finder matches and where a jump lands
 //	context.go      the /context page: what fills the model's context
 //	undo.go         the undo question
 //	forget.go       the /delete question
