@@ -66,8 +66,9 @@ func TestFinder_JumpsToTheHitAndStopsFollowing(t *testing.T) {
 	k.ctrl(t, 'r')
 	require.Equal(t, modeFinder, k.m.mode)
 	k.finderType(t, "redis tls")
+	require.Equal(t, "redis tls", k.m.finder.query, "a typed space is kept")
 	require.NotEmpty(t, k.m.finder.hits)
-	assert.Equal(t, "redis-cli --tls info", k.m.finder.hits[0].label, "the command outranks the prompt saying the same")
+	assert.Same(t, k.m.row(calls[0]), k.m.finder.hits[0].row, "the request and its command both land on that row")
 
 	k.press(t, "enter")
 	assert.Equal(t, modeInput, k.m.mode)
@@ -161,9 +162,9 @@ func TestFinder_SaysWhenAHitWasUndone(t *testing.T) {
 	assert.Contains(t, k.m.notice.text, "no longer in history")
 }
 
-func TestFinder_SlashFinderOpensWithTheQuery(t *testing.T) {
+func TestFinder_SlashSearchOpensWithTheQuery(t *testing.T) {
 	k, _ := finderSession(t)
-	k.finderType(t, "/finder tls")
+	k.finderType(t, "/search tls")
 	k.press(t, "enter")
 	require.Equal(t, modeFinder, k.m.mode)
 	assert.Equal(t, "tls", k.m.finder.query)

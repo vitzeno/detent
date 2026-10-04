@@ -51,7 +51,7 @@ func (m Model) openFinder(query string) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.closePanel()
-	m.finder = finderState{query: oneLine(query), saved: m.nav}
+	m.finder = finderState{query: oneLine(strings.TrimSpace(query)), saved: m.nav}
 	m.mode = modeFinder
 	m.prompt.Blur()
 	m.refreshFinder()
@@ -191,7 +191,7 @@ func (m Model) finderHits(query string, kind finderKind) []finderHit {
 			continue
 		}
 		if b.prompt != "" && kind.wants(finderPrompts) {
-			label := oneLine(b.prompt)
+			label := oneLine(strings.TrimSpace(b.prompt))
 			if h, ok := search.Fuzzy(query, label); ok {
 				hits = append(hits, finderHit{kind: finderPrompts, row: b.rows[0], block: b,
 					label: label, pos: h.Pos, score: h.Score, order: order})
@@ -199,7 +199,7 @@ func (m Model) finderHits(query string, kind finderKind) []finderHit {
 		}
 		for _, r := range b.rows {
 			if r.command != "" && kind.wants(finderCommands) {
-				label := oneLine(r.command)
+				label := oneLine(strings.TrimSpace(r.command))
 				if h, ok := search.Fuzzy(query, label); ok {
 					hits = append(hits, finderHit{kind: finderCommands, row: r, block: b,
 						label: label, pos: h.Pos, score: h.Score, order: order})
@@ -253,7 +253,8 @@ func (r *historyRow) searchable() search.Text {
 }
 
 // oneLine defuses s and folds it onto a line, a rune for a rune, so offsets
-// found in it are offsets in what is drawn.
+// found in it are offsets in what is drawn. It trims nothing: a typed space
+// is a space.
 func oneLine(s string) string {
-	return strings.NewReplacer("\n", " ", "\r", " ").Replace(termsafe.Printable(strings.TrimSpace(s)))
+	return strings.NewReplacer("\n", " ", "\r", " ").Replace(termsafe.Printable(s))
 }

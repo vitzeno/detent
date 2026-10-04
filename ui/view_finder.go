@@ -175,7 +175,7 @@ func (m Model) finderGlyph(h finderHit) string {
 // to centre on.
 func (m Model) finderPreview(h finderHit, width int) (lines []string, match int) {
 	if h.kind == finderPrompts {
-		lines = wrapPlain(oneLine(h.block.prompt), width)
+		lines = wrapPlain(oneLine(strings.TrimSpace(h.block.prompt)), width)
 		for i := range lines {
 			lines[i] = styleGoal.Render(lines[i])
 		}

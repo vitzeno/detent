@@ -54,9 +54,9 @@ func slashCommands() []slashCmd {
 		{name: "/undo", desc: "undo a request and everything after it, e.g. /undo 2", run: Model.runUndo},
 		{name: "/delete", desc: "delete a stored session, e.g. /delete the sandbox bug",
 			run: Model.runForget, answers: true},
-		{name: "/finder", desc: "find anything in this session's history and jump to it (ctrl+r)",
+		{name: "/search", desc: "find anything in this session's history and jump to it (ctrl+r)",
 			run: func(m Model, input string) (Model, tea.Cmd) {
-				return m.openFinder(strings.TrimPrefix(input, "/finder"))
+				return m.openFinder(strings.TrimPrefix(input, "/search"))
 			}},
 		{name: "/shell", desc: "type commands instead of requests (shift+tab)",
 			run: func(m Model, _ string) (Model, tea.Cmd) {

@@ -172,7 +172,7 @@ selected one is drawn on the right as the output pane would draw it
 
 enter jumps to it in history, and new rows leave it there until `end`.
 Pressing ctrl+r again narrows to requests, commands or output. esc puts you
-back where you were. `/finder <words>` opens it with the words already typed
+back where you were. `/search <words>` opens it with the words already typed
 
 A question the agent asks while the finder is up waits for it to close, so
 nothing typed into it can approve a command
