@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -88,6 +89,73 @@ func TestRestore_KeepsLineEndingsAsTheyWere(t *testing.T) {
 
 	assert.Equal(t, "one\ntwo\n", read(t, dir, "lf.txt"))
 	assert.Equal(t, "one\r\ntwo\r\n", read(t, dir, "crlf.txt"))
+}
+
+// Committed under autocrlf, git stores LF while the file on disk is CRLF.
+// The checkpoint must hold the disk's bytes, or undo turns the file LF.
+func TestRestore_KeepsACommittedCRLFFileCRLF(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	userGit(t, dir, "config", "core.autocrlf", "true")
+	write(t, dir, "crlf.txt", "one\r\ntwo\r\n")
+	userGit(t, dir, "add", "crlf.txt")
+	userGit(t, dir, "commit", "-qm", "crlf")
+	require.Equal(t, "one\ntwo\n", userGit(t, dir, "cat-file", "-p", "HEAD:crlf.txt"), "git stored it LF")
+	d := open(t, dir)
+
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "crlf.txt", "changed\r\n")
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
+	assert.Equal(t, "one\r\ntwo\r\n", read(t, dir, "crlf.txt"))
+}
+
+// A clean filter (git-lfs is one) stores something other than the file. Undo
+// must bring back the file, not what git stored.
+func TestRestore_KeepsAFilteredFileAsItWasOnDisk(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	userGit(t, dir, "config", "filter.up.clean", "tr a-z A-Z")
+	userGit(t, dir, "config", "filter.up.smudge", "tr A-Z a-z")
+	write(t, dir, ".gitattributes", "*.dat filter=up\n")
+	write(t, dir, "x.dat", "hello\n")
+	userGit(t, dir, "add", "-A")
+	userGit(t, dir, "commit", "-qm", "filtered")
+	require.Equal(t, "HELLO\n", userGit(t, dir, "cat-file", "-p", "HEAD:x.dat"), "git stored the cleaned form")
+	d := open(t, dir)
+
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "x.dat", "edited\n")
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
+	assert.Equal(t, "hello\n", read(t, dir, "x.dat"))
+}
+
+// A committed file a .gitignore matches is still the human's, and a new index
+// would skip it without being told it is tracked.
+func TestRestore_CoversACommittedFileGitIgnores(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	write(t, dir, "keep.log", "committed\n")
+	git(t, dir, "add", "-f", "keep.log")
+	write(t, dir, ".gitignore", "ignored/\n*.log\n")
+	commit(t, dir)
+	d := open(t, dir)
+
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "keep.log", "edited\n")
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
+	assert.Equal(t, "committed\n", read(t, dir, "keep.log"))
+}
+
+func TestClose_RemovesTheIndex(t *testing.T) {
+	d := open(t, repo(t))
+	_, err := d.Capture(t.Context())
+	require.NoError(t, err)
+	require.FileExists(t, d.index)
+	require.NoError(t, d.Close())
+	assert.NoDirExists(t, filepath.Dir(d.index))
 }
 
 // detent's workspace is wherever it started, often below the repo root.
@@ -299,7 +367,8 @@ func TestCapture_IgnoresInheritedGitEnvironment(t *testing.T) {
 	assert.Equal(t, dir, realpath(t, d.top))
 }
 
-// Mid-merge the human's index holds conflicts write-tree refuses, so the seed is dropped.
+// Mid-merge the human's index holds conflicts write-tree would refuse, and
+// detent's own index never sees them.
 func TestCapture_DuringAMergeConflict(t *testing.T) {
 	ctx := t.Context()
 	dir := repo(t)
@@ -349,6 +418,7 @@ func open(t *testing.T, dir string) *Dir {
 	t.Helper()
 	d, err := Open(t.Context(), dir)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = d.Close() })
 	return d
 }
 
@@ -398,6 +468,21 @@ func git(t *testing.T, dir string, args ...string) string {
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
 	cmd.Env = env("")
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %v: %s", args, out)
+	return string(out)
+}
+
+// userGit runs git as the human would, attributes and filters on, unlike git.
+func userGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", args...)
+	cmd.Dir = dir
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "GIT_") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "git %v: %s", args, out)
 	return string(out)

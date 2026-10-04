@@ -1,6 +1,6 @@
 // Package worktree checkpoints the human's working directory, which the
 // container's snapshot never covers, so undo can offer to revert it. It uses git
-// plumbing on a scratch index, never the human's own, and skips what git ignores.
+// plumbing on an index of its own, never the human's, and skips what git ignores.
 package worktree
 
 import (
@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 )
 
@@ -61,7 +62,13 @@ func (c Change) String() string { return string(c.Kind) + " " + c.Path }
 type Dir struct {
 	top    string // the work tree's root, where every command runs
 	prefix string // dir relative to top, "" at the root, else ending in /
-	index  string // the human's own index, seeded from for its stat cache
+	theirs string // the human's index, read once for tracked files git ignores
+
+	// index is detent's own, kept for the session so its stat cache spares a
+	// rehash. Never seeded from theirs: that holds git's cleaned blobs, which a
+	// restore with filters off would write back over the human's files.
+	mu    sync.Mutex
+	index string
 }
 
 // Available reports whether dir is inside a git work tree, which is
@@ -86,24 +93,33 @@ func Open(ctx context.Context, dir string) (*Dir, error) {
 	if err != nil {
 		return nil, fmt.Errorf("worktree: %w", err)
 	}
-	index, err := ask(top, "--git-path", "index")
+	theirs, err := ask(top, "--git-path", "index")
 	if err != nil {
 		return nil, fmt.Errorf("worktree: %w", err)
 	}
-	d := &Dir{top: top, prefix: prefix, index: index}
-	if !filepath.IsAbs(d.index) {
-		d.index = filepath.Join(d.top, d.index)
+	if !filepath.IsAbs(theirs) {
+		theirs = filepath.Join(top, theirs)
 	}
-	return d, nil
+	scratch, err := os.MkdirTemp("", "detent-index-")
+	if err != nil {
+		return nil, fmt.Errorf("worktree: index: %w", err)
+	}
+	return &Dir{top: top, prefix: prefix, theirs: theirs, index: filepath.Join(scratch, "index")}, nil
 }
+
+// Close removes detent's index. The checkpoints stay in the repository.
+func (d *Dir) Close() error { return os.RemoveAll(filepath.Dir(d.index)) }
 
 // Capture records the directory's current contents, tracked and
 // untracked alike, and returns the tree naming them.
 func (d *Dir) Capture(ctx context.Context) (Checkpoint, error) {
-	c, err := d.capture(ctx, true)
-	if err != nil {
-		// A seed mid-merge carries unmerged entries write-tree refuses.
-		c, err = d.capture(ctx, false)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	c, err := d.capture(ctx)
+	if err != nil && ctx.Err() == nil {
+		// A broken index is built again from nothing, which costs one full hash.
+		_ = os.Remove(d.index)
+		c, err = d.capture(ctx)
 	}
 	return c, err
 }
@@ -198,26 +214,36 @@ func (d *Dir) Restore(ctx context.Context, id, seen string) error {
 	return d.RestoreTo(ctx, Checkpoint(id), Checkpoint(seen))
 }
 
-func (d *Dir) capture(ctx context.Context, seed bool) (Checkpoint, error) {
-	index, cleanup, err := scratchIndex()
-	if err != nil {
-		return "", err
-	}
-	defer cleanup()
-	if seed {
-		// Starting from the human's index reuses its stat cache, so only changed files are hashed.
-		if err := copyFile(d.index, index); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("worktree: seed index: %w", err)
+func (d *Dir) capture(ctx context.Context) (Checkpoint, error) {
+	if _, err := os.Stat(d.index); errors.Is(err, os.ErrNotExist) {
+		if err := d.addIgnoredTracked(ctx); err != nil {
+			return "", err
 		}
 	}
-	if _, err := d.git(ctx, index, nil, "add", "-A", "--", d.pathspec()); err != nil {
+	if _, err := d.git(ctx, d.index, nil, "add", "-A", "--", d.pathspec()); err != nil {
 		return "", fmt.Errorf("worktree: stage: %w", err)
 	}
-	tree, err := d.git(ctx, index, nil, "write-tree")
+	tree, err := d.git(ctx, d.index, nil, "write-tree")
 	if err != nil {
 		return "", fmt.Errorf("worktree: write-tree: %w", err)
 	}
 	return Checkpoint(strings.TrimSpace(tree)), nil
+}
+
+// addIgnoredTracked stages the committed files a .gitignore matches, which
+// add -A skips in a new index. Once there, add -A keeps them up to date.
+func (d *Dir) addIgnoredTracked(ctx context.Context) error {
+	paths, err := d.git(ctx, d.theirs, nil, "ls-files", "-z", "--cached", "--ignored",
+		"--exclude-standard", "--", d.pathspec())
+	if err != nil || paths == "" {
+		// No index of theirs, or nothing in it git ignores.
+		return nil
+	}
+	if _, err := d.git(ctx, d.index, strings.NewReader(paths), "add", "-f",
+		"--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
+		return fmt.Errorf("worktree: stage ignored tracked files: %w", err)
+	}
+	return nil
 }
 
 // changes reads from→to: an "A" is a path that arrived after from, so
@@ -326,7 +352,8 @@ func (d *Dir) git(ctx context.Context, index string, stdin io.Reader, args ...st
 
 func run(ctx context.Context, dir, index string, stdin io.Reader, args ...string) (string, error) {
 	// Hooks off, and no line ending conversion, so a checkpoint holds the exact bytes.
-	full := append([]string{"-c", "core.hooksPath=" + os.DevNull, "-c", "core.autocrlf=false"}, args...)
+	full := append([]string{"-c", "core.hooksPath=" + os.DevNull, "-c", "core.autocrlf=false",
+		"-c", "core.attributesFile=" + os.DevNull}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Dir = dir
 	cmd.Env = env(index)
@@ -350,9 +377,9 @@ func env(index string) []string {
 		}
 		out = append(out, kv)
 	}
-	// The empty tree as the attribute source: no text, eol or filter rule
-	// (git-lfs included) rewrites what is captured or restored.
-	out = append(out, "GIT_OPTIONAL_LOCKS=0", "GIT_ATTR_SOURCE="+emptyTree)
+	// The empty tree as the attribute source, and no system attributes: no
+	// text, eol or filter rule (git-lfs included) rewrites what is kept.
+	out = append(out, "GIT_OPTIONAL_LOCKS=0", "GIT_ATTR_SOURCE="+emptyTree, "GIT_ATTR_NOSYSTEM=1")
 	if index != "" {
 		out = append(out, "GIT_INDEX_FILE="+index)
 	}
@@ -367,14 +394,6 @@ func scratchIndex() (path string, cleanup func(), err error) {
 		return "", nil, fmt.Errorf("worktree: scratch index: %w", err)
 	}
 	return filepath.Join(dir, "index"), func() { _ = os.RemoveAll(dir) }, nil
-}
-
-func copyFile(from, to string) error {
-	b, err := os.ReadFile(from)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(to, b, 0o600) //nolint:gosec // both paths are git's index and our own temp dir
 }
 
 // gone is a path already absent, or one whose parent is now a file.

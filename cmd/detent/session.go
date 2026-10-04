@@ -171,6 +171,7 @@ func (s *session) buildEngine() error {
 	if wt, err := openWorktree(s.o.prompt == "", s.local.Dir); err != nil {
 		s.warn(err)
 	} else if wt != nil {
+		s.sd.worktree = wt
 		opts = append(opts, engine.WithWorktree(wt))
 	}
 	// No judge without a key: TYPESAFE_API_KEY env or jev_api_key file.

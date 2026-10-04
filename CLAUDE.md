@@ -462,11 +462,14 @@ adding a fat dependency fails with the transitive import named.
   which the container snapshot never covers. `Dir` satisfies
   `engine.Worktreer` structurally and is wired in the TUI only when the
   working directory is inside a git work tree, in host and sandbox mode
-  alike. Git plumbing against a scratch `GIT_INDEX_FILE` seeded from the
-  real index for its stat cache, so it captures tracked *and* untracked
-  files without touching the index, branch or stash, and `.gitignore`
-  is honoured for free (the sandbox's `.detent-sandbox/` ignores
-  itself). It runs at the work tree's root, scoped to the starting
+  alike. Git plumbing against an index of its own (`GIT_INDEX_FILE`),
+  kept for the session so its stat cache spares a rehash, so it captures
+  tracked *and* untracked files without touching the index, branch or
+  stash, and `.gitignore` is honoured for free (the sandbox's
+  `.detent-sandbox/` ignores itself). That index is **never seeded from
+  the human's**: theirs holds git's cleaned blobs (LF under autocrlf, a
+  pointer under git-lfs), and a restore runs with every filter off, so a
+  seeded checkpoint wrote those over the human's files. It runs at the work tree's root, scoped to the starting
   directory. The engine checkpoints again as a Turn ends, so a revert
   leaves alone anything changed after it and says so. Checkpoints are
   unreferenced trees, so `git gc` eventually prunes them and an old one

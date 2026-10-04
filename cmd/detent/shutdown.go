@@ -14,6 +14,7 @@ import (
 	mcppkg "github.com/vitzeno/detent/internal/mcp"
 	"github.com/vitzeno/detent/internal/sandbox"
 	"github.com/vitzeno/detent/internal/store"
+	"github.com/vitzeno/detent/internal/worktree"
 )
 
 // Every wait here is bounded. Quitting is the one thing a human cannot
@@ -47,6 +48,7 @@ type shutdown struct {
 	connect   <-chan struct{}
 	servers   *mcppkg.Invokers
 	container *sandbox.Container
+	worktree  *worktree.Dir
 }
 
 // close stops everything in the one order that keeps the session's
@@ -56,6 +58,10 @@ func (s shutdown) close() {
 	// transcript still has somewhere to land.
 	errs := s.stopUserCommand()
 	errs = append(errs, s.stopEngine()...)
+	// After the engine, which is the only thing that checkpoints.
+	if s.worktree != nil {
+		errs = appendErr(errs, s.worktree.Close())
+	}
 	// Drained before the subscribers go, so what the engine just
 	// published reaches the log and the store rather than dying here.
 	if s.bus != nil {
