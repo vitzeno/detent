@@ -29,9 +29,15 @@ func TestFindSkills_PathsAreWhereTheRunnerSeesThem(t *testing.T) {
 	box := findSkills(cwd, home, "/workspace", true)
 	assert.Equal(t, "/workspace/.claude/skills/near", dirOf(box, "near"), "under cwd, so already mounted")
 	assert.Equal(t, map[string]string{
-		filepath.Join(repo, ".agents/skills"): "/opt/detent/skills/2",
-		filepath.Join(home, ".agents/skills"): "/opt/detent/skills/4",
-	}, box.mounts, "above cwd and in home, so each folder is mounted")
+		filepath.Join(repo, ".agents/skills"):             "/opt/detent/skills/2",
+		filepath.Join(home, ".agents/skills"):             "/opt/detent/skills/4",
+		filepath.Join(home, ".local/state/detent/skills"): "/opt/detent/skills/6",
+	}, box.mounts, "above cwd, in home and built in, so each folder is mounted")
+	var builtin bool
+	for _, s := range box.summaries {
+		builtin = builtin || (s.Name == "skill-creator" && s.Builtin)
+	}
+	assert.True(t, builtin, "detent's own skill-creator is always there")
 	assert.Equal(t, "/opt/detent/skills/2/root-skill", dirOf(box, "root-skill"))
 	assert.Equal(t, "/opt/detent/skills/4/mine", dirOf(box, "mine"))
 

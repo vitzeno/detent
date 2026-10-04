@@ -30,6 +30,7 @@ session.started Recorded bool
 session.started Resumed int
 session.started Sandbox bool
 session.started Session uuid.UUID
+session.started Skills[].Builtin bool
 session.started Skills[].Description string
 session.started Skills[].Name string
 session.started Skills[].Project bool

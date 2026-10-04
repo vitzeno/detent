@@ -70,6 +70,8 @@ A skill is a folder with a `SKILL.md`, they follow the [Agent Skills](https://ag
 
 detent looks in `.agents/skills/` and `.claude/skills/` from the git root down, then in `~/.agents/skills/` and `~/.claude/skills/`. If two share a name, the project's wins
 
+detent ships one of its own, `skill-creator`: ask it to make a skill, or turn what you just did into one, and it writes the folder for you. One of yours with the same name replaces it
+
 The model only sees names and descriptions until a request fits one, then it loads that skill. You can ask for one yourself with `/release cut v2.1`, or name it anywhere in a request (`tag it, then /release`), and `/skills` lists what was found
 
 `disable-model-invocation: true` keeps a skill for you to call by hand, `user-invocable: false` leaves it to the model

@@ -172,8 +172,11 @@ func (m *Model) skillLines() []string {
 	}
 	for _, s := range m.run.Skills {
 		where := "personal"
-		if s.Project {
+		switch {
+		case s.Project:
 			where = "project"
+		case s.Builtin:
+			where = "built in"
 		}
 		ask := "/" + s.Name
 		if !s.UserInvocable {

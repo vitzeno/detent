@@ -38,8 +38,10 @@ func (SessionStarted) Kind() Kind { return SessionStartedKind }
 type SkillSummary struct {
 	Name        string `json:"Name"`
 	Description string `json:"Description"`
-	// Project is false for one from the human's home directory.
+	// Project is false for one from the human's home directory, and Builtin
+	// true for one detent ships.
 	Project bool `json:"Project"`
+	Builtin bool `json:"Builtin"`
 	// UserInvocable is false for a skill only the model may load.
 	UserInvocable bool `json:"UserInvocable"`
 }

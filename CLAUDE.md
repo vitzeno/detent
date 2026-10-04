@@ -534,7 +534,10 @@ adding a fat dependency fails with the transitive import named.
   drops the others.
 
 - **`internal/skills`**: Agent Skills, found in `.agents/skills` and
-  `.claude/skills` from the git root down, then the human's own. Parsing
+  `.claude/skills` from the git root down, then the human's own, then the
+  ones detent ships (`builtin/`, embedded and written to
+  `~/.local/state/detent/skills` so the tool and a sandbox mount can read
+  them as files, searched last so the human's own of a name wins). Parsing
   is lenient, as the standard's guide says. `tool.Skill` loads one by
   lowering to a read of its `SKILL.md`, not through the invoker, since
   `mcpFloor` would flag every load. Its `name` is an enum, so under strict

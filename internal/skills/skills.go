@@ -31,8 +31,9 @@ type Skill struct {
 	// Dir is the skill's directory on this machine, and Root the folder it was found in.
 	Dir  string
 	Root string
-	// Project is false for a skill from the human's home directory.
-	Project bool
+	// Project is false for a skill from the human's home directory, and
+	// Builtin true for one detent ships.
+	Project, Builtin bool
 	// ModelInvocable is false when only the human may ask for it, UserInvocable
 	// when only the model may.
 	ModelInvocable bool
@@ -42,9 +43,9 @@ type Skill struct {
 // Root is one folder of skills, Project false when it is the human's own.
 // Within, when set, is where every skill in it must resolve to.
 type Root struct {
-	Dir     string
-	Project bool
-	Within  string
+	Dir              string
+	Project, Builtin bool
+	Within           string
 }
 
 // Roots are where skills are looked for, the first to name one winning: each
@@ -98,7 +99,7 @@ func Find(roots []Root) ([]Skill, []string) {
 				continue
 			}
 			seen[s.Name] = dir
-			s.Root, s.Project = root.Dir, root.Project
+			s.Root, s.Project, s.Builtin = root.Dir, root.Project, root.Builtin
 			found = append(found, s)
 		}
 	}

@@ -23,12 +23,21 @@ type foundSkills struct {
 	warnings  []string
 }
 
-// findSkills reads the skills from cwd up and from home. In the sandbox one
-// under cwd is under mountPoint, and any other under a read-only mount.
+// findSkills reads the skills from cwd up, from home, then the ones detent ships.
+// In the sandbox one under cwd is under mountPoint, any other under a read-only mount.
 func findSkills(cwd, home, mountPoint string, sandboxed bool) foundSkills {
 	roots := skills.Roots(cwd, home)
-	found, warnings := skills.Find(roots)
-	out := foundSkills{warnings: warnings, mounts: map[string]string{}}
+	var warnings []string
+	if home != "" {
+		root, err := skills.Builtin(skills.BuiltinDir(home))
+		if err != nil {
+			warnings = append(warnings, "skills: the built-in skills could not be written: "+err.Error())
+		} else {
+			roots = append(roots, root)
+		}
+	}
+	found, more := skills.Find(roots)
+	out := foundSkills{warnings: append(warnings, more...), mounts: map[string]string{}}
 	for _, s := range found {
 		dir := s.Dir
 		if sandboxed {
@@ -37,7 +46,8 @@ func findSkills(cwd, home, mountPoint string, sandboxed bool) foundSkills {
 		out.entries = append(out.entries, tool.SkillEntry{
 			Name: s.Name, Description: s.Description, Dir: dir, Hidden: !s.ModelInvocable})
 		out.summaries = append(out.summaries, event.SkillSummary{
-			Name: s.Name, Description: s.Description, Project: s.Project, UserInvocable: s.UserInvocable})
+			Name: s.Name, Description: s.Description, Project: s.Project, Builtin: s.Builtin,
+			UserInvocable: s.UserInvocable})
 	}
 	return out
 }
