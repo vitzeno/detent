@@ -35,8 +35,8 @@ func (m Model) confirmBox() string {
 			b.WriteString(styleFaint.Render("  ▲ end of command · "+where) + "\n")
 		}
 	}
-	if a.Rationale != "" {
-		b.WriteString("  " + styleFaint.Render(layout.Truncate(a.Rationale, m.layout.width-4)) + "\n")
+	for _, l := range m.rationaleLines() {
+		b.WriteString("  " + styleFaint.Render(l) + "\n")
 	}
 	if !m.confirmReady() {
 		b.WriteString(styleFaint.Render("  [↓/pgdn] read to the end before it can run   [n] skip this tool call"))
@@ -54,10 +54,9 @@ func (m Model) confirmLines() (lines []string, room int) {
 		return nil, 0
 	}
 	lines = wrapPlain(termsafe.Printable(event.Command(a.Tool, a.Args)), m.layout.width-4)
-	chrome := 2 // the warning and the keys
-	if a.Rationale != "" {
-		chrome++
-	}
+	// The warning, the keys and the rationale, counted as drawn so the
+	// read-to-the-end gate measures what is really on screen.
+	chrome := 2 + len(m.rationaleLines())
 	room = m.layout.height - 2 - islandOverhead - minBodyRows - chrome
 	if len(lines) > room {
 		room-- // the line saying how much is left
@@ -110,4 +109,21 @@ func (m Model) questionBox() string {
 	default:
 		return ""
 	}
+}
+
+// maxRationale caps why a call was flagged, so it cannot crowd out the command.
+const maxRationale = 3
+
+// rationaleLines is why the call was flagged, wrapped to the box.
+func (m Model) rationaleLines() []string {
+	a := m.asking
+	if a == nil || a.Rationale == "" {
+		return nil
+	}
+	lines := wrapPlain(termsafe.Printable(a.Rationale), m.layout.width-4)
+	if len(lines) > maxRationale {
+		lines = lines[:maxRationale]
+		lines[maxRationale-1] = layout.Truncate(lines[maxRationale-1]+" …", m.layout.width-4)
+	}
+	return lines
 }

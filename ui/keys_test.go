@@ -424,3 +424,32 @@ func keyText(key string) string {
 	}
 	return ""
 }
+
+// Why a call was flagged is shown whole up to a few lines, and the box counts
+// those lines, so the frame still fits and the read-to-the-end gate holds.
+func TestKeys_ALongRationaleWrapsAndTheBoxStillFits(t *testing.T) {
+	k := newKeyed(t)
+	// Short, so the panes have no rows left to give the box.
+	k.m.layout.height = 20
+	why := strings.TrimSpace(strings.Repeat("it deletes files outside the working directory ", 8))
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "clean"})
+	var script strings.Builder
+	for i := range 60 {
+		fmt.Fprintf(&script, "echo step %d\n", i)
+	}
+	script.WriteString("rm -rf ../build")
+	k.m.apply(event.ApprovalAsked{ToolCall: uuid.Must(uuid.NewV7()), Tool: "bash",
+		Args: map[string]any{"command": script.String()}, Rationale: why})
+	k.m.sizeViewport()
+
+	lines := k.m.rationaleLines()
+	assert.Greater(t, len(lines), 1, "it wraps")
+	assert.LessOrEqual(t, len(lines), maxRationale, "and is capped")
+	for range 20 {
+		k.press(t, "pgdown")
+	}
+	screen := ansi.Strip(k.m.baseView())
+	assert.LessOrEqual(t, strings.Count(screen, "\n")+1, k.m.layout.height, "the frame fits the screen")
+	require.True(t, k.m.confirmReady())
+	assert.Contains(t, screen, "rm -rf ../build", "ready only once the last line is really on screen")
+}

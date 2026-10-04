@@ -121,11 +121,26 @@ func (m *Model) refreshViewport() {
 // setViewContent skips identical content: SetContent resets scroll
 // position, which must not happen just from resizing for the dropdown.
 func (m *Model) setViewContent(s string) {
+	s = wrapWide(s, m.output.Width())
 	if s == m.viewContent {
 		return
 	}
 	m.viewContent = s
 	m.output.SetContent(s)
+}
+
+// wrapWide wraps any line wider than the pane, so a page or live output reads
+// whole rather than running off the edge. A view's lines already fit.
+func wrapWide(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		out = append(out, painter{}.Wrap(l, width)...)
+	}
+	return strings.Join(out, "\n")
 }
 
 // viewBody draws the row's view whole. Height lets a plot grow into the

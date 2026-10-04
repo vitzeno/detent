@@ -65,12 +65,14 @@ func (r *Role) UnmarshalJSON(b []byte) error {
 	return fmt.Errorf("viewspec: unknown role %q", name)
 }
 
-// Painter turns intent into display text. Width and Truncate live here
+// Painter turns intent into display text. Width, Truncate and Wrap live here
 // because only the implementation knows whether its output carries escapes.
 type Painter interface {
 	Paint(r Role, s string) string
 	Width(s string) int
 	Truncate(s string, n int) string
+	// Wrap breaks s into lines of at most n cells, at spaces where it can.
+	Wrap(s string, n int) []string
 }
 
 // Plain paints nothing and measures in runes, so Draw tests need no
@@ -94,4 +96,28 @@ func (plain) Truncate(s string, n int) string {
 	}
 	r := []rune(s)
 	return string(r[:n-1]) + "…"
+}
+
+func (plain) Wrap(s string, n int) []string {
+	r := []rune(s)
+	if n <= 0 || len(r) <= n {
+		return []string{s}
+	}
+	var out []string
+	for len(r) > n {
+		cut := n
+		// Back up to the last space, unless the word is longer than the line.
+		for i := n; i > 0; i-- {
+			if r[i] == ' ' {
+				cut = i
+				break
+			}
+		}
+		out = append(out, string(r[:cut]))
+		r = r[cut:]
+		if len(r) > 0 && r[0] == ' ' {
+			r = r[1:]
+		}
+	}
+	return append(out, string(r))
 }

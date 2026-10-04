@@ -3,8 +3,6 @@
 [![CI](https://github.com/vitzeno/detent/actions/workflows/ci.yaml/badge.svg)](https://github.com/vitzeno/detent/actions/workflows/ci.yaml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A terminal agent: ask for something and it calls tools until it has an answer. Anything flagged dangerous waits for you to read the literal command and approve it, and any request can be undone, the conversation always and your files when you are in a git repo
-
 ## Quick start
 
 ```sh

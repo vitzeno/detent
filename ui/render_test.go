@@ -149,3 +149,30 @@ func oneTurn(prompt, command, out string) (uuid.UUID, []event.Event) {
 		event.TurnEnded{Turn: turn, Reason: event.EndDone},
 	}
 }
+
+// Output, a page or a skill reads whole in the output pane: a line wider than
+// the pane wraps, and no word of it is lost off the edge.
+func TestOutputPane_WrapsWhatIsWiderThanIt(t *testing.T) {
+	long := strings.TrimSpace(strings.Repeat("follow these steps closely ", 12))
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	m := sized(t, 100, 40,
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "go"},
+		event.ToolCallProposed{ToolCall: call, Tool: "skill", Args: map[string]any{"name": "x"}},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: long + "\n"}})
+	width := m.output.Width()
+	var words []string
+	for l := range strings.SplitSeq(m.viewContent, "\n") {
+		assert.LessOrEqual(t, lipgloss.Width(l), width, "%q runs past the pane", stripANSI(l))
+		words = append(words, strings.Fields(stripANSI(l))...)
+	}
+	assert.Equal(t, strings.Fields(long), words, "every word is on screen")
+}
+
+// A skill's description on /skills is a sentence, shown whole.
+func TestSkillsPage_WrapsALongDescription(t *testing.T) {
+	desc := strings.TrimSpace(strings.Repeat("use this when the request is about releases ", 6))
+	m := sized(t, 90, 40, event.SessionStarted{Skills: []event.SkillSummary{
+		{Name: "release", Description: desc, UserInvocable: true}}})
+	got := stripANSI(strings.Join(m.skillLines(), "\n"))
+	assert.Equal(t, strings.Fields(desc), strings.Fields(strings.SplitN(got, "/release", 2)[1]))
+}

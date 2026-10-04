@@ -71,22 +71,38 @@ func (w rawWidget) Draw(_ Block, d Data, f Frame) ([]string, error) {
 	if w.mode == "diff" && f.Width >= splitMinWidth {
 		return splitDiff(src, f), nil
 	}
+	// Lines wrap rather than run off the pane: the part cut off is often the
+	// part wanted, and a long line in a log is usually prose.
 	out := make([]string, 0, len(src))
 	var h hunk
 	for i, l := range src {
 		switch w.mode {
 		case "diff":
-			out = append(out, f.Paint.Paint(diffRole(&h, l), f.Paint.Truncate(l, f.Width)))
+			out = append(out, paintEach(f, diffRole(&h, l), f.Paint.Wrap(l, f.Width))...)
 		case "errors":
-			out = append(out, f.Paint.Paint(severityRole(l), f.Paint.Truncate(l, f.Width)))
+			out = append(out, paintEach(f, severityRole(l), f.Paint.Wrap(l, f.Width))...)
 		case "code":
-			gutter := f.Paint.Paint(RoleFaint, fmt.Sprintf("%4d ", i+1))
-			out = append(out, gutter+f.Paint.Truncate(l, max(1, f.Width-5)))
+			// A continuation gets a blank gutter, so the numbers still count lines.
+			for j, piece := range f.Paint.Wrap(l, max(1, f.Width-5)) {
+				gutter := "     "
+				if j == 0 {
+					gutter = f.Paint.Paint(RoleFaint, fmt.Sprintf("%4d ", i+1))
+				}
+				out = append(out, gutter+piece)
+			}
 		default:
-			out = append(out, f.Paint.Truncate(l, f.Width))
+			out = append(out, f.Paint.Wrap(l, f.Width)...)
 		}
 	}
 	return out, nil
+}
+
+// paintEach paints every line of a wrapped line in its role.
+func paintEach(f Frame, r Role, lines []string) []string {
+	for i, l := range lines {
+		lines[i] = f.Paint.Paint(r, l)
+	}
+	return lines
 }
 
 // diffRole classifies one unified-diff line, h tracking the hunk it

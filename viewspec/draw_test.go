@@ -82,6 +82,21 @@ func TestDraw_RawWidgets(t *testing.T) {
 	assert.Equal(t, []string{"a", "b"}, draw(t, spec, "a\nb\n", 40))
 }
 
+// A line wider than the pane wraps rather than losing its end, which in a log
+// or a skill is often the part that matters.
+func TestDraw_RawWidgetsWrapALongLine(t *testing.T) {
+	spec := viewspec.Spec{Version: 1, Parse: viewspec.Parse{Kind: "none"},
+		Blocks: []viewspec.Block{{Kind: "log"}}}
+	assert.Equal(t, []string{"read the file then", "run the tests"},
+		draw(t, spec, "read the file then run the tests\n", 20), "breaks at a space")
+	assert.Equal(t, []string{"abcdefghij", "klmno"},
+		draw(t, spec, "abcdefghijklmno\n", 10), "a word wider than the line breaks inside it")
+
+	spec.Blocks = []viewspec.Block{{Kind: "code"}}
+	assert.Equal(t, []string{"   1 one two", "     three"},
+		draw(t, spec, "one two three\n", 12), "a continuation has a blank gutter")
+}
+
 // Each of these panicked on output any shell prints: a negative number,
 // a filter matching nothing, a count outside its denominator.
 func TestDraw_OrdinaryOutputNeverPanics(t *testing.T) {

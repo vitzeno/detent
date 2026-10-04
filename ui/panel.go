@@ -182,8 +182,11 @@ func (m *Model) skillLines() []string {
 		if !s.UserInvocable {
 			ask = "model only"
 		}
-		out = append(out, "  "+styleGoal.Render(s.Name)+styleFaint.Render("  "+where+" · "+ask),
-			"    "+truncCell(s.Description, m.layout.outputColW-6), "")
+		out = append(out, "  "+styleGoal.Render(s.Name)+styleFaint.Render("  "+where+" · "+ask))
+		for _, l := range wrapPlain(oneLine(s.Description), paneInner(m.layout.outputColW)-4) {
+			out = append(out, "    "+l)
+		}
+		out = append(out, "")
 	}
 	return out
 }

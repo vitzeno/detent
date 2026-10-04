@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -26,6 +28,15 @@ func (painter) Truncate(s string, n int) string {
 		return ""
 	}
 	return ansi.Truncate(s, n, "…")
+}
+
+// Wrap breaks at spaces, and mid-word only for a word wider than n, keeping
+// a command's colours on whichever line they fall.
+func (painter) Wrap(s string, n int) []string {
+	if n <= 0 || ansi.StringWidth(s) <= n {
+		return []string{s}
+	}
+	return strings.Split(ansi.Wrap(s, n, ""), "\n")
 }
 
 // roleStyle maps a role to its style. RoleHeading and RoleAccent render

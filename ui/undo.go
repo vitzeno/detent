@@ -89,9 +89,12 @@ func (m *Model) undoLines() []string {
 	reversible, standing := split(b.rows)
 	width := m.layout.outputColW - 6
 
-	out := []string{styleCaution.Render(fmt.Sprintf("undo request #%d", b.n)), "",
-		"  " + truncCell(b.prompt, width), "",
-		styleFaint.Render(fmt.Sprintf("  %d tool call(s) will be undone", len(reversible))), ""}
+	out := []string{styleCaution.Render(fmt.Sprintf("undo request #%d", b.n)), ""}
+	for _, l := range wrapPlain(oneLine(b.prompt), width) {
+		out = append(out, "  "+l)
+	}
+	out = append(out, "",
+		styleFaint.Render(fmt.Sprintf("  %d tool call(s) will be undone", len(reversible))), "")
 	for _, r := range reversible {
 		out = append(out, "  "+styleMuted.Render(truncCell(r.command, width)))
 	}
