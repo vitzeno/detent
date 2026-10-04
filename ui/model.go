@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -20,6 +21,9 @@ const welcomeFrameEvery = 90 * time.Millisecond
 
 // maxFactBatch bounds one batch so a loud tool call cannot starve keys.
 const maxFactBatch = 256
+
+// questionSettle is how long a question is on screen before a key answers it.
+var questionSettle = 400 * time.Millisecond
 
 // coalesceWindow is how long a batch gathers. The bus hands over one
 // record at a time, so a burst needs a window to collect in.
@@ -55,6 +59,8 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	asking  *event.ApprovalAsked
 	bound   *event.BoundReached
 	confirm confirmState
+	// askedAt is when the current question went up, for settling.
+	askedAt time.Time
 
 	nav    navState
 	panel  panelState
@@ -152,6 +158,8 @@ func (m Model) RowCount() int { return len(m.rows()) }
 // update is Update for callers that want the Model back, not an interface.
 func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	next, cmd := m.route(msg)
+	// A key may have emptied the bar a question was waiting behind.
+	next.raiseWaiting()
 	next.sizeViewport()
 	return next, cmd
 }
@@ -302,26 +310,44 @@ func (m Model) runMode() string {
 }
 
 // backToInput returns to the prompt, or to an engine question that
-// arrived while the human was answering one of their own.
+// arrived while the human was busy with something of their own.
 func (m *Model) backToInput() {
 	m.mode = modeInput
-	switch {
-	case m.asking != nil:
-		m.mode = modeConfirm
-	case m.bound != nil:
-		m.mode = modeBound
-	}
 	m.nav.focus = focusInput
 	m.prompt.Focus()
+	m.raiseWaiting()
 }
 
-// raise puts an engine question up, unless undo or delete is mid-answer:
-// backToInput raises it once that is done.
+// raise puts an engine question up, unless the human is in something they
+// opened or has typed into the bar: a key meant for either must not answer it.
 func (m *Model) raise(q mode) {
-	if !m.askingOwn() {
-		m.mode = q
+	if m.askingOwn() || m.typing() {
+		return
+	}
+	m.mode, m.askedAt = q, time.Now()
+}
+
+// raiseWaiting puts up a question that was held, once nothing holds it.
+func (m *Model) raiseWaiting() {
+	if m.mode != modeInput {
+		return
+	}
+	switch {
+	case m.asking != nil:
+		m.raise(modeConfirm)
+	case m.bound != nil:
+		m.raise(modeBound)
 	}
 }
+
+// typing is whether the bar holds something the human has not sent yet.
+func (m Model) typing() bool {
+	return m.mode == modeInput && strings.TrimSpace(m.prompt.Value()) != ""
+}
+
+// settling is whether a question appeared too recently for a key to be an
+// answer to it rather than the next key of something typed.
+func (m Model) settling() bool { return time.Since(m.askedAt) < questionSettle }
 
 // askingOwn is whether the human is in something they opened, which a fact
 // must not pull out from under them: a key typed there must never answer it.

@@ -46,6 +46,60 @@ func TestKeys_ApprovalIsAnswered(t *testing.T) {
 	assert.Equal(t, modeInput, k.m.mode)
 }
 
+// A question arriving mid-sentence waits for the bar, so the enter that sends
+// the steering message cannot approve `rm -rf`.
+func TestKeys_AnApprovalWaitsBehindWhatWasTyped(t *testing.T) {
+	k := newKeyed(t)
+	call := uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "clean up"})
+	k.finderType(t, "use")
+	k.m.apply(event.ApprovalAsked{ToolCall: call, Tool: "bash",
+		Args: map[string]any{"command": "rm -rf ~/work"}})
+	require.Equal(t, modeInput, k.m.mode, "held while the bar holds text")
+	assert.Contains(t, k.m.statusHint(), "a question is waiting")
+
+	k.press(t, "enter")
+	got, ok := k.intent(t).(event.SubmitPrompt)
+	require.True(t, ok, "enter sent what was typed, and answered nothing")
+	assert.Equal(t, "use", got.Text)
+	assert.Equal(t, modeConfirm, k.m.mode, "the bar is empty, so the question goes up")
+}
+
+// The first key of the next message must not answer a question that has
+// only just appeared.
+func TestKeys_AKeyTooSoonAfterAQuestionIsNotAnAnswer(t *testing.T) {
+	was := questionSettle
+	questionSettle = time.Hour
+	defer func() { questionSettle = was }()
+
+	for _, tt := range []struct {
+		name string
+		ask  event.Event
+		key  string
+	}{
+		{"approval", event.ApprovalAsked{ToolCall: uuid.Must(uuid.NewV7()), Tool: "bash"}, "y"},
+		{"step bound", event.BoundReached{Turn: uuid.Must(uuid.NewV7())}, "enter"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			k := newKeyed(t)
+			k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "go"})
+			k.m.apply(tt.ask)
+			asked := k.m.mode
+			k.press(t, tt.key)
+			assert.Equal(t, asked, k.m.mode, "still asking")
+			select {
+			case rec := <-k.seen:
+				t.Fatalf("a key too soon published %s", rec.Event.Kind())
+			case <-time.After(50 * time.Millisecond):
+			}
+
+			k.m.askedAt = time.Now().Add(-2 * time.Hour)
+			k.press(t, tt.key)
+			assert.Equal(t, modeInput, k.m.mode, "once settled the same key answers")
+		})
+	}
+}
+
 // A command taller than the screen must not be approvable from its
 // head: the tail is where the damage would be.
 func TestKeys_TallApprovalRunsOnlyOnceReadToTheEnd(t *testing.T) {

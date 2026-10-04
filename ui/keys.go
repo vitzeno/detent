@@ -155,6 +155,9 @@ func (m Model) forgetKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 
 // boundKey answers the step bound. The engine is paused, waiting.
 func (m Model) boundKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	if m.settling() {
+		return m, nil
+	}
 	switch msg.String() {
 	case "y", "Y", "enter":
 		return m.answerBound(true)
@@ -221,6 +224,13 @@ func (m Model) toggleEntry() (Model, tea.Cmd) {
 // been on screen, since approving a tail nobody saw is no approval.
 func (m Model) confirmKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	_, room := m.confirmLines()
+	switch msg.String() {
+	case "y", "Y", "enter", "n", "N":
+		// Too soon to be an answer: likely the next key of something typed.
+		if m.settling() {
+			return m, nil
+		}
+	}
 	switch msg.String() {
 	case "y", "Y", "enter":
 		if !m.confirmReady() {

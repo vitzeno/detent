@@ -600,8 +600,10 @@ adding a fat dependency fails with the transitive import named.
   to the terminal, and a command taller than the box shows a "more"
   marker and is not approved until its last line has been on screen.
   A question raised while the human is in something they opened (the
-  finder, undo, delete) waits for it to close (`askingOwn`), so a key
-  typed there can never answer it. A view that panics while drawing
+  finder, undo, delete) or has typed into the bar waits until that is
+  closed or sent, so a key meant for it can never answer the question.
+  Once up, a question ignores answers for 400ms (`questionSettle`), so
+  the first key of the next message is not taken as a yes. A view that panics while drawing
   falls back to plain text.
 
   **A thing leaves `ui` when it stops needing Model.** That is why

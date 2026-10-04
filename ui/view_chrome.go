@@ -194,6 +194,13 @@ func (m Model) statusBar() string {
 // statusHint mirrors handleKey: the three questions it intercepts
 // first, then owner(), so the hint names what the key will do.
 func (m Model) statusHint() string {
+	// Held behind what was typed, so say it is there and how to reach it.
+	if m.mode == modeInput && (m.asking != nil || m.bound != nil) {
+		return "a question is waiting · send or clear what you typed to see it"
+	}
+	if m.mode == modeFinder {
+		return "[enter] jump · [ctrl+r] kind · [↑/↓] move · [esc] back"
+	}
 	if m.mode == modeUndo {
 		return m.undoKeys(" · ")
 	}
