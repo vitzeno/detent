@@ -90,7 +90,7 @@ func TestWriteFile_ShowsWhatChanged(t *testing.T) {
 
 	out, err := write("one\ntwo\n")
 	require.NoError(t, err, out)
-	assert.Equal(t, "created "+path+", 2 lines\n", out, "a new file is counted, not echoed")
+	assert.Contains(t, out, "--- "+path+"\n+++ "+path+"\n@@ -0,0 +1,2 @@\n+one\n+two\n", "a new file is shown as additions")
 
 	out, err = write("one\n2\n")
 	require.NoError(t, err, out)
@@ -113,5 +113,5 @@ func TestWriteFile_IgnoresAnInheritedExisted(t *testing.T) {
 	c.Env = append(os.Environ(), "existed=1")
 	out, err := c.CombinedOutput()
 	require.NoError(t, err, string(out))
-	assert.Equal(t, "created "+path+", 1 lines\n", string(out))
+	assert.Equal(t, "--- "+path+"\n+++ "+path+"\n@@ -0,0 +1 @@\n+one\n", string(out))
 }

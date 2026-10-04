@@ -64,6 +64,13 @@ func TestWriteFile_NativeMatchesTheSandbox(t *testing.T) {
 	}
 }
 
+func TestWriteFile_NativeShowsCreatedFileAsDiff(t *testing.T) {
+	t.Chdir(t.TempDir())
+	got := WriteFile{}.Run(t.Context(), Args{"path": "f.txt", "content": "one\ntwo\n"})
+	require.Zero(t, got.ExitCode, got.Stderr)
+	assert.Equal(t, "--- f.txt\n+++ f.txt\n@@ -0,0 +1,2 @@\n+one\n+two\n", got.Stdout)
+}
+
 // A missing directory is not made. Both fail, but the status is the shell's:
 // dash, the sandbox's, says 2 and bash says 1.
 func TestWriteFile_NativeDoesNotMakeDirectories(t *testing.T) {

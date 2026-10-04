@@ -36,12 +36,9 @@ func (WriteFile) Lower(a Args) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// A file that was there is shown as a diff. A new one is only counted:
-	// the model has just written every line of it.
-	created := fmt.Sprintf(`printf 'created %%s, %%s lines\n' %s "$(wc -l < %s | tr -d ' ')"`, quote(path), quote(path))
-	return fmt.Sprintf("before=$(mktemp); existed=; [ -f %[1]s ] && cp -- %[1]s \"$before\" && existed=1\n%[2]s\n"+
-		`rc=$?; if [ $rc -eq 0 ] && [ -z "$existed" ]; then %[3]s; rm -- "$before"; exit 0; fi; `+"%[4]s",
-		quote(path), heredoc(path, a.String("content")), created, showDiff("$before", path)), nil
+	return fmt.Sprintf("before=$(mktemp); [ -f %[1]s ] && cp -- %[1]s \"$before\"\n%[2]s\n"+
+		`rc=$?; %[3]s`,
+		quote(path), heredoc(path, a.String("content")), showDiff("$before", path)), nil
 }
 
 // Run writes the file here and reports it as the command does.
@@ -72,9 +69,6 @@ func (WriteFile) Run(ctx context.Context, a Args) capture.Result {
 	}
 	if err := writeAsShell(p, content); err != nil {
 		return failed(2, "write_file: %v", err) // dash's status for a redirection it cannot open
-	}
-	if !existed {
-		return capture.Result{Stdout: fmt.Sprintf("created %s, %d lines\n", p, strings.Count(content, "\n"))}
 	}
 	return capture.Result{Stdout: changeShown(p, before, content)}
 }
