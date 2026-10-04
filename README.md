@@ -15,6 +15,13 @@ Just set `base_url` and `model` in the config for LM Studio or OpenAI
 
 Commands run on your machine, and anything flagged dangerous waits for you to approve it. On Windows that needs PowerShell 7 or Git Bash, see [Windows](#windows)
 
+<table>
+  <tr>
+    <td width="50%"><img src=".github/assets/welcome.png" alt="detent's welcome screen: the model, where commands run, and the session it resumed"><br><sub><b>Welcome</b>: the model, where commands run, and what it resumed</sub></td>
+    <td width="50%"><img src=".github/assets/finder.png" alt="The finder over a session, matches on the left and the selected one drawn on the right"><br><sub><b>Finder</b>: ctrl+r over the session, then jump to it</sub></td>
+  </tr>
+</table>
+
 ## Architecture
 
 Everything is an event on a single bus and every part of detent is a subscriber
@@ -141,19 +148,10 @@ A command still running after 10 minutes is stopped, and the model is told so al
 
 ## Your own commands
 
-shift+tab switches the input bar between a request and a shell. The border
-turns amber and the prompt becomes `$`. `/shell` does the same thing
+`shift+tab` switches the input bar between prompt and shell. The border
+turns amber and the prompt becomes `$` for visual distinction.
 
-What you type goes to the runner the agent uses, so in the sandbox you are
-looking at what it just did. Output streams into the pane like any other
-row, esc stops it
-
-Nothing flags it and nothing asks you to approve it
-
-It gets the same views as the agent's tool calls. With `views: generate`, Jev is
-asked what shape the output is, never whether it went well
-
-The model reads it afterwards, as a message in the transcript
+Anything you run is fed to the model afterwards as a message in the transcript
 
 ```
 [human ran a command in the sandbox]
@@ -162,36 +160,23 @@ exit 0
  M ui/keys.go
 ```
 
-So it knows what you checked instead of checking again
-
 ## Finder
 
-ctrl+r opens a finder over everything this session did. Type and the list
-narrows: requests and commands match fuzzily, output a line at a time. The
-selected one is drawn on the right as the output pane would draw it
+`ctrl+r` opens a fuzzy finder over everything in this session, press enter to jump to it in history.
 
-enter jumps to it in history, and new rows leave it there until `end`.
-Pressing ctrl+r again narrows to requests, commands or output. esc puts you
-back where you were. `/search <words>` opens it with the words already typed
-
-A question the agent asks while the finder is up waits for it to close, so
-nothing typed into it can approve a command
+Pressing `ctrl+r` again narrows search to requests, commands or outputs
 
 ## Undoing
 
 `/undo 2` trims the transcript to before your second request
 
-When the directory is inside a git repository, detent checkpoints your files with git before each request, without touching your index, branch or stash, and undo asks whether to revert them too. Anything you changed after that request ended is left alone and named
+When the directory is inside a git repository, detent checkpoints your files with git before each request, without touching your index, branch or stash.
 
-In the sandbox, undo also restores the container to its snapshot, and commands you ran yourself go back with it. Your working directory is mounted at `/workspace`, outside that snapshot, so the git checkpoint is what covers it there too
+In sandbox mode undo also restores the container to its snapshot, and commands you ran yourself go back with it. Your working directory is mounted at `/workspace`
 
 ## Windows
 
-Commands run on this machine, since the sandbox needs containerd. The model's commands and yours go to PowerShell 7 (`winget install Microsoft.PowerShell`), or to Git Bash if that is all you have, and its shell tool is called `powershell` rather than `bash`. `host_shell: gitbash` prefers Git Bash, and `host_shell: sh` works anywhere a POSIX shell is on PATH
-
-Install with `go install github.com/vitzeno/detent/cmd/detent@latest`, or `make install` from a checkout, which works from PowerShell or cmd as well as Git Bash. The other make targets need Git Bash
-
-Windows support is new and has not yet been run on Windows itself
+Commands run on this machine, since the sandbox needs containerd. Both the model's commands and yours go to PowerShell 7 (`winget install Microsoft.PowerShell`), or to Git Bash.
 
 ## Sandboxing (**Experimental**)
 
@@ -204,30 +189,9 @@ colima start --cpu 6 --memory 8 --disk 30 --kubernetes=false
 
 On Linux, run containerd and point `sandbox_socket` at it.
 
-A session gets its own container. Resuming one clears whatever the last
-process left behind, but a session you never come back to keeps its
-container and snapshot. `./bin/detent -prune` drops those, and leaves
-alone anything still running.
+Each session gets its own container and`./bin/detent -prune` can be used to clean up in case of orphaned containers
 
-## Approving
-
-A tool call runs without asking unless it is flagged dangerous, you see the
-literal command and answer it.
-
-Flagging is a chain: the tool's own declared mutability, a regex backstop, a
-repeat check, then TypeSafe's Jev if a key is set. Each link can raise the
-verdict but none can lower it
-
-A command too tall for the screen shows how much is below, and `y` does
-nothing until you have scrolled to its last line. Control characters
-in it are shown rather than sent to your terminal
-
-Declining stops that tool call, the agent reads the refusal and tries
-something else
-
-Typing while it works steers it
-
-## Headless
+## Headless Mode
 
 `-prompt` runs one request without the TUI and prints what it does
 
@@ -238,18 +202,6 @@ detent -prompt "..." -approve-all     # runs them all, only for a throwaway cont
 ```
 
 It exits 0 when the request is done, 1 on an error, 3 at the step limit, 4 when stopped and 130 when aborted. Headless runs leave MCP out: no config is read and no server is started
-
-## Finishing
-
-A request ends when the model replies without asking for a tool, and two things stop that happening too early
-
-If the reply stopped short, cut off, errored, empty or only its reasoning, the model is told to carry on, twice in a row at most
-
-If the request changed anything, the model is asked once to re-read it and check each part against what it actually produced, and its second answer stands. `finish_check: false` turns this off
-
-Both show up as a notice and go into the transcript like any other message
-
-With Jev set, the judge can also end a request early, once a command's output reads as the answer
 
 ## Benchmarking
 
@@ -267,24 +219,7 @@ detent -resume <id>                 # or a specific one
 detent -resume "the sandbox bug"    # or one you named
 ```
 
-Inside the TUI, `/sessions` shows the same list with this run marked,
-and `/rename <name>` names it so the list is not a wall of ids. A name
-has to be one `-resume` can reach, so `last`, anything uuid-shaped,
-and a name another session already has are all refused when you set
-them.
-
-A resumed session gets its transcript and its history back. It does
-not get the container: those checkpoints died with it, so a request from
-before the restart is not offered for undo.
-
-`/status` says whether anything is recording the session at all. If
-nothing is, it cannot be resumed, and it is better to know while you
-are working than when you try.
-
 ## Generative Output (**Experimental**)
-
-The output pane draws from a view spec: a parse for reading bytes into rows,
-blocks for drawing them
 
 Currently thirty widgets over nine parse kinds, including
 gauges, histograms, box plots, gantt charts, braille scatter plots and
