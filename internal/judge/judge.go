@@ -71,7 +71,7 @@ func (j resultJudge) Judge(ctx context.Context, command string, res event.Result
 	return out
 }
 
-// Watch judges every finished tool call, asking a Turn to stop when the request
+// Watch judges every finished tool call, telling the model when the request
 // looks answered. Cancelling ctx abandons judgements in flight, as the stop does.
 func Watch(ctx context.Context, bus *event.Bus, asker classify.Asker) func() {
 	ctx, cancel := context.WithCancel(ctx)
@@ -126,8 +126,8 @@ type watcher struct {
 	mu sync.Mutex
 	// turn is the Turn still running, Nil between Turns.
 	turn uuid.UUID
-	// stopped is the Turn already asked to stop, so it is asked once.
-	stopped uuid.UUID
+	// suggested is the Turn already told it looks answered, so it is told once.
+	suggested uuid.UUID
 }
 
 func (w *watcher) setTurn(id uuid.UUID) {
@@ -136,15 +136,15 @@ func (w *watcher) setTurn(id uuid.UUID) {
 	w.turn = id
 }
 
-// shouldStop claims the one RequestStop a running Turn may get. A verdict
-// for a Turn that has ended must not stop the next one.
-func (w *watcher) shouldStop(turn uuid.UUID) bool {
+// shouldSuggest claims the one SuggestFinish a running Turn may get. A
+// verdict for a Turn that has ended must not reach the next one.
+func (w *watcher) shouldSuggest(turn uuid.UUID) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if turn == uuid.Nil || turn != w.turn || turn == w.stopped {
+	if turn == uuid.Nil || turn != w.turn || turn == w.suggested {
 		return false
 	}
-	w.stopped = turn
+	w.suggested = turn
 	return true
 }
 
@@ -166,8 +166,8 @@ func (w *watcher) publish(j resultJudge, turn uuid.UUID, done event.ToolCallEnde
 	}
 	got.ToolCall = done.ToolCall
 	w.bus.Publish(got)
-	if got.FromJudge && got.GoalAchieved >= goalMet && w.shouldStop(turn) {
-		w.bus.Publish(event.RequestStop{Turn: turn,
+	if got.FromJudge && got.GoalAchieved >= goalMet && w.shouldSuggest(turn) {
+		w.bus.Publish(event.SuggestFinish{Turn: turn,
 			Reason: "the judge reads the request as answered"})
 	}
 }

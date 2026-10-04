@@ -193,7 +193,7 @@ detent -prompt "..." -unattended      # declines every flagged command instead o
 detent -prompt "..." -approve-all     # runs them all, only for a throwaway container
 ```
 
-It exits 0 when the request is done, 1 on an error, 3 at the step limit, 4 when stopped and 130 when aborted. Headless runs leave MCP out: no config is read and no server is started
+It exits 0 when the request is done, 1 on an error, 3 at the step limit and 130 when aborted. Headless runs leave MCP out: no config is read and no server is started
 
 ## Benchmarking
 

@@ -157,9 +157,9 @@ func TestTurn_BoundContinuesWhenApproved(t *testing.T) {
 	assert.Contains(t, r.runner.commands(), "pwd", "it carried on past the bound")
 }
 
-// RequestStop is advisory: honoured at a boundary, never mid-Step.
-// This is how the post-execution judge acts without intercepting.
-func TestTurn_RequestStopEndsAtTheNextBoundary(t *testing.T) {
+// The judge's verdict is advice the model reads at the next Step. It ends
+// nothing: the model, which knows what it still meant to do, decides.
+func TestTurn_SuggestFinishIsAdviceTheModelReads(t *testing.T) {
 	replies := []model.Reply{
 		{Requests: []event.ToolRequest{bashCall("a", "first")}},
 		{Requests: []event.ToolRequest{bashCall("b", "second")}},
@@ -174,15 +174,20 @@ func TestTurn_RequestStopEndsAtTheNextBoundary(t *testing.T) {
 	r.bus.Publish(event.SubmitPrompt{Text: "go"})
 	r.await(event.ToolCallStartedKind)
 	turn := r.of(event.TurnStartedKind)[0].(event.TurnStarted)
-	r.bus.Publish(event.RequestStop{Turn: turn.Turn, Reason: "the goal looks met"})
+	r.bus.Publish(event.SuggestFinish{Turn: turn.Turn, Reason: "the goal looks met"})
 	// Dispatched before the tool call is let go: the engine reads intents on
 	// its own goroutine, so releasing straight away races the hop.
 	r.dispatched()
 	close(r.runner.hold)
 
 	end := r.await(event.TurnEndedKind).(event.TurnEnded)
-	assert.Equal(t, event.EndStopped, end.Reason)
-	assert.Equal(t, "the goal looks met", end.Summary)
+	assert.Equal(t, event.EndDone, end.Reason, "the model carried on and finished")
+	assert.Contains(t, r.runner.commands(), "second", "the suggestion stopped nothing")
+	var told bool
+	for _, m := range r.eng.messages() {
+		told = told || m.Content == finishSuggestion
+	}
+	assert.True(t, told, "the model was told what the judge thinks")
 	answered(t, r.eng)
 }
 

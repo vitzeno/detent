@@ -71,7 +71,7 @@ const (
 	NoteContextKind     Kind = "do.note"
 	ResolveApprovalKind Kind = "do.approve"
 	AbortKind           Kind = "do.abort"
-	RequestStopKind     Kind = "do.stop"
+	SuggestFinishKind   Kind = "do.suggest_finish"
 	ContinueKind        Kind = "do.continue"
 	RequestRollbackKind Kind = "do.rollback"
 	ResetSessionKind    Kind = "do.reset"
@@ -100,7 +100,7 @@ func (k Kind) IsIntent() bool { return intents[k] }
 
 var intents = map[Kind]bool{
 	SubmitPromptKind: true, NoteContextKind: true, ResolveApprovalKind: true,
-	AbortKind: true, RequestStopKind: true, ContinueKind: true,
+	AbortKind: true, SuggestFinishKind: true, ContinueKind: true,
 	RequestRollbackKind: true, ResetSessionKind: true, MeasureContextKind: true,
 	ListSessionsKind: true, RenameSessionKind: true, DeleteSessionKind: true,
 	RunCommandKind: true, CancelCommandKind: true,

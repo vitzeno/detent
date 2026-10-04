@@ -29,7 +29,7 @@ func TestDispatch_IntentsForAnEndedTurnAreDropped(t *testing.T) {
 	r.bus.Publish(event.SubmitPrompt{Text: "two"})
 	r.await(event.ToolCallStartedKind)
 
-	r.bus.Publish(event.RequestStop{Turn: first, Reason: "stale"})
+	r.bus.Publish(event.SuggestFinish{Turn: first, Reason: "stale"})
 	r.bus.Publish(event.Abort{Turn: first})
 	close(r.runner.hold)
 

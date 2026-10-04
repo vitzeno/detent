@@ -98,7 +98,7 @@ var codecs = map[Kind]func([]byte) (Event, error){
 	NoteContextKind:     codec[NoteContext],
 	ResolveApprovalKind: codec[ResolveApproval],
 	AbortKind:           codec[Abort],
-	RequestStopKind:     codec[RequestStop],
+	SuggestFinishKind:   codec[SuggestFinish],
 	ContinueKind:        codec[Continue],
 	RequestRollbackKind: codec[RequestRollback],
 	ResetSessionKind:    codec[ResetSession],

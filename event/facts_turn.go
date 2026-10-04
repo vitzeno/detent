@@ -40,7 +40,7 @@ type EndReason string
 
 const (
 	EndDone    EndReason = "done"    // the model stopped asking for tools
-	EndStopped EndReason = "stopped" // a RequestStop was honoured
+	EndStopped EndReason = "stopped" // the judge ended it, in sessions from before it only advised
 	EndAborted EndReason = "aborted" // the human said stop
 	EndBound   EndReason = "bound"   // the human declined to continue
 	EndError   EndReason = "error"

@@ -21,6 +21,11 @@ const finishNote = "[before you finish] Re-read the request and check each thing
 	"actually produced: run it, test it or measure it. If anything is missing, wrong or unchecked, carry on. " +
 	"Otherwise give your final answer again."
 
+// finishSuggestion is the judge's verdict as the model reads it. Advice only,
+// since the judge saw outputs and the model knows what it still meant to do.
+const finishSuggestion = "[a reviewer reads your request as answered] If it is, give your final answer now. " +
+	"If anything is still to do, carry on."
+
 // turnState is one Turn in flight. The Turn goroutine owns the
 // transcript while this exists, and the dispatcher only forwards to it.
 type turnState struct {
@@ -46,7 +51,6 @@ type turnState struct {
 
 	mu    sync.Mutex
 	notes []string
-	stop  string
 }
 
 func (e *Engine) startTurn(ctx context.Context, prompt string, done chan struct{}) {
@@ -89,10 +93,6 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 
 		if t.aborted.Load() || ctx.Err() != nil {
 			e.endTurn(ctx, t, event.EndAborted, "", total)
-			return
-		}
-		if why := t.takeStop(); why != "" {
-			e.endTurn(ctx, t, event.EndStopped, why, total)
 			return
 		}
 		if step > limit {
@@ -237,10 +237,8 @@ func (t *turnState) absorb(ev event.Event) {
 	case event.Abort:
 		t.aborted.Store(true)
 		t.cancel()
-	case event.RequestStop:
-		t.mu.Lock()
-		t.stop = v.Reason
-		t.mu.Unlock()
+	case event.SuggestFinish:
+		t.addNote(finishSuggestion)
 	case event.NoteContext:
 		t.addNote(v.Text)
 	case event.SubmitPrompt:
@@ -259,14 +257,6 @@ func (t *turnState) takeNotes() []string {
 	defer t.mu.Unlock()
 	out := t.notes
 	t.notes = nil
-	return out
-}
-
-func (t *turnState) takeStop() string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	out := t.stop
-	t.stop = ""
 	return out
 }
 

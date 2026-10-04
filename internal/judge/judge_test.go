@@ -58,9 +58,9 @@ func TestJudge_FallsBackWithoutClaimingToBeAVerdict(t *testing.T) {
 	}
 }
 
-// A judged-met request becomes an advisory stop, so a model does not
-// keep re-running what already answered it.
-func TestWatch_AHighScoreAsksTheTurnToStop(t *testing.T) {
+// A judged-met request is suggested to the model as answered, so it need not
+// keep re-running what already answered it, and decides for itself.
+func TestWatch_AHighScoreSuggestsFinishing(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	stop := Watch(t.Context(), bus, fakeAsker{answers: classify.Answers{
@@ -69,7 +69,7 @@ func TestWatch_AHighScoreAsksTheTurnToStop(t *testing.T) {
 	}})
 	defer stop()
 
-	intents, unsub := bus.Subscribe(event.Only(event.RequestStopKind))
+	intents, unsub := bus.Subscribe(event.Only(event.SuggestFinishKind))
 	defer unsub()
 
 	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
@@ -79,12 +79,12 @@ func TestWatch_AHighScoreAsksTheTurnToStop(t *testing.T) {
 
 	select {
 	case rec := <-intents:
-		got, ok := rec.Event.(event.RequestStop)
+		got, ok := rec.Event.(event.SuggestFinish)
 		require.True(t, ok)
 		assert.Equal(t, turn, got.Turn)
-		assert.NotEmpty(t, got.Reason, "a stop must say why")
+		assert.NotEmpty(t, got.Reason, "a suggestion must say why")
 	case <-time.After(3 * time.Second):
-		t.Fatal("a judged-met request never asked to stop")
+		t.Fatal("a judged-met request was never suggested as answered")
 	}
 }
 
@@ -97,7 +97,7 @@ func TestWatch_ALowScoreLetsItCarryOn(t *testing.T) {
 	}})
 	defer stop()
 
-	facts, unsub := bus.Subscribe(event.Only(event.ToolCallJudgedKind, event.RequestStopKind))
+	facts, unsub := bus.Subscribe(event.Only(event.ToolCallJudgedKind, event.SuggestFinishKind))
 	defer unsub()
 
 	call := uuid.Must(uuid.NewV7())
@@ -113,15 +113,15 @@ func TestWatch_ALowScoreLetsItCarryOn(t *testing.T) {
 	assert.Empty(t, rest(bus, facts), "nothing else should follow")
 }
 
-// A heuristic must not be able to end a request: only a real verdict
+// A heuristic must not suggest a request is answered: only a real verdict
 // carries that weight.
-func TestWatch_AGuessNeverStopsATurn(t *testing.T) {
+func TestWatch_AGuessNeverSuggestsFinishing(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	stop := Watch(t.Context(), bus, nil) // no judge at all
 	defer stop()
 
-	facts, unsub := bus.Subscribe(event.Only(event.ToolCallJudgedKind, event.RequestStopKind))
+	facts, unsub := bus.Subscribe(event.Only(event.ToolCallJudgedKind, event.SuggestFinishKind))
 	defer unsub()
 
 	call := uuid.Must(uuid.NewV7())
@@ -131,19 +131,19 @@ func TestWatch_AGuessNeverStopsATurn(t *testing.T) {
 
 	assert.Equal(t, event.ToolCallJudgedKind, next(t, facts).Kind())
 	stop()
-	assert.Empty(t, rest(bus, facts), "a heuristic asked a request to stop")
+	assert.Empty(t, rest(bus, facts), "a heuristic suggested a request was answered")
 }
 
-// A verdict that lands after its Turn ended must not stop the next one:
+// A verdict that lands after its Turn ended must not reach the next one:
 // the request it read as answered is not the one now running.
-func TestWatch_ALateVerdictStopsOnlyItsOwnTurn(t *testing.T) {
+func TestWatch_ALateVerdictReachesOnlyItsOwnTurn(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	asker := &gatedAsker{gate: make(chan struct{}), asked: make(chan struct{}, 2)}
 	stop := Watch(t.Context(), bus, asker)
 	defer stop()
 
-	facts, unsub := bus.Subscribe(event.Only(event.ToolCallJudgedKind, event.RequestStopKind))
+	facts, unsub := bus.Subscribe(event.Only(event.ToolCallJudgedKind, event.SuggestFinishKind))
 	defer unsub()
 
 	first, second := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
@@ -157,22 +157,22 @@ func TestWatch_ALateVerdictStopsOnlyItsOwnTurn(t *testing.T) {
 	waitFor(t, asker.asked)
 	close(asker.gate)
 
-	var stops []uuid.UUID
+	var told []uuid.UUID
 	for judged := 0; judged < 2; {
 		switch v := next(t, facts).(type) {
 		case event.ToolCallJudged:
 			judged++
-		case event.RequestStop:
-			stops = append(stops, v.Turn)
+		case event.SuggestFinish:
+			told = append(told, v.Turn)
 		}
 	}
 	stop()
 	for _, e := range rest(bus, facts) {
-		if v, ok := e.(event.RequestStop); ok {
-			stops = append(stops, v.Turn)
+		if v, ok := e.(event.SuggestFinish); ok {
+			told = append(told, v.Turn)
 		}
 	}
-	assert.Equal(t, []uuid.UUID{second}, stops, "only the running Turn may be asked to stop")
+	assert.Equal(t, []uuid.UUID{second}, told, "only the running Turn may be told")
 }
 
 // Stopping cancels a judgement in flight rather than waiting out the

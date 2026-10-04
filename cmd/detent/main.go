@@ -148,8 +148,6 @@ func (e endedError) code() int {
 		return 130
 	case event.EndBound:
 		return 3
-	case event.EndStopped:
-		return 4
 	default:
 		return 1
 	}

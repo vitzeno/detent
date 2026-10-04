@@ -255,21 +255,26 @@ func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{
 		if t != nil {
 			t.absorb(v)
 		}
-	case event.RequestStop, event.Continue, event.ResolveApproval:
+	case event.SuggestFinish:
+		if t != nil {
+			e.notice("info", "the judge reads the request as answered, so the model was told")
+			e.post(t, ev)
+		}
+	case event.Continue, event.ResolveApproval:
 		if t != nil {
 			e.post(t, ev)
 		}
 	}
 }
 
-// stale reports an intent meant for another Turn. The judge's stop
-// arrives late and asynchronously, and must not end the next request.
+// stale reports an intent meant for another Turn. The judge's advice
+// arrives late and asynchronously, and must not reach the next request.
 func stale(ev event.Event, turn uuid.UUID) bool {
 	var named uuid.UUID
 	switch v := ev.(type) {
 	case event.Abort:
 		named = v.Turn
-	case event.RequestStop:
+	case event.SuggestFinish:
 		named = v.Turn
 	case event.Continue:
 		named = v.Turn

@@ -43,15 +43,15 @@ type Abort struct {
 
 func (Abort) Kind() Kind { return AbortKind }
 
-// RequestStop is advisory, honoured at the next Step boundary. How the
-// post-execution judge acts without becoming an interceptor.
-type RequestStop struct {
+// SuggestFinish tells the model, at the next Step, that the judge reads its
+// request as answered. Advice, not a stop: the model decides.
+type SuggestFinish struct {
 	fact
 	Turn   uuid.UUID `json:"Turn"`
 	Reason string    `json:"Reason"`
 }
 
-func (RequestStop) Kind() Kind { return RequestStopKind }
+func (SuggestFinish) Kind() Kind { return SuggestFinishKind }
 
 // Continue answers BoundReached. False ends the Turn.
 type Continue struct {

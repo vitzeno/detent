@@ -42,7 +42,7 @@ Run one request headlessly: `./bin/detent -prompt "..."`, with
 `-unattended` to decline every flagged tool call instead of asking, or
 `-approve-all` to run them all, for a throwaway container like a
 benchmark's. Both need `-prompt`. A headless run exits 0 when the request
-is done, 1 on an error, 3 at the step bound, 4 when stopped and 130 when
+is done, 1 on an error, 3 at the step bound and 130 when
 aborted. Headless runs do not load MCP configuration or connect to MCP
 servers. MCP is available in the TUI.
 `-init` writes a starting config. `-sessions` lists what can be resumed and `-resume <id>` (or
@@ -252,7 +252,7 @@ subscribers:
 | `internal/headless` | prints one Turn | the TUI still runs |
 | `logging` | the JSONL stream | nothing else notices |
 | `internal/store` | the SQLite log, answers `ListSessions` | resume stops, nothing else |
-| `internal/judge` | scores a finished tool call, may `RequestStop` | rows lose their verdict |
+| `internal/judge` | scores a finished tool call, may `SuggestFinish` | rows lose their verdict |
 | `internal/viewgen` | composes the view for an output, and draws shipped and saved ones with no key | rows fall back to text |
 | `internal/mcp` | answers `ListServers`, signs in on `AuthorizeServer` | `/mcp` draws nothing, no server signs in |
 | `internal/forget` | answers `DeleteSession` | `/delete` does nothing |
@@ -360,7 +360,10 @@ adding a fat dependency fails with the transitive import named.
   Turn.** A reply with no calls that stopped short (cut off, errored,
   empty or only reasoning) is nudged to carry on, twice at most, and a
   Turn that ran anything not read-only is asked once to check its work
-  against the request before it ends (`finish_check`). `MaxSteps` defaults to 100 and is soft: hitting it publishes
+  against the request before it ends (`finish_check`). The judge reading the request
+  as answered is advice the model reads at its next Step (`SuggestFinish`),
+  never a stop: when it ended Turns, every such stop in real sessions cut
+  the model off mid-plan. `MaxSteps` defaults to 100 and is soft: hitting it publishes
   `BoundReached` and waits, because a human is watching and stopping
   dead is worse than asking. Undo (`RolledBack`) is a fact, so a resumed
   session replays it rather than bringing back what the human threw away.

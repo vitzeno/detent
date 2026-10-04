@@ -117,7 +117,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		ResolveApproval{ToolCall: call, Approved: true},
 		NoteContext{Text: "use ripgrep"},
 		Abort{Turn: turn},
-		RequestStop{Turn: turn, Reason: "met"},
+		SuggestFinish{Turn: turn, Reason: "met"},
 		Continue{Turn: turn, Approved: true},
 		RequestRollback{Turn: turn, RevertFiles: true},
 		ListSessions{},

@@ -11,7 +11,7 @@ import (
 // A script driving -prompt reads the exit status, not stdout.
 func TestEndedError_GivesEachReasonItsOwnStatus(t *testing.T) {
 	for reason, want := range map[event.EndReason]int{
-		event.EndError: 1, event.EndAborted: 130, event.EndBound: 3, event.EndStopped: 4,
+		event.EndError: 1, event.EndAborted: 130, event.EndBound: 3,
 	} {
 		assert.Equal(t, want, endedError(reason).code(), reason)
 	}
