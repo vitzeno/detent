@@ -225,3 +225,65 @@ func markedLine(m Model) int {
 	}
 	return -1
 }
+
+// A tool call leads with its tool's name, then what it touched, so a read or
+// a search stands out from the commands around it.
+func TestHistory_AToolCallLeadsWithItsName(t *testing.T) {
+	for _, tt := range []struct {
+		tool string
+		args map[string]any
+		want string
+	}{
+		{"bash", map[string]any{"command": "go test ./..."}, "bash  go test ./..."},
+		{"read_file", map[string]any{"path": "ui/model.go", "offset": 40}, "read_file  ui/model.go offset=40"},
+		{"grep", map[string]any{"pattern": "TODO", "path": "."}, "grep  TODO path=."},
+		{"web_search", map[string]any{"query": "bubbletea v2"}, `web_search  "bubbletea v2"`},
+	} {
+		turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+		m := sized(t, 160, 30, event.TurnStarted{Turn: turn, N: 1, Prompt: "go"},
+			event.ToolCallProposed{ToolCall: call, Tool: tt.tool, Args: tt.args})
+		lines, _ := m.historyLines()
+		assert.Contains(t, stripANSI(strings.Join(lines, "\n")), tt.want, tt.tool)
+	}
+}
+
+// Each kind of tool has its own colour, and the human's own command none.
+func TestToolPill_ColoursByWhatAToolDoes(t *testing.T) {
+	kind := func(tool, executor string) string {
+		s, ok := toolPill(&historyRow{tool: tool, executor: executor})
+		require.True(t, ok)
+		return s.Render("x")
+	}
+	seen := map[string]string{}
+	for _, tt := range [][2]string{{"bash", ""}, {"read_file", ""}, {"edit_file", ""}, {"web_search", ""},
+		{"linear__x", "mcp"}, {"skill", ""}} {
+		got := kind(tt[0], tt[1])
+		for other, was := range seen {
+			assert.NotEqual(t, was, got, "%s and %s look the same", tt[0], other)
+		}
+		seen[tt[0]] = got
+	}
+	assert.Equal(t, kind("read_file", ""), kind("grep", ""), "reads share a colour")
+	_, ok := toolPill(&historyRow{human: true})
+	assert.False(t, ok, "the human's own command is marked as theirs, not as a tool")
+}
+
+// A pill takes cells the command used to have, so rows must still fit.
+func TestHistory_ToolRowsFitThePane(t *testing.T) {
+	for _, width := range []int{120, 90, 70, 56} {
+		turn := uuid.Must(uuid.NewV7())
+		evs := []event.Event{event.TurnStarted{Turn: turn, N: 1, Prompt: "go"}}
+		for _, tool := range []string{"read_file", "linear__create_a_very_long_issue_name", "web_search"} {
+			call := uuid.Must(uuid.NewV7())
+			evs = append(evs, event.ToolCallProposed{ToolCall: call, Tool: tool,
+				Args: map[string]any{"path": strings.Repeat("deep/", 20), "query": "x"}},
+				event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: "ok\n"}})
+		}
+		m := sized(t, width, 40, evs...)
+		inner := paneInner(m.layout.histColW)
+		lines, _ := m.historyLines()
+		for i, l := range lines {
+			assert.LessOrEqual(t, lipgloss.Width(l), inner, "width %d row %d: %q", width, i, stripANSI(l))
+		}
+	}
+}

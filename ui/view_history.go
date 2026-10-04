@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"maps"
+	"regexp"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -255,11 +257,101 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 	head := lipgloss.Width(stripStyle(mark)) + lipgloss.Width(icon) + 1
 	tail := "· " + detail
 	if m.blockWidth()-head-1-lipgloss.Width(tail) < layout.MinTruncate {
-		cmd := layout.Truncate(r.command, m.blockWidth()-head)
+		cmd := commandCell(r, m.blockWidth()-head)
 		return []string{fmt.Sprintf("%s%s %s", mark, icon, cmd)}
 	}
-	cmd := layout.Truncate(r.command, m.blockWidth()-head-1-lipgloss.Width(tail))
+	cmd := commandCell(r, m.blockWidth()-head-1-lipgloss.Width(tail))
 	return []string{fmt.Sprintf("%s%s %s %s", mark, icon, cmd, styleMuted.Render(tail))}
+}
+
+// commandCell is a row's command in width cells: the tool's name as a pill
+// and then what it was given, so a read, a write or a search stands out.
+func commandCell(r *historyRow, width int) string {
+	style, ok := toolPill(r)
+	if !ok {
+		return boldProgram(layout.Truncate(r.command, width))
+	}
+	tag := style.Render(r.tool)
+	room := width - lipgloss.Width(tag) - 1
+	if room < layout.MinTruncate {
+		if lipgloss.Width(tag) > width {
+			return layout.Truncate(r.command, width)
+		}
+		return tag
+	}
+	if r.tool == "bash" || r.tool == "powershell" {
+		return tag + " " + boldProgram(layout.Truncate(r.command, room))
+	}
+	if r.headline == "" {
+		return tag
+	}
+	return tag + " " + faintKeys(layout.Truncate(r.headline, room))
+}
+
+// leadArgs say what a tool touched, so history shows the first one present
+// bare and ahead of the rest, which sort by name.
+var leadArgs = []string{"pattern", "query", "path", "name", "url"}
+
+// headline is a tool's arguments as a history row shows them.
+func headline(tool string, args map[string]any) string {
+	rest := maps.Clone(args)
+	var lead string
+	for _, k := range leadArgs {
+		if v, ok := rest[k]; ok && v != nil {
+			// Rendered by event.Command, so it is quoted as an approval quotes it.
+			lead = strings.TrimPrefix(event.Command(tool, map[string]any{k: v}), tool+" "+k+"=")
+			delete(rest, k)
+			break
+		}
+	}
+	others := strings.TrimSpace(strings.TrimPrefix(event.Command(tool, rest), tool))
+	return strings.TrimSpace(lead + " " + others)
+}
+
+// toolPill is the label a row's tool gets, by what kind of thing it does.
+// A command the human ran has none: its row is marked as theirs already.
+func toolPill(r *historyRow) (lipgloss.Style, bool) {
+	switch {
+	case r.tool == "":
+		return lipgloss.Style{}, false
+	case r.executor != "":
+		return pill.server, true
+	}
+	switch r.tool {
+	case "bash", "powershell":
+		return pill.shell, true
+	case "read_file", "list_dir", "grep", "find_files":
+		return pill.read, true
+	case "write_file", "edit_file":
+		return pill.write, true
+	case "web_search":
+		return pill.web, true
+	}
+	return pill.other, true
+}
+
+// argKey finds each key=value key, which reads quieter than its value.
+var argKey = regexp.MustCompile(`(^|\s)([A-Za-z_][A-Za-z0-9_]*=)`)
+
+func faintKeys(s string) string {
+	var b strings.Builder
+	last := 0
+	for _, m := range argKey.FindAllStringSubmatchIndex(s, -1) {
+		b.WriteString(s[last:m[4]])
+		b.WriteString(styleFaint.Render(s[m[4]:m[5]]))
+		last = m[5]
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
+
+// boldProgram picks out what a shell command runs, its first word.
+func boldProgram(s string) string {
+	prog, rest, found := strings.Cut(s, " ")
+	if !found {
+		return pill.program.Render(prog)
+	}
+	return pill.program.Render(prog) + " " + rest
 }
 
 // bannerLines is the one line under a finished block. The model's own

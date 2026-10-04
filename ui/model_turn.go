@@ -49,6 +49,9 @@ type historyRow struct {
 	// command is what the human reads: the tool's arguments, rendered.
 	command string
 	prose   string
+	// tool is the tool's name, empty for a command the human ran, and
+	// headline its arguments as history leads with them.
+	tool, headline string
 	// renders is the shape the tool declared, which beats a judged
 	// guess because the tool knows and the judge is estimating.
 	renders event.RenderKind

@@ -209,8 +209,9 @@ func (m *Model) addToolCall(v event.ToolCallProposed) {
 	}
 	m.cur.rev++
 	m.cur.rows = append(m.cur.rows, &historyRow{
-		id: v.ToolCall, command: event.Command(v.Tool, v.Args),
-		renders: v.Renders, executor: v.Executor,
+		id: v.ToolCall, command: event.Command(v.Tool, v.Args), tool: v.Tool,
+		headline: headline(v.Tool, v.Args),
+		renders:  v.Renders, executor: v.Executor,
 	})
 	m.trackNewest()
 }
