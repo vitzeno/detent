@@ -35,6 +35,16 @@ type Theme struct {
 
 	// Markdown names the closest glamour style, since glamour cannot take ours.
 	Markdown string
+
+	// Tools colour a tool's name in history by what it does, so each is a hue
+	// far from the others rather than a shade of the text.
+	Tools ToolColors
+}
+
+// ToolColors are the shell, reading, writing, the web, a server's tool, and
+// anything else such as a skill.
+type ToolColors struct {
+	Shell, Read, Write, Web, Server, Other color.Color
 }
 
 // Names lists every valid theme name, sorted.
@@ -60,6 +70,10 @@ var dark = Theme{
 	Border:      lipgloss.Color("#333A4D"),
 	Background:  lipgloss.Color("#11131A"),
 	Markdown:    "dark",
+	Tools: ToolColors{
+		Shell: lipgloss.Color("#C792EA"), Read: lipgloss.Color("#4FA8FF"), Write: lipgloss.Color("#F2C14E"),
+		Web: lipgloss.Color("#3DDC84"), Server: lipgloss.Color("#FF5C5C"), Other: lipgloss.Color("#7A8296"),
+	},
 }
 
 var light = Theme{
@@ -73,6 +87,10 @@ var light = Theme{
 	Border:      lipgloss.Color("#D6D9E0"),
 	Background:  lipgloss.Color("#FAFAFA"),
 	Markdown:    "light",
+	Tools: ToolColors{
+		Shell: lipgloss.Color("#8250DF"), Read: lipgloss.Color("#0B6BD3"), Write: lipgloss.Color("#A87000"),
+		Web: lipgloss.Color("#15803D"), Server: lipgloss.Color("#CF222E"), Other: lipgloss.Color("#6B7280"),
+	},
 }
 
 var solarized = Theme{
@@ -86,6 +104,10 @@ var solarized = Theme{
 	Border:      lipgloss.Color("#0B3A45"),
 	Background:  lipgloss.Color("#002B36"),
 	Markdown:    "dark",
+	Tools: ToolColors{
+		Shell: lipgloss.Color("#C792EA"), Read: lipgloss.Color("#4FA8FF"), Write: lipgloss.Color("#F2C14E"),
+		Web: lipgloss.Color("#3DDC84"), Server: lipgloss.Color("#FF5C5C"), Other: lipgloss.Color("#7A8296"),
+	},
 }
 
 var dracula = Theme{
@@ -99,4 +121,8 @@ var dracula = Theme{
 	Border:      lipgloss.Color("#44475A"),
 	Background:  lipgloss.Color("#282A36"),
 	Markdown:    "dracula",
+	Tools: ToolColors{
+		Shell: lipgloss.Color("#BD93F9"), Read: lipgloss.Color("#8BE9FD"), Write: lipgloss.Color("#F1FA8C"),
+		Web: lipgloss.Color("#50FA7B"), Server: lipgloss.Color("#FF5555"), Other: lipgloss.Color("#6272A4"),
+	},
 }

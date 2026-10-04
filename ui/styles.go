@@ -51,8 +51,8 @@ type toolNames struct {
 func bakeToolNames(p theme.Theme) toolNames {
 	label := func(c color.Color) lipgloss.Style { return lipgloss.NewStyle().Foreground(c).Bold(true) }
 	return toolNames{
-		shell: label(p.TextPrimary), read: label(p.Accent), write: label(p.Caution), web: label(p.Safe),
-		server: label(p.Danger), other: label(p.TextMuted),
+		shell: label(p.Tools.Shell), read: label(p.Tools.Read), write: label(p.Tools.Write),
+		web: label(p.Tools.Web), server: label(p.Tools.Server), other: label(p.Tools.Other),
 		program: lipgloss.NewStyle().Foreground(p.TextPrimary).Bold(true),
 	}
 }

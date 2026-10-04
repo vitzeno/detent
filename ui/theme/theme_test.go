@@ -37,6 +37,36 @@ func TestThemes_SetEveryField(t *testing.T) {
 	}
 }
 
+// Tool names are told apart by colour alone, so each theme's must be readable
+// and far enough from each other to read as different hues.
+func TestThemes_ToolColoursAreReadableAndDistinct(t *testing.T) {
+	for _, name := range Names() {
+		th := Themes[name]
+		t.Run(name, func(t *testing.T) {
+			tools := map[string]color.Color{"Shell": th.Tools.Shell, "Read": th.Tools.Read,
+				"Write": th.Tools.Write, "Web": th.Tools.Web, "Server": th.Tools.Server, "Other": th.Tools.Other}
+			bg := lum(t, th.Background)
+			for what, c := range tools {
+				require.NotNil(t, c, what)
+				assert.GreaterOrEqual(t, contrast(lum(t, c), bg), 3.0, "%s is too faint to read", what)
+				for other, d := range tools {
+					if what < other {
+						assert.GreaterOrEqual(t, distance(c, d), 90.0, "%s and %s look alike", what, other)
+					}
+				}
+			}
+		})
+	}
+}
+
+// distance is how far apart two colours are in RGB, 0 to about 441.
+func distance(a, b color.Color) float64 {
+	ar, ag, ab, _ := a.RGBA()
+	br, bg, bb, _ := b.RGBA()
+	d := func(x, y uint32) float64 { return float64(int(x>>8) - int(y>>8)) }
+	return math.Sqrt(d(ar, br)*d(ar, br) + d(ag, bg)*d(ag, bg) + d(ab, bb)*d(ab, bb))
+}
+
 // Every theme has to be readable against its own background.
 func TestThemes_ReadableAgainstTheirBackground(t *testing.T) {
 	for _, name := range Names() {
