@@ -27,7 +27,6 @@ func (m Model) Restore(records []event.Record) Model {
 	}
 	m.replaying = false
 	m.staleSignIns()
-	m.cutOff()
 	m.followNewest()
 	// Nothing waits on a question the old process asked.
 	m.asking, m.bound = nil, nil
@@ -281,25 +280,6 @@ func (m *Model) rolledBack(id uuid.UUID) {
 	}
 	m.nav.cursor = min(m.nav.cursor, max(0, len(m.rows())-1))
 	m.noteOK("undone")
-}
-
-// cutOff closes what the old process left open. Its live output was never
-// stored, so a row still running would spin forever with nothing in it.
-func (m *Model) cutOff() {
-	for _, b := range m.blocks {
-		for _, r := range b.rows {
-			if r.running {
-				r.running = false
-				r.result = &event.Result{Err: "detent exited before this finished"}
-				b.rev++
-			}
-		}
-	}
-	if b := m.cur; b != nil {
-		b.ended, b.end, b.err = true, event.EndError, "detent exited before this request finished"
-	}
-	m.setCur(nil)
-	m.waiting = false
 }
 
 // clearHistory forgets every block, as the engine forgot the transcript.

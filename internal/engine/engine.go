@@ -75,6 +75,8 @@ type Engine struct {
 	network   bool
 	recorded  bool
 	resumed   int
+	// leftOpen is what a resumed session never finished, ended as Run starts.
+	leftOpen openWork
 	// instructions name the files the prompt carries, for SessionStarted.
 	instructions []string
 	skills       []event.SkillSummary
@@ -137,6 +139,8 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 // fact it produces goes out on the bus.
 func (e *Engine) Run(ctx context.Context) {
 	defer e.unsub()
+	// Read before SessionStarted goes out, since anything may follow that.
+	open := e.leftOpen
 	_, mode := e.runners.Select(event.UnknownRisk())
 	e.bus.Publish(event.SessionStarted{
 		Session: e.session, Model: e.modelName, Judge: e.judgeName,
@@ -145,6 +149,7 @@ func (e *Engine) Run(ctx context.Context) {
 		Recorded: e.recorded, Resumed: e.resumed,
 		ContextTokens: e.budget(), Instructions: e.instructions, Skills: e.skills,
 	})
+	e.endLeftOpen(open)
 	e.bus.Publish(e.measure(0))
 	done := make(chan struct{}, 1)
 

@@ -262,11 +262,12 @@ func TestRestore_HonoursAReset(t *testing.T) {
 	assert.Equal(t, "kept", m.blocks[0].prompt)
 }
 
-// A process that died mid-request never ended it, and its live output was
-// never stored, so resume must close it rather than spin on nothing.
-func TestRestore_ClosesWhatACrashLeftRunning(t *testing.T) {
+// A process that died mid-request never ended it. The engine ends it as facts
+// once the session is back, and history must fold them like any others.
+func TestRestore_ACrashedRequestIsClosedByTheEnginesFacts(t *testing.T) {
 	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	cmd, later := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	cut := event.Result{Err: "detent exited before this finished"}
 	facts := []event.Event{
 		event.UserCommandStarted{UserCommand: cmd, Command: "tail -f log"},
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "build it"},
@@ -274,21 +275,23 @@ func TestRestore_ClosesWhatACrashLeftRunning(t *testing.T) {
 		event.ToolCallStarted{ToolCall: call},
 	}
 	m := New(t.Context(), event.New(), SessionInfo{}).Restore(asRecords(facts))
+	m.apply(event.SessionResumed{})
+	m.apply(event.ToolCallEnded{ToolCall: call, Result: cut})
+	m.apply(event.UserCommandEnded{UserCommand: cmd, Result: cut})
+	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndError, Summary: "detent exited before this request finished"})
 
-	assert.True(t, m.Idle(), "nothing is waiting on a Turn the old process owned")
+	assert.True(t, m.Idle())
 	assert.False(t, m.spinning())
 	for _, id := range []uuid.UUID{cmd, call} {
 		r := m.row(id)
 		require.NotNil(t, r)
 		assert.False(t, r.running)
-		require.NotNil(t, r.result)
 		assert.Contains(t, r.result.Err, "detent exited")
 	}
 	b := m.block(turn)
 	assert.True(t, b.ended)
 	assert.Contains(t, b.err, "detent exited")
 
-	m.apply(event.SessionResumed{})
 	m.apply(event.UserCommandStarted{UserCommand: later, Command: "ls"})
 	assert.Len(t, b.rows, 1, "a command run after the resume does not join the dead Turn")
 	assert.Same(t, m.row(later), m.blocks[len(m.blocks)-1].rows[0], "it lands below the seam")

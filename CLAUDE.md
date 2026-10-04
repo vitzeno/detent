@@ -364,7 +364,10 @@ adding a fat dependency fails with the transitive import named.
   `BoundReached` and waits, because a human is watching and stopping
   dead is worse than asking. Undo (`RolledBack`) and reset
   (`SessionReset`) are facts, so a resumed session replays them rather
-  than bringing back what the human threw away.
+  than bringing back what the human threw away. So is a crash's end: a
+  resumed session's `Run` ends whatever the old process left open (its
+  Turn, tool calls and the human's command) with ordinary facts the store
+  records, and tells the model its last request was cut off.
 
 - **`internal/tool`**: the closed set a model may call, each lowered
   to one shell command so the sandbox stays the only executor of the
