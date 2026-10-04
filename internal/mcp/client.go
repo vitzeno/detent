@@ -31,6 +31,8 @@ const (
 type Server struct {
 	Name    string
 	session *sdk.ClientSession
+	// scrub takes the config's secrets out of an error a call returns.
+	scrub func(error) error
 }
 
 // Connect opens a session and returns once the server is usable.
@@ -82,6 +84,9 @@ func (s *Server) Call(ctx context.Context, name string, args map[string]any) cap
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return capture.Result{ExitCode: 1, Stderr: fmt.Sprintf("%s: no answer after %s, stopped",
 				s.Name, time.Since(start).Round(time.Second))}
+		}
+		if s.scrub != nil {
+			err = s.scrub(err)
 		}
 		return capture.Result{ExitCode: 1, Stderr: fmt.Sprintf("%s: %v", s.Name, err)}
 	}

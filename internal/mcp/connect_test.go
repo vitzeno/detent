@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -223,4 +224,35 @@ func indexOf(names []string, want string) int {
 		}
 	}
 	return -1
+}
+
+// A config's secrets come from the environment, and an error goes on the bus,
+// into the store and to the model, so none of them may ride along.
+func TestRedact_TakesOutEverySecretAConfigHolds(t *testing.T) {
+	c := Config{
+		URL:     "https://u:hunter2pw@mcp.example.com/k3yInThePath1234/mcp?token=q5ecret99",
+		Headers: map[string]string{"Authorization": "Bearer h3ader-secret"},
+		Env:     map[string]string{"GITHUB_TOKEN": "ghp_envsecret123", "DEBUG": "1"},
+	}
+	err := fmt.Errorf("dial %s: refused; it said: auth ghp_envsecret123 failed for k3yInThePath1234, "+
+		"header Bearer h3ader-secret, query q5ecret99, debug=1", c.URL)
+	got := redact(c, err).Error()
+	for _, secret := range []string{"hunter2pw", "k3yInThePath1234", "q5ecret99", "h3ader-secret", "ghp_envsecret123"} {
+		assert.NotContains(t, got, secret)
+	}
+	assert.Contains(t, got, "debug=1", "a short value is not taken for a secret")
+	assert.Contains(t, got, "mcp.example.com", "the host says which server it was")
+	assert.ErrorIs(t, redact(c, err), err, "and it still unwraps")
+}
+
+func TestRedactURL_KeepsOnlySchemeAndHost(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://mcp.linear.app/mcp":                  "https://mcp.linear.app/…",
+		"https://mcp.example.com/sk-abc123/sse?x=1#f": "https://mcp.example.com/…",
+		"https://user:pw@mcp.example.com":             "https://mcp.example.com",
+		"http://localhost:8080/":                      "http://localhost:8080",
+		"http://localhost:8080/?token=abc":            "http://localhost:8080/…",
+	} {
+		assert.Equal(t, want, redactURL(raw), raw)
+	}
 }

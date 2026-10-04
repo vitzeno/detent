@@ -191,6 +191,7 @@ func connect(ctx context.Context, name string, c Config, oauth auth.OAuthHandler
 	if err != nil {
 		return result{err: err}
 	}
+	s.scrub = func(err error) error { return redact(c, err) }
 	tools, err := s.Tools(ctx)
 	if err != nil {
 		_ = s.Close()
@@ -253,7 +254,8 @@ func summarise(st event.ServerSummary, got result) event.ServerSummary {
 }
 
 // redact takes out of err what the config may have filled from the
-// environment: the URL's query and password, and every header value.
+// environment: the URL's password, query and long path segments, every
+// header value, and a stdio server's env values.
 func redact(c Config, err error) error {
 	msg := err.Error()
 	var secrets []string
@@ -266,10 +268,22 @@ func redact(c Config, err error) error {
 				secrets = append(secrets, vs...)
 			}
 			secrets = append(secrets, u.RawQuery)
+			// Some servers take the key as a path segment.
+			for seg := range strings.SplitSeq(u.Path, "/") {
+				if len(seg) >= minSecret {
+					secrets = append(secrets, seg)
+				}
+			}
 		}
 	}
 	for _, v := range c.Headers {
 		secrets = append(secrets, v)
+	}
+	// A short value such as "1" would be cut out of every word holding it.
+	for _, v := range c.Env {
+		if len(v) >= minSecret {
+			secrets = append(secrets, v)
+		}
 	}
 	out := msg
 	if c.URL != "" {
@@ -295,16 +309,19 @@ type redacted struct {
 func (r redacted) Error() string { return r.msg }
 func (r redacted) Unwrap() error { return r.err }
 
-// redactURL drops the parts of a URL a key travels in: a user and a query.
+// minSecret is the shortest env value or path segment taken for a secret.
+const minSecret = 8
+
+// redactURL keeps a URL's scheme and host, dropping the user, path, query and
+// fragment, since a key can travel in any of them.
 func redactURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return "(a url that does not parse)"
 	}
-	u.User = nil
-	u.Fragment, u.RawFragment = "", ""
-	if u.RawQuery != "" {
-		u.RawQuery = "…"
+	out := u.Scheme + "://" + u.Host
+	if strings.Trim(u.Path, "/") != "" || u.RawQuery != "" {
+		out += "/…"
 	}
-	return u.String()
+	return out
 }
