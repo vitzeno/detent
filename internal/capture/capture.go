@@ -14,9 +14,9 @@ import (
 const (
 	// MaxOutputBytes caps each captured stream.
 	MaxOutputBytes = 8 * 1024
-	// MaxResultBytes bounds what one command puts in the transcript, so one
-	// loud command cannot crowd out the rest.
-	MaxResultBytes = 4 * 1024
+	// MaxResultBytes bounds one result in the transcript. Above every tool's own
+	// window, so the line saying how much is left is never what gets cut.
+	MaxResultBytes = 3 * MaxOutputBytes
 )
 
 const (

@@ -276,8 +276,5 @@ func unitEnd(msgs []event.Message, i int) int {
 }
 
 func bound(s string) string {
-	if len(s) <= maxResultBytes {
-		return s
-	}
-	return s[:maxResultBytes] + "\n…[truncated]"
+	return capture.Clip(s, maxResultBytes)
 }

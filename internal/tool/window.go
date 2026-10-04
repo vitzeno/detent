@@ -3,6 +3,7 @@ package tool
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -18,16 +19,18 @@ const (
 	outputBudget = 7 * 1024
 	// readChunk is how much of a line is read at a time.
 	readChunk = 64 * 1024
-	// lineKeep is as much of one line as a window can need: the budget,
-	// a \r and a byte to tell that it is over.
-	lineKeep = outputBudget + 2
 )
 
 // window prints limit lines from start, stopping early at outputBudget bytes. more
 // gets the count left and the line to resume from, empty is for no input.
 func window(start, limit int, more, empty string) string {
+	return windowSized(start, limit, outputBudget, more, empty)
+}
+
+// windowSized is window with its own byte budget, for a tool allowed more.
+func windowSized(start, limit, budget int, more, empty string) string {
 	return fmt.Sprintf("awk -v s=%d -v n=%d -v b=%d -v more=%s -v empty=%s %s",
-		start, limit, outputBudget, quote(awkString(more)+`\n`), quote(awkString(empty)+`\n`), quote(windowScript))
+		start, limit, budget, quote(awkString(more)+`\n`), quote(awkString(empty)+`\n`), quote(windowScript))
 }
 
 // windowScript is window's awk program, which windower mirrors in Go.
@@ -44,10 +47,17 @@ END {
 // awkString escapes the backslashes awk -v would otherwise read as escapes.
 func awkString(s string) string { return strings.ReplaceAll(s, `\`, `\\`) }
 
-// windowLines is window's awk script in Go, holding at most lineKeep bytes
-// of any line however long, and stopping when ctx does.
+// windowLines is window's awk script in Go, holding at most a budget's worth of
+// any line however long, and stopping when ctx does.
 func windowLines(ctx context.Context, r io.Reader, start, limit int, more, empty string) (string, error) {
-	w := windower{start: start, limit: limit}
+	return windowLinesSized(ctx, r, start, limit, outputBudget, more, empty)
+}
+
+// windowLinesSized is windowLines with its own byte budget, as windowSized.
+func windowLinesSized(ctx context.Context, r io.Reader, start, limit, budget int, more, empty string) (string, error) {
+	w := windower{start: start, limit: limit, budget: budget}
+	// As much of one line as the window can need: the budget, a \r and a byte to tell it is over.
+	lineKeep := budget + 2
 	br := bufio.NewReaderSize(r, readChunk)
 	var line []byte
 	size := 0
@@ -85,6 +95,8 @@ type windower struct {
 	b             strings.Builder
 	start, limit  int
 	n, used, stop int
+	// budget is the bytes it may show, outputBudget when zero.
+	budget int
 }
 
 // wants is whether the next line could be shown, so a reader knows
@@ -103,17 +115,19 @@ func (w *windower) add(line string, long bool) {
 	case w.n >= w.start+w.limit:
 		w.stop = w.n
 		return
-	case w.used > 0 && (long || w.used+len(line)+1 > outputBudget):
+	case w.used > 0 && (long || w.used+len(line)+1 > w.bytes()):
 		w.stop = w.n
 		return
 	}
-	if long || len(line) > outputBudget {
-		line = cutRunes(line, outputBudget) + " [line cut]"
+	if long || len(line) > w.bytes() {
+		line = cutRunes(line, w.bytes()) + " [line cut]"
 	}
 	w.b.WriteString(line)
 	w.b.WriteByte('\n')
 	w.used += len(line) + 1
 }
+
+func (w *windower) bytes() int { return cmp.Or(w.budget, outputBudget) }
 
 // end adds the footer: more when the window stopped early, empty when it never began.
 func (w *windower) end(more, empty string) string {

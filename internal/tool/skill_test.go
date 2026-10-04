@@ -2,6 +2,7 @@ package tool
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -24,9 +25,10 @@ func TestSkill_ReadsTheBodyAndListsItsFiles(t *testing.T) {
 
 func TestSkill_SaysWhereToReadOnInALongSkill(t *testing.T) {
 	posixOnly(t, "the sh side reads a Windows path through Git Bash")
-	dir := tree(t, map[string]string{"big/SKILL.md": numbered(800)})
+	dir := tree(t, map[string]string{"big/SKILL.md": numbered(skillLines + 300)})
 	out := run(t, NewSkill([]SkillEntry{{Name: "big", Dir: dir + "/big"}}), Args{"name": "big"})
-	assert.Contains(t, out, "[300 more lines, read on with read_file on "+dir+"/big/SKILL.md at offset 501]")
+	assert.Contains(t, out, fmt.Sprintf("[300 more lines, read on with read_file on %s/big/SKILL.md at offset %d]",
+		dir, skillLines+1))
 	assert.NotContains(t, out, "other files", "a skill with nothing else says nothing about it")
 }
 
@@ -77,9 +79,9 @@ func (f fakeMCP) Lower(Args) (string, error) { return "", nil }
 // awk -v reads escapes, so a backslash in the skill's path must reach the footer as one.
 func TestSkill_KeepsABackslashInItsPath(t *testing.T) {
 	posixOnly(t, "a backslash is the separator on Windows")
-	dir := tree(t, map[string]string{`a\b/SKILL.md`: numbered(600)})
+	dir := tree(t, map[string]string{`a\b/SKILL.md`: numbered(skillLines + 100)})
 	out := run(t, NewSkill([]SkillEntry{{Name: "x", Dir: dir + `/a\b`}}), Args{"name": "x"})
-	assert.Contains(t, out, "read_file on "+dir+`/a\b/SKILL.md at offset 501`)
+	assert.Contains(t, out, fmt.Sprintf("read_file on %s/a\\b/SKILL.md at offset %d", dir, skillLines+1))
 }
 
 func TestSkill_FailsWhenItsFileIsGone(t *testing.T) {

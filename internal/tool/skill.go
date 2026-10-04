@@ -18,6 +18,10 @@ const (
 	skillOthers   = "[other files in this skill]"
 	// skillFiles is how many of a skill's other files it lists.
 	skillFiles = 50
+	// A skill is read three times as far as a file, since it is followed whole.
+	// In the sandbox the capture still stops at capture.MaxOutputBytes.
+	skillLines  = 1500
+	skillBudget = 3 * outputBudget
 )
 
 // Skill loads a skill found at startup by reading its SKILL.md where
@@ -69,7 +73,7 @@ func (s Skill) Lower(a Args) (string, error) {
 	}
 	file := e.Dir + "/SKILL.md"
 	// -H lists a skill whose directory is a symlink, as a linked-in skill often is.
-	return window(1, 500, skillMore(file), skillEmpty) + " " + path(file) + " && find -H " + path(e.Dir) +
+	return windowSized(1, skillLines, skillBudget, skillMore(file), skillEmpty) + " " + path(file) + " && find -H " + path(e.Dir) +
 		" -type f ! -name SKILL.md | sort | awk 'NR == 1 { print \"\\n" + skillOthers + "\" } NR <= " + strconv.Itoa(skillFiles) + "'", nil
 }
 
@@ -85,7 +89,7 @@ func (s Skill) Run(ctx context.Context, a Args) capture.Result {
 		return failed(2, "skill: %v", err)
 	}
 	defer func() { _ = f.Close() }() // read only, so closing cannot lose anything
-	out, err := windowLines(ctx, f, 1, 500, skillMore(file), skillEmpty)
+	out, err := windowLinesSized(ctx, f, 1, skillLines, skillBudget, skillMore(file), skillEmpty)
 	if ctx.Err() != nil {
 		return stopped("skill", out, ctx.Err())
 	}

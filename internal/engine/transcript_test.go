@@ -77,6 +77,16 @@ func TestStep_BoundsAHugeResult(t *testing.T) {
 	assert.Contains(t, got, "truncated")
 }
 
+// A windowed result ends saying how much is left, and a failing build ends with
+// its error, so a result too long for the transcript keeps its tail.
+func TestBound_KeepsTheEndOfALongResult(t *testing.T) {
+	long := strings.Repeat("x", maxResultBytes*2) + "\n[300 more lines, read on at offset 501]"
+	got := bound(long)
+	assert.LessOrEqual(t, len(got), maxResultBytes+64)
+	assert.True(t, strings.HasSuffix(got, "[300 more lines, read on at offset 501]"))
+	assert.Equal(t, "short", bound("short"))
+}
+
 // Compaction moves whole Steps. Half a Step is a transcript no
 // endpoint accepts, so this is the property, not the byte count.
 func TestCompact_MovesWholeStepsOnly(t *testing.T) {
