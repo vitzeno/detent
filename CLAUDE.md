@@ -609,7 +609,10 @@ adding a fat dependency fails with the transitive import named.
   finder, undo, delete) or has typed into the bar waits until that is
   closed or sent, so a key meant for it can never answer the question.
   Once up, a question ignores answers for 400ms (`questionSettle`), so
-  the first key of the next message is not taken as a yes. A view that panics while drawing
+  the first key of the next message is not taken as a yes. A command's
+  output is defused once, as `facts.go` folds it (`termsafe.Styled`): its
+  colour stays, and any other escape (a cursor move, a clipboard write, a
+  link) is shown rather than sent, so no pane or preview has to remember to. A view that panics while drawing
   falls back to plain text.
 
   **A thing leaves `ui` when it stops needing Model.** That is why

@@ -105,7 +105,7 @@ func (m *Model) apply(ev event.Event) {
 	case event.ToolCallEnded:
 		if r := m.row(v.ToolCall); r != nil {
 			r.running = false
-			result := v.Result
+			result := styled(v.Result)
 			r.result = &result
 			m.calls++
 			if result.Err != "" || result.ExitCode != 0 {
@@ -122,7 +122,7 @@ func (m *Model) apply(ev event.Event) {
 	case event.UserCommandEnded:
 		if r := m.row(v.UserCommand); r != nil {
 			r.running = false
-			result := v.Result
+			result := styled(v.Result)
 			r.result = &result
 		}
 
@@ -245,7 +245,7 @@ func (m *Model) addLine(v event.OutputChunk) {
 		r.dropped++
 		r.live = r.live[1:]
 	}
-	r.live = append(r.live, v.Line)
+	r.live = append(r.live, termsafe.Styled(v.Line))
 }
 
 func (m *Model) judged(v event.ToolCallJudged) {
@@ -330,4 +330,11 @@ func (m *Model) setCur(b *turnBlock) {
 		b.rev++
 	}
 	m.cur = b
+}
+
+// styled defuses what a command printed as it arrives, keeping its colour,
+// so every view, preview and pane after this draws safe text.
+func styled(r event.Result) event.Result {
+	r.Stdout, r.Stderr, r.Err = termsafe.Styled(r.Stdout), termsafe.Styled(r.Stderr), termsafe.Printable(r.Err)
+	return r
 }

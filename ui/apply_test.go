@@ -486,3 +486,23 @@ func asRecords(facts []event.Event) []event.Record {
 	}
 	return out
 }
+
+// A command's output reaches the screen with its colour and nothing else an
+// escape can do, settled or live, so no pane or preview can send one.
+func TestOutput_KeepsColourAndShowsOtherEscapes(t *testing.T) {
+	const out = "\x1b[31mFAIL\x1b[0m \x1b]52;c;aGk=\x07"
+	turn, call, live := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	m := feed(t,
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "test"},
+		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "go test"}},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: out}},
+		event.ToolCallProposed{ToolCall: live, Tool: "bash", Args: map[string]any{"command": "tail"}},
+		event.ToolCallStarted{ToolCall: live},
+		event.OutputChunk{ToolCall: live, Line: out},
+	)
+	for _, text := range []string{m.row(call).text(), m.row(live).live[0]} {
+		assert.Contains(t, text, "\x1b[31mFAIL\x1b[0m", "colour stays")
+		assert.Contains(t, text, "^[]52;c;aGk=^G", "the clipboard write is shown")
+		assert.NotContains(t, text, "\x1b]", "and never sent")
+	}
+}
