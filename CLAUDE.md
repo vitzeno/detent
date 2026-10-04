@@ -779,21 +779,6 @@ standard library and `viewspec`. Break that and the boundary is back.
 
 ## Conventions
 
-- Tests use `testify` (`require`/`assert`) with table-driven cases:
-  follow `internal/model/client_test.go` (`httptest`-backed),
-  `internal/engine/engine_test.go` (a bus rig) and `ui/apply_test.go`
-  (events in, state out).
-- An interface found by type assertion gets a compile-time assertion
-  beside the implementation (`var _ Selector = gaugeWidget{}`), because
-  a renamed method otherwise degrades silently instead of failing the
-  build: `engine.Snapshotter` losing its name removes rollback entirely,
-  and a widget losing `Validate` simply stops validating. One proved by
-  an argument, a struct field or a return type needs no assertion and
-  should not get one.
-- A type with behaviour or dependencies (a client, a judge, a store) is
-  built through its package's `New...`, with options for what is optional,
-  and keeps its fields unexported so a literal cannot skip the defaults.
-  Plain data (events, results, specs, `config.Config`) stays a literal.
 - Commit messages: short and concise, no body, no references to plan
   documents or section numbers.
 - `docs/` is gitignored: planning documents live there but are never
@@ -801,5 +786,115 @@ standard library and `viewspec`. Break that and the boundary is back.
 - Confirm is conditional on `event.Risk.Dangerous`, not universal. A
   tool call nobody answers blocks its Turn rather than running, which is
   the right way round: the approval gate fails closed.
-- Comments are one line by default, two when load-bearing, three only
-  for a package doc or an invariant the design rests on.
+
+## Go style
+
+The rules the code already follows, so new code reads like the old.
+
+### Building things
+
+- **A type with behaviour or dependencies is built through `New...`.** A
+  client, a judge, a store, a generator, a selector: `model.NewClient`,
+  `viewgen.New`, `classify.NewRiskJudge`. Its fields are unexported, so a
+  literal in another package cannot skip the defaults. Plain data stays a
+  literal: events, `capture.Result`, viewspec specs, `config.Config`.
+- **Required values are arguments, optional ones are options.** An option
+  is `type XOption func(*X)` with constructors named `WithY`
+  (`model.WithHeaders`, `engine.WithMaxSteps`), applied in order, and a
+  switch that only turns something on reads as one (`viewgen.WithoutVerdicts`).
+  Several values that belong together go in one option (`WithInstructions(text, files)`).
+- **Defaults are applied once, in the constructor**, after the options, with
+  `cmp.Or` where it fits (`NewClient`), never re-derived on every call by an
+  accessor.
+- **A choice between variants is a function**, not a literal at the call
+  site: `tool.Shell(pwsh)`, `routing.Host(r)` and `routing.Sandbox(r)`. The
+  zero value is a safe default where one exists (a zero `routing.Selector`
+  refuses every call rather than running on the host).
+
+### File layout
+
+- **Important things first.** The package doc, then constants, package
+  variables and types, then the exported API and the main flow in the order
+  it happens (open, handle, close), then helpers, with small pure functions
+  last. A reader should meet what the file is for before how it does it.
+- **A type's constructor and options come straight after the type**, and its
+  methods after those. A helper type another type depends on sits beside it.
+- **Tests come first in a test file**, then fuzz targets, then helpers and fakes.
+- `ui` has its own file map and naming rules in `ui/doc.go`: read it before
+  adding a file there.
+
+### Comments
+
+- **One line by default, two when load-bearing, three only for a package
+  doc or an invariant the design rests on.** No comment line past 100 columns.
+- **Say why, not what.** The code says what. A comment earns its place by
+  naming the reason, the trap or the case that broke before.
+- Plain sentences, as a person writes them: no em dashes, no semicolons, no
+  headings or lists inside a comment.
+- Doc comments start with the name (`// Restore rebuilds…`). A comment that
+  stops being true is deleted or fixed in the same change, never left beside
+  the new one.
+
+### Errors
+
+- **Wrap with `%w` and the package's name** (`fmt.Errorf("worktree: stage: %w", err)`),
+  so a message says where it came from and `errors.Is` still works.
+- **A condition callers branch on is a sentinel** (`worktree.ErrGone`,
+  `routing.ErrNoSandbox`, `forget.ErrLive`), named `ErrX` and tested with
+  `errors.Is`.
+- **A bad tool call is a tool result, never a Go error**, so the model reads
+  it and corrects itself. A failure the human should see is a `Notice`.
+- An error that may carry a secret is redacted before it reaches the bus,
+  since the bus feeds the store, the log and the model (`mcp.redact`).
+
+### Concurrency and state
+
+- **Typed atomics** (`atomic.Bool`, `atomic.Pointer[T]`) over `atomic.Value`,
+  and a `sync.Mutex` beside the fields it guards, with a comment if that is
+  not obvious.
+- **Package-level state is rare and explained.** A `var` a test overrides
+  (`retryWaits`, `questionSettle`, `coalesceWindow`) says so.
+- **`ctx` is the first parameter.** A subscriber doing network or process
+  work takes the session's ctx in `Watch` and derives every request from it.
+  `logging` and `store` take none on purpose, to write the last records.
+- A value read by another goroutine after an event is read *before* the
+  event is published, never after (`Run` reads `leftOpen` before
+  `SessionStarted`). The race detector catches the rest, and CI runs it.
+
+### Current Go
+
+- Use what the toolchain gives: `min` and `max`, `slices` and `maps`,
+  `strings.SplitSeq` and `FieldsSeq`, `for range n`, `cmp.Or`, and in tests
+  `t.Context()` and `b.Loop()`. `golangci-lint` (with modernize) flags most of
+  what it would rewrite.
+- Imports in three groups: the standard library, third-party, then this
+  module. `goimports` keeps them that way.
+
+### Interfaces
+
+- **An interface found by type assertion gets a compile-time assertion**
+  beside the implementation (`var _ Selector = gaugeWidget{}`), because a
+  renamed method otherwise degrades silently instead of failing the build:
+  `engine.Snapshotter` losing its name removes rollback entirely, and a
+  widget losing `Validate` simply stops validating. One proved by an
+  argument, a struct field or a return type needs no assertion and should
+  not get one.
+- An interface is declared where it is used, and kept to the methods that
+  caller needs (`engine.Runner`, `engine.Worktreer`).
+
+### Tests
+
+- `testify` (`require` to stop, `assert` to carry on), table-driven where
+  cases share a shape. Follow `internal/model/client_test.go`
+  (`httptest`-backed), `internal/engine/engine_test.go` (a bus rig) and
+  `ui/apply_test.go` (events in, state out).
+- **Names say what must hold**: `TestRestore_KeepsACommittedCRLFFileCRLF`,
+  not `TestRestore2`. A failing name should read as the broken promise.
+- **A test for a bug fails without the fix.** Check it by putting the bug
+  back (a mutation check) before trusting it, and never let a fuzzy or
+  forgiving assertion pass the old behaviour too.
+- Tests never touch the human's real state: `t.TempDir()`, a temp HOME, a
+  `:memory:` store. Anything that must reach outside the process skips
+  unless asked (`DETENT_LIVE`, `DETENT_STRESS`).
+- Code that reads input nothing controls (command output, model text) gets
+  a fuzz target, listed in CI's fuzz job.
