@@ -99,7 +99,7 @@ func TestSkill_NativeMatchesTheSandbox(t *testing.T) {
 		"no SKILL.md at all": {"s", map[string]string{"s/x.md": ""}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			s := Skill{Entries: []SkillEntry{{Name: "x", Dir: c.dir}}}
+			s := NewSkill([]SkillEntry{{Name: "x", Dir: c.dir}})
 			cParity(t, s, Args{"name": "x"}, c.files)
 		})
 	}

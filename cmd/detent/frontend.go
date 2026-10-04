@@ -65,7 +65,7 @@ func (s *session) runTUI(ctx context.Context) error {
 	// see what the agent just did is not worth having.
 	runner, where := s.runners.Select(event.UnknownRisk())
 	s.sd.userCommand = usercommand.Watch(ctx, s.bus, runner, where)
-	signins := mcppkg.NewSignIns(s.bus, s.servers, mcppkg.Tokens{Dir: mcppkg.TokensDir()}, openBrowser)
+	signins := mcppkg.NewSignIns(s.bus, s.servers, mcppkg.NewTokens(mcppkg.TokensDir()), openBrowser)
 	s.sd.unwatch = append(s.sd.unwatch, mcppkg.Watch(ctx, s.bus, s.servers,
 		mcppkg.Redialer(s.tools, s.servers, s.configured, signins), signins))
 	s.sd.connect = connectServers(ctx, s.bus, s.tools, s.servers, s.configured, signins)

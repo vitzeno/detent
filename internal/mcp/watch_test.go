@@ -58,7 +58,7 @@ func TestWatch_OpenAuthorizationOpensOnlyAWaitingLink(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	opened := make(chan string, 1)
-	signins := NewSignIns(bus, nil, Tokens{}, func(link string) error { opened <- link; return nil })
+	signins := NewSignIns(bus, nil, NewTokens(""), func(link string) error { opened <- link; return nil })
 	notices, unsub := bus.Subscribe(event.Only(event.NoticeKind))
 	defer unsub()
 	defer Watch(t.Context(), bus, NewInvokers(), nil, signins)()
@@ -87,7 +87,7 @@ func TestWatch_OpenAuthorizationOpensOnlyAWaitingLink(t *testing.T) {
 // not reused, and the tools stay offered under the new session.
 func TestRedialer_SignsInAfresh(t *testing.T) {
 	f := newFakeAuth(t)
-	r := rig(t, Tokens{Dir: t.TempDir()})
+	r := rig(t, NewTokens(t.TempDir()))
 	browse(t, r.bus)
 	servers := map[string]Config{"notion": {URL: f.url() + "/mcp"}, "local": {Command: "true"}}
 	_ = r.connect(context.Background(), servers)
@@ -121,7 +121,7 @@ func TestRedialer_SignsInAfresh(t *testing.T) {
 // tools stay offered and /mcp still says it is connected.
 func TestRedialer_AFailureKeepsTheWorkingSession(t *testing.T) {
 	f := newFakeAuth(t)
-	r := rig(t, Tokens{Dir: t.TempDir()})
+	r := rig(t, NewTokens(t.TempDir()))
 	browse(t, r.bus)
 	servers := map[string]Config{"notion": {URL: f.url() + "/mcp"}}
 	require.Empty(t, r.connect(context.Background(), servers))

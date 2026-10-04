@@ -21,13 +21,8 @@ func TestLive_ToolCallsRoundTrip(t *testing.T) {
 		t.Skip("set DETENT_LIVE=1 to run against a real endpoint")
 	}
 	cfg := liveConfig(t)
-	c := &Client{
-		BaseURL: cfg["base_url"],
-		Model:   cfg["model"],
-		APIKey:  cfg["api_key"],
-		Env:     LocalEnvironment(),
-	}
-	t.Logf("endpoint %s, model %s", c.baseURL(), c.model())
+	c := NewClient(cfg["base_url"], cfg["model"], cfg["api_key"])
+	t.Logf("endpoint %s, model %s", c.baseURL, c.model)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	require.NoError(t, c.Ping(ctx))

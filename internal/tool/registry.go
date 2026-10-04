@@ -21,6 +21,14 @@ type Registry struct {
 // Standard is what detent ships, plus extra built-ins such as skill.
 func Standard(extra ...Tool) *Registry { return StandardFor(Bash{}, extra...) }
 
+// Shell is the tool commands run through: powershell when pwsh is set, else bash.
+func Shell(pwsh bool) Tool {
+	if pwsh {
+		return PowerShell{}
+	}
+	return Bash{}
+}
+
 // StandardFor is Standard with shell in bash's place, such as PowerShell.
 func StandardFor(shell Tool, extra ...Tool) *Registry {
 	r := &Registry{tools: map[string]Tool{}}

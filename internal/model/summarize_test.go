@@ -80,7 +80,7 @@ func TestTranscriptText_BoundsArgumentsAndResults(t *testing.T) {
 }
 
 func TestSummarize_EmptyNeverReachesTheEndpoint(t *testing.T) {
-	c := &Client{BaseURL: "http://127.0.0.1:1"} // would fail if dialled
+	c := NewClient("http://127.0.0.1:1", "", "") // would fail if dialled
 	out, err := c.Summarize(context.Background(), nil)
 	require.NoError(t, err)
 	assert.Empty(t, out)

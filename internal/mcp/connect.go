@@ -160,7 +160,7 @@ func dial(parent context.Context, name string, c Config, signins *SignIns) resul
 	var h *serial
 	if c.URL != "" {
 		if signins == nil {
-			signins = NewSignIns(nil, nil, Tokens{Dir: TokensDir()}, nil)
+			signins = NewSignIns(nil, nil, NewTokens(TokensDir()), nil)
 		}
 		var err error
 		if h, err = oauthHandler(name, c.URL, c.OAuth, authClient(), signins); err != nil {

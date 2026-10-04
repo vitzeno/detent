@@ -125,7 +125,7 @@ func applyLook(cfg config.Config) error {
 func ping(cfg config.Config) <-chan error {
 	pinged := make(chan error, 1)
 	go func() {
-		pinged <- (&model.Client{BaseURL: cfg.BaseURL, APIKey: cfg.APIKey, Headers: cfg.Headers}).Ping(context.Background())
+		pinged <- model.NewClient(cfg.BaseURL, cfg.Model, cfg.APIKey, model.WithHeaders(cfg.Headers)).Ping(context.Background())
 	}()
 	return pinged
 }

@@ -36,7 +36,7 @@ func TestRiskJudge_Assess(t *testing.T) {
 		{name: "no asker adds nothing", asker: nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			risk, err := RiskJudge{Asker: tc.asker, Threshold: tc.field}.Assess(context.Background(), "cmd", tc.arg)
+			risk, err := NewRiskJudge(tc.asker, tc.field).Assess(context.Background(), "cmd", tc.arg)
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Equal(t, event.Risk{}, risk, "a failure is no answer, which Widen folds in as nothing")
@@ -57,7 +57,7 @@ func TestRiskJudge_ZeroThresholdTakesTheDefault(t *testing.T) {
 		noul      float64
 		dangerous bool
 	}{{0.2, false}, {0.5, true}, {0.9, true}} {
-		j := RiskJudge{Asker: scopeRisk(tc.noul)}
+		j := NewRiskJudge(scopeRisk(tc.noul), 0)
 		risk, err := j.Assess(context.Background(), "ls", 0)
 		require.NoError(t, err)
 		assert.Equal(t, tc.dangerous, risk.Dangerous, "noul %.1f", tc.noul)
@@ -68,7 +68,9 @@ func TestRiskJudge_ZeroThresholdTakesTheDefault(t *testing.T) {
 // and says so rather than passing for a quiet verdict.
 func TestRiskJudge_GivesUpOnAStalledJudge(t *testing.T) {
 	start := time.Now()
-	_, err := RiskJudge{Asker: stalled{}, Timeout: 20 * time.Millisecond}.Assess(context.Background(), "ls", 0)
+	j := NewRiskJudge(stalled{}, 0)
+	j.timeout = 20 * time.Millisecond
+	_, err := j.Assess(context.Background(), "ls", 0)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Less(t, time.Since(start), 2*time.Second)
 }

@@ -33,7 +33,7 @@ type gen struct {
 // registry is what a session offers, so a tool added there without a
 // gen here fails TestTools_EveryRegisteredToolHasAGenerator.
 func registry() *tool.Registry {
-	return tool.Standard(tool.Skill{Entries: []tool.SkillEntry{{Name: "release", Description: "cut a release"}}})
+	return tool.Standard(tool.NewSkill([]tool.SkillEntry{{Name: "release", Description: "cut a release"}}))
 }
 
 var tools = kinds()

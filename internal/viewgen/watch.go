@@ -77,7 +77,7 @@ func (w *watcher) take(e event.Event) {
 		result := v.Result
 		p.result = &result
 		// With no judge wired no CallJudged follows, so the tool call resolves now.
-		if w.gen.Unjudged {
+		if w.gen.unjudged {
 			w.start(v.ToolCall, p)
 		}
 	case event.ToolCallJudged:

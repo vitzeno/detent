@@ -42,7 +42,7 @@ func TestDial_GivesUpOnAServerThatNeverAnswers(t *testing.T) {
 	connectTimeout = 100 * time.Millisecond
 
 	got := dial(context.Background(), "mute", Config{URL: held.URL},
-		NewSignIns(nil, nil, Tokens{Dir: t.TempDir()}, nil))
+		NewSignIns(nil, nil, NewTokens(t.TempDir()), nil))
 	require.Error(t, got.err)
 	assert.Contains(t, got.err.Error(), "no answer within 100ms")
 }

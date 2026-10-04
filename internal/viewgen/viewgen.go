@@ -48,16 +48,40 @@ var (
 	errHides         = errors.New("the view hides most of the output")
 )
 
-// Generator composes specs. Without a Judge there is no composition,
-// and a nil Store disables caching.
+// Generator composes specs. Without a judge there is no composition,
+// and without a store no caching.
 type Generator struct {
-	Judge    Judge
-	Registry *viewspec.Registry
-	Store    *Store
-	// Unjudged says nothing publishes CallJudged, so Watch resolves a tool call
+	judge    Judge
+	registry *viewspec.Registry
+	store    *Store
+	// unjudged says nothing publishes CallJudged, so Watch resolves a tool call
 	// when it ends rather than waiting for a verdict that never comes.
-	Unjudged bool
+	unjudged bool
 }
+
+// New is a Generator drawing from viewspec.Standard, until opts say otherwise.
+func New(opts ...Option) *Generator {
+	g := &Generator{registry: viewspec.Standard()}
+	for _, o := range opts {
+		o(g)
+	}
+	return g
+}
+
+// Option sets what a Generator composes with.
+type Option func(*Generator)
+
+// WithJudge lets the Generator compose, asking j its questions.
+func WithJudge(j Judge) Option { return func(g *Generator) { g.judge = j } }
+
+// WithRegistry is the widgets a composed spec may use.
+func WithRegistry(r *viewspec.Registry) Option { return func(g *Generator) { g.registry = r } }
+
+// WithStore caches composed specs in s.
+func WithStore(s *Store) Option { return func(g *Generator) { g.store = s } }
+
+// WithoutVerdicts says nothing publishes CallJudged, so Watch need not wait.
+func WithoutVerdicts() Option { return func(g *Generator) { g.unjudged = true } }
 
 // Judge is what composition asks its questions of. classify.JevJudge
 // satisfies it, and a test can script one.
@@ -101,7 +125,7 @@ const (
 // first, so a human's edit beats what detent ships. All of views: saved.
 func (g *Generator) Existing(ctx context.Context, req Request) (Result, bool) {
 	key := Key(req.Command, req.Kind)
-	if spec, ok := g.Store.Load(key); ok && g.usable(ctx, req, spec, SourceSaved) {
+	if spec, ok := g.store.Load(key); ok && g.usable(ctx, req, spec, SourceSaved) {
 		return Result{Spec: spec, Key: key, Source: SourceSaved}, true
 	}
 	if spec, ok := seed(req.Command); ok && g.usable(ctx, req, spec, SourceShipped) {
@@ -116,7 +140,7 @@ func (g *Generator) Shape(ctx context.Context, command, output string) event.Ren
 	if len(nonBlank(output)) < MinRecordsToCompose && !isJSON(output) {
 		return ""
 	}
-	answers, _, ok := classify.AskOrFallback(ctx, g.Judge,
+	answers, _, ok := classify.AskOrFallback(ctx, g.judge,
 		classify.State(map[string]any{"command": command, "output": head(output, MaxJudgeBytes)}),
 		classify.Questions{"render_kind": RenderKindQuestion()})
 	if !ok {
@@ -139,7 +163,7 @@ func (g *Generator) forKind(ctx context.Context, req Request) (Result, bool) {
 func (g *Generator) usable(ctx context.Context, req Request, spec *viewspec.Spec, source Source) bool {
 	log := logging.For(logging.Viewgen)
 	key := Key(req.Command, req.Kind)
-	err := draws(spec, g.registry(), req.Output)
+	err := draws(spec, g.registry, req.Output)
 	if err != nil {
 		log.InfoContext(ctx, "an existing view cannot draw this output",
 			logging.KeyEvent, logging.ViewInvalid, "key", key, "source", source,
@@ -149,13 +173,6 @@ func (g *Generator) usable(ctx context.Context, req Request, spec *viewspec.Spec
 	log.InfoContext(ctx, "drawing an existing view", logging.KeyEvent, logging.ViewLookup,
 		"key", key, "source", source)
 	return true
-}
-
-func (g *Generator) registry() *viewspec.Registry {
-	if g.Registry != nil {
-		return g.Registry
-	}
-	return viewspec.Standard()
 }
 
 // worthAsking reports whether this output earns a judge call. Shape

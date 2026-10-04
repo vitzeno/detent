@@ -84,7 +84,7 @@ func TestNative_StopsWhenItsContextDoes(t *testing.T) {
 		{Grep{}, Args{"pattern": "hit"}},
 		{FindFiles{}, Args{"pattern": "*.txt"}},
 		{ListDir{}, Args{}},
-		{Skill{Entries: []SkillEntry{{Name: "s", Dir: "."}}}, Args{"name": "s"}},
+		{NewSkill([]SkillEntry{{Name: "s", Dir: "."}}), Args{"name": "s"}},
 		{WriteFile{}, Args{"path": "SKILL.md", "content": "new\n"}},
 		{EditFile{}, Args{"path": "SKILL.md", "old_string": "body", "new_string": "new"}},
 	} {

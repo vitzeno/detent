@@ -20,7 +20,7 @@ const notionURL = "https://mcp.notion.com/mcp"
 // A token belongs to a name and a server together: the same name
 // pointed somewhere else finds nothing, and its file is another one.
 func TestTokens_AreKeyedByTheServerTheyWereIssuedFor(t *testing.T) {
-	tokens := Tokens{Dir: filepath.Join(t.TempDir(), "mcp")}
+	tokens := NewTokens(filepath.Join(t.TempDir(), "mcp"))
 	require.NoError(t, tokens.Save("notion", notionURL, saved()))
 
 	for _, same := range []string{notionURL, "HTTPS://MCP.Notion.com/mcp/", notionURL + "?key=rotated"} {
@@ -38,7 +38,7 @@ func TestTokens_AreKeyedByTheServerTheyWereIssuedFor(t *testing.T) {
 // A file whose recorded server is not the one asked for is not read,
 // however it came to be at that path.
 func TestTokens_RefuseAFileRecordingAnotherServer(t *testing.T) {
-	tokens := Tokens{Dir: filepath.Join(t.TempDir(), "mcp")}
+	tokens := NewTokens(filepath.Join(t.TempDir(), "mcp"))
 	require.NoError(t, tokens.Save("notion", notionURL, saved()))
 	path, err := tokens.path("notion", notionURL)
 	require.NoError(t, err)
@@ -54,9 +54,9 @@ func TestTokens_RefuseAFileRecordingAnotherServer(t *testing.T) {
 // A token saved by name alone, as an older detent did, says nothing of
 // which server issued it: it is removed, never sent.
 func TestTokens_ALegacyNameOnlyTokenIsDropped(t *testing.T) {
-	tokens := Tokens{Dir: filepath.Join(t.TempDir(), "mcp")}
-	require.NoError(t, os.MkdirAll(tokens.Dir, 0o700))
-	legacy := filepath.Join(tokens.Dir, "notion-"+legacySuffix("notion")+".json")
+	tokens := NewTokens(filepath.Join(t.TempDir(), "mcp"))
+	require.NoError(t, os.MkdirAll(tokens.dir, 0o700))
+	legacy := filepath.Join(tokens.dir, "notion-"+legacySuffix("notion")+".json")
 	require.NoError(t, os.WriteFile(legacy, []byte(`{"token":{"access_token":"old"}}`), 0o600))
 
 	require.NoError(t, tokens.dropLegacy("notion"))
@@ -65,7 +65,7 @@ func TestTokens_ALegacyNameOnlyTokenIsDropped(t *testing.T) {
 }
 
 func TestTokens_RoundTrip(t *testing.T) {
-	tokens := Tokens{Dir: filepath.Join(t.TempDir(), "mcp")}
+	tokens := NewTokens(filepath.Join(t.TempDir(), "mcp"))
 	got, err := tokens.Load("notion", notionURL)
 	require.NoError(t, err)
 	assert.Nil(t, got, "no sign-in yet is not an error")
@@ -89,9 +89,9 @@ func TestTokens_AreReadableByTheirOwnerAlone(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows has no mode bits, a profile is private by ACL")
 	}
-	tokens := Tokens{Dir: filepath.Join(t.TempDir(), "mcp")}
+	tokens := NewTokens(filepath.Join(t.TempDir(), "mcp"))
 	require.NoError(t, tokens.Save("notion", notionURL, saved()))
-	dir, err := os.Stat(tokens.Dir)
+	dir, err := os.Stat(tokens.dir)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o700), dir.Mode().Perm())
 	path, err := tokens.path("notion", notionURL)
@@ -109,11 +109,11 @@ func TestTokens_AreReadableByTheirOwnerAlone(t *testing.T) {
 // where its token is written, nor land on another server's file.
 func TestTokens_NamesCannotLeaveTheDirectory(t *testing.T) {
 	root := t.TempDir()
-	tokens := Tokens{Dir: filepath.Join(root, "mcp")}
+	tokens := NewTokens(filepath.Join(root, "mcp"))
 	for _, name := range []string{"../escape", "a/b", "a_b", ""} {
 		require.NoError(t, tokens.Save(name, notionURL, saved()))
 	}
-	entries, err := os.ReadDir(tokens.Dir)
+	entries, err := os.ReadDir(tokens.dir)
 	require.NoError(t, err)
 	assert.Len(t, entries, 4, "four names, four files, all inside")
 	_, err = os.Stat(filepath.Join(root, "escape.json"))

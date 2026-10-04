@@ -87,12 +87,10 @@ func (s *session) openSandbox() error {
 		if err != nil {
 			return err
 		}
-		s.runners = routing.Selector{Host: shell, HostOnly: true}
+		s.runners = routing.Host(shell)
 		s.env.Shell = shell.Dialect()
 		return nil
 	}
-	s.runners = routing.Selector{Host: host.NewShell()}
-
 	socket := s.cfg.SandboxSocket
 	if socket == "" {
 		return errors.New("no default containerd socket for this OS: set -sandbox-socket (or sandbox_socket in config), or run with -sandbox host")
@@ -115,7 +113,7 @@ func (s *session) openSandbox() error {
 		return fmt.Errorf("sandbox: starting container: %w", err)
 	}
 	s.sd.container = container
-	s.runners.Sandbox = container
+	s.runners = routing.Sandbox(container)
 
 	// The container is Linux whatever this machine is, starts in the
 	// mount point, and checkpoints the whole request together.
@@ -142,11 +140,9 @@ func (s *session) buildEngine() error {
 	if err != nil {
 		s.warnings = append(s.warnings, "instructions: "+err.Error())
 	}
-	client := &model.Client{
-		BaseURL: s.cfg.BaseURL, Model: s.cfg.Model, APIKey: s.cfg.APIKey,
-		Headers: s.cfg.Headers, Env: s.env,
-		Instructions: instructions.Prompt(files), InstructionFiles: instructions.Paths(files),
-	}
+	client := model.NewClient(s.cfg.BaseURL, s.cfg.Model, s.cfg.APIKey,
+		model.WithHeaders(s.cfg.Headers), model.WithEnvironment(s.env),
+		model.WithInstructions(instructions.Prompt(files), instructions.Paths(files)))
 
 	// Opened before the engine so it can say whether this session is
 	// being written down. A session that cannot be is still a session.
@@ -180,7 +176,7 @@ func (s *session) buildEngine() error {
 			classify.WithModel(s.cfg.JevModel),
 			classify.WithEndpoint(s.cfg.JevEndpoint))
 		opts = append(opts, engine.WithJudge(
-			classify.RiskJudge{Asker: s.judge, Threshold: s.cfg.RiskThreshold},
+			classify.NewRiskJudge(s.judge, s.cfg.RiskThreshold),
 			s.cfg.RiskThreshold))
 	}
 
@@ -236,12 +232,7 @@ func (s *session) wire() context.Context {
 }
 
 // shellTool is what the model runs commands with, named for the shell they run in.
-func shellTool(env model.Environment) tool.Tool {
-	if env.Shell == model.ShellPwsh {
-		return tool.PowerShell{}
-	}
-	return tool.Bash{}
-}
+func shellTool(env model.Environment) tool.Tool { return tool.Shell(env.Shell == model.ShellPwsh) }
 
 // judgeName is what the session says classified it, empty when no key
 // was set and nothing did.
@@ -264,16 +255,15 @@ func loadMCPConfig(enabled bool, project []byte, files []string) (map[string]mcp
 // composer wires the view composer. Only views: generate hands it the
 // judge, and Validate refuses that mode without a jev key.
 func composer(mode string, judge *classify.JevJudge) *viewgen.Generator {
-	g := &viewgen.Generator{
-		Registry: ui.Registry(),
-		Store:    &viewgen.Store{Dir: viewgen.DefaultDir()},
+	opts := []viewgen.Option{viewgen.WithRegistry(ui.Registry()), viewgen.WithStore(viewgen.NewStore(viewgen.DefaultDir()))}
+	if judge == nil {
 		// Without a key nothing publishes CallJudged.
-		Unjudged: judge == nil,
+		opts = append(opts, viewgen.WithoutVerdicts())
 	}
 	if mode == config.ViewsGenerate && judge != nil {
-		g.Judge = judge
+		opts = append(opts, viewgen.WithJudge(judge))
 	}
-	return g
+	return viewgen.New(opts...)
 }
 
 // sessionStore avoids handing forget a non-nil interface holding a

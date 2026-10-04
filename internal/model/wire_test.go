@@ -63,8 +63,8 @@ func TestEncode_FieldsStayOnTheirOwnRole(t *testing.T) {
 
 func TestComplete_SendsToolsAndTheSystemPrompt(t *testing.T) {
 	schemas := []map[string]any{{"type": "function", "function": map[string]any{"name": "bash"}}}
-	c, got := serve(t, `{"choices":[{"message":{"content":"ok"}}]}`)
-	c.Env = Environment{OS: "linux", Arch: "arm64", Dir: "/workspace", Sandboxed: true, Undoable: true}
+	c, got := serve(t, `{"choices":[{"message":{"content":"ok"}}]}`, WithEnvironment(
+		Environment{OS: "linux", Arch: "arm64", Dir: "/workspace", Sandboxed: true, Undoable: true}))
 
 	_, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, schemas)
 	require.NoError(t, err)

@@ -15,23 +15,28 @@ import (
 // never wired: failing loudly beats running it on the host instead.
 var ErrNoSandbox = errors.New("routing: no sandbox is configured")
 
-// Selector picks host or sandbox by a global toggle. Host is read only
-// when HostOnly is set.
+// Selector runs every tool call in one place, this machine or the sandbox.
+// The zero Selector is a sandbox nobody wired, which refuses every call.
 type Selector struct {
-	Host     engine.Runner
-	Sandbox  engine.Runner
-	HostOnly bool
+	host    engine.Runner
+	sandbox engine.Runner
 }
 
-// Select returns the sandbox unless HostOnly is set.
+// Host runs every tool call on this machine through r.
+func Host(r engine.Runner) Selector { return Selector{host: r} }
+
+// Sandbox runs every tool call in r, the session's container.
+func Sandbox(r engine.Runner) Selector { return Selector{sandbox: r} }
+
+// Select returns the one runner, and says which place it is.
 func (s Selector) Select(_ event.Risk) (engine.Runner, string) {
 	switch {
-	case s.HostOnly:
-		return s.Host, "host"
-	case s.Sandbox == nil:
+	case s.host != nil:
+		return s.host, "host"
+	case s.sandbox == nil:
 		return missing{}, "sandbox"
 	}
-	return s.Sandbox, "sandbox"
+	return s.sandbox, "sandbox"
 }
 
 // missing is the sandbox nobody wired.

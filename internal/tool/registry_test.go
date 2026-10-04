@@ -178,7 +178,7 @@ func TestRegistry_RegisterOverridesWithoutDuplicating(t *testing.T) {
 
 // Nothing a server publishes may shadow bash or any other built-in.
 func TestRegistry_ABuiltInWinsACollision(t *testing.T) {
-	r := Standard(Skill{})
+	r := Standard(NewSkill(nil))
 	for _, name := range []string{"bash", "read_file", "skill"} {
 		require.Error(t, r.Register(fakeMCP{name}), name)
 		got, ok := r.Lookup(name)
@@ -192,7 +192,7 @@ func TestRegistry_ABuiltInWinsACollision(t *testing.T) {
 
 // The built-ins keep the order Standard gives them, and only the rest is sorted.
 func TestRegistry_KeepsBuiltInsInTheirOwnOrder(t *testing.T) {
-	r := Standard(Skill{})
+	r := Standard(NewSkill(nil))
 	require.NoError(t, r.Register(fakeMCP{"zz__last"}))
 	require.NoError(t, r.Register(fakeMCP{"aa__first"}))
 	assert.Equal(t, []string{
@@ -203,11 +203,11 @@ func TestRegistry_KeepsBuiltInsInTheirOwnOrder(t *testing.T) {
 
 // PowerShell takes bash's place, so the model is never offered a shell it is not in.
 func TestStandardFor_PutsTheShellInBashsPlace(t *testing.T) {
-	r := StandardFor(PowerShell{}, Skill{})
+	r := StandardFor(PowerShell{}, NewSkill(nil))
 	names := r.Names()
 	assert.Equal(t, PowerShellName, names[0])
 	assert.NotContains(t, names, "bash")
-	assert.Len(t, names, len(Standard(Skill{}).Names()))
+	assert.Len(t, names, len(Standard(NewSkill(nil)).Names()))
 
 	call, err := r.Prepare(PowerShellName, map[string]any{"command": "Get-ChildItem"})
 	require.NoError(t, err)
@@ -232,4 +232,9 @@ func TestRegistry_UnregisterRemovesFromWhatTheModelSees(t *testing.T) {
 	assert.False(t, ok)
 	assert.Len(t, r.Names(), before-1)
 	assert.NotContains(t, r.Names(), "srv__x")
+}
+
+func TestShell_IsNamedForWhereCommandsRun(t *testing.T) {
+	assert.Equal(t, "bash", Shell(false).Name())
+	assert.Equal(t, "powershell", Shell(true).Name())
 }

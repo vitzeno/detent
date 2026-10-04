@@ -781,6 +781,10 @@ standard library and `viewspec`. Break that and the boundary is back.
   and a widget losing `Validate` simply stops validating. One proved by
   an argument, a struct field or a return type needs no assertion and
   should not get one.
+- A type with behaviour or dependencies (a client, a judge, a store) is
+  built through its package's `New...`, with options for what is optional,
+  and keeps its fields unexported so a literal cannot skip the defaults.
+  Plain data (events, results, specs, `config.Config`) stays a literal.
 - Commit messages: short and concise, no body, no references to plan
   documents or section numbers.
 - `docs/` is gitignored: planning documents live there but are never

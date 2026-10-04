@@ -22,7 +22,10 @@ var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
 
 // Tokens keeps each sign-in on disk, one 0600 file per name and URL, not
 // the keychain: that costs cgo or a shell-out per platform.
-type Tokens struct{ Dir string }
+type Tokens struct{ dir string }
+
+// NewTokens keeps tokens in dir. An empty dir keeps none.
+func NewTokens(dir string) Tokens { return Tokens{dir: dir} }
 
 // TokensDir is beside the event store: secrets nobody authored belong
 // in state, not in ~/.config.
@@ -87,7 +90,7 @@ func (t Tokens) Save(server, resource string, s *Saved) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(t.Dir, 0o700); err != nil {
+	if err := os.MkdirAll(t.dir, 0o700); err != nil {
 		return fmt.Errorf("mcp: token dir: %w", err)
 	}
 	next := *s
@@ -97,7 +100,7 @@ func (t Tokens) Save(server, resource string, s *Saved) error {
 		return fmt.Errorf("mcp: %s token: %w", server, err)
 	}
 	// CreateTemp makes the file 0600, so it is never briefly readable.
-	tmp, err := os.CreateTemp(t.Dir, ".token-*")
+	tmp, err := os.CreateTemp(t.dir, ".token-*")
 	if err != nil {
 		return fmt.Errorf("mcp: %s token: %w", server, err)
 	}
@@ -130,11 +133,11 @@ func (t Tokens) Forget(server, resource string) error {
 // path names a file by the server's name made safe, then a hash of the
 // name and URL: "../x" cannot leave the directory, and "a/b" is not "a_b".
 func (t Tokens) path(server, resource string) (string, error) {
-	if t.Dir == "" {
+	if t.dir == "" {
 		return "", errors.New("mcp: no directory for tokens")
 	}
 	sum := sha256.Sum256([]byte(server + "\x00" + canonical(resource)))
-	return filepath.Join(t.Dir, safeName(server)+"-"+hex.EncodeToString(sum[:8])+".json"), nil
+	return filepath.Join(t.dir, safeName(server)+"-"+hex.EncodeToString(sum[:8])+".json"), nil
 }
 
 // canonical is the server a token belongs to: scheme, host and path. The
@@ -150,11 +153,11 @@ func canonical(raw string) string {
 // dropLegacy removes a token an older detent saved under the name alone.
 // Nothing says which server it was issued by, so it is never read.
 func (t Tokens) dropLegacy(server string) error {
-	if t.Dir == "" {
+	if t.dir == "" {
 		return nil
 	}
 	sum := sha256.Sum256([]byte(server))
-	path := filepath.Join(t.Dir, safeName(server)+"-"+hex.EncodeToString(sum[:4])+".json")
+	path := filepath.Join(t.dir, safeName(server)+"-"+hex.EncodeToString(sum[:4])+".json")
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("mcp: %s token: %w", server, err)
 	}

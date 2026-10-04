@@ -131,7 +131,7 @@ func TestMeasure_PublishedAfterEveryStep(t *testing.T) {
 // tool, and one request in its transcript.
 func measured(t *testing.T) *Engine {
 	t.Helper()
-	reg := tool.Standard(tool.Skill{Entries: []tool.SkillEntry{{Name: "a", Description: "x"}, {Name: "b", Description: "y"}}})
+	reg := tool.Standard(tool.NewSkill([]tool.SkillEntry{{Name: "a", Description: "x"}, {Name: "b", Description: "y"}}))
 	require.NoError(t, reg.Register(mcpTool{}))
 	e := New(event.New(), &sizedModel{}, reg, nil,
 		WithInstructions([]string{"AGENTS.md"}),

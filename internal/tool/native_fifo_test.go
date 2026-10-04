@@ -31,7 +31,7 @@ func TestNative_RefusesWhatCouldBlock(t *testing.T) {
 		{Grep{}, Args{"pattern": "x", "path": "/dev/zero"}, "/dev/zero: is a device"},
 		{EditFile{}, Args{"path": "pipe", "old_string": "a", "new_string": "b"}, "pipe: is a named pipe"},
 		{WriteFile{}, Args{"path": "pipe", "content": "x"}, "pipe: is a named pipe"},
-		{Skill{Entries: []SkillEntry{{Name: "s", Dir: "skill"}}}, Args{"name": "s"}, "is a named pipe"},
+		{NewSkill([]SkillEntry{{Name: "s", Dir: "skill"}}), Args{"name": "s"}, "is a named pipe"},
 	} {
 		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		got := c.tl.Run(ctx, c.args)

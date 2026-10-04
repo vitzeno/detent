@@ -21,10 +21,10 @@ func TestSelect(t *testing.T) {
 		where    string
 		wantsErr bool
 	}{
-		{name: "the sandbox by default", sel: Selector{Host: host, Sandbox: box}, want: box, where: "sandbox"},
-		{name: "host only", sel: Selector{Host: host, Sandbox: box, HostOnly: true}, want: host, where: "host"},
-		{name: "host only with no sandbox", sel: Selector{Host: host, HostOnly: true}, want: host, where: "host"},
-		{name: "a missing sandbox never falls back to the host", sel: Selector{Host: host}, where: "sandbox", wantsErr: true},
+		{name: "the sandbox", sel: Sandbox(box), want: box, where: "sandbox"},
+		{name: "this machine", sel: Host(host), want: host, where: "host"},
+		{name: "a sandbox nobody wired never falls back to the host", sel: Sandbox(nil), where: "sandbox", wantsErr: true},
+		{name: "the zero Selector is that missing sandbox", sel: Selector{}, where: "sandbox", wantsErr: true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

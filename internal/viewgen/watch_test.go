@@ -22,7 +22,7 @@ import (
 func TestWatch_KeysOnTheCommandNotTheTool(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
-	g := &viewgen.Generator{Registry: ui.Registry()}
+	g := viewgen.New(viewgen.WithRegistry(ui.Registry()))
 	defer g.Watch(t.Context(), bus)()
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
@@ -52,7 +52,7 @@ func TestWatch_KeysOnTheCommandNotTheTool(t *testing.T) {
 func TestWatch_AUserCommandGetsTheShippedViewWithoutAJudge(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
-	g := &viewgen.Generator{Registry: ui.Registry()}
+	g := viewgen.New(viewgen.WithRegistry(ui.Registry()))
 	defer g.Watch(t.Context(), bus)()
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
@@ -127,7 +127,7 @@ func TestWatch_AUserCommandFallsBackToItsKindsView(t *testing.T) {
 func TestWatch_AnUnjudgedToolCallResolvesWhenItEnds(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
-	g := &viewgen.Generator{Registry: ui.Registry(), Unjudged: true}
+	g := viewgen.New(viewgen.WithRegistry(ui.Registry()), viewgen.WithoutVerdicts())
 	defer g.Watch(t.Context(), bus)()
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
@@ -148,7 +148,7 @@ func TestWatch_AnUnjudgedToolCallResolvesWhenItEnds(t *testing.T) {
 func TestWatch_ParallelUserCommandsShareNoState(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
-	g := &viewgen.Generator{Registry: ui.Registry()}
+	g := viewgen.New(viewgen.WithRegistry(ui.Registry()))
 	defer g.Watch(t.Context(), bus)()
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
@@ -178,7 +178,7 @@ func TestWatch_StopCancelsCompositionInFlight(t *testing.T) {
 	bus := event.New()
 	defer bus.Close()
 	judge := &blockingJudge{asked: make(chan struct{}, 1)}
-	g := &viewgen.Generator{Judge: judge, Registry: ui.Registry()}
+	g := viewgen.New(viewgen.WithJudge(judge), viewgen.WithRegistry(ui.Registry()))
 	stop := g.Watch(t.Context(), bus)
 
 	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
@@ -215,7 +215,7 @@ func TestWatch_ItsContextEndingCancelsCompositionInFlight(t *testing.T) {
 	defer bus.Close()
 	ctx, cancel := context.WithCancel(t.Context())
 	judge := &blockingJudge{asked: make(chan struct{}, 1), quit: make(chan struct{})}
-	g := &viewgen.Generator{Judge: judge, Registry: ui.Registry()}
+	g := viewgen.New(viewgen.WithJudge(judge), viewgen.WithRegistry(ui.Registry()))
 	defer g.Watch(ctx, bus)()
 
 	shell := uuid.Must(uuid.NewV7())

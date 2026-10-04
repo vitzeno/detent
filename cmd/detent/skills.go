@@ -47,7 +47,7 @@ func (f foundSkills) skillTools() []tool.Tool {
 	if len(f.entries) == 0 {
 		return nil
 	}
-	return []tool.Tool{tool.Skill{Entries: f.entries}}
+	return []tool.Tool{tool.NewSkill(f.entries)}
 }
 
 // sandboxDir is s.Dir as the container sees it, adding its folder to mounts when it is outside cwd.

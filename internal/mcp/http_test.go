@@ -123,7 +123,7 @@ func TestConnectAll_PublishesNoSecretAConfigCarries(t *testing.T) {
 	in := NewInvokers()
 	errs := ConnectAll(context.Background(), tool.Standard(), in, map[string]Config{
 		"keyed": {URL: u.String(), Headers: map[string]string{"X-Api-Key": "hunter2"}},
-	}, nil, WithSignIns(NewSignIns(nil, nil, Tokens{Dir: t.TempDir()}, nil)))
+	}, nil, WithSignIns(NewSignIns(nil, nil, NewTokens(t.TempDir()), nil)))
 	require.Len(t, errs, 1)
 
 	st := in.Status()[0]

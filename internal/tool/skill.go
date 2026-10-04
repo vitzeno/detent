@@ -23,10 +23,13 @@ const (
 // Skill loads a skill found at startup by reading its SKILL.md where
 // commands run, so loading one is a read like any other.
 type Skill struct {
-	Entries []SkillEntry
+	entries []SkillEntry
 }
 
-var _ Native = Skill{}
+// NewSkill offers entries to load, and none is a tool with nothing to offer.
+func NewSkill(entries []SkillEntry) Skill { return Skill{entries: entries} }
+
+var _ Native = NewSkill(nil)
 
 // SkillEntry is one skill the model may load, Dir as the runner sees it.
 // Hidden leaves it out of the catalog, for one only the human asks for.
@@ -40,8 +43,8 @@ type SkillEntry struct {
 func (Skill) Name() string { return "skill" }
 
 func (s Skill) Describe() Spec {
-	names := make([]string, len(s.Entries))
-	for i, e := range s.Entries {
+	names := make([]string, len(s.entries))
+	for i, e := range s.entries {
 		names[i] = e.Name
 	}
 	return Spec{
@@ -54,7 +57,7 @@ func (s Skill) Describe() Spec {
 		},
 		Mutability:  event.MutRead,
 		Group:       "skills",
-		GroupDetail: fmt.Sprintf("%d skills", len(s.Entries)),
+		GroupDetail: fmt.Sprintf("%d skills", len(s.entries)),
 	}
 }
 
@@ -111,7 +114,7 @@ func (s Skill) Run(ctx context.Context, a Args) capture.Result {
 func (s Skill) catalog() string {
 	for limit := 1024; ; limit /= 2 {
 		var b strings.Builder
-		for _, e := range s.Entries {
+		for _, e := range s.entries {
 			if e.Hidden {
 				continue
 			}
@@ -130,7 +133,7 @@ func (s Skill) catalog() string {
 // entry is the skill a call names.
 func (s Skill) entry(a Args) (SkillEntry, error) {
 	name := a.String("name")
-	for _, e := range s.Entries {
+	for _, e := range s.entries {
 		if e.Name == name {
 			return e, nil
 		}

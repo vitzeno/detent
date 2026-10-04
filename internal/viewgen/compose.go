@@ -21,7 +21,7 @@ const maxBadges = 12
 // assembling the answers, so it cannot name anything that does not exist.
 func (g *Generator) Compose(ctx context.Context, req Request) (Result, error) {
 	key := Key(req.Command, req.Kind)
-	if spec, ok := g.Store.Load(key); ok && g.usable(ctx, req, spec, SourceSaved) {
+	if spec, ok := g.store.Load(key); ok && g.usable(ctx, req, spec, SourceSaved) {
 		return Result{Spec: spec, Key: key, Source: SourceSaved}, nil
 	}
 	return g.compose(ctx, req)
@@ -39,7 +39,7 @@ func (g *Generator) compose(ctx context.Context, req Request) (Result, error) {
 		}
 		return Result{}, ErrNotWorth
 	}
-	if g.Judge == nil {
+	if g.judge == nil {
 		return Result{}, ErrNoJudge
 	}
 
@@ -59,7 +59,7 @@ func (g *Generator) compose(ctx context.Context, req Request) (Result, error) {
 	// The cache is an optimisation: a view that cannot be saved still draws.
 	attrs := []any{logging.KeyEvent, logging.ViewAccepted, "key", key, "questions", c.asked,
 		"parse", spec.Parse.Kind, "blocks", len(spec.Blocks)}
-	if err := g.Store.Save(key, spec); err != nil {
+	if err := g.store.Save(key, spec); err != nil {
 		attrs = append(attrs, "saved", false, logging.KeyReason, err.Error())
 	}
 	log.InfoContext(ctx, "drawing a composed view", attrs...)
@@ -109,7 +109,7 @@ func (c *composer) run(ctx context.Context) (*viewspec.Spec, error) {
 		return nil, err
 	}
 	spec := &viewspec.Spec{Version: viewspec.Version, Parse: parse, Blocks: blocks}
-	if err := draws(spec, c.g.registry(), c.req.Output); err != nil {
+	if err := draws(spec, c.g.registry, c.req.Output); err != nil {
 		return nil, fmt.Errorf("composed view does not draw: %w", err)
 	}
 	return spec, nil
@@ -207,8 +207,8 @@ func (c *composer) parseKind(ctx context.Context, header string) (string, error)
 // lists the kind and the parse built, so neither can name anything absent.
 func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 	fields []string, rows []viewspec.Row) ([]viewspec.Block, error) {
-	guide := describe(c.g.registry())
-	bodies, summaries := split(guide, prune(c.g.registry(), c.req.Kind).Kinds())
+	guide := describe(c.g.registry)
+	bodies, summaries := split(guide, prune(c.g.registry, c.req.Kind).Kinds())
 	if len(bodies) == 0 {
 		return nil, fmt.Errorf("no body widget is offered for %s", c.req.Kind)
 	}
@@ -261,7 +261,7 @@ func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 	if twice(read(body)) {
 		return nil, fmt.Errorf("%s would read one field twice", chosen)
 	}
-	if c.g.registry().Selects(chosen) && len(read(body)) == 1 && len(fields) > 1 {
+	if c.g.registry.Selects(chosen) && len(read(body)) == 1 && len(fields) > 1 {
 		return nil, fmt.Errorf("%s would show %s and hide %d other fields", chosen, body.Field, len(fields)-1)
 	}
 	var out []viewspec.Block
@@ -277,9 +277,9 @@ func (c *composer) blocks(ctx context.Context, parse viewspec.Parse,
 // asItCame chooses how to draw output with nothing to extract, so a
 // README can draw as markdown rather than code.
 func (c *composer) asItCame(ctx context.Context) (*viewspec.Spec, error) {
-	guide := describe(c.g.registry())
+	guide := describe(c.g.registry)
 	var raw []string
-	for _, k := range prune(c.g.registry(), c.req.Kind).Kinds() {
+	for _, k := range prune(c.g.registry, c.req.Kind).Kinds() {
 		if guide[k].Raw {
 			raw = append(raw, k)
 		}
@@ -298,7 +298,7 @@ func (c *composer) asItCame(ctx context.Context) (*viewspec.Spec, error) {
 	}
 	spec := &viewspec.Spec{Version: viewspec.Version, Parse: viewspec.Parse{Kind: parseNone},
 		Blocks: []viewspec.Block{{Kind: answers["body"].Choice}}}
-	if err := draws(spec, c.g.registry(), c.req.Output); err != nil {
+	if err := draws(spec, c.g.registry, c.req.Output); err != nil {
 		return nil, fmt.Errorf("composed view does not draw: %w", err)
 	}
 	return spec, nil
@@ -336,7 +336,7 @@ func (c *composer) ask(ctx context.Context, qs classify.Questions) (classify.Ans
 
 func (c *composer) askState(ctx context.Context, state map[string]any,
 	qs classify.Questions) (classify.Answers, bool) {
-	answers, u, ok := classify.AskOrFallback(ctx, c.g.Judge, classify.State(state), qs)
+	answers, u, ok := classify.AskOrFallback(ctx, c.g.judge, classify.State(state), qs)
 	c.asked++
 	if !ok {
 		c.log.WarnContext(ctx, "the judge did not answer", logging.KeyEvent, logging.LLMError,

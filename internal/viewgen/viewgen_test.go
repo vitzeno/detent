@@ -88,8 +88,8 @@ func TestCompose_OffersOnlyFieldsTheParseProduced(t *testing.T) {
 
 // "none" is how a composition declines, and prose is what it declines.
 func TestCompose_DrawsOutputWithNothingToExtractAsItCame(t *testing.T) {
-	g, _ := composer(t, map[string]string{"header_line": "none", "parse_kind": "none", "body": "markdown"})
-	g.Registry = ui.Registry()
+	g, _ := composer(t, map[string]string{"header_line": "none", "parse_kind": "none", "body": "markdown"},
+		viewgen.WithRegistry(ui.Registry()))
 	req := request()
 	req.Kind, req.Output = event.RendersContent, "# Notes\n\n- one\n- two\n\n## More\n\nText.\n"
 	got, err := g.Compose(context.Background(), req)
@@ -105,13 +105,13 @@ func TestCompose_DrawsOutputWithNothingToExtractAsItCame(t *testing.T) {
 
 // Without a judge there is nothing to compose with, and it says so.
 func TestCompose_NeedsAJudge(t *testing.T) {
-	g := &viewgen.Generator{Store: &viewgen.Store{Dir: t.TempDir()}}
+	g := viewgen.New(viewgen.WithStore(viewgen.NewStore(t.TempDir())))
 	_, err := g.Compose(context.Background(), request())
 	assert.ErrorIs(t, err, viewgen.ErrNoJudge)
 }
 
 func TestCompose_AJudgeThatFailsComposesNothing(t *testing.T) {
-	g := &viewgen.Generator{Judge: failingJudge{}, Store: &viewgen.Store{Dir: t.TempDir()}}
+	g := viewgen.New(viewgen.WithJudge(failingJudge{}), viewgen.WithStore(viewgen.NewStore(t.TempDir())))
 	_, err := g.Compose(context.Background(), request())
 	assert.ErrorIs(t, err, viewgen.ErrNoneFit)
 }
@@ -128,12 +128,11 @@ func TestCompose_ASilentJudgeIsAskedOnce(t *testing.T) {
 // The cache is an optimisation: a view composed and checked still draws
 // when it cannot be written down.
 func TestCompose_AViewThatCannotBeSavedStillDraws(t *testing.T) {
-	g, _ := composer(t, map[string]string{
-		"header_line": "none", "parse_kind": "prefix", "body": "table", "summary": "none",
-	})
 	file := filepath.Join(t.TempDir(), "not-a-dir")
 	require.NoError(t, os.WriteFile(file, nil, 0o600))
-	g.Store = &viewgen.Store{Dir: filepath.Join(file, "views")}
+	g, _ := composer(t, map[string]string{
+		"header_line": "none", "parse_kind": "prefix", "body": "table", "summary": "none",
+	}, viewgen.WithStore(viewgen.NewStore(filepath.Join(file, "views"))))
 
 	got, err := g.Compose(context.Background(), request())
 	require.NoError(t, err)
@@ -171,7 +170,7 @@ func TestCompose_ShortOutputIsNotWorthAsking(t *testing.T) {
 // A shipped spec is the floor: composition is tried first, and the
 // seed catches what composition declines.
 func TestCompose_FallsBackToAShippedSpec(t *testing.T) {
-	g := &viewgen.Generator{Judge: failingJudge{}, Store: &viewgen.Store{Dir: t.TempDir()}}
+	g := viewgen.New(viewgen.WithJudge(failingJudge{}), viewgen.WithStore(viewgen.NewStore(t.TempDir())))
 	got, err := g.Compose(context.Background(),
 		viewgen.Request{Command: "go test ./...", Output: goTest, Kind: "plain_text"})
 	require.NoError(t, err)
@@ -225,8 +224,7 @@ func TestCompose_EveryOfferedWidgetCanBeComposed(t *testing.T) {
 					say["header_line"], say["parse_kind"] = "none", "lines"
 					output = strings.Repeat("cmd/detent/main.go\nui/view.go\n", 5)
 				}
-				g, _ := composer(t, say)
-				g.Registry = ui.Registry()
+				g, _ := composer(t, say, viewgen.WithRegistry(ui.Registry()))
 				req := request()
 				req.Kind, req.Output = k.Name, output
 				_, err := g.Compose(context.Background(), req)
@@ -322,8 +320,8 @@ func TestCompose_RecordsAreWorthAViewSoonerThanText(t *testing.T) {
 
 // Shipped specs are seeds, not defaults: an edited one on disk wins.
 func TestExisting_StoreBeatsWhatWeShipped(t *testing.T) {
-	dir := t.TempDir()
-	g := &viewgen.Generator{Store: &viewgen.Store{Dir: dir}}
+	store := viewgen.NewStore(t.TempDir())
+	g := viewgen.New(viewgen.WithStore(store))
 	req := viewgen.Request{Command: "go test ./...", Output: goTest, Kind: "plain_text"}
 
 	got, ok := g.Existing(context.Background(), req)
@@ -334,7 +332,7 @@ func TestExisting_StoreBeatsWhatWeShipped(t *testing.T) {
 	edited := &viewspec.Spec{Version: 1, Match: "go test",
 		Parse:  viewspec.Parse{Kind: "none"},
 		Blocks: []viewspec.Block{{Kind: "log"}}}
-	require.NoError(t, g.Store.Save(viewgen.Key(req.Command, req.Kind), edited))
+	require.NoError(t, store.Save(viewgen.Key(req.Command, req.Kind), edited))
 
 	got, ok = g.Existing(context.Background(), req)
 	require.True(t, ok)
@@ -351,7 +349,7 @@ root   14  0.0  0.0   7376  3200 ?   R    20:47 0:00 ps aux
 `
 	const plainPs = "  PID TTY          TIME CMD\n    1 ?        00:00:00 sh\n"
 
-	g := &viewgen.Generator{}
+	g := viewgen.New()
 	_, ok := g.Existing(context.Background(),
 		viewgen.Request{Command: "ps", Output: plainPs})
 	require.True(t, ok, "plain ps is what the seed was written for")
@@ -462,7 +460,7 @@ func TestKey_SharesAShapeButNotAKind(t *testing.T) {
 
 func TestStore_TreatsUnreadableCacheAsAMiss(t *testing.T) {
 	dir := t.TempDir()
-	s := &viewgen.Store{Dir: dir}
+	s := viewgen.NewStore(dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "k.json"), []byte("{oh no"), 0o644))
 	_, ok := s.Load("k")
 	assert.False(t, ok, "a corrupt spec regenerates rather than failing")
@@ -476,7 +474,7 @@ func TestStore_TreatsUnreadableCacheAsAMiss(t *testing.T) {
 // A spec on disk is meant to be read and fixed by hand.
 func TestStore_WritesSomethingAHumanCanEdit(t *testing.T) {
 	dir := t.TempDir()
-	s := &viewgen.Store{Dir: dir}
+	s := viewgen.NewStore(dir)
 	spec := &viewspec.Spec{Version: 1, Match: "go test",
 		Parse:  viewspec.Parse{Kind: "none"},
 		Blocks: []viewspec.Block{{Kind: "log"}}}
@@ -577,10 +575,11 @@ func firstCriterion(q classify.Question) string {
 }
 
 // composer builds a Generator wired to answer as scripted.
-func composer(t *testing.T, say map[string]string) (*viewgen.Generator, *scriptedJudge) {
+func composer(t *testing.T, say map[string]string, opts ...viewgen.Option) (*viewgen.Generator, *scriptedJudge) {
 	t.Helper()
 	j := &scriptedJudge{say: say}
-	return &viewgen.Generator{Judge: j, Store: &viewgen.Store{Dir: t.TempDir()}}, j
+	base := []viewgen.Option{viewgen.WithJudge(j), viewgen.WithStore(viewgen.NewStore(t.TempDir()))}
+	return viewgen.New(append(base, opts...)...), j
 }
 
 // described is every widget that says what it is for, keyed by kind, which

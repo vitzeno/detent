@@ -19,31 +19,37 @@ const (
 // RiskJudge adapts Jev to the engine's hook chain. It answers, it
 // never decides: Widen folds it with everyone else's.
 type RiskJudge struct {
-	Asker     Asker
-	Threshold float64
-	// Timeout bounds one assessment. Zero is DefaultRiskTimeout.
-	Timeout time.Duration
+	asker     Asker
+	threshold float64
+	// timeout bounds one assessment. Zero is DefaultRiskTimeout.
+	timeout time.Duration
+}
+
+// NewRiskJudge asks asker, flagging past threshold, or the default at zero.
+// A nil asker answers nothing.
+func NewRiskJudge(asker Asker, threshold float64) RiskJudge {
+	return RiskJudge{asker: asker, threshold: threshold}
 }
 
 // Assess asks the two pre-execution questions. A failed request is an
 // error, so the engine can say the check did not run: it adds nothing.
 func (j RiskJudge) Assess(ctx context.Context, command string, threshold float64) (event.Risk, error) {
 	if threshold <= 0 {
-		threshold = j.Threshold
+		threshold = j.threshold
 	}
 	if threshold <= 0 {
 		threshold = DefaultRiskThreshold
 	}
-	if j.Asker == nil {
+	if j.asker == nil {
 		return event.Risk{}, nil
 	}
-	timeout := j.Timeout
+	timeout := j.timeout
 	if timeout <= 0 {
 		timeout = DefaultRiskTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	answers, _, err := j.Asker.Ask(ctx, State(map[string]any{"command": command}), riskQuestions())
+	answers, _, err := j.asker.Ask(ctx, State(map[string]any{"command": command}), riskQuestions())
 	if err != nil {
 		return event.Risk{}, err
 	}

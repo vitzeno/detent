@@ -2,6 +2,7 @@ package model
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -42,19 +43,56 @@ var (
 // Client is one OpenAI-compatible endpoint. Covers OpenRouter and a
 // local LM Studio alike.
 type Client struct {
-	BaseURL string
-	Model   string
-	APIKey  string
-	// Headers are extras some endpoints want (OpenRouter's HTTP-Referer).
-	Headers      map[string]string
-	HTTPClient   *http.Client
-	SystemPrompt string
-	// Env is what the prompt says about where commands run.
-	Env Environment
-	// Instructions are the project's own, appended to the built-in prompt,
-	// and InstructionFiles name where they came from.
-	Instructions     string
-	InstructionFiles []string
+	baseURL, model, apiKey string
+	// headers are extras some endpoints want (OpenRouter's HTTP-Referer).
+	headers    map[string]string
+	httpClient *http.Client
+	prompt     string
+	// env is what the prompt says about where commands run.
+	env Environment
+	// instructions are the project's own, appended to the built-in prompt,
+	// and instructionFiles name where they came from.
+	instructions     string
+	instructionFiles []string
+}
+
+// NewClient talks to baseURL as model, sending apiKey. Empty takes the
+// default, which is all Ping needs.
+func NewClient(baseURL, model, apiKey string, opts ...ClientOption) *Client {
+	c := &Client{baseURL: baseURL, model: model, apiKey: apiKey}
+	for _, o := range opts {
+		o(c)
+	}
+	// Defaults go in once, here, rather than on every request.
+	c.baseURL = strings.TrimSuffix(cmp.Or(c.baseURL, DefaultBaseURL), "/")
+	c.model = cmp.Or(c.model, DefaultModel)
+	if c.httpClient == nil {
+		c.httpClient = defaultHTTPClient
+	}
+	if c.env.OS == "" {
+		c.env = LocalEnvironment()
+	}
+	return c
+}
+
+// ClientOption sets what most clients leave at its default.
+type ClientOption func(*Client)
+
+// WithHeaders sends h with every request.
+func WithHeaders(h map[string]string) ClientOption { return func(c *Client) { c.headers = h } }
+
+// WithHTTPClient replaces the default, which bounds a Step at five minutes.
+func WithHTTPClient(hc *http.Client) ClientOption { return func(c *Client) { c.httpClient = hc } }
+
+// WithSystemPrompt replaces the built-in prompt whole.
+func WithSystemPrompt(p string) ClientOption { return func(c *Client) { c.prompt = p } }
+
+// WithEnvironment says where commands run, for the prompt.
+func WithEnvironment(env Environment) ClientOption { return func(c *Client) { c.env = env } }
+
+// WithInstructions appends the project's own instructions, read from files.
+func WithInstructions(text string, files []string) ClientOption {
+	return func(c *Client) { c.instructions, c.instructionFiles = text, files }
 }
 
 // Complete is one Step. tools is the registry's schemas, and nil asks
@@ -76,13 +114,13 @@ func (c *Client) Complete(ctx context.Context, msgs []event.Message, tools []map
 func (c *Client) Ping(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	url := c.baseURL() + "/models"
+	url := c.baseURL + "/models"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("model: ping: %w", err)
 	}
 	c.authorize(req)
-	resp, err := c.httpClient().Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("model: ping %s: %w", url, err)
 	}
@@ -104,13 +142,13 @@ type PromptPart struct {
 // PromptParts names each piece of the system prompt and its size. A new
 // piece belongs here, so /context labels it without being told.
 func (c *Client) PromptParts() []PromptPart {
-	if c.SystemPrompt != "" {
-		return []PromptPart{{Name: "system prompt", Detail: "set by the caller", Bytes: len(c.SystemPrompt)}}
+	if c.prompt != "" {
+		return []PromptPart{{Name: "system prompt", Detail: "set by the caller", Bytes: len(c.prompt)}}
 	}
-	parts := []PromptPart{{Name: "detent", Detail: "environment and rules", Bytes: len(systemPrompt(c.env()))}}
-	if c.Instructions != "" {
-		parts = append(parts, PromptPart{Name: "instructions", Detail: strings.Join(c.InstructionFiles, ", "),
-			Bytes: len(c.Instructions) + len(instructionsSep)})
+	parts := []PromptPart{{Name: "detent", Detail: "environment and rules", Bytes: len(systemPrompt(c.env))}}
+	if c.instructions != "" {
+		parts = append(parts, PromptPart{Name: "instructions", Detail: strings.Join(c.instructionFiles, ", "),
+			Bytes: len(c.instructions) + len(instructionsSep)})
 	}
 	return parts
 }
@@ -136,7 +174,7 @@ func (e *StatusError) Temporary() bool {
 // send posts one request, retrying a 429 or 5xx a bounded number of
 // times so one transient failure does not end a Turn.
 func (c *Client) send(ctx context.Context, r wireRequest) (Reply, event.Usage, error) {
-	r.Model = c.model()
+	r.Model = c.model
 	body, err := json.Marshal(r)
 	if err != nil {
 		return Reply{}, event.Usage{}, fmt.Errorf("model: encode: %w", err)
@@ -160,7 +198,7 @@ func (c *Client) send(ctx context.Context, r wireRequest) (Reply, event.Usage, e
 }
 
 func (c *Client) post(ctx context.Context, body []byte) (Reply, event.Usage, error) {
-	url := c.baseURL() + "/chat/completions"
+	url := c.baseURL + "/chat/completions"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return Reply{}, event.Usage{}, fmt.Errorf("model: request: %w", err)
@@ -169,7 +207,7 @@ func (c *Client) post(ctx context.Context, body []byte) (Reply, event.Usage, err
 	c.authorize(req)
 
 	start := time.Now()
-	resp, err := c.httpClient().Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return Reply{}, event.Usage{}, fmt.Errorf("model: %s: %w", url, err)
 	}
@@ -205,10 +243,10 @@ func (c *Client) post(ctx context.Context, body []byte) (Reply, event.Usage, err
 
 // authorize sets the key and the configured headers, the same on every request.
 func (c *Client) authorize(req *http.Request) {
-	if c.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
-	for k, v := range c.Headers {
+	for k, v := range c.headers {
 		req.Header.Set(k, v)
 	}
 }
@@ -224,42 +262,13 @@ func retryAfter(v string) time.Duration {
 }
 
 func (c *Client) systemPrompt() string {
-	if c.SystemPrompt != "" {
-		return c.SystemPrompt
+	if c.prompt != "" {
+		return c.prompt
 	}
-	if c.Instructions == "" {
-		return systemPrompt(c.env())
+	if c.instructions == "" {
+		return systemPrompt(c.env)
 	}
-	return systemPrompt(c.env()) + instructionsSep + c.Instructions
-}
-
-// env is where commands run, this machine when the harness said nothing.
-func (c *Client) env() Environment {
-	if c.Env.OS == "" {
-		return LocalEnvironment()
-	}
-	return c.Env
-}
-
-func (c *Client) baseURL() string {
-	if c.BaseURL != "" {
-		return strings.TrimSuffix(c.BaseURL, "/")
-	}
-	return DefaultBaseURL
-}
-
-func (c *Client) model() string {
-	if c.Model != "" {
-		return c.Model
-	}
-	return DefaultModel
-}
-
-func (c *Client) httpClient() *http.Client {
-	if c.HTTPClient != nil {
-		return c.HTTPClient
-	}
-	return defaultHTTPClient
+	return systemPrompt(c.env) + instructionsSep + c.instructions
 }
 
 // snippet bounds an error body so a 2MB HTML error page cannot become

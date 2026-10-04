@@ -12,11 +12,11 @@ import (
 
 // The project's instructions come after the built-in rules, so those stay first.
 func TestSystemPrompt_EndsWithTheProjectsInstructions(t *testing.T) {
-	c := &Client{Env: LocalEnvironment(), Instructions: "<instructions path=\"AGENTS.md\">\nuse tabs\n</instructions>"}
+	c := NewClient("", "", "", WithInstructions("<instructions path=\"AGENTS.md\">\nuse tabs\n</instructions>", nil))
 	got := c.systemPrompt()
 	assert.True(t, strings.HasSuffix(got, "use tabs\n</instructions>"))
 	assert.Less(t, strings.Index(got, "Work the request"), strings.Index(got, "use tabs"))
-	assert.Equal(t, systemPrompt(LocalEnvironment()), (&Client{Env: LocalEnvironment()}).systemPrompt(),
+	assert.Equal(t, systemPrompt(LocalEnvironment()), NewClient("", "", "").systemPrompt(),
 		"no instructions adds nothing")
 }
 
@@ -24,9 +24,9 @@ func TestSystemPrompt_EndsWithTheProjectsInstructions(t *testing.T) {
 // prompt but not listed here would be counted under nothing.
 func TestPromptParts_AddUpToTheWholePrompt(t *testing.T) {
 	for name, c := range map[string]*Client{
-		"bare":              {Env: LocalEnvironment()},
-		"with instructions": {Env: LocalEnvironment(), Instructions: "<instructions>x</instructions>", InstructionFiles: []string{"AGENTS.md"}},
-		"set by the caller": {SystemPrompt: "you are a test"},
+		"bare":              NewClient("", "", ""),
+		"with instructions": NewClient("", "", "", WithInstructions("<instructions>x</instructions>", []string{"AGENTS.md"})),
+		"set by the caller": NewClient("", "", "", WithSystemPrompt("you are a test")),
 	} {
 		n := 0
 		for _, p := range c.PromptParts() {

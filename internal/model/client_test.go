@@ -123,14 +123,14 @@ func TestComplete_SurfacesFailures(t *testing.T) {
 			}
 		}))
 		defer srv.Close()
-		c := &Client{BaseURL: srv.URL}
+		c := NewClient(srv.URL, "", "")
 		_, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 		require.Error(t, err)
 		assert.Less(t, len(err.Error()), 500, "a big error page must not become the message")
 	})
 
 	t.Run("an empty transcript is refused before the wire", func(t *testing.T) {
-		c := &Client{BaseURL: "http://127.0.0.1:1"}
+		c := NewClient("http://127.0.0.1:1", "", "")
 		_, _, err := c.Complete(context.Background(), nil, nil)
 		assert.ErrorContains(t, err, "empty transcript")
 	})
@@ -159,7 +159,7 @@ func TestComplete_RetriesOnlyTransientFailures(t *testing.T) {
 				_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"ok"}}]}`)
 			}))
 			defer srv.Close()
-			c := &Client{BaseURL: srv.URL}
+			c := NewClient(srv.URL, "", "")
 			_, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
 			assert.Equal(t, int32(tt.wantAsks), asks.Load())
 			if tt.wantErr == 0 {
@@ -188,7 +188,7 @@ func TestClient_AuthenticatesEveryRequest(t *testing.T) {
 		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"ok"}}]}`)
 	}))
 	defer srv.Close()
-	c := &Client{BaseURL: srv.URL + "/", APIKey: "k", Headers: map[string]string{"X-API-Key": "g"}}
+	c := NewClient(srv.URL+"/", "", "k", WithHeaders(map[string]string{"X-API-Key": "g"}))
 
 	require.NoError(t, c.Ping(context.Background()))
 	_, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
@@ -206,7 +206,7 @@ func TestPing_ANon200Fails(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer srv.Close()
-	err := (&Client{BaseURL: srv.URL}).Ping(context.Background())
+	err := NewClient(srv.URL, "", "").Ping(context.Background())
 	assert.ErrorContains(t, err, "HTTP 401")
 }
 
@@ -234,7 +234,7 @@ func TestReply_Unfinished(t *testing.T) {
 }
 
 // serve replies with body and captures the request that asked for it.
-func serve(t *testing.T, body string) (*Client, *map[string]any) {
+func serve(t *testing.T, body string, opts ...ClientOption) (*Client, *map[string]any) {
 	t.Helper()
 	got := map[string]any{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +244,7 @@ func serve(t *testing.T, body string) (*Client, *map[string]any) {
 		_, _ = io.WriteString(w, body)
 	}))
 	t.Cleanup(srv.Close)
-	return &Client{BaseURL: srv.URL, Model: "m"}, &got
+	return NewClient(srv.URL, "m", "", opts...), &got
 }
 
 // fastRetries keeps a 5xx from making a test wait out the real backoff.
