@@ -264,10 +264,10 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 	return []string{fmt.Sprintf("%s%s %s %s", mark, icon, cmd, styleMuted.Render(tail))}
 }
 
-// commandCell is a row's command in width cells: the tool's name as a pill
-// and then what it was given, so a read, a write or a search stands out.
+// commandCell is a row's command in width cells: the tool's name in its
+// colour and then what it was given, so a read, a write or a search stands out.
 func commandCell(r *historyRow, width int) string {
-	style, ok := toolPill(r)
+	style, ok := toolStyle(r)
 	if !ok {
 		return boldProgram(layout.Truncate(r.command, width))
 	}
@@ -308,26 +308,26 @@ func headline(tool string, args map[string]any) string {
 	return strings.TrimSpace(lead + " " + others)
 }
 
-// toolPill is the label a row's tool gets, by what kind of thing it does.
+// toolStyle is the colour a row's tool name gets, by what kind of thing it does.
 // A command the human ran has none: its row is marked as theirs already.
-func toolPill(r *historyRow) (lipgloss.Style, bool) {
+func toolStyle(r *historyRow) (lipgloss.Style, bool) {
 	switch {
 	case r.tool == "":
 		return lipgloss.Style{}, false
 	case r.executor != "":
-		return pill.server, true
+		return toolName.server, true
 	}
 	switch r.tool {
 	case "bash", "powershell":
-		return pill.shell, true
+		return toolName.shell, true
 	case "read_file", "list_dir", "grep", "find_files":
-		return pill.read, true
+		return toolName.read, true
 	case "write_file", "edit_file":
-		return pill.write, true
+		return toolName.write, true
 	case "web_search":
-		return pill.web, true
+		return toolName.web, true
 	}
-	return pill.other, true
+	return toolName.other, true
 }
 
 // argKey finds each key=value key, which reads quieter than its value.
@@ -349,9 +349,9 @@ func faintKeys(s string) string {
 func boldProgram(s string) string {
 	prog, rest, found := strings.Cut(s, " ")
 	if !found {
-		return pill.program.Render(prog)
+		return toolName.program.Render(prog)
 	}
-	return pill.program.Render(prog) + " " + rest
+	return toolName.program.Render(prog) + " " + rest
 }
 
 // bannerLines is the one line under a finished block. The model's own

@@ -234,10 +234,10 @@ func TestHistory_AToolCallLeadsWithItsName(t *testing.T) {
 		args map[string]any
 		want string
 	}{
-		{"bash", map[string]any{"command": "go test ./..."}, "bash  go test ./..."},
-		{"read_file", map[string]any{"path": "ui/model.go", "offset": 40}, "read_file  ui/model.go offset=40"},
-		{"grep", map[string]any{"pattern": "TODO", "path": "."}, "grep  TODO path=."},
-		{"web_search", map[string]any{"query": "bubbletea v2"}, `web_search  "bubbletea v2"`},
+		{"bash", map[string]any{"command": "go test ./..."}, "bash go test ./..."},
+		{"read_file", map[string]any{"path": "ui/model.go", "offset": 40}, "read_file ui/model.go offset=40"},
+		{"grep", map[string]any{"pattern": "TODO", "path": "."}, "grep TODO path=."},
+		{"web_search", map[string]any{"query": "bubbletea v2"}, `web_search "bubbletea v2"`},
 	} {
 		turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 		m := sized(t, 160, 30, event.TurnStarted{Turn: turn, N: 1, Prompt: "go"},
@@ -248,9 +248,9 @@ func TestHistory_AToolCallLeadsWithItsName(t *testing.T) {
 }
 
 // Each kind of tool has its own colour, and the human's own command none.
-func TestToolPill_ColoursByWhatAToolDoes(t *testing.T) {
+func TestToolStyle_ColoursByWhatAToolDoes(t *testing.T) {
 	kind := func(tool, executor string) string {
-		s, ok := toolPill(&historyRow{tool: tool, executor: executor})
+		s, ok := toolStyle(&historyRow{tool: tool, executor: executor})
 		require.True(t, ok)
 		return s.Render("x")
 	}
@@ -264,11 +264,11 @@ func TestToolPill_ColoursByWhatAToolDoes(t *testing.T) {
 		seen[tt[0]] = got
 	}
 	assert.Equal(t, kind("read_file", ""), kind("grep", ""), "reads share a colour")
-	_, ok := toolPill(&historyRow{human: true})
+	_, ok := toolStyle(&historyRow{human: true})
 	assert.False(t, ok, "the human's own command is marked as theirs, not as a tool")
 }
 
-// A pill takes cells the command used to have, so rows must still fit.
+// A tool's name takes cells the command used to have, so rows must still fit.
 func TestHistory_ToolRowsFitThePane(t *testing.T) {
 	for _, width := range []int{120, 90, 70, 56} {
 		turn := uuid.Must(uuid.NewV7())
