@@ -286,7 +286,12 @@ func (m Model) slashKey(msg tea.KeyPressMsg) (Model, tea.Cmd, bool) {
 		m.prompt.Move(1)
 		return m, nil, true
 	case "enter":
-		// Enter runs the highlighted entry, tab completes without running.
+		// Enter runs the highlighted entry, tab completes without running. In a
+		// sentence enter only completes, since the rest is still to be typed.
+		if m.prompt.MidSentence() {
+			m.prompt.Accept()
+			return m, nil, true
+		}
 		m.prompt.Accept()
 		next, cmd := m.submit()
 		return next, cmd, true

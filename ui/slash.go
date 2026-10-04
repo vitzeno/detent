@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -24,6 +25,8 @@ type slashCmd struct {
 	run  func(m Model, input string) (Model, tea.Cmd)
 	// answers is set when the outcome comes back over the bus.
 	answers bool
+	// skill is the skill this command loads, empty for a built-in.
+	skill string
 }
 
 // slashCommands is a function, not a var: /help draws the registry and
@@ -85,7 +88,7 @@ func skillCommands(skills []event.SkillSummary) []slashCmd {
 			continue
 		}
 		skill := s.Name
-		out = append(out, slashCmd{name: name, desc: "skill: " + s.Description,
+		out = append(out, slashCmd{name: name, desc: "skill: " + s.Description, skill: skill,
 			run: func(m Model, input string) (Model, tea.Cmd) { return m.useSkill(skill, input) }})
 	}
 	return out
@@ -94,11 +97,20 @@ func skillCommands(skills []event.SkillSummary) []slashCmd {
 // useSkill asks the model to load a skill, so a skill asked for by hand
 // is a call to the skill tool like any other, and replays as one.
 func (m Model) useSkill(name, input string) (Model, tea.Cmd) {
-	text := "Load the " + name + " skill and follow it."
+	text := loadSkills([]string{name})
 	if _, rest, ok := strings.Cut(strings.TrimSpace(input), " "); ok && strings.TrimSpace(rest) != "" {
 		text += " The request: " + strings.TrimSpace(rest)
 	}
 	return m.sendPrompt(text)
+}
+
+// loadSkills is the instruction that loads names before the request.
+func loadSkills(names []string) string {
+	if len(names) == 1 {
+		return "Load the " + names[0] + " skill and follow it."
+	}
+	return "Load the " + strings.Join(names[:len(names)-1], ", ") + " and " +
+		names[len(names)-1] + " skills and follow them."
 }
 
 // runSlash dispatches input to the command its first word names.
@@ -122,19 +134,45 @@ func (m Model) acceptSlash() (Model, tea.Cmd) {
 	return m, nil
 }
 
-// matchSlash returns registry entries with the given input as a
-// prefix. Input must start with "/", or nothing matches.
+// matchSlash returns the commands the word being typed could start. At the
+// start of the bar that is every command, and later in a sentence only a
+// skill, since a request can name one but cannot run /undo halfway.
 func matchSlash(input string, extra []slashCmd) []slashCmd {
-	if !strings.HasPrefix(input, "/") {
+	word, mid := typedWord(input)
+	if !strings.HasPrefix(word, "/") {
 		return nil
 	}
+	from := append(slashCommands(), extra...)
+	if mid {
+		from = extra
+	}
 	var out []slashCmd
-	for _, c := range append(slashCommands(), extra...) {
-		if strings.HasPrefix(c.name, strings.ToLower(input)) {
+	for _, c := range from {
+		if strings.HasPrefix(c.name, strings.ToLower(word)) {
 			out = append(out, c)
 		}
 	}
 	return out
+}
+
+// typedWord is the word the cursor ends, and whether a sentence comes before it.
+func typedWord(input string) (word string, mid bool) {
+	i := strings.LastIndexAny(input, " \t\n") + 1
+	return input[i:], i > 0
+}
+
+// skillsNamed is each skill a request names with its /command, anywhere in it.
+func skillsNamed(text string, skills []slashCmd) []string {
+	var named []string
+	for w := range strings.FieldsSeq(text) {
+		w = strings.ToLower(strings.TrimRight(w, ".,;:!?)"))
+		for _, c := range skills {
+			if c.name == w && c.skill != "" && !slices.Contains(named, c.skill) {
+				named = append(named, c.skill)
+			}
+		}
+	}
+	return named
 }
 
 // lookupSlash finds the command named by the first word of input.

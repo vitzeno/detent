@@ -147,9 +147,18 @@ func (p *prompt) Accept() bool {
 	if !p.Open() {
 		return false
 	}
-	p.input.SetValue(p.matches[p.cursor].name + " ")
+	value := p.input.Value()
+	word, _ := typedWord(value)
+	p.input.SetValue(value[:len(value)-len(word)] + p.matches[p.cursor].name + " ")
 	p.Close()
 	return true
+}
+
+// MidSentence is whether the open dropdown completes a word inside a request
+// rather than a command that is the whole bar.
+func (p prompt) MidSentence() bool {
+	_, mid := typedWord(p.input.Value())
+	return p.Open() && mid
 }
 
 func (p *prompt) Close() {

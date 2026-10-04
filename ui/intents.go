@@ -24,6 +24,10 @@ func (m Model) submit() (Model, tea.Cmd) {
 	if strings.HasPrefix(text, "/") {
 		return m.runSlash(text)
 	}
+	// A skill named mid-sentence is loaded first, and the sentence is the request.
+	if named := skillsNamed(text, m.skillCmds); len(named) > 0 {
+		text = loadSkills(named) + " The request: " + text
+	}
 	return m.sendPrompt(text)
 }
 

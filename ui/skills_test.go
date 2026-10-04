@@ -77,6 +77,59 @@ func TestSkillsPage_SaysWhereEachCameFrom(t *testing.T) {
 	assert.Contains(t, stripANSI(strings.Join(empty.skillLines(), "\n")), "none found")
 }
 
+// A skill can be named anywhere in a request, and the whole sentence is still
+// the request. Only a skill: a built-in mid-sentence is just text.
+func TestSkill_NamedMidSentenceIsLoaded(t *testing.T) {
+	m := withSkills(t, event.New())
+	m.skillCmds = append(m.skillCmds, skillCommands([]event.SkillSummary{
+		{Name: "notes", Description: "Write notes", UserInvocable: true}})...)
+	tests := []struct{ in, want string }{
+		{"can you /release cut v2.1 now", "Load the release skill and follow it. The request: can you /release cut v2.1 now"},
+		{"use /release, then /notes.", "Load the release and notes skills and follow them. The request: use /release, then /notes."},
+		{"what is in /usr/bin", "what is in /usr/bin"},
+		{"then /undo it", "then /undo it"},
+	}
+	for _, tt := range tests {
+		bus := event.New()
+		asked, unsub := bus.Subscribe(event.Only(event.SubmitPromptKind))
+		m.bus = bus
+		m.prompt.SetValue(tt.in)
+		_, cmd := m.submit()
+		runCmd(cmd)
+		select {
+		case rec := <-asked:
+			assert.Equal(t, tt.want, rec.Event.(event.SubmitPrompt).Text, tt.in)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%q published nothing", tt.in)
+		}
+		unsub()
+	}
+}
+
+// Typing a / later in a sentence offers skills, and enter completes the word
+// rather than sending half a request.
+func TestSkill_OfferedMidSentence(t *testing.T) {
+	k := newKeyed(t)
+	k.m.apply(event.SessionStarted{Skills: []event.SkillSummary{
+		{Name: "release", Description: "Cut a release", UserInvocable: true}}})
+	k.m.prompt.SetValue("please /re")
+	k.m.prompt.rematch()
+	require.True(t, k.m.prompt.Open())
+	var names []string
+	for _, c := range k.m.prompt.matches {
+		names = append(names, c.name)
+	}
+	assert.Equal(t, []string{"/release"}, names, "/rename is a built-in, not offered mid-sentence")
+
+	k.press(t, "enter")
+	assert.Equal(t, "please /release ", k.m.prompt.Value(), "enter completed the word")
+	select {
+	case rec := <-k.seen:
+		t.Fatalf("enter mid-sentence sent %s", rec.Event.Kind())
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
 func withSkills(t *testing.T, bus *event.Bus) Model {
 	t.Helper()
 	m := New(t.Context(), bus, SessionInfo{})
