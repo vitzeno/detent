@@ -316,9 +316,8 @@ func (e *Engine) turnDone(ctx context.Context, done chan struct{}) {
 	}
 }
 
-// reset forgets the transcript and says so, so a replay forgets it too.
-// reset starts a new session under a new id. The old one is left stored as
-// it was, so it can still be resumed.
+// reset starts a new session under a new id, leaving the old one stored
+// as it was, to resume.
 func (e *Engine) reset() {
 	e.trLock(func() { e.tr.reset() })
 	e.repeat.forget()

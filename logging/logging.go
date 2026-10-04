@@ -20,6 +20,10 @@ const snippetBytes = 200
 // bodies is package-level so no call site has to thread it.
 var bodies atomic.Bool
 
+// current is the session records are filed under. /new moves it, so it is
+// read as each record is written rather than fixed into a logger.
+var current atomic.Pointer[string]
+
 // Setup opens this session's log as the default logger. A path it cannot
 // open is reported, not fatal: it discards instead.
 func Setup(session string, opts ...Option) (func() error, error) {
@@ -52,7 +56,7 @@ func Setup(session string, opts ...Option) (func() error, error) {
 	}
 	lvl, lvlErr := parseLevel(o.level)
 	bodies.Store(o.bodies)
-	current.Store(session)
+	current.Store(&session)
 	slog.SetDefault(slog.New(sessionHandler{slog.NewJSONHandler(f, &slog.HandlerOptions{
 		Level: lvl,
 	})}))
@@ -119,16 +123,12 @@ func disable(err error) (func() error, error) {
 	return func() error { return nil }, err
 }
 
-// current is the session records are filed under. /new moves it, so it is
-// read as each record is written rather than fixed into a logger.
-var current atomic.Value
-
 // sessionHandler adds the current session to every record.
 type sessionHandler struct{ slog.Handler }
 
 func (h sessionHandler) Handle(ctx context.Context, r slog.Record) error {
-	if s, ok := current.Load().(string); ok {
-		r.AddAttrs(slog.String(KeySession, s))
+	if s := current.Load(); s != nil {
+		r.AddAttrs(slog.String(KeySession, *s))
 	}
 	return h.Handler.Handle(ctx, r)
 }

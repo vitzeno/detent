@@ -54,7 +54,7 @@ type Generator struct {
 	judge    Judge
 	registry *viewspec.Registry
 	store    *Store
-	// unjudged says nothing publishes CallJudged, so Watch resolves a tool call
+	// unjudged says nothing publishes ToolCallJudged, so Watch resolves a tool call
 	// when it ends rather than waiting for a verdict that never comes.
 	unjudged bool
 }
@@ -80,7 +80,7 @@ func WithRegistry(r *viewspec.Registry) Option { return func(g *Generator) { g.r
 // WithStore caches composed specs in s.
 func WithStore(s *Store) Option { return func(g *Generator) { g.store = s } }
 
-// WithoutVerdicts says nothing publishes CallJudged, so Watch need not wait.
+// WithoutVerdicts says nothing publishes ToolCallJudged, so Watch need not wait.
 func WithoutVerdicts() Option { return func(g *Generator) { g.unjudged = true } }
 
 // Judge is what composition asks its questions of. classify.JevJudge

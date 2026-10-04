@@ -64,9 +64,8 @@ type Dir struct {
 	prefix string // dir relative to top, "" at the root, else ending in /
 	theirs string // the human's index, read once for tracked files git ignores
 
-	// index is detent's own, kept for the session so its stat cache spares a
-	// rehash. Never seeded from theirs: that holds git's cleaned blobs, which a
-	// restore with filters off would write back over the human's files.
+	// index is detent's own, kept for its stat cache. Never seeded from theirs,
+	// whose cleaned blobs a restore with filters off would write over their files.
 	mu    sync.Mutex
 	index string
 }

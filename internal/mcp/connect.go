@@ -22,6 +22,9 @@ import (
 // is named in config, so detent's own keys do not follow a server in.
 var passThrough = []string{"PATH", "HOME", "TMPDIR", "LANG", "USER"}
 
+// minSecret is the shortest env value or path segment taken for a secret.
+const minSecret = 8
+
 // ConnectOption adds to how ConnectAll dials.
 type ConnectOption func(*connecting)
 
@@ -253,9 +256,8 @@ func summarise(st event.ServerSummary, got result) event.ServerSummary {
 	return st
 }
 
-// redact takes out of err what the config may have filled from the
-// environment: the URL's password, query and long path segments, every
-// header value, and a stdio server's env values.
+// redact takes out of err every value the config may hold a secret in: the
+// URL's password, query and long path segments, headers and env values.
 func redact(c Config, err error) error {
 	msg := err.Error()
 	var secrets []string
@@ -308,9 +310,6 @@ type redacted struct {
 
 func (r redacted) Error() string { return r.msg }
 func (r redacted) Unwrap() error { return r.err }
-
-// minSecret is the shortest env value or path segment taken for a secret.
-const minSecret = 8
 
 // redactURL keeps a URL's scheme and host, dropping the user, path, query and
 // fragment, since a key can travel in any of them.

@@ -9,9 +9,8 @@ import (
 	"unicode/utf8"
 )
 
-// Printable shows control characters, bidi and other invisible format
-// characters as escapes rather than letting them act on the terminal.
-// Newlines stay, and tabs become spaces.
+// Printable shows control, bidi and other invisible characters as escapes,
+// rather than letting them act on the terminal. Tabs become spaces.
 func Printable(s string) string { return clean(s, false) }
 
 // Styled is Printable that keeps colour: an SGR sequence (ESC [ … m) passes,

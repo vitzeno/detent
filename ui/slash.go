@@ -134,9 +134,8 @@ func (m Model) acceptSlash() (Model, tea.Cmd) {
 	return m, nil
 }
 
-// matchSlash returns the commands the word being typed could start. At the
-// start of the bar that is every command, and later in a sentence only a
-// skill, since a request can name one but cannot run /undo halfway.
+// matchSlash is the commands the word being typed could start: any at the
+// start of the bar, and only a skill mid-sentence, where /undo means nothing.
 func matchSlash(input string, extra []slashCmd) []slashCmd {
 	word, mid := typedWord(input)
 	if !strings.HasPrefix(word, "/") {

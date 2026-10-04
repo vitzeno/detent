@@ -53,6 +53,28 @@ type shutdown struct {
 	worktree  *worktree.Dir
 }
 
+// latestSession is the session SessionStarted last named. Set from the bus,
+// read at shutdown, so it is guarded.
+type latestSession struct {
+	mu sync.Mutex
+	id uuid.UUID
+}
+
+func (l *latestSession) set(id uuid.UUID) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.id = id
+}
+
+func (l *latestSession) get() uuid.UUID {
+	if l == nil {
+		return uuid.Nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.id
+}
+
 // close stops everything in the one order that keeps the session's
 // last facts, then says how it went.
 func (s shutdown) close() {
@@ -139,28 +161,6 @@ func (s shutdown) report(w io.Writer, errs []error) {
 		return
 	}
 	fmt.Fprintf(w, "detent: session saved, resume with: detent -resume %s\n", s.session.get())
-}
-
-// latestSession is the session SessionStarted last named. Set from the bus,
-// read at shutdown, so it is guarded.
-type latestSession struct {
-	mu sync.Mutex
-	id uuid.UUID
-}
-
-func (l *latestSession) set(id uuid.UUID) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.id = id
-}
-
-func (l *latestSession) get() uuid.UUID {
-	if l == nil {
-		return uuid.Nil
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.id
 }
 
 // bounded puts a deadline on a close that has none. Invokers.Close is

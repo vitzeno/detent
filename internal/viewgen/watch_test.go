@@ -122,7 +122,7 @@ func TestWatch_AUserCommandFallsBackToItsKindsView(t *testing.T) {
 	assert.Equal(t, "diff", got.Spec.Blocks[0].Kind)
 }
 
-// With no judge wired nothing publishes CallJudged, and a tool call must not
+// With no judge wired nothing publishes ToolCallJudged, and a tool call must not
 // wait for one: the shipped view draws as soon as it ends.
 func TestWatch_AnUnjudgedToolCallResolvesWhenItEnds(t *testing.T) {
 	bus := event.New()

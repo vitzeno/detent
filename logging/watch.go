@@ -19,7 +19,8 @@ func Watch(bus *event.Bus) func() {
 	return bus.Handle(worthKeeping, func(rec event.Record) {
 		// A new session files its records, this one included, under its own id.
 		if v, ok := rec.Event.(event.SessionStarted); ok && v.Session != uuid.Nil {
-			current.Store(v.Session.String())
+			id := v.Session.String()
+			current.Store(&id)
 		}
 		level, fields := describe(rec.Event)
 		log.Log(context.Background(), level, string(rec.Event.Kind()),

@@ -262,7 +262,7 @@ func loadMCPConfig(enabled bool, project []byte, files []string) (map[string]mcp
 func composer(mode string, judge *classify.JevJudge) *viewgen.Generator {
 	opts := []viewgen.Option{viewgen.WithRegistry(ui.Registry()), viewgen.WithStore(viewgen.NewStore(viewgen.DefaultDir()))}
 	if judge == nil {
-		// Without a key nothing publishes CallJudged.
+		// Without a key nothing publishes ToolCallJudged.
 		opts = append(opts, viewgen.WithoutVerdicts())
 	}
 	if mode == config.ViewsGenerate && judge != nil {
