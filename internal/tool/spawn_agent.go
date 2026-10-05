@@ -18,9 +18,10 @@ func (SpawnAgent) Describe() Spec {
 			"It does not see this conversation, so the task must say everything it needs: what to find, " +
 			"where to start and what to report. It can read and search files, list directories, search the " +
 			"web and load skills. It cannot change anything or ask you questions. Several spawn_agent calls " +
-			"in one step run at the same time. A subagent stops after 30 steps or when its time runs out, " +
-			"and reports what it found so far. Its report is all you see of its work, so trust it rather " +
-			"than reading the same files again. Do not use it for what one or two reads answer.",
+			"in one step run at the same time, so start every one you need together. A subagent stops after " +
+			"30 steps or when its time runs out, and reports what it found so far. Its report is all you see " +
+			"of its work, and its paths and line numbers come from the files it read, so quote them rather " +
+			"than reading those files again. Do not use it for what one or two reads answer.",
 		Params: []Param{
 			{Name: "task", Type: TypeString, Required: true,
 				Desc: "the whole task, with everything the subagent needs to know"},

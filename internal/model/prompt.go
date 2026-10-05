@@ -126,7 +126,7 @@ func (e Environment) rules() string {
 const subagentRule = `
 
 Subagents:
-Hand broad reading to spawn_agent: tracing how something works across many files, or several independent questions at once, which run in parallel. A subagent does not see this conversation, so give it a complete task. It can only read, and replies with a report. Trust the report rather than reading the same files again. Do not delegate what one or two reads answer.`
+Hand broad reading to spawn_agent: tracing how something works across many files, or several independent questions at once. Start every subagent you need in the same step, so they run in parallel. A subagent does not see this conversation, so give it a complete task. It can only read, and replies with a report. Its paths and line numbers come from the files it read: quote them as they are, and do not read those files again to check. Do not delegate what one or two reads answer.`
 
 // childPrompt is a subagent's rules, after the same environment preamble.
 const childPrompt = `You are a subagent doing one task for another agent, who will read your final reply and nothing else.
