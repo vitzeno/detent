@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"charm.land/lipgloss/v2"
+	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 )
@@ -54,9 +55,10 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	mode    mode
 	waiting bool
 
-	// asking and bound are the two questions the engine can put to a
-	// human. Both are answered by publishing, never by calling.
-	asking  *event.ApprovalAsked
+	// asked and bound are the two questions the engine can put to a
+	// human. Both are answered by publishing, never by calling. Approvals
+	// queue in the order raised, and the box shows the first.
+	asked   []event.ApprovalAsked
 	bound   *event.BoundReached
 	confirm confirmState
 	// askedAt is when the current question went up, for settling.
@@ -333,10 +335,35 @@ func (m *Model) raiseWaiting() {
 		return
 	}
 	switch {
-	case m.asking != nil:
+	case m.asking() != nil:
 		m.raise(modeConfirm)
 	case m.bound != nil:
 		m.raise(modeBound)
+	}
+}
+
+// asking is the approval the box shows, the first one queued.
+func (m Model) asking() *event.ApprovalAsked {
+	if len(m.asked) == 0 {
+		return nil
+	}
+	return &m.asked[0]
+}
+
+// unask takes a call's question off the queue. When it was the one shown,
+// the next starts fresh: unscrolled, unread, and settling again.
+func (m *Model) unask(call uuid.UUID) {
+	i := slices.IndexFunc(m.asked, func(a event.ApprovalAsked) bool { return a.ToolCall == call })
+	if i < 0 {
+		return
+	}
+	m.asked = slices.Delete(m.asked, i, i+1)
+	if i > 0 {
+		return
+	}
+	m.confirm = confirmState{}
+	if m.mode == modeConfirm {
+		m.backToInput()
 	}
 }
 

@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/lipgloss/v2"
+
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/termsafe"
+	"github.com/vitzeno/detent/ui/island"
 	"github.com/vitzeno/detent/ui/layout"
 )
 
@@ -15,48 +18,78 @@ import (
 // confirmBox shows the exact call text. The literal command is the
 // thing being approved, so a tall one scrolls rather than being cut.
 func (m Model) confirmBox() string {
-	a := m.asking
+	a := m.asking()
 	if a == nil {
 		return ""
 	}
+	inner := island.Inner(m.layout.width)
 	lines, room := m.confirmLines()
 	top := confirmTop(m.confirm.top, len(lines), room)
 	end := min(top+room, len(lines))
-	var b strings.Builder
-	b.WriteString(styleDanger.Render("!! look twice") + "\n")
+	body := []string{m.confirmTitle(a)}
 	for _, line := range lines[top:end] {
-		b.WriteString("  " + styleGoal.Render(line) + "\n")
+		// Padded, so the command reads as one panel apart from history.
+		body = append(body, styleCommand.Render(line+strings.Repeat(" ", max(0, inner-lipgloss.Width(line)))))
 	}
 	if len(lines) > room {
 		where := fmt.Sprintf("lines %d-%d of %d", top+1, end, len(lines))
 		if below := len(lines) - end; below > 0 {
-			b.WriteString(styleCaution.Render(fmt.Sprintf("  ▼ %d more below · %s", below, where)) + "\n")
+			body = append(body, styleCaution.Render(fmt.Sprintf("▼ %d more below · %s", below, where)))
 		} else {
-			b.WriteString(styleFaint.Render("  ▲ end of command · "+where) + "\n")
+			body = append(body, styleFaint.Render("▲ end of command · "+where))
 		}
 	}
-	for _, l := range m.rationaleLines() {
-		b.WriteString("  " + styleFaint.Render(l) + "\n")
+	for i, l := range m.rationaleLines() {
+		label := strings.Repeat(" ", len(flaggedLabel))
+		if i == 0 {
+			label = styleCaution.Render(flaggedLabel)
+		}
+		body = append(body, label+styleGoal.Render(l))
 	}
 	if !m.confirmReady() {
-		b.WriteString(styleFaint.Render("  [↓/pgdn] read to the end before it can run   [n] skip this tool call"))
-		return b.String()
+		body = append(body, keyHints("[↓/pgdn]", "read to the end before it can run", "[n]", "skip"))
+	} else {
+		body = append(body, keyHints("[y/enter]", "run", "[n]", "skip"))
 	}
-	b.WriteString(styleFaint.Render("  [y/enter] run   [n] skip this tool call"))
-	return b.String()
+	return island.Render("", palette.Danger, body, m.layout.width, len(body))
+}
+
+// confirmTitle names what is asked: the tool in its history colour, and
+// where this question stands when more wait behind it.
+func (m Model) confirmTitle(a *event.ApprovalAsked) string {
+	tool := styleGoal.Render(termsafe.Printable(a.Tool))
+	if r := m.row(a.ToolCall); r != nil {
+		if style, ok := toolStyle(r); ok {
+			tool = style.Render(termsafe.Printable(a.Tool))
+		}
+	}
+	title := styleDanger.Render("approve") + styleFaint.Render(" · ") + tool
+	if n := len(m.asked); n > 1 {
+		title += styleFaint.Render(fmt.Sprintf(" · 1 of %d", n))
+	}
+	return title
+}
+
+// keyHints draws key and label pairs, the key bright and its label faint.
+func keyHints(pairs ...string) string {
+	parts := make([]string, 0, len(pairs)/2)
+	for i := 0; i+1 < len(pairs); i += 2 {
+		parts = append(parts, styleBrand.Render(pairs[i])+" "+styleFaint.Render(pairs[i+1]))
+	}
+	return strings.Join(parts, "   ")
 }
 
 // confirmLines is the command as the box wraps it, and how many of its
 // lines fit while the panes keep their floor and the box stays on screen.
 func (m Model) confirmLines() (lines []string, room int) {
-	a := m.asking
+	a := m.asking()
 	if a == nil {
 		return nil, 0
 	}
-	lines = wrapPlain(termsafe.Printable(event.Command(a.Tool, a.Args)), m.layout.width-4)
-	// The warning, the keys and the rationale, counted as drawn so the
+	lines = wrapPlain(termsafe.Printable(event.Command(a.Tool, a.Args)), island.Inner(m.layout.width))
+	// The border, title, keys and rationale, counted as drawn so the
 	// read-to-the-end gate measures what is really on screen.
-	chrome := 2 + len(m.rationaleLines())
+	chrome := 4 + len(m.rationaleLines())
 	room = m.layout.height - 2 - islandOverhead - minBodyRows - chrome
 	if len(lines) > room {
 		room-- // the line saying how much is left
@@ -114,16 +147,20 @@ func (m Model) questionBox() string {
 // maxRationale caps why a call was flagged, so it cannot crowd out the command.
 const maxRationale = 3
 
-// rationaleLines is why the call was flagged, wrapped to the box.
+// flaggedLabel heads the rationale, which is indented to match it.
+const flaggedLabel = "flagged  "
+
+// rationaleLines is why the call was flagged, wrapped beside its label.
 func (m Model) rationaleLines() []string {
-	a := m.asking
+	a := m.asking()
 	if a == nil || a.Rationale == "" {
 		return nil
 	}
-	lines := wrapPlain(termsafe.Printable(a.Rationale), m.layout.width-4)
+	width := max(1, island.Inner(m.layout.width)-len(flaggedLabel))
+	lines := wrapPlain(termsafe.Printable(a.Rationale), width)
 	if len(lines) > maxRationale {
 		lines = lines[:maxRationale]
-		lines[maxRationale-1] = layout.Truncate(lines[maxRationale-1]+" …", m.layout.width-4)
+		lines[maxRationale-1] = layout.Truncate(lines[maxRationale-1]+" …", width)
 	}
 	return lines
 }

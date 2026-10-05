@@ -29,7 +29,7 @@ func (m Model) Restore(records []event.Record) Model {
 	m.staleSignIns()
 	m.followNewest()
 	// Nothing waits on a question the old process asked.
-	m.asking, m.bound = nil, nil
+	m.asked, m.bound = nil, nil
 	m.backToInput()
 	return m
 }
@@ -93,10 +93,13 @@ func (m *Model) apply(ev event.Event) {
 		}
 
 	case event.ApprovalAsked:
-		m.asking = &v
-		m.confirm = confirmState{}
-		m.waiting = false
-		m.raise(modeConfirm)
+		// One arriving behind the shown question leaves its scroll and settle alone.
+		m.asked = append(m.asked, v)
+		if len(m.asked) == 1 {
+			m.confirm = confirmState{}
+			m.waiting = false
+			m.raise(modeConfirm)
+		}
 
 	case event.ToolCallStarted:
 		if r := m.row(v.ToolCall); r != nil {
@@ -107,6 +110,8 @@ func (m *Model) apply(ev event.Event) {
 		m.addLine(v)
 
 	case event.ToolCallEnded:
+		// A call can end unanswered, by an abort, and its question with it.
+		m.unask(v.ToolCall)
 		if r := m.row(v.ToolCall); r != nil {
 			r.running = false
 			result := styled(v.Result)
@@ -185,7 +190,8 @@ func (m *Model) endTurn(v event.TurnEnded) {
 		}
 	}
 	m.setCur(nil)
-	m.asking, m.bound = nil, nil
+	m.asked, m.bound = nil, nil
+	m.confirm = confirmState{}
 	m.waiting = false
 	m.tokens += v.Usage.Tokens()
 	if !m.askingOwn() {

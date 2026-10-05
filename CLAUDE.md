@@ -614,6 +614,9 @@ adding a fat dependency fails with the transitive import named.
   escape characters in anything the model wrote are shown, never sent
   to the terminal, and a command taller than the box shows a "more"
   marker and is not approved until its last line has been on screen.
+  Approvals queue in the order asked and the box shows the first, with how
+  many wait. Each one shown starts unscrolled and unread, and settles anew,
+  and the engine delivers each answer to its own tool call by id.
   A question raised while the human is in something they opened (the
   finder, undo, delete) or has typed into the bar waits until that is
   closed or sent, so a key meant for it can never answer the question.

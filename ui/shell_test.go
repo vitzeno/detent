@@ -85,7 +85,7 @@ func TestShell_ShiftTabDoesNotAnswerAPendingQuestion(t *testing.T) {
 
 	k.press(t, "shift+tab")
 	assert.Equal(t, modeConfirm, k.m.mode, "the call is still waiting")
-	assert.NotNil(t, k.m.asking)
+	assert.NotNil(t, k.m.asking())
 	assert.True(t, k.m.prompt.shell, "but the bar switched underneath it")
 }
 

@@ -97,6 +97,15 @@ func TestThemes_ReadableAgainstTheirBackground(t *testing.T) {
 	}
 }
 
+// A command awaiting approval is drawn in TextPrimary on Border, and must read there.
+func TestThemes_CommandReadableOnItsPanel(t *testing.T) {
+	for _, name := range Names() {
+		th := Themes[name]
+		got := contrast(lum(t, th.TextPrimary), lum(t, th.Border))
+		assert.GreaterOrEqual(t, got, 4.5, "%s: TextPrimary on Border is %.2f", name, got)
+	}
+}
+
 // lum is relative luminance per WCAG, from a theme colour.
 func lum(t *testing.T, c color.Color) float64 {
 	t.Helper()

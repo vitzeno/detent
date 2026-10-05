@@ -117,15 +117,29 @@ func TestApply_ApprovalOpensAndClosesTheQuestion(t *testing.T) {
 			Args: map[string]any{"command": "rm -rf build"}, Rationale: "recursive delete"},
 	)...)
 
-	require.NotNil(t, m.asking)
+	require.NotNil(t, m.asking())
 	assert.Equal(t, modeConfirm, m.mode)
 	assert.False(t, m.waiting, "the spinner stops while a human is asked")
 	assert.Contains(t, m.confirmBox(), "rm -rf build", "the literal command is what is approved")
 	assert.Contains(t, m.confirmBox(), "recursive delete")
 
 	m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
-	assert.Nil(t, m.asking)
+	assert.Nil(t, m.asking())
 	assert.Equal(t, modeInput, m.mode)
+}
+
+func TestApproval_EndedCallLeavesTheQueue(t *testing.T) {
+	_, evs := aTurn("clean up")
+	first, second := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	m := feed(t, append(evs, asked(first, "rm -rf a"), asked(second, "rm -rf b"))...)
+
+	m.apply(event.ToolCallEnded{ToolCall: second})
+	require.Len(t, m.asked, 1)
+	assert.Equal(t, first, m.asking().ToolCall, "the question shown stays shown")
+
+	m.apply(event.ToolCallEnded{ToolCall: first})
+	assert.Nil(t, m.asking())
+	assert.Equal(t, modeInput, m.mode, "nothing is left to answer")
 }
 
 func TestApply_BoundPausesForAnAnswer(t *testing.T) {
@@ -472,6 +486,11 @@ func feed(t *testing.T, evs ...event.Event) Model {
 		m.apply(e)
 	}
 	return m
+}
+
+// asked is an approval for a shell command.
+func asked(call uuid.UUID, cmd string) event.ApprovalAsked {
+	return event.ApprovalAsked{ToolCall: call, Tool: "bash", Args: map[string]any{"command": cmd}}
 }
 
 func aTurn(prompt string) (uuid.UUID, []event.Event) {

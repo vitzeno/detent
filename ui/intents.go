@@ -59,14 +59,16 @@ func (m Model) approve() (Model, tea.Cmd) { return m.answerApproval(true) }
 func (m Model) decline() (Model, tea.Cmd) { return m.answerApproval(false) }
 
 func (m Model) answerApproval(yes bool) (Model, tea.Cmd) {
-	if m.asking == nil {
+	a := m.asking()
+	if a == nil {
 		m.mode = modeInput
 		return m, nil
 	}
-	call := m.asking.ToolCall
-	m.asking = nil
+	call := a.ToolCall
+	m.unask(call)
 	m.backToInput()
-	m.waiting = true
+	// Still asking if another question was queued behind this one.
+	m.waiting = m.asking() == nil
 	return m, tea.Batch(m.spinner.Tick, m.send(event.ResolveApproval{ToolCall: call, Approved: yes}))
 }
 

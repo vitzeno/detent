@@ -195,7 +195,7 @@ func (m Model) statusBar() string {
 // first, then owner(), so the hint names what the key will do.
 func (m Model) statusHint() string {
 	// Held behind what was typed, so say it is there and how to reach it.
-	if m.mode == modeInput && (m.asking != nil || m.bound != nil) {
+	if m.mode == modeInput && (m.asking() != nil || m.bound != nil) {
 		return "a question is waiting · send or clear what you typed to see it"
 	}
 	if m.mode == modeFinder {

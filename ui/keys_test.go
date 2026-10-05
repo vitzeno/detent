@@ -102,6 +102,96 @@ func TestKeys_AKeyTooSoonAfterAQuestionIsNotAnAnswer(t *testing.T) {
 	}
 }
 
+func TestApproval_SecondQuestionWaitsBehindTheFirst(t *testing.T) {
+	k := queued(t, "rm -rf a", "rm -rf b")
+	first, second := k.m.asked[0].ToolCall, k.m.asked[1].ToolCall
+	assert.Contains(t, ansi.Strip(k.m.confirmBox()), "1 of 2")
+	assert.Contains(t, ansi.Strip(k.m.confirmBox()), "rm -rf a")
+
+	k.press(t, "y")
+	assert.Equal(t, event.ResolveApproval{ToolCall: first, Approved: true}, k.intent(t))
+	require.NotNil(t, k.m.asking())
+	assert.Equal(t, second, k.m.asking().ToolCall)
+	assert.Equal(t, modeConfirm, k.m.mode, "the next question goes straight up")
+	assert.NotContains(t, ansi.Strip(k.m.confirmBox()), "1 of", "one left needs no count")
+	assert.False(t, k.m.waiting, "nothing runs while a question is up")
+}
+
+// The y meant for a question that vanished must not answer the one that replaced it.
+func TestApproval_RemovedHeadDoesNotPassItsKeyToTheNext(t *testing.T) {
+	k := queued(t, "rm -rf a", "rm -rf b")
+	k.m.apply(event.ToolCallEnded{ToolCall: k.m.asked[0].ToolCall})
+
+	k.press(t, "y")
+	k.noIntent(t)
+	assert.Equal(t, modeConfirm, k.m.mode)
+}
+
+// A question arriving behind the one being read must not reset its scroll or its settle.
+func TestApproval_ArrivalBehindTheHeadKeepsItsScrollAndSettle(t *testing.T) {
+	k := queued(t, tallCommand("rm -rf a"))
+	k.press(t, "pgdown")
+	top, at := k.m.confirm.top, k.m.askedAt
+	require.Positive(t, top)
+
+	k.m.apply(asked(uuid.Must(uuid.NewV7()), "rm -rf b"))
+	assert.Equal(t, top, k.m.confirm.top, "the scroll was kept")
+	assert.Equal(t, at, k.m.askedAt, "and so was the settle")
+}
+
+// Having read one tall command to its end says nothing about the next.
+func TestApproval_ReadingOneCommandDoesNotReadTheNext(t *testing.T) {
+	k := queued(t, tallCommand("rm -rf a"), tallCommand("rm -rf b"))
+	for range 100 {
+		k.press(t, "pgdown")
+	}
+	require.True(t, k.m.confirmReady())
+	k.press(t, "y")
+	k.intent(t)
+	k.settle()
+
+	assert.False(t, k.m.confirmReady(), "the next command starts unread")
+	k.press(t, "y")
+	k.noIntent(t)
+}
+
+func TestApproval_DoubleEscDoesNotDeclineTheNext(t *testing.T) {
+	k := queued(t, "rm -rf a", "rm -rf b")
+	first, second := k.m.asked[0].ToolCall, k.m.asked[1].ToolCall
+
+	k.press(t, "esc")
+	assert.Equal(t, event.ResolveApproval{ToolCall: first, Approved: false}, k.intent(t))
+	k.press(t, "esc")
+	k.noIntent(t)
+	require.NotNil(t, k.m.asking())
+	assert.Equal(t, second, k.m.asking().ToolCall)
+}
+
+// The bordered box must still fit, and still open its gate, on a small terminal.
+func TestApprovalBox_FitsNarrowAndShortScreens(t *testing.T) {
+	why := strings.TrimSpace(strings.Repeat("deletes files outside the work tree ", 4))
+	for _, size := range [][2]int{{20, 20}, {40, 20}, {80, 24}, {120, 40}} {
+		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
+			k := queued(t, tallCommand("rm -rf ../build"))
+			k.m.asked[0].Rationale = why
+			k.m.layout.width, k.m.layout.height = size[0], size[1]
+			k.m.sizeViewport()
+			for range 200 {
+				k.press(t, "pgdown")
+			}
+			screen := ansi.Strip(k.m.baseView())
+			assert.LessOrEqual(t, strings.Count(screen, "\n")+1, size[1], "the frame fits the screen")
+			assert.GreaterOrEqual(t, k.m.nav.histHeight, minBodyRows, "the panes keep their floor")
+			// The box only: below 56 columns the panes' own floor is wider than the screen.
+			for l := range strings.SplitSeq(ansi.Strip(k.m.confirmBox()), "\n") {
+				assert.Equal(t, size[0], ansi.StringWidth(l), "the box spans the screen exactly")
+			}
+			require.True(t, k.m.confirmReady())
+			assert.Contains(t, screen, "../build", "ready only once the last line is on screen")
+		})
+	}
+}
+
 // A command taller than the screen must not be approvable from its
 // head: the tail is where the damage would be.
 func TestKeys_TallApprovalRunsOnlyOnceReadToTheEnd(t *testing.T) {
@@ -126,7 +216,7 @@ func TestKeys_TallApprovalRunsOnlyOnceReadToTheEnd(t *testing.T) {
 
 	k.press(t, "y")
 	assert.Equal(t, modeConfirm, k.m.mode, "y is refused until the end is read")
-	require.NotNil(t, k.m.asking)
+	require.NotNil(t, k.m.asking())
 
 	for range 20 {
 		k.press(t, "pgdown")
@@ -338,6 +428,47 @@ func newKeyed(t *testing.T) *keyed {
 	return &keyed{m: m, bus: bus, seen: seen}
 }
 
+// queued is a Turn with a question per command, the first settled and up. A
+// settle of an hour means any question raised later holds back every key.
+func queued(t *testing.T, cmds ...string) *keyed {
+	t.Helper()
+	was := questionSettle
+	questionSettle = time.Hour
+	t.Cleanup(func() { questionSettle = was })
+	k := newKeyed(t)
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "clean"})
+	for _, c := range cmds {
+		call := uuid.Must(uuid.NewV7())
+		k.m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": c}})
+		k.m.apply(asked(call, c))
+	}
+	k.m.sizeViewport()
+	k.settle()
+	return k
+}
+
+// settle lets the question up stop holding back keys.
+func (k *keyed) settle() { k.m.askedAt = time.Now().Add(-2 * time.Hour) }
+
+// noIntent fails if a key published anything.
+func (k *keyed) noIntent(t *testing.T) {
+	t.Helper()
+	select {
+	case rec := <-k.seen:
+		t.Fatalf("a key published %s", rec.Event.Kind())
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+// tallCommand is a command too tall for the box, ending in tail.
+func tallCommand(tail string) string {
+	var b strings.Builder
+	for i := range 60 {
+		fmt.Fprintf(&b, "echo step %d\n", i)
+	}
+	return b.String() + tail
+}
+
 // press sends a key and runs whatever command came back, which is
 // where the publish happens.
 func (k *keyed) press(t *testing.T, key string) {
@@ -447,7 +578,7 @@ func TestKeys_ALongRationaleWrapsAndTheBoxStillFits(t *testing.T) {
 	lines := k.m.rationaleLines()
 	assert.Greater(t, len(lines), 1, "it wraps")
 	assert.LessOrEqual(t, len(lines), maxRationale, "and is capped")
-	for range 20 {
+	for range 100 {
 		k.press(t, "pgdown")
 	}
 	screen := ansi.Strip(k.m.baseView())

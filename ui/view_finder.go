@@ -56,7 +56,7 @@ func (m Model) finderBox() string {
 func (m Model) finderTitle() string {
 	title := styleBrand.Render("finder") + styleFaint.Render(" · "+finderKindNames[m.finder.kind])
 	// A question waits for the finder to close, so say one is there.
-	if m.asking != nil || m.bound != nil {
+	if m.asking() != nil || m.bound != nil {
 		title += styleCaution.Render(" · a question is waiting, esc to see it")
 	}
 	return title
