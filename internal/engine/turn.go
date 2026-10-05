@@ -47,10 +47,21 @@ type turnState struct {
 	aborted atomic.Bool
 
 	// changed is set once a tool call that is not read-only has run.
-	changed bool
+	changed atomic.Bool
 
 	mu    sync.Mutex
 	notes []string
+	// waiting holds each open question's answer, keyed by its tool call,
+	// so several can wait at once and none takes another's.
+	waiting map[uuid.UUID]chan bool
+}
+
+func newTurnState(n int, prompt string, cancel context.CancelFunc) *turnState {
+	return &turnState{
+		id: uuid.Must(uuid.NewV7()), n: n, prompt: prompt,
+		inbox: make(chan event.Event, 64), cancel: cancel,
+		waiting: map[uuid.UUID]chan bool{},
+	}
 }
 
 func (e *Engine) startTurn(ctx context.Context, prompt string, done chan struct{}) {
@@ -58,10 +69,7 @@ func (e *Engine) startTurn(ctx context.Context, prompt string, done chan struct{
 	e.turns++
 	// Repeats are counted per request: the same tests rerun in a later one are the job.
 	e.repeat.forget()
-	t := &turnState{
-		id: uuid.Must(uuid.NewV7()), n: e.turns, prompt: prompt,
-		inbox: make(chan event.Event, 64), cancel: cancel,
-	}
+	t := newTurnState(e.turns, prompt, cancel)
 	e.mu.Lock()
 	e.cur = t
 	e.past[t.id] = t
@@ -135,7 +143,7 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 				e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(unfinishedNote) })
 				continue
 			}
-			if e.finishCheck && t.changed && !checked {
+			if e.finishCheck && t.changed.Load() && !checked {
 				checked = true
 				e.notice("info", "asked the model to check its work against the request before finishing")
 				e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(finishNote) })
@@ -250,6 +258,31 @@ func (t *turnState) addNote(text string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.notes = append(t.notes, text)
+}
+
+// await registers a question before it is asked, so its answer cannot
+// arrive first. The returned func forgets it.
+func (t *turnState) await(call uuid.UUID) (<-chan bool, func()) {
+	ch := make(chan bool, 1)
+	t.mu.Lock()
+	t.waiting[call] = ch
+	t.mu.Unlock()
+	return ch, func() {
+		t.mu.Lock()
+		delete(t.waiting, call)
+		t.mu.Unlock()
+	}
+}
+
+// answer hands a verdict to whoever waits on its tool call. One naming
+// nobody waiting is stale or a repeat, and is dropped.
+func (t *turnState) answer(r event.ResolveApproval) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	select {
+	case t.waiting[r.ToolCall] <- r.Approved:
+	default:
+	}
 }
 
 func (t *turnState) takeNotes() []string {

@@ -260,9 +260,14 @@ func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{
 			e.notice("info", "the judge reads the request as answered, so the model was told")
 			e.post(t, ev)
 		}
-	case event.Continue, event.ResolveApproval:
+	case event.Continue:
 		if t != nil {
 			e.post(t, ev)
+		}
+	case event.ResolveApproval:
+		// Straight to its waiter: the Turn may be blocked where it reads no inbox.
+		if t != nil {
+			t.answer(v)
 		}
 	}
 }

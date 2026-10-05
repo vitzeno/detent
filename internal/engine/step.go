@@ -89,7 +89,7 @@ serial:
 		}
 		e.execute(ctx, p)
 		if !p.readOnly() {
-			t.changed = true
+			t.changed.Store(true)
 		}
 	}
 	flush()
@@ -178,9 +178,12 @@ func (e *Engine) runParallel(ctx context.Context, plans []*toolCallPlan) {
 	wg.Wait()
 }
 
-// approve publishes the question and waits. Whoever answers is nobody
-// the engine knows about.
+// approve publishes the question and waits for its own answer, which
+// dispatch delivers by tool call id. Reading the inbox meanwhile keeps
+// notes typed during a long wait from overflowing it.
 func (e *Engine) approve(ctx context.Context, t *turnState, p *toolCallPlan) approval {
+	answer, forget := t.await(p.id)
+	defer forget()
 	e.bus.Publish(event.ApprovalAsked{
 		ToolCall: p.id, Tool: p.call.Name, Args: p.call.Args,
 		Rationale: describe(p.risk), Risk: p.risk,
@@ -189,13 +192,12 @@ func (e *Engine) approve(ctx context.Context, t *turnState, p *toolCallPlan) app
 		select {
 		case <-ctx.Done():
 			return abandoned
-		case ev := <-t.inbox:
-			if r, ok := ev.(event.ResolveApproval); ok && r.ToolCall == p.id {
-				if r.Approved {
-					return approved
-				}
-				return declined
+		case ok := <-answer:
+			if ok {
+				return approved
 			}
+			return declined
+		case ev := <-t.inbox:
 			t.absorb(ev)
 			if t.aborted.Load() {
 				return abandoned
