@@ -257,7 +257,7 @@ jq 'select(.level == "WARN")'                   what went wrong
 
 ## Contributing
 
-Issues and pull requests are welcome. Please report a security problem privately through [GitHub's security advisories](https://github.com/vitzeno/detent/security/advisories/new), not a public issue
+Issues and pull requests are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md). Please report a security problem privately through [GitHub's security advisories](https://github.com/vitzeno/detent/security/advisories/new), not a public issue
 
 ## License
 

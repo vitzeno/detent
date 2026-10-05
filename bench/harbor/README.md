@@ -40,7 +40,7 @@ dir in `/tmp` loses the test results and every trial fails with
 ```sh
 cd ~/.cache/detent-bench
 export DETENT_API_KEY=sk-or-...      # Harbor does not read .detent.yaml
-export PYTHONPATH=~/Documents/Projects/detent/bench/harbor
+export PYTHONPATH=/path/to/detent/bench/harbor   # this checkout
 
 harbor run -d terminal-bench@2.0 \
   --agent detent:Detent \
