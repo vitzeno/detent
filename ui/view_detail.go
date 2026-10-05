@@ -49,7 +49,7 @@ func (m Model) showWelcome() bool {
 func (m Model) welcomeLines() []string {
 	return welcome.Lines(welcome.Facts{
 		Version: version.String(),
-		Model:   m.run.Model, Judge: m.run.Judge, RunMode: m.runMode(),
+		Model:   m.run.Model, Judge: m.run.Judge, RunMode: m.runMode(), MaxAgents: m.run.MaxAgents,
 		OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), WorkDir: m.workDir,
 		Image: m.info.Image, Mount: m.info.Mount,
 		Runtime: m.info.Runtime, Network: m.info.Network,

@@ -38,6 +38,16 @@ func TestStatusPage_ShowsContextBothWays(t *testing.T) {
 	assert.Contains(t, stripANSI(strings.Join(m.statusLines(), "\n")), "context")
 }
 
+func TestStatusPage_SaysWhetherSubagentsAreOn(t *testing.T) {
+	m := feed(t, event.SessionStarted{Model: "m"})
+	off := stripANSI(strings.Join(m.statusLines(), "\n"))
+	assert.Contains(t, off, "subagents")
+	assert.Contains(t, off, "DETENT_SUBAGENTS", "off says where to turn it on")
+
+	on := feed(t, event.SessionStarted{Model: "m", Subagents: true, MaxAgents: 10})
+	assert.Contains(t, stripANSI(strings.Join(on.statusLines(), "\n")), "on, up to 10 a request")
+}
+
 func TestStatusPage_ContextSaysWhenThereIsNothingToShow(t *testing.T) {
 	none := feed(t, event.SessionStarted{Model: "m"})
 	assert.Contains(t, none.contextDetail(), "no budget")

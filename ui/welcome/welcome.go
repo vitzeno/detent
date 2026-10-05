@@ -28,7 +28,9 @@ type Facts struct {
 	Version string
 	Model   string
 	Judge   string // "" when no judge is wired
-	RunMode string // "host" or "sandbox"
+	// MaxAgents is how many subagents a request may start, 0 when they are off.
+	MaxAgents int
+	RunMode   string // "host" or "sandbox"
 	// Where this process runs: GOOS, GOARCH, CPU count and the working
 	// directory as it should be shown.
 	OS, Arch string
@@ -181,8 +183,18 @@ func models(f Facts, width int) []string {
 	return []string{
 		row("proposes", primary.Render(value(f.Model, width))),
 		row("judges risk", judge),
+		row("delegates", subagents(f.MaxAgents)),
 		row("draws output", views()),
 	}
+}
+
+// subagents says whether the model may spawn, and how to change it.
+func subagents(perRequest int) string {
+	if perRequest == 0 {
+		return faint.Render("off — subagents: true in config turns it on")
+	}
+	return primary.Render(fmt.Sprintf("up to %d subagents a request", perRequest)) +
+		faint.Render("  subagents: false turns it off")
 }
 
 // views says where the output pane's framing comes from.

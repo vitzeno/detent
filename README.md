@@ -113,6 +113,12 @@ A command still running after 10 minutes is stopped, and the model is told so al
 
 `web_search` is a curl to DuckDuckGo, read through `r.jina.ai`, so there is no API key. In the sandbox it needs network, which is the default there
 
+## Subagents (**Experimental**)
+
+Off by default. `subagents: true` in `~/.config/detent/config.yaml` turns them on everywhere, a project's `.detent.yaml` for that project, or `DETENT_SUBAGENTS=1` for one run. `/status` and the welcome pane say which it is
+
+With them on, the model can hand broad reading to `spawn_agent`: a subagent with its own conversation that only reads, and replies with a report and the files it read. Several run at once, each shows as one row in history, and `x` twice on that row stops it. They keep the main conversation small, at about twice the cost of reading everything itself
+
 ## Your own commands
 
 `shift+tab` switches the input bar between prompt and shell. The border

@@ -59,6 +59,7 @@ func (m *Model) statusLines() []string {
 		{"version", version.String()},
 		{"model", m.run.Model},
 		{"judge", orNone(m.run.Judge)},
+		{"subagents", subagentsOf(m.run)},
 		{"runs in", m.runMode()},
 		{"step bound", strconv.Itoa(m.run.MaxSteps)},
 		{"instructions", orNone(strings.Join(m.run.Instructions, ", "))},
@@ -261,4 +262,12 @@ func orNone(s string) string {
 // skill's description is whatever someone typed.
 func truncCell(s string, w int) string {
 	return layout.Truncate(strings.Join(strings.Fields(s), " "), max(w, 8))
+}
+
+// subagentsOf says whether the model may spawn, and where that is set.
+func subagentsOf(run event.SessionStarted) string {
+	if !run.Subagents {
+		return "off (subagents in config, or DETENT_SUBAGENTS)"
+	}
+	return fmt.Sprintf("on, up to %d a request", run.MaxAgents)
 }

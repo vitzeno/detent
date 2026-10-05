@@ -100,6 +100,15 @@ func TestWelcome_SaysWhatTheSessionIs(t *testing.T) {
 	assert.Contains(t, resumed, "12 records")
 }
 
+// The switch is a config key, so the pane says which way it is and how to flip it.
+func TestWelcome_SaysWhetherItDelegates(t *testing.T) {
+	off := strings.Join(Lines(Facts{Version: "v", Model: "m", RunMode: "host"}, 100, 40, 0), "\n")
+	assert.Contains(t, off, "subagents: true")
+
+	on := strings.Join(Lines(Facts{Version: "v", Model: "m", RunMode: "host", MaxAgents: 10}, 100, 40, 0), "\n")
+	assert.Contains(t, on, "up to 10 subagents a request")
+}
+
 // Everything the pane reports is handed in, so a test can pin the rows
 // that once read the process: the machine and the working directory.
 func TestWelcome_ReportsTheMachineItIsHanded(t *testing.T) {
