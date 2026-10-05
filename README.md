@@ -22,6 +22,9 @@ Commands run on your machine, and anything flagged dangerous waits for you to ap
     <td width="50%"><img src=".github/assets/welcome.png" alt="detent's welcome screen: the model, where commands run, and the session it resumed"><br><sub><b>Welcome</b>: the model, where commands run, and what it resumed</sub></td>
     <td width="50%"><img src=".github/assets/finder.png" alt="The finder over a session, matches on the left and the selected one drawn on the right"><br><sub><b>Finder</b>: ctrl+f over the session, then jump to it</sub></td>
   </tr>
+  <tr>
+    <td colspan="2"><img src=".github/assets/sub-agents.png" alt="The inspector over a session: one subagent's output on the left and its own history of calls on the right, with the main history's finished subagents behind it"><br><sub><b>Subagents</b>: <code>a</code> opens one's work, <code>←</code>/<code>→</code> moves between them</sub></td>
+  </tr>
 </table>
 
 ## Configuration
@@ -117,7 +120,7 @@ A command still running after 10 minutes is stopped, and the model is told so al
 
 Off by default. `subagents: true` in `~/.config/detent/config.yaml` turns them on everywhere, a project's `.detent.yaml` for that project, or `DETENT_SUBAGENTS=1` for one run. `/status` and the welcome pane say which it is
 
-With them on, the model can hand work to `spawn_agent`: a subagent with its own conversation and the same tools, MCP servers included, that replies with a report and the files it read. Several run at once in your directory, so the model gives each its own part, and their calls are flagged and asked about like any other. Undo takes back what they changed with the rest of the request. While they do they sit in a block under history, and `a` opens their work, `←`/`→` moves between them and `x` twice stops one. `/agents` opens the same view for any subagent in the session, a resumed one's included. They keep the main conversation small, at about twice the cost of reading everything itself
+With them on, the model can hand work to the `spawn_agent` tool spawning a subagent with its own transcript and the same tools (except `spawn_agent`) that replies with a report and the files it read, several may run at once
 
 ## Your own commands
 
