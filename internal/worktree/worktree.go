@@ -77,6 +77,16 @@ func Available(ctx context.Context, dir string) bool {
 	return err == nil && strings.TrimSpace(out) == "true"
 }
 
+// Head is the commit dir's work tree is on, empty outside git or before the
+// first commit. A session records it so it can be replayed against that code.
+func Head(ctx context.Context, dir string) string {
+	out, err := run(ctx, dir, "", nil, "rev-parse", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
 // Open resolves dir's work tree, so a directory below the root checkpoints
 // only itself and every path git prints is joined onto the right place.
 func Open(ctx context.Context, dir string) (*Dir, error) {

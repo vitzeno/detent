@@ -7,6 +7,14 @@ import (
 	"github.com/vitzeno/detent/internal/worktree"
 )
 
+// headOf is the commit the human's directory is on, in every run, so a
+// session can be replayed against the code it was asked about.
+func headOf(dir string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return worktree.Head(ctx, dir)
+}
+
 // openWorktree checkpoints the human's directory for undo, in the TUI and
 // only inside a git work tree. The sandbox's workspace is the same directory.
 func openWorktree(tui bool, dir string) (*worktree.Dir, error) {

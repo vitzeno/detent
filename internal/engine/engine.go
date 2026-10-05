@@ -78,6 +78,7 @@ type Engine struct {
 	leftOpen openWork
 	// instructions name the files the prompt carries, for SessionStarted.
 	instructions []string
+	commit       string
 	skills       []event.SkillSummary
 
 	// gauge turns bytes into tokens, learning the ratio from each Step.
@@ -340,6 +341,7 @@ func (e *Engine) started() {
 		Network: e.network, MaxSteps: e.maxSteps,
 		Recorded: e.recorded, Resumed: e.resumed,
 		ContextTokens: e.budget(), Instructions: e.instructions, Skills: e.skills,
+		Commit: e.commit,
 	})
 }
 

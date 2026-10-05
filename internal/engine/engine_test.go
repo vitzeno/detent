@@ -388,6 +388,13 @@ func TestSessionStarted_NamesTheInstructionFiles(t *testing.T) {
 	assert.Equal(t, []string{"../AGENTS.md", "CLAUDE.md"}, started.Instructions)
 }
 
+// The commit lets a session be replayed against the code it was asked about.
+func TestSessionStarted_NamesTheCommit(t *testing.T) {
+	r := newRig(t, nil, WithCommit("98d2dd2"))
+	started := r.await(event.SessionStartedKind).(event.SessionStarted)
+	assert.Equal(t, "98d2dd2", started.Commit)
+}
+
 // Unset means the default applies, not that there is no budget: a
 // front-end showing "no limit" would be wrong.
 func TestSessionStarted_ReportsTheDefaultBudgetWhenUnset(t *testing.T) {

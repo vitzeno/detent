@@ -83,6 +83,9 @@ func WithInstructions(paths []string) Option {
 	return func(e *Engine) { e.instructions = paths }
 }
 
+// WithCommit names the commit the work tree was on, for SessionStarted.
+func WithCommit(sha string) Option { return func(e *Engine) { e.commit = sha } }
+
 // WithCommandTimeout bounds each tool call. Zero keeps the default.
 func WithCommandTimeout(d time.Duration) Option {
 	return func(e *Engine) {

@@ -158,6 +158,7 @@ func (s *session) buildEngine() error {
 		engine.WithCommandTimeout(timeout),
 		engine.WithFinishCheck(s.cfg.FinishChecks()),
 		engine.WithInstructions(instructions.Paths(files)),
+		engine.WithCommit(headOf(s.local.Dir)),
 		engine.WithSkills(s.found.summaries),
 		engine.WithMaxSteps(s.cfg.Steps),
 		// The same endpoint compacts its own history when it outgrows

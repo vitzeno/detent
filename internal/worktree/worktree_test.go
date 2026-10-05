@@ -17,6 +17,12 @@ func TestAvailable(t *testing.T) {
 	assert.False(t, Available(t.Context(), t.TempDir()), "a plain directory can't be checkpointed")
 }
 
+func TestHead_NamesTheCommitAndNothingOutsideGit(t *testing.T) {
+	dir := repo(t)
+	assert.Equal(t, strings.TrimSpace(git(t, dir, "rev-parse", "HEAD")), Head(t.Context(), dir))
+	assert.Empty(t, Head(t.Context(), t.TempDir()))
+}
+
 // A modified file comes back, a deleted one comes back, and one created
 // since the checkpoint is removed.
 func TestRestore_UndoesWhatAGoalDid(t *testing.T) {
