@@ -48,6 +48,18 @@ func merge(c *Config, o Config) {
 	if o.FinishCheck != nil {
 		c.FinishCheck = o.FinishCheck
 	}
+	if o.Subagents != nil {
+		c.Subagents = o.Subagents
+	}
+	if o.MaxAgents != 0 {
+		c.MaxAgents = o.MaxAgents
+	}
+	if o.ChildContextTokens != 0 {
+		c.ChildContextTokens = o.ChildContextTokens
+	}
+	if o.ChildTimeout != "" {
+		c.ChildTimeout = o.ChildTimeout
+	}
 	if o.MCPTrustHints != nil {
 		c.MCPTrustHints = o.MCPTrustHints
 	}
@@ -106,6 +118,7 @@ func merge(c *Config, o Config) {
 var envKeys = []string{
 	"DETENT_BASE_URL", "DETENT_MODEL", "DETENT_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY",
 	"DETENT_CONTEXT_TOKENS", "DETENT_COMMAND_TIMEOUT", "DETENT_FINISH_CHECK", "DETENT_MCP_TRUST_HINTS", "TYPESAFE_API_KEY",
+	"DETENT_SUBAGENTS", "DETENT_MAX_AGENTS", "DETENT_CHILD_CONTEXT_TOKENS", "DETENT_CHILD_TIMEOUT",
 	"DETENT_THEME", "DETENT_VIEWS", "DETENT_LOG_LEVEL", "DETENT_LOG_DIR", "DETENT_LOG_BODIES",
 	"DETENT_HOST_SHELL", "DETENT_SANDBOX_MODE", "DETENT_SANDBOX_SOCKET", "DETENT_SANDBOX_RUNTIME", "DETENT_SANDBOX_NETWORK",
 }
@@ -131,6 +144,11 @@ func envConfig(getenv func(string) string) Config {
 		LogLevel:       getenv("DETENT_LOG_LEVEL"),
 		LogDir:         getenv("DETENT_LOG_DIR"),
 		LogBodies:      envBool(getenv("DETENT_LOG_BODIES")),
+
+		Subagents:          envBool(getenv("DETENT_SUBAGENTS")),
+		MaxAgents:          envInt(getenv("DETENT_MAX_AGENTS")),
+		ChildContextTokens: envInt(getenv("DETENT_CHILD_CONTEXT_TOKENS")),
+		ChildTimeout:       getenv("DETENT_CHILD_TIMEOUT"),
 
 		HostShell:      getenv("DETENT_HOST_SHELL"),
 		SandboxMode:    getenv("DETENT_SANDBOX_MODE"),

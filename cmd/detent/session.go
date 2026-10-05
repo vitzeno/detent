@@ -140,9 +140,17 @@ func (s *session) buildEngine() error {
 	if err != nil {
 		s.warnings = append(s.warnings, "instructions: "+err.Error())
 	}
-	client := model.NewClient(s.cfg.BaseURL, s.cfg.Model, s.cfg.APIKey,
-		model.WithHeaders(s.cfg.Headers), model.WithEnvironment(s.env),
-		model.WithInstructions(instructions.Prompt(files), instructions.Paths(files)))
+	newClient := func(more ...model.ClientOption) *model.Client {
+		return model.NewClient(s.cfg.BaseURL, s.cfg.Model, s.cfg.APIKey, append([]model.ClientOption{
+			model.WithHeaders(s.cfg.Headers), model.WithEnvironment(s.env),
+			model.WithInstructions(instructions.Prompt(files), instructions.Paths(files)),
+		}, more...)...)
+	}
+	spawn, err := subagents(s.cfg, newClient)
+	if err != nil {
+		return err
+	}
+	client := newClient(spawn.root...)
 
 	// Opened before the engine so it can say whether this session is
 	// being written down. A session that cannot be is still a session.
@@ -165,6 +173,7 @@ func (s *session) buildEngine() error {
 		// that budget.
 		engine.WithSummarizer(client),
 	}
+	opts = append(opts, spawn.engine...)
 	if wt, err := openWorktree(s.o.prompt == "", s.local.Dir); err != nil {
 		s.warn(err)
 	} else if wt != nil {
@@ -183,7 +192,7 @@ func (s *session) buildEngine() error {
 
 	// Connected before the engine, which takes the registry by value.
 	// Headless reads none: config expands secrets, servers start processes.
-	s.tools = tool.StandardFor(shellTool(s.env), s.found.skillTools()...)
+	s.tools = tool.StandardFor(shellTool(s.env), append(s.found.skillTools(), spawn.tools...)...)
 	s.configured, err = loadMCPConfig(s.o.prompt == "", s.trusted.Files[mcppkg.Project], mcppkg.Files())
 	if err != nil {
 		return err

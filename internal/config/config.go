@@ -86,6 +86,13 @@ type Config struct {
 	// FinishCheck asks the model to check its work before a request that changed
 	// something ends. A pointer so unset means on rather than false.
 	FinishCheck *bool `yaml:"finish_check"`
+	// Subagents lets the model hand work to spawn_agent. Off until measured.
+	Subagents *bool `yaml:"subagents"`
+	// MaxAgents is how many subagents one request may start, ChildContextTokens
+	// how far one's transcript may grow, ChildTimeout how long one may run.
+	MaxAgents          int    `yaml:"max_agents"`
+	ChildContextTokens int    `yaml:"child_context_tokens"`
+	ChildTimeout       string `yaml:"child_timeout"`
 	// MCPTrustHints takes a server's word that a tool only reads, so it runs
 	// unasked. A pointer so unset means on.
 	MCPTrustHints *bool `yaml:"mcp_trust_hints"`
@@ -240,6 +247,21 @@ func (c Config) CommandTimeoutDuration() (time.Duration, error) {
 	}
 	return d, nil
 }
+
+// ChildTimeoutDuration is ChildTimeout as a duration, the built-in when it is empty.
+func (c Config) ChildTimeoutDuration() (time.Duration, error) {
+	if c.ChildTimeout == "" {
+		return engine.DefaultChildTimeout, nil
+	}
+	d, err := time.ParseDuration(c.ChildTimeout)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("child_timeout %q: want a duration such as 10m", c.ChildTimeout)
+	}
+	return d, nil
+}
+
+// SpawnsSubagents is Subagents with its default, off.
+func (c Config) SpawnsSubagents() bool { return c.Subagents != nil && *c.Subagents }
 
 // FinishChecks is FinishCheck with its default, on.
 func (c Config) FinishChecks() bool { return c.FinishCheck == nil || *c.FinishCheck }

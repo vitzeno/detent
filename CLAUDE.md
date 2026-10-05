@@ -346,7 +346,18 @@ adding a fat dependency fails with the transitive import named.
   for the TUI. A Turn's Steps are run by `runAgent` over an `agent`: a
   model, its tools, its own hook chain and its transcript. The root
   answers the human, and only it hears notes, asks to pass the bound,
-  checks its work, compacts and is measured. `New` subscribes to
+  checks its work, compacts and is measured. `spawn_agent` (behind
+  `subagents`, off by default) is a tool call the engine runs itself
+  (`spawn.go`): a child agent with only `childTools`, so it reads and
+  cannot spawn, its own transcript and repeat check, at most 4 running
+  and `max_agents` started per Turn. A child never compacts. It ends at
+  30 Steps, `child_context_tokens`, `child_timeout` or `StopAgent`, and
+  one cut short is asked once more, with no tools, for its report. The
+  report is the spawn's result and all the parent sees. The spawn
+  declares `Delegates`, so Jev skips it and it never marks the Turn
+  changed. The child's own calls go through the whole chain, a flagged
+  one waits in the approval queue while its siblings run, and the judge
+  and viewgen leave them alone. `New` subscribes to
   intents, not `Run`, so a caller that publishes the moment it returns
   cannot lose the intent.
   `Abort` is handled in `dispatch` rather than queued to the Turn: a

@@ -172,6 +172,31 @@ func TestResolve_MCPHintsAreTrustedUnlessTurnedOff(t *testing.T) {
 	assert.False(t, Resolve(Config{}, Config{}, -1).TrustsMCPHints())
 }
 
+// Subagents stay off until measured, so only a human's word turns them on.
+func TestResolve_SubagentsAreOffUnlessTurnedOn(t *testing.T) {
+	t.Setenv("DETENT_SUBAGENTS", "")
+	assert.False(t, Resolve(Config{}, Config{}, -1).SpawnsSubagents())
+
+	t.Setenv("DETENT_SUBAGENTS", "true")
+	t.Setenv("DETENT_MAX_AGENTS", "3")
+	got := Resolve(Config{}, Config{}, -1)
+	assert.True(t, got.SpawnsSubagents())
+	assert.Equal(t, 3, got.MaxAgents)
+}
+
+func TestChildTimeout_TakesADurationOrTheDefault(t *testing.T) {
+	d, err := Config{}.ChildTimeoutDuration()
+	require.NoError(t, err)
+	assert.Equal(t, engine.DefaultChildTimeout, d)
+
+	d, err = Config{ChildTimeout: "90s"}.ChildTimeoutDuration()
+	require.NoError(t, err)
+	assert.Equal(t, 90*time.Second, d)
+
+	_, err = Config{ChildTimeout: "soon"}.ChildTimeoutDuration()
+	assert.ErrorContains(t, err, "child_timeout")
+}
+
 func TestResolve_FinishCheckIsOnUnlessTurnedOff(t *testing.T) {
 	t.Setenv("DETENT_FINISH_CHECK", "")
 	assert.True(t, Resolve(Config{}, Config{}, -1).FinishChecks())

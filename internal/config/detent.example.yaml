@@ -30,6 +30,15 @@ command_timeout: ""
 # work against the request (true). Also DETENT_FINISH_CHECK.
 finish_check:          # true or false (true)
 
+# Let the model hand reading to subagents, which run several at once and each
+# reply with a report (false). Also DETENT_SUBAGENTS.
+subagents:             # true or false (false)
+# At most this many per request (10), a subagent's transcript budget in tokens
+# (64000, never above context_tokens) and how long one may run, e.g. "5m" (10m).
+max_agents: 0
+child_context_tokens: 0
+child_timeout: ""
+
 # Transcript budget in tokens (200000). Past it, the oldest Turns are
 # summarised. Set it below the window for a small local model.
 context_tokens: 0
