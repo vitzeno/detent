@@ -1,6 +1,10 @@
 agent.ended Agent uuid.UUID
 agent.ended Reason event.AgentReason
+agent.ended Usage.CacheWriteTokens int
+agent.ended Usage.CachedTokens int
 agent.ended Usage.CompletionTokens int
+agent.ended Usage.Cost float64
+agent.ended Usage.HasCost bool
 agent.ended Usage.Latency time.Duration
 agent.ended Usage.Model string
 agent.ended Usage.PromptTokens int
@@ -58,7 +62,11 @@ step.ended Step uuid.UUID
 step.ended Stop string
 step.ended ToolCalls int
 step.ended Turn uuid.UUID
+step.ended Usage.CacheWriteTokens int
+step.ended Usage.CachedTokens int
 step.ended Usage.CompletionTokens int
+step.ended Usage.Cost float64
+step.ended Usage.HasCost bool
 step.ended Usage.Latency time.Duration
 step.ended Usage.Model string
 step.ended Usage.PromptTokens int
@@ -149,7 +157,11 @@ turn.checkpoint Turn uuid.UUID
 turn.ended Reason event.EndReason
 turn.ended Summary string
 turn.ended Turn uuid.UUID
+turn.ended Usage.CacheWriteTokens int
+turn.ended Usage.CachedTokens int
 turn.ended Usage.CompletionTokens int
+turn.ended Usage.Cost float64
+turn.ended Usage.HasCost bool
 turn.ended Usage.Latency time.Duration
 turn.ended Usage.Model string
 turn.ended Usage.PromptTokens int

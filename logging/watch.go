@@ -66,8 +66,8 @@ func describe(e event.Event) (slog.Level, []any) {
 	case event.TurnStarted:
 		return slog.LevelInfo, []any{KeyTurn, v.Turn, "n", v.N, "prompt", Body(v.Prompt)}
 	case event.TurnEnded:
-		return slog.LevelInfo, []any{KeyTurn, v.Turn, KeyReason, string(v.Reason),
-			"tokens", v.Usage.Tokens(), KeyMS, v.Usage.Latency.Milliseconds()}
+		return slog.LevelInfo, append([]any{KeyTurn, v.Turn, KeyReason, string(v.Reason),
+			"tokens", v.Usage.Tokens(), KeyMS, v.Usage.Latency.Milliseconds()}, cost(v.Usage)...)
 	case event.CheckpointTaken:
 		return slog.LevelDebug, []any{KeyTurn, v.Turn, "snapshot", v.Snapshot}
 	case event.BoundReached:
@@ -81,9 +81,10 @@ func describe(e event.Event) (slog.Level, []any) {
 	case event.StepStarted:
 		return slog.LevelDebug, []any{KeyTurn, v.Turn, KeyStep, v.Step, "n", v.N}
 	case event.StepEnded:
-		return slog.LevelInfo, []any{KeyTurn, v.Turn, KeyStep, v.Step, "tool_calls", v.ToolCalls,
+		fields := []any{KeyTurn, v.Turn, KeyStep, v.Step, "tool_calls", v.ToolCalls,
 			"stop", v.Stop, "tokens", v.Usage.Tokens(), "prompt_tokens", v.Usage.PromptTokens,
 			"completion_tokens", v.Usage.CompletionTokens, KeyMS, v.Usage.Latency.Milliseconds()}
+		return slog.LevelInfo, append(fields, cost(v.Usage)...)
 	case event.Appended:
 		// A prompt or a note belongs to no Step, one between Turns to
 		// no Turn, and a zero uuid in the field is worse than no field.
@@ -158,6 +159,16 @@ func describe(e event.Event) (slog.Level, []any) {
 		return slog.LevelWarn, []any{"server", v.Server, KeyReason, Snippet(v.Reason)}
 	}
 	return slog.LevelDebug, nil
+}
+
+// cost is what caching saved and the endpoint charged. No cost field when
+// the endpoint sent none, since unknown is not free.
+func cost(u event.Usage) []any {
+	out := []any{"cached_tokens", u.CachedTokens, "cache_write_tokens", u.CacheWriteTokens}
+	if u.HasCost {
+		out = append(out, "cost", u.Cost)
+	}
+	return out
 }
 
 func level(bad bool) slog.Level {

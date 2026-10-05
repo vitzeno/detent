@@ -123,7 +123,8 @@ class Detent(BaseInstalledAgent):
 
     @override
     def populate_context_post_run(self, context: AgentContext) -> None:
-        prompt = completion = 0
+        prompt = completion = cached = 0
+        cost = None
         for log in (self.logs_dir / "detent").glob("*.jsonl"):
             for line in log.read_text().splitlines():
                 try:
@@ -133,6 +134,13 @@ class Detent(BaseInstalledAgent):
                 if rec.get("event") == "step.ended":
                     prompt += rec.get("prompt_tokens", 0)
                     completion += rec.get("completion_tokens", 0)
+                    cached += rec.get("cached_tokens", 0)
+                    # Absent when the endpoint sent no cost, which is unknown, not free.
+                    if "cost" in rec:
+                        cost = (cost or 0) + rec["cost"]
         if prompt or completion:
             context.n_input_tokens = prompt
             context.n_output_tokens = completion
+            context.n_cache_tokens = cached
+        if cost is not None:
+            context.cost_usd = cost

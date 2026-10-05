@@ -245,10 +245,7 @@ func head(s string, n int) string {
 }
 
 func add(a, b event.Usage) event.Usage {
-	return event.Usage{
-		PromptTokens:     a.PromptTokens + b.PromptTokens,
-		CompletionTokens: a.CompletionTokens + b.CompletionTokens,
-		Latency:          a.Latency + b.Latency,
-		Model:            b.Model,
-	}
+	u := a.Add(b)
+	u.Model = b.Model
+	return u
 }

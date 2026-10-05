@@ -36,6 +36,27 @@ func TestComplete_DecodesAStep(t *testing.T) {
 	assert.Positive(t, used.Latency)
 }
 
+// Cached tokens are most of a long Turn's price, so they are read when sent,
+// and a cost the endpoint never sent is unknown rather than free.
+func TestComplete_ReadsCachedTokensAndCost(t *testing.T) {
+	c, _ := serve(t, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],
+		"usage":{"prompt_tokens":3612,"completion_tokens":5,
+		"prompt_tokens_details":{"cached_tokens":3609,"cache_write_tokens":0},"cost":0.000044}}`)
+	_, used, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 3609, used.CachedTokens)
+	assert.True(t, used.HasCost)
+	assert.InDelta(t, 0.000044, used.Cost, 1e-12)
+	assert.Equal(t, 3617, used.Tokens(), "cached tokens are inside prompt_tokens, not added to it")
+
+	c, _ = serve(t, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],
+		"usage":{"prompt_tokens":10,"completion_tokens":5}}`)
+	_, used, err = c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)
+	require.NoError(t, err)
+	assert.Zero(t, used.CachedTokens)
+	assert.False(t, used.HasCost, "an endpoint that says nothing has not said free")
+}
+
 func TestComplete_TextOnlyIsAStop(t *testing.T) {
 	c, _ := serve(t, `{"choices":[{"message":{"content":"three files changed"},"finish_reason":"stop"}]}`)
 	reply, _, err := c.Complete(context.Background(), []event.Message{{Role: event.RoleUser, Content: "go"}}, nil)

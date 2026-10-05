@@ -29,7 +29,7 @@ def report(db, sid):
     rows = db.execute(
         "SELECT kind, at, agent, payload FROM events WHERE session = ? ORDER BY ordinal", (sid,)
     ).fetchall()
-    on, start, end, reason, tokens = None, None, None, "-", 0
+    on, start, end, reason, tokens, cached, cost = None, None, None, "-", 0, 0.0, "cost ?"
     ended, calls, child_reads = Counter(), Counter(), set()
     rereads = 0
     for kind, at, agent, payload in rows:
@@ -42,6 +42,8 @@ def report(db, sid):
             end, reason = at, p.get("Reason", "-")
             u = p.get("Usage") or {}
             tokens = u.get("PromptTokens", 0) + u.get("CompletionTokens", 0)
+            cached = u.get("CachedTokens", 0) / max(1, u.get("PromptTokens", 0))
+            cost = f"${u['Cost']:.3f}" if u.get("HasCost") else "cost ?"
         elif kind == "agent.ended":
             ended[p.get("Reason", "?")] += 1
         elif kind == "tool_call.proposed":
@@ -57,7 +59,7 @@ def report(db, sid):
     small = sum(1 for a in calls if calls[a] <= 2) + (spawned - len(calls))
     secs = (end - start) / 1000 if start and end else 0
     outcome = ", ".join(f"{n} {r}" for r, n in sorted(ended.items())) or "-"
-    print(f"{sid}  {'on ' if on else 'off'}  {reason:7} {secs:6.0f}s {tokens:>8} tok  "
+    print(f"{sid}  {'on ' if on else 'off'}  {reason:7} {secs:6.0f}s {tokens:>8} tok {cached:4.0%} cached {cost:>7}  "
           f"agents {spawned} ({outcome})  small {small}  re-read {rereads}")
 
 

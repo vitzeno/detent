@@ -255,6 +255,11 @@ func (c *Client) post(ctx context.Context, body []byte) (Reply, event.Usage, err
 		CompletionTokens: wr.Usage.CompletionTokens,
 		Latency:          time.Since(start),
 		Model:            wr.Model,
+		CachedTokens:     wr.Usage.PromptTokensDetails.CachedTokens,
+		CacheWriteTokens: wr.Usage.PromptTokensDetails.CacheWriteTokens,
+	}
+	if wr.Usage.Cost != nil {
+		used.Cost, used.HasCost = *wr.Usage.Cost, true
 	}
 	reply, err := decode(wr)
 	if err != nil {

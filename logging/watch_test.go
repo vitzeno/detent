@@ -84,6 +84,27 @@ func TestWatch_TagsAChildsRecordsWithItsAgent(t *testing.T) {
 	}
 }
 
+// A Step says what caching saved, and a cost only when the endpoint sent one.
+func TestWatch_LogsCacheAndOnlyAKnownCost(t *testing.T) {
+	dir := t.TempDir()
+	closer, err := logging.Setup("w3", logging.WithDir(dir), logging.WithLevel("debug"))
+	require.NoError(t, err)
+	bus := event.New()
+	stop := logging.Watch(bus)
+	bus.Publish(event.StepEnded{Step: uuid.Must(uuid.NewV7()), Usage: event.Usage{PromptTokens: 100, CachedTokens: 90,
+		Cost: 0.01, HasCost: true}})
+	bus.Publish(event.StepEnded{Step: uuid.Must(uuid.NewV7()), Usage: event.Usage{PromptTokens: 100}})
+	bus.Settle(2 * time.Second)
+	stop()
+	require.NoError(t, closer())
+
+	got := records(t, dir, "w3")
+	require.Len(t, got, 2)
+	assert.EqualValues(t, 90, got[0]["cached_tokens"])
+	assert.InDelta(t, 0.01, got[0]["cost"], 1e-9)
+	assert.NotContains(t, got[1], "cost", "unknown is not free")
+}
+
 // A command the human ran is logged like a tool call, under its own key:
 // the id has to be findable, and a failure has to be worth finding.
 func TestWatch_LogsAHumanCommand(t *testing.T) {
