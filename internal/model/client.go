@@ -54,6 +54,9 @@ type Client struct {
 	// and instructionFiles name where they came from.
 	instructions     string
 	instructionFiles []string
+	// role picks the built-in prompt, and subagents tells the root it may delegate.
+	role      Role
+	subagents bool
 }
 
 // NewClient talks to baseURL as model, sending apiKey. Empty takes the
@@ -89,6 +92,22 @@ func WithSystemPrompt(p string) ClientOption { return func(c *Client) { c.prompt
 
 // WithEnvironment says where commands run, for the prompt.
 func WithEnvironment(env Environment) ClientOption { return func(c *Client) { c.env = env } }
+
+// Role is which built-in prompt a client speaks.
+type Role int
+
+const (
+	// RoleAgent works the human's request, and is the default.
+	RoleAgent Role = iota
+	// RoleChild works one task for another agent and replies with a report.
+	RoleChild
+)
+
+// WithRole picks the built-in prompt. The project's instructions follow either.
+func WithRole(r Role) ClientOption { return func(c *Client) { c.role = r } }
+
+// WithSubagents tells the model it may hand work to spawn_agent.
+func WithSubagents() ClientOption { return func(c *Client) { c.subagents = true } }
 
 // WithInstructions appends the project's own instructions, read from files.
 func WithInstructions(text string, files []string) ClientOption {
@@ -145,7 +164,10 @@ func (c *Client) PromptParts() []PromptPart {
 	if c.prompt != "" {
 		return []PromptPart{{Name: "system prompt", Detail: "set by the caller", Bytes: len(c.prompt)}}
 	}
-	parts := []PromptPart{{Name: "detent", Detail: "environment and rules", Bytes: len(systemPrompt(c.env))}}
+	parts := []PromptPart{{Name: "detent", Detail: "environment and rules", Bytes: len(c.builtIn())}}
+	if c.role == RoleChild {
+		parts = []PromptPart{{Name: "subagent", Detail: "environment and its task's rules", Bytes: len(c.builtIn())}}
+	}
 	if c.instructions != "" {
 		parts = append(parts, PromptPart{Name: "instructions", Detail: strings.Join(c.instructionFiles, ", "),
 			Bytes: len(c.instructions) + len(instructionsSep)})
@@ -266,9 +288,21 @@ func (c *Client) systemPrompt() string {
 		return c.prompt
 	}
 	if c.instructions == "" {
-		return systemPrompt(c.env)
+		return c.builtIn()
 	}
-	return systemPrompt(c.env) + instructionsSep + c.instructions
+	return c.builtIn() + instructionsSep + c.instructions
+}
+
+// builtIn is the prompt detent writes for this client's role, before the
+// project's instructions.
+func (c *Client) builtIn() string {
+	switch {
+	case c.role == RoleChild:
+		return c.env.preamble() + childPrompt
+	case c.subagents:
+		return systemPrompt(c.env) + subagentRule
+	}
+	return systemPrompt(c.env)
 }
 
 // snippet bounds an error body so a 2MB HTML error page cannot become

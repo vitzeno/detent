@@ -27,6 +27,9 @@ func TestPromptParts_AddUpToTheWholePrompt(t *testing.T) {
 		"bare":              NewClient("", "", ""),
 		"with instructions": NewClient("", "", "", WithInstructions("<instructions>x</instructions>", []string{"AGENTS.md"})),
 		"set by the caller": NewClient("", "", "", WithSystemPrompt("you are a test")),
+		"with subagents":    NewClient("", "", "", WithSubagents()),
+		"a subagent": NewClient("", "", "", WithRole(RoleChild),
+			WithInstructions("<instructions>x</instructions>", []string{"AGENTS.md"})),
 	} {
 		n := 0
 		for _, p := range c.PromptParts() {
@@ -34,6 +37,26 @@ func TestPromptParts_AddUpToTheWholePrompt(t *testing.T) {
 		}
 		assert.Equal(t, len(c.systemPrompt()), n, name)
 	}
+}
+
+// The rule to delegate is there only when there is something to delegate to.
+func TestSystemPrompt_MentionsSubagentsOnlyWhenTheyExist(t *testing.T) {
+	assert.NotContains(t, NewClient("", "", "").systemPrompt(), "spawn_agent")
+	assert.Contains(t, NewClient("", "", "", WithSubagents()).systemPrompt(), "Hand broad reading to spawn_agent")
+}
+
+// A subagent has its own role, still told where it runs and still given the
+// project's instructions, and never the root's rules.
+func TestSystemPrompt_AChildHasItsOwnRoleAndTheProjectsInstructions(t *testing.T) {
+	c := NewClient("", "", "", WithRole(RoleChild), WithSubagents(),
+		WithInstructions("<instructions>use tabs</instructions>", []string{"AGENTS.md"}))
+	got := c.systemPrompt()
+	assert.Contains(t, got, "You are a subagent")
+	assert.Contains(t, got, "Environment:")
+	assert.Contains(t, got, "use tabs")
+	assert.NotContains(t, got, "Work the request")
+	assert.NotContains(t, got, "spawn_agent", "a child cannot spawn")
+	assert.Equal(t, "subagent", c.PromptParts()[0].Name)
 }
 
 func TestBrief_WritesADurationAsAPersonWould(t *testing.T) {
