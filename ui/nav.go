@@ -33,7 +33,7 @@ func (m Model) navUp() (Model, tea.Cmd) {
 		if m.nav.follow {
 			// Following never counted a total, so pin one here.
 			lines, _ := m.historyAll()
-			m.nav.histOffset = max(0, len(lines)-m.nav.histHeight)
+			m.nav.histOffset = max(0, len(lines)-m.histRows())
 		}
 		m.nav.cursor--
 		m.nav.follow = false

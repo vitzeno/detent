@@ -223,6 +223,9 @@ func (m Model) statusHint() string {
 	if m.mode == modeFinder {
 		return "[enter] jump · [ctrl+f] kind · [↑/↓] move · [esc] back"
 	}
+	if m.mode == modeInspector {
+		return "the agent's keys are in the box · [esc] back"
+	}
 	if m.mode == modeUndo {
 		return m.undoKeys(" · ")
 	}
@@ -247,6 +250,12 @@ func (m Model) statusHint() string {
 		}
 		return "[tab] input · [↑/↓] inside · " + esc
 	case ownerHistory:
+		if m.nav.inAgents {
+			return "[↑/↓] move · [enter] open · [x] stop · [esc] back"
+		}
+		if len(m.pinned()) > 0 {
+			return "[a] agents · [esc] abort · [↑/↓] move · [enter] open"
+		}
 		// esc aborts from here too, and a human needs to know they can stop a run.
 		if m.cur != nil {
 			return "[esc] abort · [tab] output · [↑/↓] move · [space] expand"
@@ -258,6 +267,10 @@ func (m Model) statusHint() string {
 		}
 		if m.prompt.Open() {
 			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
+		}
+		// A waiting subagent takes no keys, so say how to reach it.
+		if _, blocked := m.agentCounts(); blocked > 0 {
+			return "an agent is waiting on you · [tab] history, then [a] · [esc] abort"
 		}
 		return "[esc] abort · [enter] steers · [tab] history"
 	default: // ownerInput

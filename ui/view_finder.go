@@ -24,9 +24,16 @@ const (
 	finderMinBody  = 4
 )
 
-// withFinder floats the box over base, with the panes behind it dimmed.
-func (m Model) withFinder(base string) string {
-	if m.mode != modeFinder {
+// withOverlay floats the finder's or the inspector's box over base, with the
+// panes behind it dimmed.
+func (m Model) withOverlay(base string) string {
+	var box string
+	switch m.mode {
+	case modeFinder:
+		box = m.finderBox()
+	case modeInspector:
+		box = m.inspectorBox()
+	default:
 		return base
 	}
 	lines := strings.Split(base, "\n")
@@ -37,7 +44,7 @@ func (m Model) withFinder(base string) string {
 	x, y := m.finderPadding()
 	return lipgloss.NewCompositor(
 		lipgloss.NewLayer(strings.Join(lines, "\n")),
-		lipgloss.NewLayer(m.finderBox()).X(x).Y(1+y).Z(1),
+		lipgloss.NewLayer(box).X(x).Y(1+y).Z(1),
 	).Render()
 }
 

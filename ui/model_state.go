@@ -1,6 +1,12 @@
 package ui
 
-import "github.com/vitzeno/detent/event"
+import (
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/vitzeno/detent/event"
+)
 
 // The small state values Model is composed of. Grouped rather than
 // spread across Model's own fields, so a handler takes one thing.
@@ -9,12 +15,13 @@ import "github.com/vitzeno/detent/event"
 type mode int
 
 const (
-	modeInput   mode = iota
-	modeConfirm      // a dangerous call is waiting on an answer
-	modeBound        // the engine hit its step bound and is asking
-	modeUndo         // asks before reverting the human's own files
-	modeForget       // asks before deleting a stored session
-	modeFinder       // the finder holds every key until it jumps or closes
+	modeInput     mode = iota
+	modeConfirm        // a dangerous call is waiting on an answer
+	modeBound          // the engine hit its step bound and is asking
+	modeUndo           // asks before reverting the human's own files
+	modeForget         // asks before deleting a stored session
+	modeFinder         // the finder holds every key until it jumps or closes
+	modeInspector      // one subagent's work, over the panes, until esc
 )
 
 // focusPane is which zone the arrow keys act in.
@@ -35,6 +42,10 @@ type navState struct {
 
 	histHeight int
 	histOffset int
+	// inAgents is the cursor in the pinned agents block, at agentCursor,
+	// rather than in history.
+	inAgents    bool
+	agentCursor int
 	// histWindow is what sizeViewport laid out, so View need not.
 	histWindow []string
 }
@@ -74,6 +85,20 @@ type finderState struct {
 	// scroll moves the preview from where it centres on the match.
 	scroll int
 	saved  navState
+}
+
+// inspectorState is the subagent being looked into and where in its work.
+type inspectorState struct {
+	agent  *agentState
+	cursor int
+	// output is the left pane's scroll, and outputFocused that arrows move it.
+	output        int
+	outputFocused bool
+	// shown is the question on screen and when it appeared, so a key typed
+	// before it did is not an answer, and seenEnd whether all of it was read.
+	shown   uuid.UUID
+	shownAt time.Time
+	seenEnd bool
 }
 
 // forgetState is the session /delete is asking about.

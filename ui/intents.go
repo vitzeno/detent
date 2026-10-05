@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 )
@@ -144,22 +143,6 @@ func (m Model) onQuit(repeat string) (Model, tea.Cmd) {
 	m.quitArmed = true
 	m.noteErr("a request is running: " + repeat + " again to quit, or /abort it")
 	return m, nil
-}
-
-// stopFocused stops the subagent on the focused spawn row, asked twice so
-// a stray key does not throw away its work. Its siblings carry on.
-func (m Model) stopFocused() (Model, tea.Cmd) {
-	r := m.focused()
-	if r == nil || r.agent == nil || r.agent.ended {
-		return m, nil
-	}
-	if m.stopArmed != r.agent.id {
-		m.stopArmed = r.agent.id
-		m.noteErr("x again to stop " + r.agent.name + ", which still reports what it found")
-		return m, nil
-	}
-	m.stopArmed = uuid.Nil
-	return m, m.send(event.StopAgent{Agent: r.agent.id})
 }
 
 // abortRunning stops the open request. Cancels in flight, unlike a

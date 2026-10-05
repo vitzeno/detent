@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -31,7 +32,7 @@ func (m Model) Restore(records []event.Record) Model {
 	m.staleSignIns()
 	m.followNewest()
 	// Nothing waits on a question the old process asked.
-	m.asked, m.bound = nil, nil
+	m.asked, m.childAsks, m.bound = nil, nil, nil
 	m.backToInput()
 	return m
 }
@@ -108,7 +109,9 @@ func (m *Model) apply(ev event.Event) {
 
 	case event.ToolCallProposed:
 		if a := m.agents[v.Agent]; a != nil {
-			a.rows = append(a.rows, newCallRow(v))
+			r := newCallRow(v)
+			r.child = true
+			a.rows = append(a.rows, r)
 			a.calls++
 			a.last = termsafe.Printable(event.Command(v.Tool, v.Args))
 			m.touch(a)
@@ -122,9 +125,14 @@ func (m *Model) apply(ev event.Event) {
 		}
 
 	case event.ApprovalAsked:
-		// A child waiting on the human shows on its spawn row.
+		// A child waiting on the human shows on its row and in the agents block.
 		if a := m.agents[v.Agent]; a != nil {
+			m.childAsks = append(m.childAsks, v)
+			if a.waitingSince.IsZero() {
+				a.waitingSince = time.Now()
+			}
 			m.touch(a)
+			return
 		}
 		// One arriving behind the shown question leaves its scroll and settle alone.
 		m.asked = append(m.asked, v)
@@ -204,6 +212,7 @@ func (m *Model) apply(ev event.Event) {
 		// context, and TurnEnded's usage already counts the child's spend.
 		if a := m.agents[v.Agent]; a != nil {
 			a.used = a.used.Add(v.Usage)
+			a.ctx = v.Usage.PromptTokens
 			m.touch(a)
 			return
 		}
@@ -233,7 +242,7 @@ func (m *Model) endTurn(v event.TurnEnded) {
 		}
 	}
 	m.setCur(nil)
-	m.asked, m.bound = nil, nil
+	m.asked, m.childAsks, m.bound = nil, nil, nil
 	m.confirm = confirmState{}
 	m.waiting = false
 	m.tokens += v.Usage.Tokens()
@@ -278,6 +287,7 @@ func (m *Model) addAgent(v event.AgentStarted) {
 		r.agent, a.spawn = a, r
 	}
 	m.agents[v.Agent] = a
+	m.agentOrder = append(m.agentOrder, a)
 }
 
 // touch redraws the block holding an agent's spawn row, and no other.
@@ -356,7 +366,9 @@ func (m *Model) rolledBack(id uuid.UUID) {
 	}
 	// Their agents went with their spawn rows, so nothing stale can be inspected.
 	kept := m.rows()
-	maps.DeleteFunc(m.agents, func(_ uuid.UUID, a *agentState) bool { return !slices.Contains(kept, a.spawn) })
+	gone := func(a *agentState) bool { return !slices.Contains(kept, a.spawn) }
+	maps.DeleteFunc(m.agents, func(_ uuid.UUID, a *agentState) bool { return gone(a) })
+	m.agentOrder = slices.DeleteFunc(m.agentOrder, gone)
 	m.nav.cursor = min(m.nav.cursor, max(0, len(m.rows())-1))
 	m.noteOK("undone")
 }
@@ -365,6 +377,7 @@ func (m *Model) rolledBack(id uuid.UUID) {
 func (m *Model) clearHistory() {
 	m.blocks, m.cur = nil, nil
 	clear(m.agents)
+	m.agentOrder = nil
 	m.nav = navState{follow: true}
 	m.calls, m.steps, m.errors, m.views, m.tokens = 0, 0, 0, 0, 0
 	m.ctxTokens = 0

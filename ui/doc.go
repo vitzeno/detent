@@ -20,6 +20,7 @@
 //	slash.go        the slash registry
 //	panel.go        the /status, /help, /sessions, /mcp and /skills pages
 //	finder.go       ctrl+f: what the finder matches and where a jump lands
+//	inspector.go    one subagent's work, and answering its questions
 //	context.go      the /context page: what fills the model's context
 //	undo.go         the undo question
 //	forget.go       the /delete question
@@ -36,6 +37,8 @@
 //	view_detail.go  the output pane
 //	view_ask.go     the question boxes
 //	view_finder.go  the finder's box, laid over the panes
+//	view_inspector.go the inspector's box, laid over the panes the same way
+//	view_agents.go  the agents block pinned above history
 //	cache.go        the keys that let a block, history and the output pane skip a redraw
 //
 // # What leaves this package

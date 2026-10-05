@@ -13,7 +13,7 @@ import (
 // View returns the screen plus the terminal state that goes with it:
 // altscreen, background and keyboard enhancements are part of the view.
 func (m Model) View() tea.View {
-	v := tea.NewView(m.withFinder(m.baseView()))
+	v := tea.NewView(m.withOverlay(m.baseView()))
 	v.AltScreen = true
 	v.KeyboardEnhancements = tea.KeyboardEnhancements{}
 	// The palette only works against the ground it was picked for, so

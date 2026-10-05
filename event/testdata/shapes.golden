@@ -34,6 +34,7 @@ servers.listed Servers[].Tools int
 session.resumed Records int
 session.resumed Sandbox bool
 session.resumed Session uuid.UUID
+session.started ChildContextTokens int
 session.started Commit string
 session.started ContextTokens int
 session.started Instructions[] string

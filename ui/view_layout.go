@@ -31,7 +31,7 @@ func (m *Model) sizeViewport() {
 	// input grows with what is typed.
 	var bottom int
 	switch m.mode {
-	case modeInput, modeFinder:
+	case modeInput, modeFinder, modeInspector:
 		bottom = m.prompt.Rows() + 2
 	case modeConfirm:
 		bottom = len(strings.Split(m.confirmBox(), "\n"))
@@ -51,6 +51,7 @@ func (m *Model) sizeViewport() {
 	m.layout.outputColW, m.layout.histColW = widths[0], widths[1]
 	m.output.SetWidth(paneInner(m.layout.outputColW))
 	m.refreshViewport()
+	m.syncInspector()
 }
 
 // paneInner is what island.Render leaves for content.

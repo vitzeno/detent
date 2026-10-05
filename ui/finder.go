@@ -108,7 +108,7 @@ func (m Model) jump() Model {
 	}
 	m.nav.cursor, m.nav.follow = i, false
 	_, at := m.historyAll()
-	m.nav.histOffset = max(0, at-m.nav.histHeight/3)
+	m.nav.histOffset = max(0, at-m.histRows()/3)
 	if m.mode == modeInput {
 		m.nav.focus = focusHistory
 		m.prompt.Blur()

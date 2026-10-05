@@ -33,6 +33,8 @@ type SessionStarted struct {
 	// Subagents is whether the model may spawn them, and MaxAgents how many a Turn may.
 	Subagents bool `json:"Subagents"`
 	MaxAgents int  `json:"MaxAgents"`
+	// ChildContextTokens is one subagent's budget, which its Steps are measured against.
+	ChildContextTokens int `json:"ChildContextTokens"`
 	// Commit is the work tree's HEAD at start, empty outside git, so a session
 	// can be replayed against the code it was asked about.
 	Commit string `json:"Commit"`

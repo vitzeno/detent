@@ -44,6 +44,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.mode == modeFinder {
 		return m.finderKey(msg)
 	}
+	if m.mode == modeInspector {
+		return m.inspectorKey(msg)
+	}
 	switch msg.String() {
 	case "ctrl+f":
 		return m.openFinder("")
@@ -185,6 +188,10 @@ func (m Model) onEscape() (Model, tea.Cmd) {
 		m.prompt.Close()
 		return m, nil
 	}
+	if m.nav.inAgents {
+		m.nav.inAgents = false
+		return m, nil
+	}
 	if m.closePanel() {
 		return m, nil
 	}
@@ -256,6 +263,29 @@ func (m Model) confirmKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		m.scrollConfirm(room)
 	case "pgup":
 		m.scrollConfirm(-room)
+	}
+	return m, nil
+}
+
+// agentsKey moves in the pinned agents block, and leaves it on esc or a.
+func (m Model) agentsKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	agents := m.pinned()
+	if len(agents) == 0 {
+		m.nav.inAgents = false
+		return m, nil
+	}
+	m.nav.agentCursor = min(m.nav.agentCursor, min(len(agents), maxPinned)-1)
+	switch msg.String() {
+	case "up":
+		m.nav.agentCursor = max(0, m.nav.agentCursor-1)
+	case "down":
+		m.nav.agentCursor = min(min(len(agents), maxPinned)-1, m.nav.agentCursor+1)
+	case "enter":
+		return m.openInspector(agents[m.nav.agentCursor])
+	case "x":
+		return m.stopAgent(agents[m.nav.agentCursor])
+	case "a":
+		m.nav.inAgents = false
 	}
 	return m, nil
 }
@@ -342,6 +372,13 @@ func (m Model) outputKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	if m.nav.inAgents {
+		return m.agentsKey(msg)
+	}
+	if msg.String() == "a" && len(m.pinned()) > 0 {
+		m.nav.inAgents, m.nav.agentCursor = true, 0
+		return m, nil
+	}
 	if r := m.focused(); r != nil && r.signin != nil {
 		if next, cmd, ok := m.signInKey(r.signin, msg.String()); ok {
 			return next, cmd
@@ -358,6 +395,9 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	case "pgup", "pgdown":
 		return m.scrollViewport(msg.String())
 	case "enter":
+		if r := m.focused(); r != nil && r.agent != nil {
+			return m.openInspector(r.agent)
+		}
 		if r := m.focused(); r != nil && !r.running {
 			m.toggleExpand(r)
 		}
@@ -368,7 +408,9 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 	case "x":
-		return m.stopFocused()
+		if r := m.focused(); r != nil {
+			return m.stopAgent(r.agent)
+		}
 	}
 	var cmd tea.Cmd
 	m.output, cmd = m.output.Update(msg)

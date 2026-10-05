@@ -363,6 +363,7 @@ func (e *Engine) started() {
 		Recorded: e.recorded, Resumed: e.resumed,
 		ContextTokens: e.budget(), Instructions: e.instructions, Skills: e.skills,
 		Commit: e.commit, Subagents: e.childModel != nil, MaxAgents: e.offered(),
+		ChildContextTokens: e.childContext,
 	})
 }
 

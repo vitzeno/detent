@@ -395,6 +395,13 @@ func TestSessionStarted_NamesTheCommit(t *testing.T) {
 	assert.Equal(t, "98d2dd2", started.Commit)
 }
 
+// A front-end measures a subagent's Steps against its own budget.
+func TestSessionStarted_CarriesTheChildBudget(t *testing.T) {
+	r := newRig(t, nil, WithContextTokens(50_000), WithAgentLimits(0, 80_000, 0))
+	started := r.await(event.SessionStartedKind).(event.SessionStarted)
+	assert.Equal(t, 50_000, started.ChildContextTokens, "never more than the whole window")
+}
+
 // Unset means the default applies, not that there is no budget: a
 // front-end showing "no limit" would be wrong.
 func TestSessionStarted_ReportsTheDefaultBudgetWhenUnset(t *testing.T) {

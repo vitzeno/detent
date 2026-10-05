@@ -643,6 +643,13 @@ adding a fat dependency fails with the transitive import named.
   on you, then how it ended). Its own rows live on its `agentState`,
   never in a Turn block, and its Steps never move the counters or the
   `ctx %` gauge, which are the root's. `x` twice on that row stops it.
+  While a request has subagents they are pinned above history
+  (`view_agents.go`), blocked first, with how full each one's context is.
+  `a` enters that block, and `enter` on it or on a spawn row opens the
+  inspector: that agent's rows and output, laid over the panes as the
+  finder is. A subagent's question never raises the box: it waits on its
+  agent, marked `!`, and is answered in the inspector with the box's
+  guards, the settle and the whole command read.
   Approvals queue in the order asked and the box shows the first, with how
   many wait. Each one shown starts unscrolled and unread, and settles anew,
   and the engine delivers each answer to its own tool call by id.

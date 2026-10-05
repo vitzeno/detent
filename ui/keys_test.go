@@ -2,17 +2,20 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/ui/island"
 )
 
 // Typing and pressing enter must publish a prompt. This is the whole
@@ -211,16 +214,189 @@ func TestApply_StopKeySendsStopAgentForTheFocusedSpawn(t *testing.T) {
 	assert.Equal(t, event.StopAgent{Agent: sp.agent}, k.intentOf(t, event.StopAgentKind))
 }
 
-func TestApprovalBox_NamesTheAgent(t *testing.T) {
+// A child's question waits in the agents block, not in the box, so it never
+// takes the keys from whatever the human is doing.
+func TestApproval_AChildsQuestionTakesNoKeys(t *testing.T) {
 	k := newKeyed(t)
 	sp := spawnIn(&k.m, "explore")
-	call := uuid.Must(uuid.NewV7())
-	k.m.apply(event.ToolCallProposed{ToolCall: call, Tool: "read_file", Agent: sp.agent})
-	k.m.apply(event.ApprovalAsked{ToolCall: call, Tool: "read_file", Agent: sp.agent})
+	childAsks(&k.m, sp, "cat secrets.env")
+
+	assert.Equal(t, modeInput, k.m.mode)
+	assert.Nil(t, k.m.asking(), "the box shows only the root's questions")
+	assert.Contains(t, ansi.Strip(k.m.statusBar()), "agents 1 · 1 !", "a blocked child shows from anywhere")
+	assert.Contains(t, ansi.Strip(k.m.statusBar()), "an agent is waiting on you")
+}
+
+func TestInspector_OpensOnTheBlockedCall(t *testing.T) {
+	k := inspecting(t)
+	assert.Equal(t, modeInspector, k.m.mode)
+	require.NotNil(t, k.m.askOf(k.m.inspectorRow()))
+	assert.Contains(t, ansi.Strip(k.m.inspectorBox()), "! blocked")
+	assert.Contains(t, ansi.Strip(k.m.inspectorBox()), "y run · n decline")
+	frame := strings.Split(k.m.View().Content, "\n")
+	assert.Len(t, frame, k.m.layout.height, "the frame fills the screen and no more")
+}
+
+func TestInspector_OpensOnTheReportWhenDone(t *testing.T) {
+	k := newKeyed(t)
+	sp := spawnIn(&k.m, "explore")
+	k.m.apply(event.AgentEnded{Agent: sp.agent, Reason: event.AgentDone})
+	k.m.apply(event.ToolCallEnded{ToolCall: sp.spawn, Result: event.Result{Stdout: "the report"}})
+	focusSpawn(k)
+	k.press(t, "enter")
+	assert.Equal(t, sp.spawn, k.m.inspectorRow().id)
+}
+
+// Answered in the inspector, a question keeps the box's guards: the settle,
+// then every line of the command read.
+func TestInspector_AnswersWithTheBoxsGuards(t *testing.T) {
+	k := inspecting(t)
+	k.press(t, "y")
+	k.noIntent(t)
+
+	k.m.insp.shownAt = time.Now().Add(-2 * time.Hour)
+	k.press(t, "y")
+	got, ok := k.intent(t).(event.ResolveApproval)
+	require.True(t, ok)
+	assert.True(t, got.Approved)
+	assert.Nil(t, k.m.askOf(k.m.inspectorRow()), "an answered question leaves the agent unblocked")
+}
+
+func TestInspector_ATallCommandMustBeReadFirst(t *testing.T) {
+	k := inspecting(t, tallCommand("rm -rf ~/important"))
+	k.m.insp.shownAt = time.Now().Add(-2 * time.Hour)
+	k.press(t, "y")
+	k.noIntent(t)
+	assert.Contains(t, k.m.notice.text, "read to the end")
+
+	k.press(t, "tab")
+	for range 100 {
+		k.press(t, "pgdown")
+	}
+	assert.Contains(t, ansi.Strip(k.m.inspectorBox()), "rm -rf ~/important")
+	k.press(t, "y")
+	assert.IsType(t, event.ResolveApproval{}, k.intent(t))
+}
+
+// The root's question waits for the inspector to close, as for the finder,
+// so a key typed there never answers it.
+func TestInspector_ARootQuestionWaitsUntilItCloses(t *testing.T) {
+	k := inspecting(t)
+	k.m.apply(asked(uuid.Must(uuid.NewV7()), "rm -rf build"))
+	assert.Equal(t, modeInspector, k.m.mode, "the question did not take the screen")
+	k.press(t, "n")
+	assert.NotNil(t, k.m.asking(), "n in the inspector answered the root's question")
+
+	k.press(t, "esc")
+	assert.Equal(t, modeConfirm, k.m.mode, "it comes up once the inspector closes")
+}
+
+func TestInspector_EscClosesAndAnswersNothing(t *testing.T) {
+	k := inspecting(t)
+	k.m.insp.shownAt = time.Now().Add(-2 * time.Hour)
+	k.press(t, "esc")
+	assert.Equal(t, modeInput, k.m.mode)
+	k.noIntent(t)
+	assert.Len(t, k.m.childAsks, 1, "the question still waits")
+}
+
+func TestInspector_ArrowsMoveBetweenAgentsInSpawnOrder(t *testing.T) {
+	k := newKeyed(t)
+	first := spawnIn(&k.m, "first")
+	second := spawnAlso(&k.m, first.turn, "second")
+	focusSpawn(k)
+	k.press(t, "enter")
+	assert.Equal(t, first.agent, k.m.insp.agent.id)
+	k.press(t, "right")
+	assert.Equal(t, second.agent, k.m.insp.agent.id)
+	k.press(t, "right")
+	assert.Equal(t, second.agent, k.m.insp.agent.id, "the last stays the last")
+	k.press(t, "left")
+	assert.Equal(t, first.agent, k.m.insp.agent.id)
+}
+
+func TestInspector_StopKeyStopsThisAgent(t *testing.T) {
+	k := inspecting(t)
+	k.press(t, "x")
+	k.noIntent(t)
+	k.press(t, "x")
+	assert.Equal(t, event.StopAgent{Agent: k.m.insp.agent.id}, k.intentOf(t, event.StopAgentKind))
+}
+
+func TestInspector_DefusesWhatTheChildWrote(t *testing.T) {
+	k := newKeyed(t)
+	sp := spawnIn(&k.m, "explore")
+	k.m.apply(event.ModelText{Turn: sp.turn, Text: "look\x1b]52;c;cm0gLXJmIH4=\x07 here", Agent: sp.agent})
+	focusSpawn(k)
+	k.press(t, "enter")
+	k.press(t, "down")
+	assert.NotContains(t, k.m.inspectorBox(), "\x1b]52", "an escape the child wrote reached the terminal")
+}
+
+func TestAgentsBlock_OrdersBlockedFirstAndCapsRows(t *testing.T) {
+	k := newKeyed(t)
+	sp := spawnIn(&k.m, "a0")
+	last := sp
+	for i := 1; i < 6; i++ {
+		last = spawnAlso(&k.m, sp.turn, fmt.Sprintf("a%d", i))
+	}
+	childAsks(&k.m, last, "cat x")
 	k.m.sizeViewport()
 
-	assert.Contains(t, ansi.Strip(k.m.confirmBox()), "from explore")
-	assert.Contains(t, ansi.Strip(k.m.statusBar()), "agents 1 · 1 !", "a blocked child shows from anywhere")
+	block := ansi.Strip(strings.Join(k.m.pinnedLines(), "\n"))
+	require.Contains(t, block, "a5", "the blocked one is shown, though it started last")
+	assert.Less(t, strings.Index(block, "a5"), strings.Index(block, "a0"), "and comes first")
+	assert.Contains(t, block, "+2 more", "four rows and a count of the rest")
+	assert.NotContains(t, block, "a4")
+}
+
+func TestAgentsBlock_UnpinsWhenTheTurnEnds(t *testing.T) {
+	k := newKeyed(t)
+	sp := spawnIn(&k.m, "explore")
+	require.NotEmpty(t, k.m.pinnedLines())
+	k.m.apply(event.TurnEnded{Turn: sp.turn, Reason: event.EndDone})
+	assert.Empty(t, k.m.pinnedLines())
+	assert.Len(t, k.m.rows(), 1, "its spawn row stays in history")
+}
+
+func TestAgentsBlock_NoLineWiderThanThePane(t *testing.T) {
+	for _, width := range []int{60, 80, 120, 200} {
+		k := newKeyed(t)
+		k.m.layout.width = width
+		sp := spawnIn(&k.m, "a-name-much-longer-than-a-row-has-room-for")
+		childAsks(&k.m, sp, "cat x")
+		k.m.sizeViewport()
+		for _, l := range k.m.historyPaneLines() {
+			assert.LessOrEqual(t, lipgloss.Width(l), island.Inner(k.m.layout.histColW), "width %d", width)
+		}
+	}
+}
+
+// The block takes rows from history, and following still shows the newest.
+func TestHistory_ShrinksToMakeRoomForTheBlock(t *testing.T) {
+	k := newKeyed(t)
+	sp := spawnIn(&k.m, "explore")
+	for i := range 40 {
+		k.m.apply(event.ToolCallProposed{ToolCall: uuid.Must(uuid.NewV7()), Tool: "bash",
+			Args: map[string]any{"command": fmt.Sprintf("echo %d", i)}})
+	}
+	k.m.sizeViewport()
+	lines := k.m.historyPaneLines()
+	assert.Len(t, lines, k.m.nav.histHeight, "the block and history share the pane")
+	assert.Contains(t, ansi.Strip(lines[len(lines)-1]), "echo 39")
+	_ = sp
+}
+
+func TestAgentsBlock_AKeyEntersAndEnterOpens(t *testing.T) {
+	k := newKeyed(t)
+	sp := spawnIn(&k.m, "explore")
+	k.m.nav.focus = focusHistory
+	k.m.prompt.Blur()
+	k.press(t, "a")
+	assert.True(t, k.m.nav.inAgents)
+	k.press(t, "enter")
+	assert.Equal(t, modeInspector, k.m.mode)
+	assert.Equal(t, sp.agent, k.m.insp.agent.id)
 }
 
 // A command taller than the screen must not be approvable from its
@@ -459,6 +635,39 @@ func newKeyed(t *testing.T) *keyed {
 	return &keyed{m: m, bus: bus, seen: seen}
 }
 
+// inspecting is the inspector open on a child waiting on cmd, a settle of an
+// hour holding every key until a test moves it.
+func inspecting(t *testing.T, cmd ...string) *keyed {
+	t.Helper()
+	was := questionSettle
+	questionSettle = time.Hour
+	t.Cleanup(func() { questionSettle = was })
+	k := newKeyed(t)
+	sp := spawnIn(&k.m, "migrate")
+	childAsks(&k.m, sp, append(cmd, "psql -c 'DROP COLUMN legacy_id'")[0])
+	focusSpawn(k)
+	k.press(t, "enter")
+	require.Equal(t, modeInspector, k.m.mode)
+	return k
+}
+
+// childAsks has sp's child propose cmd and wait on the human for it.
+func childAsks(m *Model, sp spawn, cmd string) {
+	call := uuid.Must(uuid.NewV7())
+	args := map[string]any{"command": cmd}
+	m.apply(event.StepStarted{Turn: sp.turn, Step: uuid.Must(uuid.NewV7()), N: 1, Agent: sp.agent})
+	m.apply(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: args, Agent: sp.agent})
+	m.apply(event.ApprovalAsked{ToolCall: call, Tool: "bash", Args: args, Rationale: "regex: drop column", Agent: sp.agent})
+}
+
+// focusSpawn puts the history cursor on the first spawn row.
+func focusSpawn(k *keyed) {
+	k.m.nav.focus, k.m.nav.follow = focusHistory, false
+	k.m.prompt.Blur()
+	k.m.nav.cursor = slices.IndexFunc(k.m.rows(), func(r *historyRow) bool { return r.agent != nil })
+	k.m.sizeViewport()
+}
+
 // queued is a Turn with a question per command, the first settled and up. A
 // settle of an hour means any question raised later holds back every key.
 func queued(t *testing.T, cmds ...string) *keyed {
@@ -567,8 +776,16 @@ func keyCode(key string) rune {
 		return tea.KeyTab
 	case "down":
 		return tea.KeyDown
+	case "up":
+		return tea.KeyUp
+	case "left":
+		return tea.KeyLeft
+	case "right":
+		return tea.KeyRight
 	case "pgdown":
 		return tea.KeyPgDown
+	case "pgup":
+		return tea.KeyPgUp
 	}
 	return rune(key[0])
 }

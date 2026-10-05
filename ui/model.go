@@ -42,8 +42,11 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	spinner spinner.Model
 
 	blocks []*turnBlock
-	// agents are the subagents history's spawn rows draw, by id.
-	agents map[uuid.UUID]*agentState
+	// agents are the subagents history's spawn rows draw, by id, and
+	// agentOrder the same in the order they started.
+	agents     map[uuid.UUID]*agentState
+	agentOrder []*agentState
+	insp       inspectorState
 	// hist is the assembled history, behind a pointer so the copy of
 	// Model that View works on can still fill it.
 	hist *histCache
@@ -60,9 +63,12 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	// asked and bound are the two questions the engine can put to a
 	// human. Both are answered by publishing, never by calling. Approvals
 	// queue in the order raised, and the box shows the first.
-	asked   []event.ApprovalAsked
-	bound   *event.BoundReached
-	confirm confirmState
+	asked []event.ApprovalAsked
+	// childAsks are subagents' questions, answered in the inspector, so one
+	// never takes the keys from whatever the human is doing.
+	childAsks []event.ApprovalAsked
+	bound     *event.BoundReached
+	confirm   confirmState
 	// askedAt is when the current question went up, for settling.
 	askedAt time.Time
 
@@ -358,12 +364,20 @@ func (m Model) asking() *event.ApprovalAsked {
 // unask takes a call's question off the queue. When it was the one shown,
 // the next starts fresh: unscrolled, unread, and settling again.
 func (m *Model) unask(call uuid.UUID) {
+	if i := slices.IndexFunc(m.childAsks, func(a event.ApprovalAsked) bool { return a.ToolCall == call }); i >= 0 {
+		a := m.agents[m.childAsks[i].Agent]
+		m.childAsks = slices.Delete(m.childAsks, i, i+1)
+		if a != nil {
+			if !m.blocked(a) {
+				a.waitingSince = time.Time{}
+			}
+			m.touch(a)
+		}
+		return
+	}
 	i := slices.IndexFunc(m.asked, func(a event.ApprovalAsked) bool { return a.ToolCall == call })
 	if i < 0 {
 		return
-	}
-	if a := m.agents[m.asked[i].Agent]; a != nil {
-		m.touch(a)
 	}
 	m.asked = slices.Delete(m.asked, i, i+1)
 	if i > 0 {
@@ -387,7 +401,7 @@ func (m Model) settling() bool { return time.Since(m.askedAt) < questionSettle }
 // askingOwn is whether the human is in something they opened, which a fact
 // must not pull out from under them: a key typed there must never answer it.
 func (m Model) askingOwn() bool {
-	return m.mode == modeUndo || m.mode == modeForget || m.mode == modeFinder
+	return m.mode == modeUndo || m.mode == modeForget || m.mode == modeFinder || m.mode == modeInspector
 }
 
 // trackNewest keeps up with a new row only while following, so a human reading

@@ -135,7 +135,7 @@ func TestFinder_DrawsInsideTheScreen(t *testing.T) {
 		k.ctrl(t, 'f')
 		k.finderType(t, "tls")
 
-		screen := strings.Split(k.m.withFinder(k.m.baseView()), "\n")
+		screen := strings.Split(k.m.withOverlay(k.m.baseView()), "\n")
 		base := strings.Split(k.m.baseView(), "\n")
 		assert.Len(t, screen, len(base), "width %d", w)
 		for i, l := range screen {

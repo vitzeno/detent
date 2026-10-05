@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/layout"
@@ -27,11 +28,17 @@ const contPrefix = "    "
 // historyPaneLines is what sizeViewport laid out. The fallback is the first
 // frame, which lands before any Update.
 func (m Model) historyPaneLines() []string {
-	if m.nav.histWindow != nil {
-		return m.nav.histWindow
+	window := m.nav.histWindow
+	if window == nil {
+		window, _ = m.historyWindow()
 	}
-	window, _ := m.historyWindow()
-	return window
+	// Drawn each frame rather than cached: a few short lines, and its spinner ticks.
+	return append(m.pinnedLines(), window...)
+}
+
+// histRows is the history pane's height less the pinned agents block above it.
+func (m Model) histRows() int {
+	return max(1, m.nav.histHeight-len(m.pinnedLines()))
 }
 
 // historyWindow returns the visible slice and the offset it settled
@@ -39,25 +46,26 @@ func (m Model) historyPaneLines() []string {
 func (m Model) historyWindow() (window []string, offset int) {
 	// Only the tail is on screen, so only the tail is drawn. Offset is
 	// -1 because no total was counted, and navUp pins one before it matters.
+	height := m.histRows()
 	if m.nav.follow {
-		lines := m.historyTail(m.nav.histHeight)
-		if len(lines) > m.nav.histHeight {
-			lines = lines[len(lines)-m.nav.histHeight:]
+		lines := m.historyTail(height)
+		if len(lines) > height {
+			lines = lines[len(lines)-height:]
 		}
 		return lines, -1
 	}
 
 	lines, cursorLine := m.historyAll()
 	start := 0
-	if len(lines) > m.nav.histHeight {
+	if len(lines) > height {
 		start = m.nav.histOffset
 		start = min(start, cursorLine)
-		if cursorLine >= start+m.nav.histHeight {
-			start = cursorLine - m.nav.histHeight + 1
+		if cursorLine >= start+height {
+			start = cursorLine - height + 1
 		}
 		start = max(start, 0)
 	}
-	return lines[start:min(start+m.nav.histHeight, len(lines))], start
+	return lines[start:min(start+height, len(lines))], start
 }
 
 // historyAll is every line and the cursor's, cached whole since Update
@@ -236,7 +244,7 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 		s.ExitCode = r.result.ExitCode
 		s.Err = r.result.Err != ""
 		s.Summary = resultSummary(r.result)
-		s.NoVerdict = r.human
+		s.NoVerdict = r.human || r.child
 		if r.post != nil {
 			s.Judged = true
 			s.Status = r.post.status
@@ -260,9 +268,10 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 			icon = styleCaution.Render("!") + icon
 		}
 		head := lipgloss.Width(stripStyle(mark)) + lipgloss.Width(icon) + 1
-		name := min(lipgloss.Width("◆ "+a.name), maxAgentName)
+		name := min(lipgloss.Width("◆ "+a.name), maxAgentName, max(layout.MinTruncate, m.blockWidth()-head-1))
 		tail := layout.Truncate("· "+m.agentDetail(r), max(0, m.blockWidth()-head-name-1))
-		return []string{fmt.Sprintf("%s%s %s %s", mark, icon, agentCell(a, name), styleMuted.Render(tail))}
+		line := fmt.Sprintf("%s%s %s %s", mark, icon, agentCell(a, name), styleMuted.Render(tail))
+		return []string{ansi.Truncate(line, m.blockWidth(), "…")}
 	}
 
 	// Truncated, not wrapped: a command is often one unbreakable token.
@@ -313,7 +322,7 @@ func (m Model) agentDetail(r *historyRow) string {
 
 // blocked is whether a subagent has a question waiting on the human.
 func (m Model) blocked(a *agentState) bool {
-	return slices.ContainsFunc(m.asked, func(q event.ApprovalAsked) bool { return q.Agent == a.id })
+	return slices.ContainsFunc(m.childAsks, func(q event.ApprovalAsked) bool { return q.Agent == a.id })
 }
 
 // commandCell is a row's command in width cells: the tool's name in its

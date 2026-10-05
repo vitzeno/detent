@@ -605,6 +605,15 @@ func spawnIn(m *Model, name string) spawn {
 	return sp
 }
 
+// spawnAlso starts another subagent in the same Turn.
+func spawnAlso(m *Model, turn uuid.UUID, name string) spawn {
+	sp := spawn{turn: turn, spawn: uuid.Must(uuid.NewV7()), agent: uuid.Must(uuid.NewV7())}
+	m.apply(event.ToolCallProposed{ToolCall: sp.spawn, Tool: spawnTool, Args: map[string]any{"task": "find it"}})
+	m.apply(event.ToolCallStarted{ToolCall: sp.spawn, Runner: "agent"})
+	m.apply(event.AgentStarted{Agent: sp.agent, ToolCall: sp.spawn, Name: name, Task: "find it"})
+	return sp
+}
+
 // childCall is a call the subagent made, its command as a headline.
 func childCall(sp spawn, headline string) event.ToolCallProposed {
 	tool, arg, _ := strings.Cut(headline, " ")

@@ -66,8 +66,10 @@ type historyRow struct {
 	// executor is empty for a shell command. Anything else ran outside
 	// the sandbox, so no checkpoint can take it back.
 	executor string
-	// human is a command the person typed, not one the model proposed.
+	// human is a command the person typed, not one the model proposed, and
+	// child one a subagent ran, which the judge never grades either.
 	human bool
+	child bool
 	// signin is set on a row that is a server asking to be signed in to.
 	signin *signInState
 	// agent is set on a spawn_agent row, which draws the subagent it started.
@@ -109,10 +111,14 @@ type agentState struct {
 	// calls counts what it asked for, and last is the newest one's headline.
 	calls int
 	last  string
-	// used is its own spend, from its Steps.
-	used   event.Usage
-	ended  bool
-	reason event.AgentReason
+	// used is its own spend, from its Steps, and ctx its last prompt's size,
+	// which is how full its context is.
+	used event.Usage
+	ctx  int
+	// waitingSince is when its question went up, zero while none waits.
+	waitingSince time.Time
+	ended        bool
+	reason       event.AgentReason
 }
 
 // verdict is the post-execution read, when one arrived.
