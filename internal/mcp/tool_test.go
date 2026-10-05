@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/tool"
 )
 
@@ -45,7 +46,7 @@ func TestToolName_KeepsTheToolsOwnNameUnderALongServerName(t *testing.T) {
 // One verbose server must not swell every request, and a schema an
 // endpoint would refuse must not fail every Step.
 func TestSpecOf_BoundsWhatAServerSends(t *testing.T) {
-	long := specOf("srv", &sdk.Tool{Name: "x", Description: strings.Repeat("é", 3000)})
+	long := specOf("srv", &sdk.Tool{Name: "x", Description: strings.Repeat("é", 3000)}, true)
 	assert.LessOrEqual(t, len(long.Description), maxDescription+len(" [truncated]"))
 	assert.True(t, utf8.ValidString(long.Description))
 	assert.Contains(t, long.Description, "[truncated]")
@@ -55,7 +56,7 @@ func TestSpecOf_BoundsWhatAServerSends(t *testing.T) {
 		map[string]any{},
 		nil,
 	} {
-		got := specOf("srv", &sdk.Tool{Name: "x", InputSchema: schema}).Raw
+		got := specOf("srv", &sdk.Tool{Name: "x", InputSchema: schema}, true).Raw
 		assert.Equal(t, "object", got["type"], "%v", schema)
 	}
 }
@@ -66,7 +67,7 @@ func TestRegister_ABuiltInAlwaysWins(t *testing.T) {
 	before, _ := reg.Lookup("bash")
 
 	s := &Server{Name: "bash"} // namespaces to bash__bash, not bash
-	added := Register(reg, s, []*sdk.Tool{{Name: "bash", InputSchema: map[string]any{"type": "object"}}})
+	added := registerTools(reg, s, []*sdk.Tool{{Name: "bash", InputSchema: map[string]any{"type": "object"}}}, true)
 
 	after, _ := reg.Lookup("bash")
 	assert.Equal(t, before, after, "a server replaced a built-in")
@@ -80,8 +81,8 @@ func TestRegister_RenamesRatherThanReplaces(t *testing.T) {
 	s := &Server{Name: "srv"}
 	long := strings.Repeat("y", 200)
 
-	first := Register(reg, s, []*sdk.Tool{{Name: long, InputSchema: map[string]any{"type": "object"}}})
-	second := Register(reg, s, []*sdk.Tool{{Name: long, InputSchema: map[string]any{"type": "object"}}})
+	first := registerTools(reg, s, []*sdk.Tool{{Name: long, InputSchema: map[string]any{"type": "object"}}}, true)
+	second := registerTools(reg, s, []*sdk.Tool{{Name: long, InputSchema: map[string]any{"type": "object"}}}, true)
 
 	require.Len(t, first, 1)
 	require.Len(t, second, 1)
@@ -107,9 +108,9 @@ func TestRegister_PassesTheSchemaThrough(t *testing.T) {
 		},
 		"required": []any{"query"},
 	}
-	added := Register(reg, &Server{Name: "srv"}, []*sdk.Tool{
+	added := registerTools(reg, &Server{Name: "srv"}, []*sdk.Tool{
 		{Name: "search", Description: "finds things", InputSchema: schema},
-	})
+	}, true)
 	require.Len(t, added, 1)
 
 	tl, ok := reg.Lookup(added[0].Name())
@@ -131,7 +132,7 @@ func TestRegister_FromALiveServer(t *testing.T) {
 	require.NoError(t, err)
 
 	reg := tool.Standard()
-	added := Register(reg, s, tools)
+	added := registerTools(reg, s, tools, true)
 	assert.ElementsMatch(t, []string{"fake__alpha", "fake__beta"}, names(added))
 
 	call, err := reg.Prepare("fake__alpha", nil)
@@ -147,9 +148,9 @@ func TestRegister_FromALiveServer(t *testing.T) {
 // nullable, which an arbitrary schema will not have.
 func TestSchemas_ARawSchemaIsNotOfferedAsStrict(t *testing.T) {
 	reg := tool.Standard()
-	added := Register(reg, &Server{Name: "srv"}, []*sdk.Tool{
+	added := registerTools(reg, &Server{Name: "srv"}, []*sdk.Tool{
 		{Name: "search", InputSchema: map[string]any{"type": "object"}},
-	})
+	}, true)
 
 	var sawMCP, sawBuiltIn bool
 	for _, s := range reg.Schemas() {
@@ -170,9 +171,9 @@ func TestSchemas_ARawSchemaIsNotOfferedAsStrict(t *testing.T) {
 // published it and says what was wrong as a tool result.
 func TestPrepare_DoesNotValidateARawSchema(t *testing.T) {
 	reg := tool.Standard()
-	added := Register(reg, &Server{Name: "srv"}, []*sdk.Tool{
+	added := registerTools(reg, &Server{Name: "srv"}, []*sdk.Tool{
 		{Name: "search", InputSchema: map[string]any{"type": "object"}},
-	})
+	}, true)
 
 	call, err := reg.Prepare(added[0].Name(), map[string]any{"anything": "at all", "nested": map[string]any{"a": 1}})
 	require.NoError(t, err, "arguments were rejected before the server ever saw them")
@@ -191,9 +192,9 @@ func TestPrepare_StillValidatesABuiltIn(t *testing.T) {
 // with nothing to run it describes the call.
 func TestPrepare_CommandDescribesTheToolCall(t *testing.T) {
 	reg := tool.Standard()
-	added := Register(reg, &Server{Name: "github"}, []*sdk.Tool{
+	added := registerTools(reg, &Server{Name: "github"}, []*sdk.Tool{
 		{Name: "create_issue", InputSchema: map[string]any{"type": "object"}},
-	})
+	}, true)
 
 	call, err := reg.Prepare(added[0].Name(), map[string]any{"repo": "detent", "title": "it broke"})
 	require.NoError(t, err)
@@ -213,6 +214,31 @@ func TestPrepare_AShellToolHasNoExecutor(t *testing.T) {
 
 // legal is what a chat-completions request accepts, which is narrower
 // than what MCP allows: no dots, and half the length.
+// A server's read-only claim is taken only when trusted. A destructive one
+// can only add caution, so it always shows.
+func TestSpec_MutabilityFollowsTheServersHints(t *testing.T) {
+	yes, no := true, false
+	for _, tt := range []struct {
+		name  string
+		hints *sdk.ToolAnnotations
+		trust bool
+		want  string
+	}{
+		{"no annotations", nil, true, ""},
+		{"no claim", &sdk.ToolAnnotations{}, true, ""},
+		{"read-only", &sdk.ToolAnnotations{ReadOnlyHint: true}, true, event.MutRead},
+		{"read-only, untrusted", &sdk.ToolAnnotations{ReadOnlyHint: true}, false, ""},
+		{"destructive", &sdk.ToolAnnotations{DestructiveHint: &yes}, true, event.MutIrreversible},
+		{"destructive, untrusted", &sdk.ToolAnnotations{DestructiveHint: &yes}, false, event.MutIrreversible},
+		{"says not destructive", &sdk.ToolAnnotations{DestructiveHint: &no}, true, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := specOf("srv", &sdk.Tool{Name: "x", Annotations: tt.hints}, tt.trust)
+			assert.Equal(t, tt.want, got.Mutability)
+		})
+	}
+}
+
 func legal(t *testing.T, name string) {
 	t.Helper()
 	require.LessOrEqual(t, len(name), 64, "%q is too long for an endpoint", name)

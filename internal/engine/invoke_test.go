@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -114,6 +115,41 @@ func TestExecute_DecliningARemoteToolCallLeavesItsSiblings(t *testing.T) {
 	assert.Equal(t, []string{"echo still here"}, r.runner.commands())
 }
 
+// A server's read-only tools run unasked, and together, like any other reads.
+func TestStep_HintedRemoteReadsRunTogetherUnasked(t *testing.T) {
+	reg := tool.Standard()
+	for _, name := range []string{"srv__list", "srv__get"} {
+		require.NoError(t, reg.Register(remoteTool{name: name, mut: event.MutRead}))
+	}
+	in := &pairInvoker{}
+	in.wg.Add(2)
+	r := rigWithTools(t, event.New(), &fakeModel{replies: []model.Reply{{Requests: []event.ToolRequest{
+		{ID: "a", Name: "srv__list", Args: map[string]any{}},
+		{ID: "b", Name: "srv__get", Args: map[string]any{}},
+	}}}}, &fakeRunner{}, reg, WithInvoker(in))
+	r.run("look")
+
+	assert.Empty(t, r.of(event.ApprovalAskedKind), "a declared read was confirmed")
+	for _, ev := range r.of(event.ToolCallEndedKind) {
+		assert.Equal(t, "together", ev.(event.ToolCallEnded).Result.Stdout)
+	}
+}
+
+// pairInvoker answers only once two calls are in flight at the same time.
+type pairInvoker struct{ wg sync.WaitGroup }
+
+func (p *pairInvoker) Invoke(context.Context, tool.Call) capture.Result {
+	p.wg.Done()
+	both := make(chan struct{})
+	go func() { p.wg.Wait(); close(both) }()
+	select {
+	case <-both:
+		return capture.Result{Stdout: "together"}
+	case <-time.After(2 * time.Second):
+		return capture.Result{Stdout: "alone"}
+	}
+}
+
 // fakeInvoker answers a tool call the way a connected server would.
 type fakeInvoker struct {
 	mu    sync.Mutex
@@ -138,13 +174,14 @@ func (f *fakeInvoker) calls() []tool.Call {
 	return append([]tool.Call(nil), f.saw...)
 }
 
-// remoteTool is one an Invoker answers, not a Runner.
-type remoteTool struct{ name string }
+// remoteTool is one an Invoker answers, not a Runner. mut is what its
+// server claims it does.
+type remoteTool struct{ name, mut string }
 
 func (r remoteTool) Name() string { return r.name }
 func (r remoteTool) Describe() tool.Spec {
 	return tool.Spec{Description: "a remote thing", Executor: "srv",
-		Raw: map[string]any{"type": "object"}}
+		Raw: map[string]any{"type": "object"}, Mutability: r.mut}
 }
 func (r remoteTool) Lower(a tool.Args) (string, error) { return event.Command(r.name, a), nil }
 

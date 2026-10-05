@@ -291,14 +291,23 @@ func TestDescribe_ReadsAsASentence(t *testing.T) {
 	assert.Empty(t, describe(event.Risk{ScopeRisk: -1}))
 }
 
-// Every MCP tool call is confirmed: it runs outside the sandbox and no
-// checkpoint can undo it.
-func TestMCPFloor_ConfirmsEveryRemoteToolCall(t *testing.T) {
+// An MCP tool call is confirmed unless declared read-only: it runs outside
+// the sandbox and no checkpoint can undo it.
+func TestMCPFloor_StillFlagsAnUnhintedTool(t *testing.T) {
+	for _, mut := range []string{"", event.MutUnknown, event.MutIrreversible} {
+		risk, err := mcpFloor{}.Assess(context.Background(),
+			tool.Call{Tool: "github__create_issue", Executor: "github", Mutability: mut}, event.Risk{})
+		require.NoError(t, err)
+		assert.True(t, risk.Dangerous, "mutability %q", mut)
+		assert.Contains(t, risk.Note, "github")
+	}
+}
+
+func TestMCPFloor_LetsADeclaredReadThrough(t *testing.T) {
 	risk, err := mcpFloor{}.Assess(context.Background(),
-		tool.Call{Tool: "github__create_issue", Executor: "github"}, event.Risk{})
+		tool.Call{Tool: "github__list_issues", Executor: "github", Mutability: event.MutRead}, event.Risk{})
 	require.NoError(t, err)
-	assert.True(t, risk.Dangerous)
-	assert.Contains(t, risk.Note, "github")
+	assert.False(t, risk.Dangerous)
 }
 
 // A shell tool call must not pick it up, or everything would need approval.

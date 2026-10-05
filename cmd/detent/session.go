@@ -188,7 +188,11 @@ func (s *session) buildEngine() error {
 		return err
 	}
 	// Held now, filled later, so nothing waits on a server to draw.
-	s.servers = mcppkg.NewInvokers()
+	var hints []mcppkg.InvokersOption
+	if !s.cfg.TrustsMCPHints() {
+		hints = append(hints, mcppkg.WithoutHints())
+	}
+	s.servers = mcppkg.NewInvokers(hints...)
 	s.sd.servers = s.servers
 	opts = append(opts, engine.WithInvoker(s.servers))
 

@@ -3,11 +3,13 @@ package mcp
 import (
 	"context"
 	"testing"
+	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/tool"
 )
 
@@ -59,13 +61,61 @@ func TestInvokers_CloseEndsEveryServer(t *testing.T) {
 	for _, s := range []*Server{a, b} {
 		tools, err := s.Tools(context.Background())
 		require.NoError(t, err)
-		in.add(Register(tool.Standard(), s, tools)...)
+		in.add(registerTools(tool.Standard(), s, tools, true)...)
 	}
 	require.Len(t, in.Servers(), 2)
 	require.NoError(t, in.Close())
 
 	assert.NotZero(t, a.Call(context.Background(), "one", nil).ExitCode)
 	assert.NotZero(t, b.Call(context.Background(), "two", nil).ExitCode)
+}
+
+// Hinted reads now run in parallel, which MCP calls never did before.
+func TestServer_TwoCallsInFlightBothAnswer(t *testing.T) {
+	release := make(chan struct{})
+	held := fake{name: "held", handle: func(ctx context.Context, _ *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "late"}}}, nil
+	}}
+	s := serve(t, held, text("quick", &sdk.TextContent{Text: "early"}))
+
+	late := make(chan string, 1)
+	go func() { late <- s.Call(t.Context(), "held", nil).Stdout }()
+	quick := make(chan string, 1)
+	go func() { quick <- s.Call(t.Context(), "quick", nil).Stdout }()
+
+	select {
+	case got := <-quick:
+		assert.Contains(t, got, "early")
+	case <-time.After(3 * time.Second):
+		t.Fatal("a second call waited behind the first")
+	}
+	close(release)
+	assert.Contains(t, <-late, "late")
+}
+
+func TestInvokers_WithoutHintsConfirmsAHintedRead(t *testing.T) {
+	read := []*sdk.Tool{{Name: "list", InputSchema: map[string]any{"type": "object"},
+		Annotations: &sdk.ToolAnnotations{ReadOnlyHint: true}}}
+	for _, tt := range []struct {
+		name string
+		in   *Invokers
+		want string
+	}{
+		{"trusted by default", NewInvokers(), event.MutRead},
+		{"without hints", NewInvokers(WithoutHints()), ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := tool.Standard()
+			tt.in.register(reg, &Server{Name: "srv"}, read)
+			tl, ok := reg.Lookup("srv__list")
+			require.True(t, ok)
+			assert.Equal(t, tt.want, tl.Describe().Mutability)
+		})
+	}
 }
 
 // wired is a registry and an Invokers built from one live server,
@@ -77,6 +127,6 @@ func wired(t *testing.T, s *Server) (*tool.Registry, *Invokers) {
 
 	reg := tool.Standard()
 	in := NewInvokers()
-	in.add(Register(reg, s, tools)...)
+	in.add(registerTools(reg, s, tools, true)...)
 	return reg, in
 }

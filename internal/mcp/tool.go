@@ -29,16 +29,16 @@ type Tool struct {
 	spec         tool.Spec
 }
 
-// Register adds a server's tools and returns them. A taken name is
+// registerTools adds a server's tools and returns them. A taken name is
 // renamed, never replaced: nothing may shadow bash.
-func Register(reg *tool.Registry, s *Server, tools []*sdk.Tool) []Tool {
+func registerTools(reg *tool.Registry, s *Server, tools []*sdk.Tool, hints bool) []Tool {
 	var added []Tool
 	for _, t := range tools {
 		name, ok := free(reg, toolName(s.Name, t.Name))
 		if !ok {
 			continue
 		}
-		tl := Tool{name: name, remote: t.Name, server: s, spec: specOf(s.Name, t)}
+		tl := Tool{name: name, remote: t.Name, server: s, spec: specOf(s.Name, t, hints)}
 		// free checked the name, so a refusal means a built-in got there first.
 		if reg.Register(tl) != nil {
 			continue
@@ -110,13 +110,29 @@ func free(reg *tool.Registry, name string) (string, bool) {
 	return "", false
 }
 
-func specOf(server string, t *sdk.Tool) tool.Spec {
+func specOf(server string, t *sdk.Tool, hints bool) tool.Spec {
 	return tool.Spec{
 		Description: describeTool(t),
 		Executor:    server,
 		Raw:         rawSchema(t.InputSchema),
 		Group:       "mcp · " + server,
+		Mutability:  mutability(t.Annotations, hints),
 	}
+}
+
+// mutability is what the server says its tool does. Only a read-only claim
+// lowers anything, so only it needs trusting. No claim stays unknown, which
+// is stricter than the spec's default.
+func mutability(a *sdk.ToolAnnotations, hints bool) string {
+	switch {
+	case a == nil:
+		return ""
+	case a.ReadOnlyHint && hints:
+		return event.MutRead
+	case a.DestructiveHint != nil && *a.DestructiveHint && !a.ReadOnlyHint:
+		return event.MutIrreversible
+	}
+	return ""
 }
 
 // describeTool prefers a title when the server gave one, since that is

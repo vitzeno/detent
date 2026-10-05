@@ -86,6 +86,9 @@ type Config struct {
 	// FinishCheck asks the model to check its work before a request that changed
 	// something ends. A pointer so unset means on rather than false.
 	FinishCheck *bool `yaml:"finish_check"`
+	// MCPTrustHints takes a server's word that a tool only reads, so it runs
+	// unasked. A pointer so unset means on.
+	MCPTrustHints *bool `yaml:"mcp_trust_hints"`
 
 	JevAPIKey     string  `yaml:"jev_api_key"`
 	JevModel      string  `yaml:"jev_model"`
@@ -240,6 +243,9 @@ func (c Config) CommandTimeoutDuration() (time.Duration, error) {
 
 // FinishChecks is FinishCheck with its default, on.
 func (c Config) FinishChecks() bool { return c.FinishCheck == nil || *c.FinishCheck }
+
+// TrustsMCPHints is MCPTrustHints with its default, on.
+func (c Config) TrustsMCPHints() bool { return c.MCPTrustHints == nil || *c.MCPTrustHints }
 
 // LogsBodies is LogBodies with its default, off.
 func (c Config) LogsBodies() bool { return c.LogBodies != nil && *c.LogBodies }

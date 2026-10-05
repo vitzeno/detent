@@ -504,9 +504,18 @@ adding a fat dependency fails with the transitive import named.
   committed file can name a token it does not hold.
   MCP tool calls run in this process, which is why the sandbox is the only
   executor **of shell commands** rather than of everything. Nothing a
-  checkpoint can undo, so `mcpFloor` confirms every one: `Widen` makes
-  that stick, since a server's own `readOnlyHint` can only widen a
-  verdict. A tool arrives as `server__name`, sanitised to what an
+  checkpoint can undo, so `mcpFloor` confirms every one the server has not
+  marked `readOnlyHint`. A hinted tool is declared read-only, so it runs
+  unasked and in parallel with other reads, unless `mcp_trust_hints` is
+  off. The human cannot see what a server does behind a tool name, so
+  confirming each read protected little, and the server was already
+  trusted to run. **The accepted risk:** a hint is the server's own claim
+  and can change with its tool list, and an injected instruction can now
+  chain a hinted read of private data into `web_search` with no approval
+  between them. `mcp_trust_hints: false` puts the confirm back. The regex
+  hook and Jev still apply, and `Widen` still lets them flag a read. A
+  `destructiveHint` marks the tool irreversible whatever the switch says,
+  since it can only add caution. A tool arrives as `server__name`, sanitised to what an
   endpoint accepts, and a built-in always wins a collision:
   `tool.Registry.Register` refuses to replace one. A sign-in token is
   saved under the server's name and URL, so a project file reusing a

@@ -27,11 +27,24 @@ type Invokers struct {
 	servers map[string]*Server
 	// status holds every configured server from the start, so /mcp lists unanswered ones.
 	status []event.ServerSummary
+	// hints is whether a server's word that a tool only reads is taken.
+	hints bool
 }
 
+// InvokersOption changes how an Invokers registers what servers offer.
+type InvokersOption func(*Invokers)
+
+// WithoutHints ignores a server's claim that a tool only reads, so every
+// call it offers is confirmed.
+func WithoutHints() InvokersOption { return func(i *Invokers) { i.hints = false } }
+
 // NewInvokers returns an Invokers with no tools.
-func NewInvokers() *Invokers {
-	return &Invokers{tools: map[string]Tool{}, servers: map[string]*Server{}}
+func NewInvokers(opts ...InvokersOption) *Invokers {
+	i := &Invokers{tools: map[string]Tool{}, servers: map[string]*Server{}, hints: true}
+	for _, o := range opts {
+		o(i)
+	}
+	return i
 }
 
 // Invoke answers one tool call. A tool nothing owns comes back as a result
@@ -89,7 +102,7 @@ func (i *Invokers) register(reg *tool.Registry, s *Server, tools []*sdk.Tool) {
 	i.registering.Lock()
 	defer i.registering.Unlock()
 	i.keep(s)
-	i.add(Register(reg, s, tools)...)
+	i.add(registerTools(reg, s, tools, i.hints)...)
 }
 
 // swap replaces a server's session and tools, handing back the old session to close.
@@ -99,7 +112,7 @@ func (i *Invokers) swap(reg *tool.Registry, s *Server, tools []*sdk.Tool) *Serve
 	old, names := i.drop(s.Name)
 	reg.Unregister(names...)
 	i.keep(s)
-	i.add(Register(reg, s, tools)...)
+	i.add(registerTools(reg, s, tools, i.hints)...)
 	return old
 }
 

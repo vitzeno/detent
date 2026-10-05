@@ -74,3 +74,7 @@ log_bodies: false      # include prompts, replies and command output
 log_dir: ""
 
 # MCP servers live in .mcp.json, not here. See mcp.example.json.
+
+# Run a server's tool unasked when the server says it only reads (true). False
+# confirms every MCP call. Also DETENT_MCP_TRUST_HINTS.
+mcp_trust_hints:       # true or false (true)

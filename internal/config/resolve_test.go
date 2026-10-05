@@ -162,6 +162,16 @@ func TestResolve_ContextTokensDefaultsWhenUnset(t *testing.T) {
 }
 
 // Unset is on, and either the file or the environment can turn it off.
+func TestResolve_MCPHintsAreTrustedUnlessTurnedOff(t *testing.T) {
+	t.Setenv("DETENT_MCP_TRUST_HINTS", "")
+	assert.True(t, Resolve(Config{}, Config{}, -1).TrustsMCPHints())
+	off := false
+	assert.False(t, Resolve(Config{MCPTrustHints: &off}, Config{}, -1).TrustsMCPHints())
+
+	t.Setenv("DETENT_MCP_TRUST_HINTS", "false")
+	assert.False(t, Resolve(Config{}, Config{}, -1).TrustsMCPHints())
+}
+
 func TestResolve_FinishCheckIsOnUnlessTurnedOff(t *testing.T) {
 	t.Setenv("DETENT_FINISH_CHECK", "")
 	assert.True(t, Resolve(Config{}, Config{}, -1).FinishChecks())

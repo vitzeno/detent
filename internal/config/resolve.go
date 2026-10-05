@@ -48,6 +48,9 @@ func merge(c *Config, o Config) {
 	if o.FinishCheck != nil {
 		c.FinishCheck = o.FinishCheck
 	}
+	if o.MCPTrustHints != nil {
+		c.MCPTrustHints = o.MCPTrustHints
+	}
 	if o.JevAPIKey != "" {
 		c.JevAPIKey = o.JevAPIKey
 	}
@@ -102,7 +105,7 @@ func merge(c *Config, o Config) {
 // envKeys are every variable envConfig reads.
 var envKeys = []string{
 	"DETENT_BASE_URL", "DETENT_MODEL", "DETENT_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY",
-	"DETENT_CONTEXT_TOKENS", "DETENT_COMMAND_TIMEOUT", "DETENT_FINISH_CHECK", "TYPESAFE_API_KEY",
+	"DETENT_CONTEXT_TOKENS", "DETENT_COMMAND_TIMEOUT", "DETENT_FINISH_CHECK", "DETENT_MCP_TRUST_HINTS", "TYPESAFE_API_KEY",
 	"DETENT_THEME", "DETENT_VIEWS", "DETENT_LOG_LEVEL", "DETENT_LOG_DIR", "DETENT_LOG_BODIES",
 	"DETENT_HOST_SHELL", "DETENT_SANDBOX_MODE", "DETENT_SANDBOX_SOCKET", "DETENT_SANDBOX_RUNTIME", "DETENT_SANDBOX_NETWORK",
 }
@@ -121,6 +124,7 @@ func envConfig(getenv func(string) string) Config {
 		ContextTokens:  envInt(getenv("DETENT_CONTEXT_TOKENS")),
 		CommandTimeout: getenv("DETENT_COMMAND_TIMEOUT"),
 		FinishCheck:    envBool(getenv("DETENT_FINISH_CHECK")),
+		MCPTrustHints:  envBool(getenv("DETENT_MCP_TRUST_HINTS")),
 		JevAPIKey:      getenv("TYPESAFE_API_KEY"),
 		Theme:          getenv("DETENT_THEME"),
 		Views:          getenv("DETENT_VIEWS"),

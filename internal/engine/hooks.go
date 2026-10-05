@@ -33,14 +33,15 @@ func (toolFloor) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Ris
 }
 
 // mcpFloor confirms every tool call that runs outside the sandbox: no
-// checkpoint can undo one, so a human sees each before it happens.
+// checkpoint can undo one, so a human sees each before it happens. A tool
+// declared read-only is the exception, since it has nothing to undo.
 type mcpFloor struct{}
 
 func (mcpFloor) Name() string { return "mcp" }
 
 func (mcpFloor) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
 	r := event.UnknownRisk()
-	if c.Executor != "" {
+	if c.Executor != "" && c.Mutability != event.MutRead {
 		r.Dangerous, r.Note = true, "mcp: "+c.Executor
 	}
 	return r, nil

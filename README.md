@@ -55,6 +55,8 @@ Also `${VAR}` expands from the environment, so a committed file can name a token
 
 `detent -mcp` connects and lists mcp tools. `/mcp` shows the same from inside the TUI.
 
+A tool its server marks read-only runs without asking, and anything else asks first. The mark is the server's own word, so set `mcp_trust_hints: false` to be asked about every call
+
 A remote server that answers 401 gets a sign-in link in the output pane. `o` opens it in default browser and `c` copies it
 
 Returned tokens are kept in `~/.local/state/detent/mcp/`
