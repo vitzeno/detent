@@ -283,7 +283,7 @@ func (m Model) rows() []*historyRow {
 	}
 	out := make([]*historyRow, 0, n)
 	for _, b := range m.blocks {
-		out = append(out, b.rows...)
+		out = append(out, b.shown()...)
 	}
 	return out
 }

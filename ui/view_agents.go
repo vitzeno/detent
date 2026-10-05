@@ -14,8 +14,9 @@ import (
 	"github.com/vitzeno/detent/ui/status"
 )
 
-// The agents block, pinned above history while the running request has
-// subagents, so one waiting on the human is seen from anywhere.
+// The agents block, pinned below history while the running request has
+// subagents, so one waiting on the human is seen from anywhere. It stands
+// in for their spawn rows, which history draws once the request ends.
 
 const (
 	// maxPinned rows show, plus a line counting the rest, so the block has a

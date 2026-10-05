@@ -91,6 +91,7 @@ func TestBlockCache_FollowsASpawnsAgent(t *testing.T) {
 		{"its call ends", event.ToolCallEnded{ToolCall: call}},
 		{"the child ends", event.AgentEnded{Agent: sp.agent, Reason: event.AgentPartial}},
 		{"the spawn ends", event.ToolCallEnded{ToolCall: sp.spawn, Took: time.Second}},
+		{"the request ends, so its spawn row joins history", event.TurnEnded{Turn: sp.turn, Reason: event.EndDone}},
 	}
 	for _, s := range steps {
 		m.historyAll()

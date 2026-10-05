@@ -148,16 +148,19 @@ func TestApply_ChildCallsStayOutOfTheMainHistory(t *testing.T) {
 	m.apply(childCall(sp, "grep pattern=login"))
 	m.apply(event.ModelText{Turn: sp.turn, Text: "looking", Agent: sp.agent})
 
-	require.Len(t, m.rows(), 1, "main history shows the spawn and nothing of its work")
+	assert.Empty(t, m.rows(), "while it runs the agents block shows it, and history nothing")
+	assert.Len(t, m.agents[sp.agent].rows, 2, "the child's own rows hold its work")
+
+	m.apply(event.TurnEnded{Turn: sp.turn, Reason: event.EndDone})
+	require.Len(t, m.rows(), 1, "once the request ends, its spawn row is the record")
 	assert.Equal(t, sp.spawn, m.rows()[0].id)
-	assert.Len(t, m.agents[sp.agent].rows, 2, "the child's own rows hold it")
 }
 
 func TestApply_SpawnHeadlineFollowsItsAgent(t *testing.T) {
 	m, sp := spawned(t)
 	m.layout.width = 200
 	m.sizeViewport()
-	line := func() string { return stripStyle(strings.Join(m.rowLines(m.rows()[0], nil), "")) }
+	line := func() string { return stripStyle(strings.Join(m.rowLines(m.agents[sp.agent].spawn, nil), "")) }
 	assert.Contains(t, line(), "◆ explore")
 	assert.Contains(t, line(), "queued")
 
@@ -180,7 +183,7 @@ func TestApply_SpawnRowKeepsItsStatusWhenNarrow(t *testing.T) {
 		m.sizeViewport()
 		m.apply(event.StepStarted{Turn: sp.turn, Step: uuid.Must(uuid.NewV7()), N: 1, Agent: sp.agent})
 		m.apply(childCall(sp, "grep pattern=legacy_id_across_the_whole_schema"))
-		line := m.rowLines(m.rows()[0], nil)[0]
+		line := m.rowLines(m.agents[sp.agent].spawn, nil)[0]
 		assert.LessOrEqual(t, lipgloss.Width(line), m.blockWidth(), "width %d", width)
 		assert.Contains(t, stripStyle(line), "· 1 ca", "width %d", width)
 	}
@@ -191,7 +194,7 @@ func TestApply_AgentStatusComesFromFactsNotText(t *testing.T) {
 	m, sp := spawned(t)
 	m.apply(event.StepStarted{Turn: sp.turn, Step: uuid.Must(uuid.NewV7()), N: 1, Agent: sp.agent})
 	m.apply(event.ModelText{Turn: sp.turn, Text: "done", Agent: sp.agent})
-	got := m.agentDetail(m.rows()[0])
+	got := m.agentDetail(m.agents[sp.agent].spawn)
 	assert.NotContains(t, got, "done")
 	running, _ := m.agentCounts()
 	assert.Equal(t, 1, running)

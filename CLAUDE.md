@@ -638,13 +638,13 @@ adding a fat dependency fails with the transitive import named.
   escape characters in anything the model wrote are shown, never sent
   to the terminal, and a command taller than the box shows a "more"
   marker and is not approved until its last line has been on screen.
-  A subagent is one row in history, its spawn call's, which draws its
-  name and a live status from its facts alone (queued, its calls, waiting
-  on you, then how it ended). Its own rows live on its `agentState`,
+  A finished request's subagent is one row in history, its spawn call's,
+  which draws its name and how it ended from its facts alone. Its own rows live on its `agentState`,
   never in a Turn block, and its Steps never move the counters or the
   `ctx %` gauge, which are the root's. `x` twice on that row stops it.
-  While a request has subagents they are pinned above history
-  (`view_agents.go`), blocked first, with how full each one's context is.
+  While a request runs its subagents are drawn once, in a block below
+  history (`view_agents.go`), blocked first, with how full each one's
+  context is. Their spawn rows join history when it ends (`turnBlock.shown`).
   `a` enters that block, and `enter` on it or on a spawn row opens the
   inspector: that agent's rows and output, laid over the panes as the
   finder is. A subagent's question never raises the box: it waits on its

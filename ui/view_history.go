@@ -32,11 +32,12 @@ func (m Model) historyPaneLines() []string {
 	if window == nil {
 		window, _ = m.historyWindow()
 	}
-	// Drawn each frame rather than cached: a few short lines, and its spinner ticks.
-	return append(m.pinnedLines(), window...)
+	// Below history, where the running request's spawn rows would be, so they
+	// take its place when it ends. Drawn each frame: a few lines, and it ticks.
+	return append(slices.Clone(window), m.pinnedLines()...)
 }
 
-// histRows is the history pane's height less the pinned agents block above it.
+// histRows is the history pane's height less the agents block below it.
 func (m Model) histRows() int {
 	return max(1, m.nav.histHeight-len(m.pinnedLines()))
 }
@@ -184,7 +185,7 @@ func (m Model) drawBlock(b *turnBlock, focused *historyRow) (lines []string, cur
 			add(styleGoal.Render(gl))
 		}
 	}
-	for _, r := range b.rows {
+	for _, r := range b.shown() {
 		if focused != nil && r == focused {
 			cursorAt = len(block)
 		}

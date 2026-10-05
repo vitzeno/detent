@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,6 +45,15 @@ type turnBlock struct {
 	// cache is this block's last drawing, behind a pointer so the copy
 	// of Model that View works on can still fill it.
 	cache *blockCache
+}
+
+// shown is the rows history draws. A running request's subagents are drawn
+// by the agents block instead, and their spawn rows join history as it ends.
+func (b *turnBlock) shown() []*historyRow {
+	if b.ended {
+		return b.rows
+	}
+	return slices.DeleteFunc(slices.Clone(b.rows), func(r *historyRow) bool { return r.agent != nil })
 }
 
 // historyRow is one tool call, or the model's own words. Exactly one of

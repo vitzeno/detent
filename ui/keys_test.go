@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -200,8 +199,7 @@ func TestApprovalBox_FitsNarrowAndShortScreens(t *testing.T) {
 func TestApply_StopKeySendsStopAgentForTheFocusedSpawn(t *testing.T) {
 	k := newKeyed(t)
 	sp := spawnIn(&k.m, "explore")
-	k.m.nav.focus, k.m.nav.cursor = focusHistory, 0
-	k.m.prompt.Blur()
+	enterBlock(t, k)
 
 	k.press(t, "x")
 	k.noIntent(t)
@@ -242,7 +240,7 @@ func TestInspector_OpensOnTheReportWhenDone(t *testing.T) {
 	sp := spawnIn(&k.m, "explore")
 	k.m.apply(event.AgentEnded{Agent: sp.agent, Reason: event.AgentDone})
 	k.m.apply(event.ToolCallEnded{ToolCall: sp.spawn, Result: event.Result{Stdout: "the report"}})
-	focusSpawn(k)
+	enterBlock(t, k)
 	k.press(t, "enter")
 	assert.Equal(t, sp.spawn, k.m.inspectorRow().id)
 }
@@ -304,7 +302,7 @@ func TestInspector_ArrowsMoveBetweenAgentsInSpawnOrder(t *testing.T) {
 	k := newKeyed(t)
 	first := spawnIn(&k.m, "first")
 	second := spawnAlso(&k.m, first.turn, "second")
-	focusSpawn(k)
+	enterBlock(t, k)
 	k.press(t, "enter")
 	assert.Equal(t, first.agent, k.m.insp.agent.id)
 	k.press(t, "right")
@@ -327,7 +325,7 @@ func TestInspector_DefusesWhatTheChildWrote(t *testing.T) {
 	k := newKeyed(t)
 	sp := spawnIn(&k.m, "explore")
 	k.m.apply(event.ModelText{Turn: sp.turn, Text: "look\x1b]52;c;cm0gLXJmIH4=\x07 here", Agent: sp.agent})
-	focusSpawn(k)
+	enterBlock(t, k)
 	k.press(t, "enter")
 	k.press(t, "down")
 	assert.NotContains(t, k.m.inspectorBox(), "\x1b]52", "an escape the child wrote reached the terminal")
@@ -372,7 +370,7 @@ func TestAgentsBlock_NoLineWiderThanThePane(t *testing.T) {
 	}
 }
 
-// The block takes rows from history, and following still shows the newest.
+// The block takes rows from history below it, and following still shows the newest.
 func TestHistory_ShrinksToMakeRoomForTheBlock(t *testing.T) {
 	k := newKeyed(t)
 	sp := spawnIn(&k.m, "explore")
@@ -383,7 +381,9 @@ func TestHistory_ShrinksToMakeRoomForTheBlock(t *testing.T) {
 	k.m.sizeViewport()
 	lines := k.m.historyPaneLines()
 	assert.Len(t, lines, k.m.nav.histHeight, "the block and history share the pane")
-	assert.Contains(t, ansi.Strip(lines[len(lines)-1]), "echo 39")
+	block := len(k.m.pinnedLines())
+	assert.Contains(t, ansi.Strip(lines[len(lines)-1-block]), "echo 39", "the newest row sits just above the block")
+	assert.Contains(t, ansi.Strip(lines[len(lines)-2]), "explore", "and the block ends the pane")
 	_ = sp
 }
 
@@ -645,7 +645,7 @@ func inspecting(t *testing.T, cmd ...string) *keyed {
 	k := newKeyed(t)
 	sp := spawnIn(&k.m, "migrate")
 	childAsks(&k.m, sp, append(cmd, "psql -c 'DROP COLUMN legacy_id'")[0])
-	focusSpawn(k)
+	enterBlock(t, k)
 	k.press(t, "enter")
 	require.Equal(t, modeInspector, k.m.mode)
 	return k
@@ -660,12 +660,14 @@ func childAsks(m *Model, sp spawn, cmd string) {
 	m.apply(event.ApprovalAsked{ToolCall: call, Tool: "bash", Args: args, Rationale: "regex: drop column", Agent: sp.agent})
 }
 
-// focusSpawn puts the history cursor on the first spawn row.
-func focusSpawn(k *keyed) {
-	k.m.nav.focus, k.m.nav.follow = focusHistory, false
+// enterBlock moves into the agents block from history, where its keys act.
+func enterBlock(t *testing.T, k *keyed) {
+	t.Helper()
+	k.m.nav.focus = focusHistory
 	k.m.prompt.Blur()
-	k.m.nav.cursor = slices.IndexFunc(k.m.rows(), func(r *historyRow) bool { return r.agent != nil })
 	k.m.sizeViewport()
+	k.press(t, "a")
+	require.True(t, k.m.nav.inAgents)
 }
 
 // queued is a Turn with a question per command, the first settled and up. A
