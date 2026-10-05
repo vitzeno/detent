@@ -65,6 +65,8 @@ type fakeRunner struct {
 	pan  bool
 	// partial is what a held command printed before it was stopped.
 	partial string
+	// fail, when set, fails any command naming it.
+	fail string
 }
 
 func (r *fakeRunner) Run(ctx context.Context, cmd string, lines chan<- capture.StreamEvent) (capture.Result, error) {
@@ -72,6 +74,9 @@ func (r *fakeRunner) Run(ctx context.Context, cmd string, lines chan<- capture.S
 	r.ran = append(r.ran, cmd)
 	hold, out, pan, partial := r.hold, r.out, r.pan, r.partial
 	r.mu.Unlock()
+	if r.fail != "" && strings.Contains(cmd, r.fail) {
+		return capture.Result{ExitCode: 1, Stderr: "no such file\n"}, nil
+	}
 
 	if pan {
 		panic("runner exploded")

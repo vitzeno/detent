@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/capture"
 	"github.com/vitzeno/detent/internal/model"
+	"github.com/vitzeno/detent/internal/tool"
 )
 
 // A subagent is a spawn_agent tool call the engine runs itself: a child agent
@@ -74,7 +76,8 @@ func (e *Engine) spawn(ctx context.Context, t *turnState, parent *agent, p *tool
 
 	end := e.runChild(cctx, t, child, task)
 	reason, report := e.report(ctx, cctx, t, child, &end)
-	report = capture.Clip(report, capture.MaxResultBytes)
+	// After the clip, so a long report never loses what backs it.
+	report = capture.Clip(report, capture.MaxResultBytes) + readList(child.messages())
 
 	e.bus.Publish(event.AgentEnded{Agent: child.id, Reason: reason, Usage: end.used})
 	out := event.Result{Stdout: report}
@@ -156,6 +159,55 @@ func (e *Engine) lastWords(ctx context.Context, t *turnState, child *agent, why 
 		return text
 	}
 	return "It found nothing it could report."
+}
+
+// maxReadList bounds the files listed under a report.
+const maxReadList = 40
+
+// readList is what a child read, from its transcript rather than its words,
+// so the parent can quote a report's references instead of reading them again.
+// Only reads that succeeded, each with the lines it asked for.
+func readList(msgs []event.Message) string {
+	var seen []string
+	pending := map[string]event.ToolRequest{}
+	for _, m := range msgs {
+		switch m.Role {
+		case event.RoleAssistant:
+			// Ids are only unique within a Step, so each Step starts afresh.
+			clear(pending)
+			for _, r := range m.Requests {
+				if r.Name == "read_file" {
+					pending[r.ID] = r
+				}
+			}
+		case event.RoleTool:
+			r, ok := pending[m.RequestID]
+			if !ok || !strings.HasPrefix(m.Content, "Exit code 0") {
+				continue
+			}
+			if line := readWindow(r.Args); !slices.Contains(seen, line) {
+				seen = append(seen, line)
+			}
+		case event.RoleSystem, event.RoleUser:
+		}
+	}
+	if len(seen) == 0 {
+		return ""
+	}
+	more := ""
+	if len(seen) > maxReadList {
+		more = fmt.Sprintf("\n(and %d more)", len(seen)-maxReadList)
+		seen = seen[:maxReadList]
+	}
+	return "\n\n[files this subagent read, listed by detent from what ran: the report's references " +
+		"come from these]\n" + strings.Join(seen, "\n") + more
+}
+
+// readWindow is one read_file call as path and the lines it asked for.
+func readWindow(args map[string]any) string {
+	a := tool.Args(args)
+	from, count := max(1, a.Int("offset", 1)), max(1, a.Int("max_lines", 500))
+	return fmt.Sprintf("%s lines %d-%d", a.String("path"), from, from+count-1)
 }
 
 // over is whether a child's transcript has passed its context budget.

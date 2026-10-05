@@ -52,6 +52,26 @@ func TestSpawn_ReportIsTheResultAndNothingElseReachesTheParent(t *testing.T) {
 	assert.Equal(t, event.AgentDone, ended[0].(event.AgentEnded).Reason)
 }
 
+// The parent rereads what it cannot see was read, so a report ends with what
+// the child read, from what ran: a failed read is not listed.
+func TestSpawn_ReportListsWhatTheChildRead(t *testing.T) {
+	cm := &childModel{script: map[string][]model.Reply{"trace": {
+		{Requests: []event.ToolRequest{readCall("c1", "auth.go"),
+			{ID: "c2", Name: "read_file", Args: map[string]any{"path": "db.go", "offset": 40, "max_lines": 20}}}},
+		{Requests: []event.ToolRequest{readCall("c1", "auth.go")}},
+		{Text: "login is in auth.go:12", Stop: "stop"},
+	}}}
+	r := rigWithTools(t, event.New(), &fakeModel{replies: []model.Reply{{Requests: spawns(spawnCall("s1", "trace", ""))}}},
+		&fakeRunner{out: "output\n", fail: "db.go"}, tool.Standard(tool.SpawnAgent{}), WithChildModel(cm))
+	r.run("go")
+
+	report := toolAnswers(r.eng.messages())
+	assert.Contains(t, report, "login is in auth.go:12")
+	assert.Contains(t, report, "[files this subagent read")
+	assert.Equal(t, 1, strings.Count(report, "auth.go lines 1-500"), "a file read twice is listed once")
+	assert.NotContains(t, report, "db.go", "a read that failed backs nothing")
+}
+
 // Every fact a child produces names it, and its Steps carry the parent's
 // Turn, which is what lets a resume end them.
 func TestSpawn_ChildFactsNameTheChildAndTheParentsTurn(t *testing.T) {

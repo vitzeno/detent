@@ -20,8 +20,8 @@ func (SpawnAgent) Describe() Spec {
 			"web and load skills. It cannot change anything or ask you questions. Several spawn_agent calls " +
 			"in one step run at the same time, so start every one you need together. A subagent stops after " +
 			"30 steps or when its time runs out, and reports what it found so far. Its report is all you see " +
-			"of its work, and its paths and line numbers come from the files it read, so quote them rather " +
-			"than reading those files again. Do not use it for what one or two reads answer.",
+			"of its work. It ends with the files the subagent read, listed from what actually ran, and its " +
+			"paths and line numbers come from those, so quote them rather than reading the files again. Do not use it for what one or two reads answer.",
 		Params: []Param{
 			{Name: "task", Type: TypeString, Required: true,
 				Desc: "the whole task, with everything the subagent needs to know"},
