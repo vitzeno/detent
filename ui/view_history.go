@@ -253,13 +253,16 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 		icon = styleGoal.Render(m.prompt.mark()) + icon
 	}
 	cell := func(width int) string { return commandCell(r, width) }
-	// A spawn row draws its agent rather than its arguments.
+	// A spawn row draws its agent rather than its arguments, and its status
+	// is the point of it, so that is cut to fit rather than dropped.
 	if a := r.agent; a != nil {
-		detail = m.agentDetail(r)
-		cell = func(width int) string { return agentCell(a, width) }
 		if m.blocked(a) {
 			icon = styleCaution.Render("!") + icon
 		}
+		head := lipgloss.Width(stripStyle(mark)) + lipgloss.Width(icon) + 1
+		name := min(lipgloss.Width("◆ "+a.name), maxAgentName)
+		tail := layout.Truncate("· "+m.agentDetail(r), max(0, m.blockWidth()-head-name-1))
+		return []string{fmt.Sprintf("%s%s %s %s", mark, icon, agentCell(a, name), styleMuted.Render(tail))}
 	}
 
 	// Truncated, not wrapped: a command is often one unbreakable token.
@@ -273,8 +276,12 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 	return []string{fmt.Sprintf("%s%s %s %s", mark, icon, cmd, styleMuted.Render(tail))}
 }
 
-// maxAgentLast bounds the latest call a spawn row shows, so its count fits.
-const maxAgentLast = 40
+// maxAgentLast bounds the latest call a spawn row shows, so its count fits,
+// and maxAgentName how much of its name crowds the status.
+const (
+	maxAgentLast = 40
+	maxAgentName = 16
+)
 
 // agentCell is a subagent's name in the agent colour, where a command goes.
 func agentCell(a *agentState, width int) string {

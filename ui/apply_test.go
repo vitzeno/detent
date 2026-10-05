@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -154,6 +155,8 @@ func TestApply_ChildCallsStayOutOfTheMainHistory(t *testing.T) {
 
 func TestApply_SpawnHeadlineFollowsItsAgent(t *testing.T) {
 	m, sp := spawned(t)
+	m.layout.width = 200
+	m.sizeViewport()
 	line := func() string { return stripStyle(strings.Join(m.rowLines(m.rows()[0], nil), "")) }
 	assert.Contains(t, line(), "◆ explore")
 	assert.Contains(t, line(), "queued")
@@ -166,6 +169,21 @@ func TestApply_SpawnHeadlineFollowsItsAgent(t *testing.T) {
 	m.apply(event.AgentEnded{Agent: sp.agent, Reason: event.AgentDone})
 	m.apply(event.ToolCallEnded{ToolCall: sp.spawn, Result: event.Result{Stdout: "the report"}, Took: 41 * time.Second})
 	assert.Contains(t, line(), "done 41.0s")
+}
+
+// On a narrow pane a command row drops its detail, but a spawn row's status is
+// the point of it, so it is cut to fit instead.
+func TestApply_SpawnRowKeepsItsStatusWhenNarrow(t *testing.T) {
+	for _, width := range []int{70, 90, 140} {
+		m, sp := spawned(t)
+		m.layout.width = width
+		m.sizeViewport()
+		m.apply(event.StepStarted{Turn: sp.turn, Step: uuid.Must(uuid.NewV7()), N: 1, Agent: sp.agent})
+		m.apply(childCall(sp, "grep pattern=legacy_id_across_the_whole_schema"))
+		line := m.rowLines(m.rows()[0], nil)[0]
+		assert.LessOrEqual(t, lipgloss.Width(line), m.blockWidth(), "width %d", width)
+		assert.Contains(t, stripStyle(line), "· 1 ca", "width %d", width)
+	}
 }
 
 // A child writing "done" is still running until a fact says it ended.
