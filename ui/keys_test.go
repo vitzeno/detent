@@ -78,6 +78,8 @@ func TestKeys_AKeyTooSoonAfterAQuestionIsNotAnAnswer(t *testing.T) {
 		key  string
 	}{
 		{"approval", event.ApprovalAsked{ToolCall: uuid.Must(uuid.NewV7()), Tool: "bash"}, "y"},
+		// esc after closing the finder declined a question nobody had seen.
+		{"approval by esc", event.ApprovalAsked{ToolCall: uuid.Must(uuid.NewV7()), Tool: "bash"}, "esc"},
 		{"step bound", event.BoundReached{Turn: uuid.Must(uuid.NewV7())}, "enter"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

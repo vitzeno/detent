@@ -171,6 +171,10 @@ func (m Model) boundKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 // panel, output pane, then a running command or request.
 func (m Model) onEscape() (Model, tea.Cmd) {
 	if m.mode == modeConfirm {
+		// Settles like y and n, and goes no further: a later branch aborts the Turn.
+		if m.settling() {
+			return m, nil
+		}
 		return m.decline()
 	}
 	if m.prompt.Open() {
