@@ -349,7 +349,10 @@ adding a fat dependency fails with the transitive import named.
   checks its work, compacts and is measured. `spawn_agent` (behind
   `subagents`, off by default) is a tool call the engine runs itself
   (`spawn.go`): a child agent with only `childTools`, so it reads and
-  cannot spawn, its own transcript and repeat check, at most 4 running
+  cannot spawn, plus the session's shell when the spawn asks for `shell`.
+  Shell children run at once in the shared workspace: the root is told to
+  split their work, since it is the one delegating. Each has its own
+  transcript and repeat check, at most 4 running
   and `max_agents` started per Turn. A child never compacts. It ends at
   30 Steps, `child_context_tokens`, `child_timeout` or `StopAgent`, and
   one cut short is asked once more, with no tools, for its report. The

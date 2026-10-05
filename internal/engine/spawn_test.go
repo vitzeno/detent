@@ -291,6 +291,97 @@ func TestAbort_EndsEveryAgentsOpenToolCalls(t *testing.T) {
 	answered(t, r.eng)
 }
 
+// A shell child gets the session's shell, and is told what it is for.
+func TestSpawn_AShellChildGetsTheSessionsShell(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		shell tool.Tool
+		want  string
+	}{{"sh", tool.Bash{}, "bash"}, {"pwsh", tool.PowerShell{}, "powershell"}} {
+		t.Run(tt.name, func(t *testing.T) {
+			cm := &childModel{}
+			r := rigWithTools(t, event.New(), &fakeModel{replies: []model.Reply{{Requests: spawns(
+				shellSpawn("a", "run the tests"), spawnCall("b", "just read", ""))}}},
+				&fakeRunner{out: "ok\n"}, tool.StandardFor(tt.shell, tool.SpawnAgent{}), WithChildModel(cm))
+			r.run("go")
+
+			var withShell, without int
+			for _, names := range cm.offered() {
+				if slices.Contains(names, tt.want) {
+					withShell++
+				} else {
+					without++
+				}
+				assert.NotContains(t, names, "write_file", "a shell does not make a child an editor")
+			}
+			assert.Equal(t, 1, withShell, "the child with shell, and only it, can run commands")
+			assert.Equal(t, 1, without)
+			assert.True(t, cm.sawShellNote(), "and its task says what the shell is for")
+		})
+	}
+}
+
+// The main agent decides what runs together, so shell children run at once.
+func TestSpawn_ShellChildrenRunTogether(t *testing.T) {
+	cm := &childModel{gate: make(chan struct{})}
+	r := spawnRig(t, cm, spawns(shellSpawn("a", "test the api"), shellSpawn("b", "test the ui")))
+	r.bus.Publish(event.SubmitPrompt{Text: "go"})
+	require.Eventually(t, func() bool { return cm.running() == 2 }, 3*time.Second, time.Millisecond)
+	close(cm.gate)
+	r.await(event.TurnEndedKind)
+}
+
+// A child's command goes through the same chain as the root's, and its question
+// names the child.
+func TestSpawn_AShellChildsCommandIsFlaggedLikeTheRoots(t *testing.T) {
+	cm := &childModel{script: map[string][]model.Reply{"clean up": {
+		{Requests: []event.ToolRequest{bashCall("c1", "rm -rf build")}},
+	}}}
+	r := spawnRig(t, cm, spawns(shellSpawn("a", "clean up")))
+	r.bus.Publish(event.SubmitPrompt{Text: "go"})
+	asked := r.await(event.ApprovalAskedKind).(event.ApprovalAsked)
+	assert.NotEqual(t, uuid.Nil, asked.Agent)
+	assert.Contains(t, event.Command(asked.Tool, asked.Args), "rm -rf build")
+	r.bus.Publish(event.ResolveApproval{ToolCall: asked.ToolCall, Approved: false})
+	r.await(event.TurnEndedKind)
+	assert.Empty(t, r.runner.commands(), "declined, so nothing ran")
+}
+
+// A child's command can change the workspace, so the root checks its work. One
+// that only read leaves the request as it was.
+func TestSpawn_AShellChildsCommandTriggersTheRootsFinishCheck(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		call  event.ToolRequest
+		check bool
+	}{{"ran a command", bashCall("c1", "go test ./..."), true}, {"only read", readCall("c1", "go.mod"), false}} {
+		t.Run(tt.name, func(t *testing.T) {
+			cm := &childModel{script: map[string][]model.Reply{"check": {{Requests: []event.ToolRequest{tt.call}}}}}
+			r := spawnRig(t, cm, spawns(shellSpawn("a", "check")), WithFinishCheck(true))
+			r.run("go")
+			checked := slices.ContainsFunc(r.eng.messages(), func(m event.Message) bool { return m.Content == finishNote })
+			assert.Equal(t, tt.check, checked)
+		})
+	}
+}
+
+func TestSpawn_AShellChildsCommandIsBoundedByTheTimeout(t *testing.T) {
+	cm := &childModel{script: map[string][]model.Reply{"wait": {{Requests: []event.ToolRequest{bashCall("c1", "sleep 600")}}}}}
+	runner := &fakeRunner{hold: make(chan struct{})}
+	r := rigWithTools(t, event.New(), &fakeModel{replies: []model.Reply{{Requests: spawns(shellSpawn("a", "wait"))}}},
+		runner, tool.Standard(tool.SpawnAgent{}), WithChildModel(cm), WithCommandTimeout(50*time.Millisecond))
+	r.run("go")
+	var stopped bool
+	for _, ev := range r.of(event.ToolCallEndedKind) {
+		stopped = stopped || strings.Contains(ev.(event.ToolCallEnded).Result.Err, "stopped after 50ms")
+	}
+	assert.True(t, stopped, "the child's command was not stopped by the command timeout")
+}
+
+func shellSpawn(id, task string) event.ToolRequest {
+	return event.ToolRequest{ID: id, Name: tool.SpawnAgentName, Args: map[string]any{"task": task, "name": "", "shell": true}}
+}
+
 // spawnRig is a rig whose parent spawns once with calls, then finishes, and
 // whose children run on cm.
 func spawnRig(t *testing.T, cm *childModel, calls []event.ToolRequest, opts ...Option) *rig {
@@ -348,15 +439,17 @@ type childModel struct {
 	hang         bool
 	hangOn       string
 	n, inFlight  int
+	shellNoted   bool
 	peak         int
 	toolsOffered [][]string
 }
 
 func (m *childModel) Complete(ctx context.Context, msgs []event.Message, tools []map[string]any) (model.Reply, event.Usage, error) {
-	task := msgs[0].Content
+	task := strings.TrimPrefix(msgs[0].Content, shellNote)
 	m.mu.Lock()
 	m.n++
 	m.inFlight++
+	m.shellNoted = m.shellNoted || strings.HasPrefix(msgs[0].Content, shellNote)
 	m.peak = max(m.peak, m.inFlight)
 	if tools != nil {
 		m.toolsOffered = append(m.toolsOffered, schemaNames(tools))
@@ -394,6 +487,12 @@ func (m *childModel) Complete(ctx context.Context, msgs []event.Message, tools [
 		return next[0], used, nil
 	}
 	return model.Reply{Text: "report on " + task, Stop: "stop"}, used, nil
+}
+
+func (m *childModel) sawShellNote() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.shellNoted
 }
 
 func (m *childModel) running() int {

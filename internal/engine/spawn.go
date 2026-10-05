@@ -42,6 +42,13 @@ const (
 // writing, never spawning, and no MCP tool holding the human's credentials.
 var childTools = []string{"read_file", "grep", "find_files", "list_dir", "web_search", "skill"}
 
+// shellTools are the session's shell, whichever it is, for a spawn that asks.
+var shellTools = []string{"bash", "powershell"}
+
+// shellNote opens a shell child's task, since its prompt is every child's.
+const shellNote = "[you can run commands to inspect, build and test] Do not change files: you have no " +
+	"editing tools, and a change made through a command reaches nobody as a diff.\n\n"
+
 // What cut a child short, read back off its ctx.
 var (
 	errStopped  = errors.New("the human stopped this subagent")
@@ -61,7 +68,12 @@ func (e *Engine) spawn(ctx context.Context, t *turnState, parent *agent, p *tool
 	}
 	task := p.prepared.Args.String("task")
 	name := cmp.Or(strings.TrimSpace(p.prepared.Args.String("name")), fmt.Sprintf("agent-%d", n))
-	child := newAgent(uuid.Must(uuid.NewV7()), name, e.childModel, parent.tools.Only(childTools...), e.extra...)
+	tools, first := childTools, task
+	if p.prepared.Args.Bool("shell", false) {
+		// Only keeps what the parent has, so this is whichever shell the session runs.
+		tools, first = append(slices.Clone(childTools), shellTools...), shellNote+task
+	}
+	child := newAgent(uuid.Must(uuid.NewV7()), name, e.childModel, parent.tools.Only(tools...), e.extra...)
 
 	p.ended = true
 	start := time.Now()
@@ -74,7 +86,7 @@ func (e *Engine) spawn(ctx context.Context, t *turnState, parent *agent, p *tool
 	e.track(child.id, stop)
 	defer e.untrack(child.id)
 
-	end := e.runChild(cctx, t, child, task)
+	end := e.runChild(cctx, t, child, first)
 	reason, report := e.report(ctx, cctx, t, child, &end)
 	// After the clip, so a long report never loses what backs it.
 	report = capture.Clip(report, capture.MaxResultBytes) + readList(child.messages())
