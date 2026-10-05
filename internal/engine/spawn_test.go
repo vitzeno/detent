@@ -130,6 +130,8 @@ func TestSpawn_QueuedChildIsStartedAndStoppable(t *testing.T) {
 	r.awaitNth(event.AgentStartedKind, childSlots+1)
 	require.Eventually(t, func() bool { return cm.running() == childSlots }, 3*time.Second, time.Millisecond)
 
+	// The root's Step and each running child's, recorded before reading who has none.
+	r.awaitNth(event.StepStartedKind, childSlots+1)
 	queued := queuedAgent(t, r)
 	r.bus.Publish(event.StopAgent{Agent: queued})
 	stopped := r.await(event.AgentEndedKind).(event.AgentEnded)
@@ -256,12 +258,15 @@ func TestStopAgent_EndsOneChildAndLeavesItsSiblings(t *testing.T) {
 	fine := r.await(event.AgentEndedKind).(event.AgentEnded)
 	require.Equal(t, event.AgentDone, fine.Reason)
 
+	// Both started, though under load the stuck one can start after the other ends.
+	r.awaitNth(event.AgentStartedKind, 2)
 	var stuck uuid.UUID
 	for _, ev := range r.of(event.AgentStartedKind) {
 		if a := ev.(event.AgentStarted); a.Task == "stuck" {
 			stuck = a.Agent
 		}
 	}
+	require.NotEqual(t, uuid.Nil, stuck)
 	r.bus.Publish(event.StopAgent{Agent: stuck})
 	end := r.await(event.TurnEndedKind).(event.TurnEnded)
 
