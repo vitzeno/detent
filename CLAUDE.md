@@ -77,7 +77,7 @@ a config made from it does not pin today's defaults. Relevant env vars: `DETENT_
 `DETENT_API_KEY` (falls back to `OPENROUTER_API_KEY` then
 `OPENAI_API_KEY`), `TYPESAFE_API_KEY` (enables the Jev hook),
 `DETENT_CONTEXT_TOKENS`, `DETENT_THEME` (one of `ui/theme.Themes`'
-names). The full list is `envKeys` in `internal/config/resolve.go`.
+names), `DETENT_SUBAGENTS` (off by default, see `spawn_agent` below). The full list is `envKeys` in `internal/config/resolve.go`.
 Boolean variables take 1/0, true/false, yes/no or on/off. A `.env` in
 the working directory is also loaded at startup, and real env vars
 always win over it. An unknown key in the config file is an error that
@@ -173,7 +173,7 @@ default one is context `colima`, a named one is `colima-<profile>`.
 
 ## The vocabulary
 
-Everything is named for one of five scopes, and using the wrong word
+Everything is named for one of six scopes, and using the wrong word
 is how a bug gets written. The names are the ones other harnesses and
 the APIs use, so a reader coming from them meets nothing new:
 
@@ -184,9 +184,12 @@ the APIs use, so a reader coming from them meets nothing new:
 | **Step** | one model round trip | **the transcript's atom**, compaction |
 | **Tool call** | one tool invocation | the row, approval, parallelism |
 | **User command** | one command the human ran themselves | looking, not working |
+| **Agent** | one model with its own transcript: the root, or one a `spawn_agent` call started | the agents block, the inspector, `StopAgent` |
 
 A Step holds zero or more tool calls. A Turn holds Steps until the model
-stops asking for tools. Steps are never shown, since a human does not think
+stops asking for tools. A Turn's Steps are the root agent's, and a
+subagent's Steps belong to its spawn call's Turn, carrying `Agent` so
+nothing mistakes them for the root's. Steps are never shown, since a human does not think
 in model round trips.
 
 What the model sends is a **tool request** (`event.ToolRequest`, the
@@ -195,7 +198,7 @@ tool call with an id of ours. Two names because they are two things: a
 request can be malformed, refused by the step cap or never run, and the
 transcript must still answer it.
 
-A **user command** is none of the other four: no model asked for it, so
+A **user command** is none of the other five: no model asked for it, so
 nothing assesses, approves or judges it, and it opens no Turn. It is
 its own noun precisely so it cannot be bolted onto a tool call and quietly
 break those three at once, which is why `OutputChunk` and `ViewReady`
@@ -436,7 +439,9 @@ adding a fat dependency fails with the transitive import named.
   prompt says about where commands run. Describing this process while
   they run in a container is how BSD flags end up in a Linux one, and
   `Environment.Shell` names the shell so the prompt's rules match it. A
-  429 or 5xx is retried twice, honouring `Retry-After`, and `Ping`
+  Step's `Usage` carries the cached part of its prompt and the
+  endpoint's cost when it sends them, with `HasCost` since none sent is
+  unknown, not free. A 429 or 5xx is retried twice, honouring `Retry-After`, and `Ping`
   sends the same key and headers `Complete` does.
 
 - **`internal/capture`**: the bounded-output primitives every backend
@@ -599,7 +604,8 @@ adding a fat dependency fails with the transitive import named.
   engine runs, so it misses nothing, and `Run` sends the prompt.
   Everything it prints that a model or command could influence goes
   through `termsafe.Printable`, as the approval box does, so an escape
-  sequence is shown rather than sent to the terminal.
+  sequence is shown rather than sent to the terminal. A subagent's lines
+  are prefixed with its name, since several interleave.
 
 - **`internal/viewgen`**: writes a spec by asking the judge closed
   questions and assembling the answers, rather than asking a model to
@@ -608,7 +614,9 @@ adding a fat dependency fails with the transitive import named.
   happened. None is representable from a list the program built.
   Without a key it still draws shipped and saved views (`Unjudged`),
   and `views: generate` sends a user command and up to 4KB of its
-  output to the judge.
+  output to the judge. A subagent's calls are never judged, so they
+  resolve as they end, from views that exist, and nothing is composed
+  for them.
 
 - **`ui`**: the TUI, and nothing but a projection of the event
   stream. `SessionStarted` is the one description of a run: model,
@@ -637,35 +645,40 @@ adding a fat dependency fails with the transitive import named.
   mutation tested. Each block keeps its own revision, so a live line
   redraws its block and no other.
 
-  **The approval box is the safety story's one screen.** Control and
+  **The approval box is the safety story's one screen,** and the
+  inspector is its stand-in for a subagent's question. Control and
   escape characters in anything the model wrote are shown, never sent
   to the terminal, and a command taller than the box shows a "more"
   marker and is not approved until its last line has been on screen.
-  A finished request's subagent is one row in history, its spawn call's,
-  which draws its name and how it ended from its facts alone. Its own rows live on its `agentState`,
-  never in a Turn block, and its Steps never move the counters or the
-  `ctx %` gauge, which are the root's. `x` twice on that row stops it.
-  While a request runs its subagents are drawn once, in a block below
-  history (`view_agents.go`), blocked first, with how full each one's
-  context is. Their spawn rows join history when it ends (`turnBlock.shown`).
-  `a` enters that block, and `enter` on it or on a spawn row opens the
-  inspector: that agent's rows and output, laid over the panes as the
-  finder is. `/agents` opens it for any agent in the session, resumed
-  ones too, since replaying a session's facts rebuilds its agents. A subagent's question never raises the box: it waits on its
-  agent, marked `!`, and is answered in the inspector with the box's
-  guards, the settle and the whole command read.
   Approvals queue in the order asked and the box shows the first, with how
   many wait. Each one shown starts unscrolled and unread, and settles anew,
   and the engine delivers each answer to its own tool call by id.
   A question raised while the human is in something they opened (the
-  finder, undo, delete) or has typed into the bar waits until that is
-  closed or sent, so a key meant for it can never answer the question.
-  Once up, a question ignores answers for 400ms (`questionSettle`), so
-  the first key of the next message is not taken as a yes. A command's
-  output is defused once, as `facts.go` folds it (`termsafe.Styled`): its
-  colour stays, and any other escape (a cursor move, a clipboard write, a
-  link) is shown rather than sent, so no pane or preview has to remember to. A view that panics while drawing
-  falls back to plain text.
+  finder, undo, delete, the inspector) or has typed into the bar waits
+  until that is closed or sent, so a key meant for it can never answer
+  the question. Once up, a question ignores answers for 400ms
+  (`questionSettle`), so the first key of the next message is not taken
+  as a yes. A command's output is defused once, as `facts.go` folds it
+  (`termsafe.Styled`): its colour stays, and any other escape (a cursor
+  move, a clipboard write, a link) is shown rather than sent, so no pane
+  or preview has to remember to. A view that panics while drawing falls
+  back to plain text.
+
+  **A subagent is drawn in one place at a time.** While its request runs
+  it is a row in the agents block below history (`view_agents.go`),
+  blocked first, with how full its context is, and its spawn row is held
+  back (`turnBlock.shown`). When the request ends the block goes and the
+  spawn row joins history in its place, drawing how the agent ended from
+  facts alone. Its own rows live on its `agentState`, never in a Turn
+  block, and its Steps never move the counters or the `ctx %` gauge,
+  which are the root's. `a` enters the block, `x` twice stops an agent,
+  and `enter` there or on a spawn row opens the inspector: that agent's
+  rows and output, laid over the panes as the finder is. `/agents` opens
+  it for any agent in the session, a resumed one's too, since replaying a
+  session's facts rebuilds its agents. A subagent's question never raises
+  the box, which would take every key: it waits on its agent, marked
+  `!`, and is answered in the inspector with the box's guards, the settle
+  and the whole command read.
 
   **A thing leaves `ui` when it stops needing Model.** That is why
   `island`, `layout`, `markdown`, `search`, `status`, `theme` and `welcome` are

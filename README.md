@@ -208,6 +208,8 @@ detent -prompt "..." -approve-all     # runs them all, only for a throwaway cont
 
 It exits 0 when the request is done, 1 on an error, 3 at the step limit and 130 when aborted. Headless runs leave MCP out: no config is read and no server is started
 
+With subagents on, each one's lines are prefixed with its name, `[explore] → grep …`, since several print at once
+
 ## Benchmarking
 
 [`bench/harbor`](bench/harbor) runs detent on Terminal-Bench through Harbor, against other agents on the same model
