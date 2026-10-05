@@ -196,11 +196,11 @@ func readList(msgs []event.Message) string {
 	}
 	more := ""
 	if len(seen) > maxReadList {
-		more = fmt.Sprintf("\n(and %d more)", len(seen)-maxReadList)
+		more = fmt.Sprintf("\n- and %d more", len(seen)-maxReadList)
 		seen = seen[:maxReadList]
 	}
-	return "\n\n[files this subagent read, listed by detent from what ran: the report's references " +
-		"come from these]\n" + strings.Join(seen, "\n") + more
+	return "\n\n**Files this subagent read**, listed by detent from what ran. The report's " +
+		"references come from these.\n\n- " + strings.Join(seen, "\n- ") + more
 }
 
 // readWindow is one read_file call as path and the lines it asked for.

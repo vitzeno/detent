@@ -30,7 +30,9 @@ func (SpawnAgent) Describe() Spec {
 		},
 		Mutability: event.MutRead,
 		Delegates:  true,
-		Group:      "agents",
+		// A report is markdown: the child is asked for headings, lists and file links.
+		Renders: event.RendersMarkdown,
+		Group:   "agents",
 	}
 }
 

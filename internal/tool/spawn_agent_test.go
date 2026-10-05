@@ -17,6 +17,7 @@ func TestSpawnAgent_DelegatesAndOnlyReads(t *testing.T) {
 	assert.True(t, c.Delegates)
 	assert.Equal(t, event.MutRead, c.Mutability)
 	assert.Empty(t, c.Executor)
+	assert.Equal(t, event.RendersMarkdown, SpawnAgent{}.Describe().Renders, "a report is markdown")
 	assert.Contains(t, c.Command, "find the session code", "what a human would read")
 }
 

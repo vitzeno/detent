@@ -67,7 +67,7 @@ func TestSpawn_ReportListsWhatTheChildRead(t *testing.T) {
 
 	report := toolAnswers(r.eng.messages())
 	assert.Contains(t, report, "login is in auth.go:12")
-	assert.Contains(t, report, "[files this subagent read")
+	assert.Contains(t, report, "**Files this subagent read**")
 	assert.Equal(t, 1, strings.Count(report, "auth.go lines 1-500"), "a file read twice is listed once")
 	assert.NotContains(t, report, "db.go", "a read that failed backs nothing")
 }
