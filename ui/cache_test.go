@@ -338,6 +338,8 @@ func (m Model) uncached() Model {
 	for _, b := range m.blocks {
 		b.cache = nil
 	}
+	// Its own, since the assembled history is cached too and the copy shares it.
+	m.hist = &histCache{}
 	return m
 }
 
