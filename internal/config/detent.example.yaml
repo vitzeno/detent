@@ -35,6 +35,7 @@ finish_check:          # true or false (true)
 subagents:             # true or false (false)
 # At most this many per request (10), a subagent's transcript budget in tokens
 # (64000, never above context_tokens) and how long one may run, e.g. "5m" (10m).
+# Also DETENT_MAX_AGENTS, DETENT_CHILD_CONTEXT_TOKENS and DETENT_CHILD_TIMEOUT.
 max_agents: 0
 child_context_tokens: 0
 child_timeout: ""
