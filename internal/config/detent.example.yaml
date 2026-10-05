@@ -17,7 +17,7 @@ context_tokens: 0          # transcript budget before compacting (200000)
 
 # --- Subagents ---
 
-subagents:                 # let the model spawn read-only subagents (false)
+subagents:                 # let the model hand work to subagents (false)
 max_agents: 0              # per request (10)
 child_context_tokens: 0    # one subagent's budget (64000)
 child_timeout: ""          # how long one may run (10m)

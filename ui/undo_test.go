@@ -64,6 +64,28 @@ func TestUndoPage_NamesWhatItCannotReverse(t *testing.T) {
 	assert.Contains(t, page, "go test ./...")
 }
 
+// A subagent's server call is the request's too, so undo says it stands.
+func TestUndoPage_NamesWhatASubagentCannotReverse(t *testing.T) {
+	turn, spawn, agent, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	m := feed(t, event.SessionStarted{Model: "m"},
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "file the bug"},
+		event.ToolCallProposed{ToolCall: spawn, Tool: spawnTool, Args: map[string]any{"task": "file it"}},
+		event.AgentStarted{Agent: agent, ToolCall: spawn, Name: "filer"},
+		event.ToolCallProposed{ToolCall: call, Tool: "github__create_issue", Executor: "github", Agent: agent},
+		event.ToolCallEnded{ToolCall: call},
+		event.AgentEnded{Agent: agent, Reason: event.AgentDone},
+		event.ToolCallEnded{ToolCall: spawn, Result: event.Result{Stdout: "filed"}},
+		event.CheckpointTaken{Turn: turn, Tree: "t"},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	m.layout.width, m.layout.height = 150, 45
+	m.sizeViewport()
+
+	shown, _ := m.runUndo("/undo 1")
+	page := stripANSI(strings.Join(shown.undoLines(), "\n"))
+	assert.Contains(t, page, "1 tool call(s) cannot be undone")
+	assert.Contains(t, page, "github__create_issue")
+}
+
 // Nothing to warn about, nothing said: the section only earns its
 // space when a Turn actually holds one.
 func TestUndoPage_SaysNothingWhenEverythingReverses(t *testing.T) {

@@ -348,18 +348,18 @@ adding a fat dependency fails with the transitive import named.
   answers the human, and only it hears notes, asks to pass the bound,
   checks its work, compacts and is measured. `spawn_agent` (behind
   `subagents`, off by default) is a tool call the engine runs itself
-  (`spawn.go`): a child agent with only `childTools`, so it reads and
-  cannot spawn, plus the session's shell when the spawn asks for `shell`.
-  Shell children run at once in the shared workspace: the root is told to
-  split their work, since it is the one delegating. Each has its own
-  transcript and repeat check, at most 4 running
-  and `max_agents` started per Turn. A child never compacts. It ends at
+  (`spawn.go`): a child agent with every tool the root has, MCP's
+  included, but `spawn_agent`, so it is one level deep. Children run at
+  once in the shared workspace: the root is told to give each its own
+  files, since it is the one delegating, and the Turn's checkpoint covers
+  what they change. Each has its own transcript and repeat check, at most
+  4 run and `max_agents` start per Turn. A child never compacts. It ends at
   30 Steps, `child_context_tokens`, `child_timeout` or `StopAgent`, and
   one cut short is asked once more, with no tools, for its report. The
   report is the spawn's result and all the parent sees. The spawn
   declares `Delegates`, so Jev skips it and it never marks the Turn
-  changed. The child's own calls go through the whole chain, a flagged
-  one waits in the approval queue while its siblings run, and the judge
+  changed. The child's own calls go through the whole chain and mark it
+  changed, a flagged one waits for the human while its siblings run, and the judge
   and viewgen leave them alone. `New` subscribes to
   intents, not `Run`, so a caller that publishes the moment it returns
   cannot lose the intent.

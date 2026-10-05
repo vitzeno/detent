@@ -43,6 +43,15 @@ func StandardFor(shell Tool, extra ...Tool) *Registry {
 	return r
 }
 
+// Without is a registry of every tool but the named ones, sharing them and
+// keeping their order, such as what a subagent may call.
+func (r *Registry) Without(names ...string) *Registry {
+	r.mu.RLock()
+	keep := slices.DeleteFunc(slices.Clone(r.order), func(n string) bool { return slices.Contains(names, n) })
+	r.mu.RUnlock()
+	return r.Only(keep...)
+}
+
 // Only is a registry of just the named tools, sharing them and keeping their
 // order, such as what a subagent may call. A name not registered is skipped.
 func (r *Registry) Only(names ...string) *Registry {

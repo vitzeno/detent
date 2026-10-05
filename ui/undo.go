@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -86,7 +87,7 @@ func (m *Model) undoLines() []string {
 	if b == nil {
 		return nil
 	}
-	reversible, standing := split(b.rows)
+	reversible, standing := split(m.withAgents(b))
 	width := m.layout.outputColW - 6
 
 	out := []string{styleCaution.Render(fmt.Sprintf("undo request #%d", b.n)), ""}
@@ -138,6 +139,17 @@ func (m Model) undoKeys(sep string) string {
 
 // split separates what a checkpoint covers from what it does not.
 // Prose is neither: nothing ran.
+// withAgents is a request's rows and its subagents', whose calls it undoes too.
+func (m Model) withAgents(b *turnBlock) []*historyRow {
+	rows := slices.Clone(b.rows)
+	for _, a := range m.agentOrder {
+		if slices.Contains(b.rows, a.spawn) {
+			rows = append(rows, a.rows...)
+		}
+	}
+	return rows
+}
+
 func split(rows []*historyRow) (reversible, standing []*historyRow) {
 	for _, r := range rows {
 		switch {

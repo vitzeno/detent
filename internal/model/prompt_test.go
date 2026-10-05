@@ -42,7 +42,7 @@ func TestPromptParts_AddUpToTheWholePrompt(t *testing.T) {
 // The rule to delegate is there only when there is something to delegate to.
 func TestSystemPrompt_MentionsSubagentsOnlyWhenTheyExist(t *testing.T) {
 	assert.NotContains(t, NewClient("", "", "").systemPrompt(), "spawn_agent")
-	assert.Contains(t, NewClient("", "", "", WithSubagents()).systemPrompt(), "Hand broad reading to spawn_agent")
+	assert.Contains(t, NewClient("", "", "", WithSubagents()).systemPrompt(), "Hand work to spawn_agent")
 }
 
 // A subagent has its own role, still told where it runs and still given the

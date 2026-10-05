@@ -6,8 +6,8 @@ import "github.com/vitzeno/detent/event"
 const SpawnAgentName = "spawn_agent"
 
 // SpawnAgent hands a task to a subagent: another model with a transcript of
-// its own, which only reads and replies with a report. It lowers to nothing
-// a shell could run, since running one is running the engine.
+// its own and every tool but this one, which replies with a report. It lowers
+// to nothing a shell could run, since running one is running the engine.
 type SpawnAgent struct{}
 
 func (SpawnAgent) Name() string { return SpawnAgentName }
@@ -15,22 +15,20 @@ func (SpawnAgent) Name() string { return SpawnAgentName }
 func (SpawnAgent) Describe() Spec {
 	return Spec{
 		Description: "Start a subagent: another model that works one task on its own and replies with a report. " +
-			"It does not see this conversation, so the task must say everything it needs: what to find, " +
-			"where to start and what to report. It can read and search files, list directories, search the " +
-			"web and load skills, and with shell it can also run commands, such as tests, without editing " +
-			"files. It cannot ask you questions. Several spawn_agent calls in one step run at the same " +
-			"time, so start every one you need together. Subagents with shell share your working " +
-			"directory, so never give two of them work that installs, builds or writes the same things. A subagent stops after " +
-			"30 steps or when its time runs out, and reports what it found so far. Its report is all you see " +
-			"of its work. It ends with the files the subagent read, listed from what actually ran, and its " +
-			"paths and line numbers come from those, so quote them rather than reading the files again. Do not use it for what one or two reads answer.",
+			"It does not see this conversation, so the task must say everything it needs: what to do, " +
+			"where to start and what to report. It has your tools but this one, so it can read, run " +
+			"commands and edit files. It cannot ask you questions. Several spawn_agent calls in one step " +
+			"run at the same time in your working directory, so start every one you need together and give " +
+			"each its own files to change: never two the same files, installs or builds. A subagent stops " +
+			"after 30 steps or when its time runs out, and reports what it did so far. Its report is all " +
+			"you see of its work. It ends with the files the subagent read, listed from what actually ran, " +
+			"and its paths and line numbers come from those, so quote them rather than reading the files " +
+			"again. Do not use it for what one or two calls answer.",
 		Params: []Param{
 			{Name: "task", Type: TypeString, Required: true,
 				Desc: "the whole task, with everything the subagent needs to know"},
 			{Name: "name", Type: TypeString,
 				Desc: "a short label for the subagent, a word or two such as explore-auth"},
-			{Name: "shell", Type: TypeBool,
-				Desc: "let it run commands too, for a task that needs them such as running the tests"},
 		},
 		Mutability: event.MutRead,
 		Delegates:  true,

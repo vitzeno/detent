@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -171,6 +172,12 @@ func TestRegistry_OnlyKeepsTheNamedToolsInOrder(t *testing.T) {
 	_, ok := sub.Lookup(SpawnAgentName)
 	assert.False(t, ok, "a child must not be able to spawn")
 	assert.Error(t, sub.Register(ReadFile{}), "a kept built-in is still a built-in")
+}
+
+func TestRegistry_WithoutDropsOnlyTheNamedTools(t *testing.T) {
+	reg := Standard(SpawnAgent{})
+	sub := reg.Without(SpawnAgentName)
+	assert.Equal(t, slices.DeleteFunc(reg.Names(), func(n string) bool { return n == SpawnAgentName }), sub.Names())
 }
 
 func TestPrepare_TreatsNullAsAbsent(t *testing.T) {
