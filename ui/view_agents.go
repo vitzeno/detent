@@ -67,26 +67,19 @@ func (m Model) pinnedLines() []string {
 	inner := island.Inner(width)
 	shown := agents[:min(len(agents), maxPinned)]
 	rows := make([]string, 0, len(shown)+1)
-	for i, a := range shown {
-		rows = append(rows, m.pinnedRow(a, inner, m.nav.inAgents && i == m.nav.agentCursor))
+	for _, a := range shown {
+		rows = append(rows, m.pinnedRow(a, inner))
 	}
 	if rest := agents[len(shown):]; len(rest) > 0 {
 		rows = append(rows, styleFaint.Render(layout.Truncate(fmt.Sprintf("+%d more", len(rest)), inner)))
 	}
-	border := palette.Border
-	if m.nav.inAgents {
-		border = palette.Accent
-	}
-	return strings.Split(island.Render("", border, rows, width, len(rows)), "\n")
+	return strings.Split(island.Render("", palette.Border, rows, width, len(rows)), "\n")
 }
 
 // pinnedRow is one agent: how it stands, its name, and how full its context
 // is, or how it ended.
-func (m Model) pinnedRow(a *agentState, width int, focused bool) string {
+func (m Model) pinnedRow(a *agentState, width int) string {
 	mark := "  "
-	if focused {
-		mark = styleRowCursor.Render("▸ ")
-	}
 	name := toolName.agent.Render(fmt.Sprintf("%-*s", pinnedName, layout.Truncate(a.name, pinnedName)))
 	head := mark + m.agentGlyph(a) + " " + name + " "
 	room := max(0, width-lipgloss.Width(head))

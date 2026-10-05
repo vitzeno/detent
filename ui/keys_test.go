@@ -199,7 +199,7 @@ func TestApprovalBox_FitsNarrowAndShortScreens(t *testing.T) {
 func TestApply_StopKeySendsStopAgentForTheFocusedSpawn(t *testing.T) {
 	k := newKeyed(t)
 	sp := spawnIn(&k.m, "explore")
-	enterBlock(t, k)
+	openAgents(t, k)
 
 	k.press(t, "x")
 	k.noIntent(t)
@@ -240,8 +240,7 @@ func TestInspector_OpensOnTheReportWhenDone(t *testing.T) {
 	sp := spawnIn(&k.m, "explore")
 	k.m.apply(event.AgentEnded{Agent: sp.agent, Reason: event.AgentDone})
 	k.m.apply(event.ToolCallEnded{ToolCall: sp.spawn, Result: event.Result{Stdout: "the report"}})
-	enterBlock(t, k)
-	k.press(t, "enter")
+	openAgents(t, k)
 	assert.Equal(t, sp.spawn, k.m.inspectorRow().id)
 }
 
@@ -293,22 +292,19 @@ func TestInspector_ARootQuestionWaitsUntilItCloses(t *testing.T) {
 func TestInspector_EscReturnsToWhereItWasOpened(t *testing.T) {
 	k := newKeyed(t)
 	spawnIn(&k.m, "explore")
-	enterBlock(t, k)
-	k.press(t, "enter")
-	require.Equal(t, modeInspector, k.m.mode)
+	openAgents(t, k)
 	k.press(t, "esc")
 	assert.Equal(t, modeInput, k.m.mode)
-	assert.Equal(t, focusHistory, k.m.nav.focus)
-	assert.True(t, k.m.nav.inAgents, "back in the block it was opened from")
+	assert.Equal(t, focusHistory, k.m.nav.focus, "back in history, where a opened it")
 }
 
-// esc steps out of the block, and only a second one stops the request.
-func TestAgentsBlock_EscLeavesItWithoutAborting(t *testing.T) {
+// esc leaves the inspector, and only a second one stops the request.
+func TestInspector_EscFromItNeverAborts(t *testing.T) {
 	k := newKeyed(t)
 	spawnIn(&k.m, "explore")
-	enterBlock(t, k)
+	openAgents(t, k)
 	k.press(t, "esc")
-	assert.False(t, k.m.nav.inAgents)
+	assert.Equal(t, modeInput, k.m.mode)
 	k.noIntent(t)
 }
 
@@ -377,15 +373,14 @@ func TestInspector_ArrowsMoveBetweenAgentsInSpawnOrder(t *testing.T) {
 	k := newKeyed(t)
 	first := spawnIn(&k.m, "first")
 	second := spawnAlso(&k.m, first.turn, "second")
-	enterBlock(t, k)
-	k.press(t, "enter")
-	assert.Equal(t, first.agent, k.m.insp.agent.id)
-	k.press(t, "right")
-	assert.Equal(t, second.agent, k.m.insp.agent.id)
-	k.press(t, "right")
-	assert.Equal(t, second.agent, k.m.insp.agent.id, "the last stays the last")
+	openAgents(t, k)
+	assert.Equal(t, second.agent, k.m.insp.agent.id, "a opens on the newest")
 	k.press(t, "left")
 	assert.Equal(t, first.agent, k.m.insp.agent.id)
+	k.press(t, "left")
+	assert.Equal(t, first.agent, k.m.insp.agent.id, "the first stays the first")
+	k.press(t, "right")
+	assert.Equal(t, second.agent, k.m.insp.agent.id)
 }
 
 func TestInspector_StopKeyStopsThisAgent(t *testing.T) {
@@ -400,8 +395,7 @@ func TestInspector_DefusesWhatTheChildWrote(t *testing.T) {
 	k := newKeyed(t)
 	sp := spawnIn(&k.m, "explore")
 	k.m.apply(event.ModelText{Turn: sp.turn, Text: "look\x1b]52;c;cm0gLXJmIH4=\x07 here", Agent: sp.agent})
-	enterBlock(t, k)
-	k.press(t, "enter")
+	openAgents(t, k)
 	k.press(t, "down")
 	assert.NotContains(t, k.m.inspectorBox(), "\x1b]52", "an escape the child wrote reached the terminal")
 }
@@ -462,16 +456,28 @@ func TestHistory_ShrinksToMakeRoomForTheBlock(t *testing.T) {
 	_ = sp
 }
 
-func TestAgentsBlock_AKeyEntersAndEnterOpens(t *testing.T) {
+// a opens the inspector straight away, from history or the output pane.
+func TestAgents_AKeyOpensTheInspector(t *testing.T) {
+	for _, pane := range []focusPane{focusHistory, focusOutput} {
+		k := newKeyed(t)
+		sp := spawnIn(&k.m, "explore")
+		k.m.nav.focus = pane
+		k.m.prompt.Blur()
+		k.press(t, "a")
+		assert.Equal(t, modeInspector, k.m.mode, "from pane %d", pane)
+		assert.Equal(t, sp.agent, k.m.insp.agent.id)
+	}
+}
+
+// The welcome is the boot screen: once something is asked, a request whose
+// only rows are its subagents says so instead.
+func TestApply_SpawningKeepsTheWelcomeAway(t *testing.T) {
 	k := newKeyed(t)
-	sp := spawnIn(&k.m, "explore")
-	k.m.nav.focus = focusHistory
-	k.m.prompt.Blur()
-	k.press(t, "a")
-	assert.True(t, k.m.nav.inAgents)
-	k.press(t, "enter")
-	assert.Equal(t, modeInspector, k.m.mode)
-	assert.Equal(t, sp.agent, k.m.insp.agent.id)
+	assert.True(t, k.m.showWelcome())
+	spawnIn(&k.m, "explore")
+	k.m.sizeViewport()
+	assert.False(t, k.m.showWelcome())
+	assert.Contains(t, ansi.Strip(strings.Join(k.m.detailLines(), "\n")), "subagents are working")
 }
 
 // A command taller than the screen must not be approvable from its
@@ -720,9 +726,7 @@ func inspecting(t *testing.T, cmd ...string) *keyed {
 	k := newKeyed(t)
 	sp := spawnIn(&k.m, "migrate")
 	childAsks(&k.m, sp, append(cmd, "psql -c 'DROP COLUMN legacy_id'")[0])
-	enterBlock(t, k)
-	k.press(t, "enter")
-	require.Equal(t, modeInspector, k.m.mode)
+	openAgents(t, k)
 	return k
 }
 
@@ -735,14 +739,14 @@ func childAsks(m *Model, sp spawn, cmd string) {
 	m.apply(event.ApprovalAsked{ToolCall: call, Tool: "bash", Args: args, Rationale: "regex: drop column", Agent: sp.agent})
 }
 
-// enterBlock moves into the agents block from history, where its keys act.
-func enterBlock(t *testing.T, k *keyed) {
+// openAgents opens the inspector with a, from history.
+func openAgents(t *testing.T, k *keyed) {
 	t.Helper()
 	k.m.nav.focus = focusHistory
 	k.m.prompt.Blur()
 	k.m.sizeViewport()
 	k.press(t, "a")
-	require.True(t, k.m.nav.inAgents)
+	require.Equal(t, modeInspector, k.m.mode)
 }
 
 // queued is a Turn with a question per command, the first settled and up. A

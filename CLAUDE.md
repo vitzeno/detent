@@ -671,9 +671,10 @@ adding a fat dependency fails with the transitive import named.
   spawn row joins history in its place, drawing how the agent ended from
   facts alone. Its own rows live on its `agentState`, never in a Turn
   block, and its Steps never move the counters or the `ctx %` gauge,
-  which are the root's. `a` enters the block, `x` twice stops an agent,
-  and `enter` there or on a spawn row opens the inspector: that agent's
-  rows and output, laid over the panes as the finder is. `/agents` opens
+  which are the root's. `a` opens the inspector, on the agent waiting
+  on the human or else the newest, and `enter` on a spawn row opens it
+  on that one: an agent's rows and output, laid over the panes as the
+  finder is, with `←`/`→` to the others and `x` twice to stop one. `/agents` opens
   it for any agent in the session, a resumed one's too, since replaying a
   session's facts rebuilds its agents. A subagent's question never raises
   the box, which would take every key: it waits on its agent, marked

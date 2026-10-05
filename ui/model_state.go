@@ -42,10 +42,6 @@ type navState struct {
 
 	histHeight int
 	histOffset int
-	// inAgents is the cursor in the pinned agents block, at agentCursor,
-	// rather than in history.
-	inAgents    bool
-	agentCursor int
 	// histWindow is what sizeViewport laid out, so View need not.
 	histWindow []string
 }

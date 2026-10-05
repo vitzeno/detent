@@ -250,9 +250,6 @@ func (m Model) statusHint() string {
 		}
 		return "[tab] input · [↑/↓] inside · " + esc
 	case ownerHistory:
-		if m.nav.inAgents {
-			return "[↑/↓] move · [enter] open · [x] stop · [esc] back"
-		}
 		if len(m.pinned()) > 0 {
 			return "[a] agents · [esc] abort · [↑/↓] move · [enter] open"
 		}
@@ -270,7 +267,7 @@ func (m Model) statusHint() string {
 		}
 		// A waiting subagent takes no keys, so say how to reach it.
 		if _, blocked := m.agentCounts(); blocked > 0 {
-			return "an agent is waiting on you · [tab] history, then [a] · [esc] abort"
+			return "an agent is waiting on you · [tab], then [a] · [esc] abort"
 		}
 		return "[esc] abort · [enter] steers · [tab] history"
 	default: // ownerInput

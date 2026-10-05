@@ -39,9 +39,9 @@ func (m Model) detailLines() []string {
 }
 
 // showWelcome reports whether the output pane has nothing of its own
-// to show yet, which is the boot state: no row has ever been focused.
+// to show yet, which is the boot state: nothing has been asked.
 func (m Model) showWelcome() bool {
-	return m.focused() == nil
+	return m.focused() == nil && len(m.blocks) == 0
 }
 
 // welcomeLines hands the boot pane the facts it reports, so nothing in
@@ -85,6 +85,11 @@ func (m *Model) refreshViewport() {
 		return
 	}
 	r := m.focused()
+	if r == nil && len(m.pinned()) > 0 {
+		// The request's only rows are its subagents, drawn in the block.
+		m.setViewContent(styleFaint.Render("subagents are working · [a] looks into them"))
+		return
+	}
 	if r == nil {
 		m.setViewContent(styleFaint.Render("(no output yet)"))
 		return
