@@ -41,17 +41,16 @@ const (
 // everything else reaches it through the bus.
 type Engine struct {
 	bus     *event.Bus
-	model   Completer
-	tools   *tool.Registry
 	runners RunnerSelector
+	// root is the agent answering the human, built in New once the options are in.
+	root *agent
 
-	assessors []Assessor
-	judge     *jevHook
-	invoker   Invoker
-	repeat    *repeatHook
+	// extra is the hooks a caller added, which every agent's chain ends with.
+	extra   []Assessor
+	judge   *jevHook
+	invoker Invoker
 
 	session uuid.UUID
-	tr      transcript
 	turns   int
 
 	maxSteps     int
@@ -91,10 +90,6 @@ type Engine struct {
 	intents <-chan event.Record
 	unsub   func()
 
-	// trMu guards the transcript, which the Turn goroutine writes and
-	// a caller may read at any moment.
-	trMu sync.Mutex
-
 	// resetting is a reset waiting on the Turn it aborted. Run goroutine only.
 	resetting bool
 	// past is what can still be undone. Run goroutine only.
@@ -112,7 +107,7 @@ type Engine struct {
 // an Engine never run holds its subscription until the bus closes.
 func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelector, opts ...Option) *Engine {
 	e := &Engine{
-		bus: bus, model: m, tools: tools, runners: runners,
+		bus: bus, runners: runners,
 		session:        uuid.Must(uuid.NewV7()),
 		maxSteps:       defaultMaxSteps,
 		maxToolCalls:   defaultToolCallsPerStep,
@@ -120,17 +115,16 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 		finishCheck:    true,
 		contextTokens:  DefaultContextTokens,
 		stopGrace:      DefaultStopGrace,
-		repeat:         newRepeatHook(defaultRepeatLimit),
 		past:           map[uuid.UUID]*turnState{},
 	}
 	for _, o := range opts {
 		o(e)
 	}
-	// Cheapest first, the network hook last.
-	e.assessors = append([]Assessor{toolFloor{}, mcpFloor{}, regexHook{}, e.repeat}, e.assessors...)
+	// The network hook last.
 	if e.judge != nil {
-		e.assessors = append(e.assessors, e.judge)
+		e.extra = append(e.extra, e.judge)
 	}
+	e.root = newAgent(uuid.Nil, "", m, tools, e.extra...)
 	e.intents, e.unsub = bus.Subscribe(event.Intents())
 	return e
 }
@@ -231,7 +225,7 @@ func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{
 			e.post(t, v)
 			return
 		}
-		e.appended(uuid.Nil, uuid.Nil, func() []event.Message { return e.tr.note(v.Text) })
+		e.appended(e.root, uuid.Nil, uuid.Nil, func() []event.Message { return e.root.tr.note(v.Text) })
 	case event.ResetSession:
 		// Aborted now, not queued, and reset once the Turn has ended.
 		if t != nil {
@@ -324,8 +318,8 @@ func (e *Engine) turnDone(ctx context.Context, done chan struct{}) {
 // reset starts a new session under a new id, leaving the old one stored
 // as it was, to resume.
 func (e *Engine) reset() {
-	e.trLock(func() { e.tr.reset() })
-	e.repeat.forget()
+	e.root.lock(func() { e.root.tr.reset() })
+	e.root.repeat.forget()
 	e.turns = 0
 	e.settled = ""
 	e.mu.Lock()
@@ -349,13 +343,9 @@ func (e *Engine) started() {
 	})
 }
 
-// messages copies the message log, since the Turn goroutine owns the
+// messages copies the root's log, since the Turn goroutine owns the
 // original while one is running.
-func (e *Engine) messages() []event.Message {
-	e.trMu.Lock()
-	defer e.trMu.Unlock()
-	return append([]event.Message(nil), e.tr.messages()...)
-}
+func (e *Engine) messages() []event.Message { return e.root.messages() }
 
 func (e *Engine) current() *turnState {
 	e.mu.Lock()
@@ -390,4 +380,12 @@ func (e *Engine) abortCurrent() {
 
 func (e *Engine) notice(level, text string) {
 	e.bus.Publish(event.Notice{Level: level, Text: text})
+}
+
+// noticeFrom names a child in its notices, since several may be running.
+func (e *Engine) noticeFrom(a *agent, level, text string) {
+	if !a.root() {
+		text = a.name + ": " + text
+	}
+	e.notice(level, text)
 }

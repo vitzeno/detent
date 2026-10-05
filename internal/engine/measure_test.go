@@ -74,7 +74,7 @@ func TestMeasure_ScalesToTheRealCount(t *testing.T) {
 	assert.InDelta(t, 10_000, sum(got.Fixed)+sum(got.History), 10, "the parts add up to the count")
 	assert.Equal(t, got, e.measure(0), "nothing changed, so the exact answer stands")
 
-	e.trLock(func() { e.tr.note("a correction") })
+	e.root.lock(func() { e.root.tr.note("a correction") })
 	later := e.measure(0)
 	assert.False(t, later.Exact, "something was added, so this is an estimate")
 	assert.Greater(t, later.Total, got.Total)
@@ -97,7 +97,7 @@ func TestMeasure_FixedCostsAreGroupedByWhoOffersThem(t *testing.T) {
 // change to measure.
 func TestMeasure_ANewKindOfToolGetsItsOwnRow(t *testing.T) {
 	e := measured(t)
-	require.NoError(t, e.tools.Register(groupedTool{}))
+	require.NoError(t, e.root.tools.Register(groupedTool{}))
 	for _, p := range e.measure(0).Fixed {
 		if p.Name == "plan" {
 			assert.Equal(t, "a checklist", p.Detail)
@@ -137,9 +137,9 @@ func measured(t *testing.T) *Engine {
 		WithInstructions([]string{"AGENTS.md"}),
 		WithSkills([]event.SkillSummary{{Name: "a"}, {Name: "b"}}))
 	defer e.unsub()
-	e.trLock(func() {
-		e.tr.user(1, "do it")
-		e.tr.say(strings.Repeat("y", 2000))
+	e.root.lock(func() {
+		e.root.tr.user(1, "do it")
+		e.root.tr.say(strings.Repeat("y", 2000))
 	})
 	return e
 }

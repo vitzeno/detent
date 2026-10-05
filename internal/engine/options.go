@@ -56,7 +56,7 @@ func WithJudge(j Judge, threshold float64) Option {
 func WithAssessor(a Assessor) Option {
 	return func(e *Engine) {
 		if a != nil {
-			e.assessors = append(e.assessors, a)
+			e.extra = append(e.extra, a)
 		}
 	}
 }

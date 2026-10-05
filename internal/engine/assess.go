@@ -25,17 +25,17 @@ type Assessor interface {
 
 // assess folds the chain in order, cheap hooks first. Every hook is
 // asked, the network one included, so a flagged tool call still gets its scope.
-func (e *Engine) assess(ctx context.Context, c tool.Call) event.Risk {
+func (e *Engine) assess(ctx context.Context, a *agent, c tool.Call) event.Risk {
 	ctx, cancel := context.WithTimeout(ctx, assessTimeout)
 	defer cancel()
 	r := event.UnknownRisk()
-	for _, a := range e.assessors {
-		got, err := assessSafely(ctx, a, c, r)
+	for _, h := range a.assessors {
+		got, err := assessSafely(ctx, h, c, r)
 		if err != nil {
 			// A hook that fails is skipped, not fatal. An abort is not
 			// a failure worth a warning.
-			if !errors.Is(ctx.Err(), context.Canceled) && e.firstFailure(a.Name()) {
-				e.notice("warn", a.Name()+" could not assess: "+err.Error())
+			if !errors.Is(ctx.Err(), context.Canceled) && e.firstFailure(h.Name()) {
+				e.notice("warn", h.Name()+" could not assess: "+err.Error())
 			}
 			continue
 		}

@@ -19,21 +19,21 @@ func (e *Engine) Restore(records []event.Record) {
 	e.leftOpen = leftOpenBy(records)
 	type begun struct{ n, mark int }
 	turns := map[uuid.UUID]begun{}
-	e.trLock(func() {
+	e.root.lock(func() {
 		for _, r := range records {
 			switch v := r.Event.(type) {
 			case event.Appended:
-				e.tr.msgs = append(e.tr.msgs, v.Messages...)
+				e.root.tr.msgs = append(e.root.tr.msgs, v.Messages...)
 			case event.TurnStarted:
-				turns[v.Turn] = begun{n: v.N, mark: e.tr.mark()}
+				turns[v.Turn] = begun{n: v.N, mark: e.root.tr.mark()}
 				e.turns = v.N
-				e.tr.begin(v.N, v.Prompt)
+				e.root.tr.begin(v.N, v.Prompt)
 			case event.RolledBack:
-				if b, ok := turns[v.Turn]; ok && e.tr.truncate(b.mark) {
+				if b, ok := turns[v.Turn]; ok && e.root.tr.truncate(b.mark) {
 					e.turns = b.n - 1
 				}
 			case event.SessionReset:
-				e.tr.reset()
+				e.root.tr.reset()
 				e.turns = 0
 			case event.SessionStarted:
 				e.session = v.Session
@@ -77,7 +77,7 @@ func (e *Engine) endLeftOpen(o openWork) {
 			Summary: "detent exited before this request finished"})
 	}
 	if len(o.turns) > 0 {
-		e.appended(uuid.Nil, uuid.Nil, func() []event.Message { return e.tr.note(cutOffNote) })
+		e.appended(e.root, uuid.Nil, uuid.Nil, func() []event.Message { return e.root.tr.note(cutOffNote) })
 	}
 }
 

@@ -54,17 +54,17 @@ type start struct {
 	prompt string
 }
 
-// appended mutates the transcript and publishes what went in, so a
+// appended mutates an agent's transcript and publishes what went in, so a
 // replay puts the same messages back rather than reformatting them.
-func (e *Engine) appended(turn, step uuid.UUID, fn func() []event.Message) {
+func (e *Engine) appended(a *agent, turn, step uuid.UUID, fn func() []event.Message) {
 	var added []event.Message
-	e.trLock(func() { added = fn() })
+	a.lock(func() { added = fn() })
 	if len(added) > 0 {
 		e.bus.Publish(event.Appended{Turn: turn, Step: step, Messages: added})
 	}
 }
 
-// compact summarises outside the transcript's lock, since that is a model
+// compact summarises the root's transcript outside its lock, since that is a model
 // call. Only this goroutine mutates the transcript mid-Turn, so the cut holds.
 func (e *Engine) compact(ctx context.Context, t *turnState) {
 	if !e.wouldCompact() {
@@ -72,16 +72,16 @@ func (e *Engine) compact(ctx context.Context, t *turnState) {
 	}
 	var cut int
 	var gone []event.Message
-	e.trLock(func() {
-		cut = e.tr.cutFor(e.budget())
-		gone = append(gone, e.tr.msgs[:cut]...)
+	e.root.lock(func() {
+		cut = e.root.tr.cutFor(e.budget())
+		gone = append(gone, e.root.tr.msgs[:cut]...)
 	})
 	if cut == 0 {
 		return
 	}
 	e.bus.Publish(event.Notice{Level: "info", Text: "compacting the transcript"})
 	note := summarise(ctx, e.summarizer, gone)
-	e.trLock(func() { e.tr.fold(cut, note) })
+	e.root.lock(func() { e.root.tr.fold(cut, note) })
 	e.bus.Publish(event.Compacted{Turn: t.id, Dropped: cut, Note: note})
 }
 
@@ -93,16 +93,8 @@ func (e *Engine) budget() int { return e.contextTokens }
 // notice is not published for a compact that returns immediately.
 func (e *Engine) wouldCompact() bool {
 	over := false
-	e.trLock(func() { over = e.tr.bytes() > e.budget()*bytesPerToken })
+	e.root.lock(func() { over = e.root.tr.bytes() > e.budget()*bytesPerToken })
 	return over
-}
-
-// trLock runs fn holding the transcript lock. Never used around
-// anything blocking: a model call takes seconds.
-func (e *Engine) trLock(fn func()) {
-	e.trMu.Lock()
-	defer e.trMu.Unlock()
-	fn()
 }
 
 // step appends one Step whole, answering every call, since one left unanswered breaks

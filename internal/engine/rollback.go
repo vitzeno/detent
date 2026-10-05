@@ -18,7 +18,7 @@ func (e *Engine) rollback(ctx context.Context, req event.RequestRollback) {
 	}
 	// Refused before anything is restored, so a refusal leaves nothing half undone.
 	var reachable bool
-	e.trLock(func() { reachable = e.tr.reaches(t.mark) })
+	e.root.lock(func() { reachable = e.root.tr.reaches(t.mark) })
 	if !reachable {
 		e.notice("error", "that request was compacted into a summary of earlier work, so it can no longer be undone")
 		return
@@ -39,7 +39,7 @@ func (e *Engine) rollback(ctx context.Context, req event.RequestRollback) {
 	if req.RevertFiles {
 		e.revertFiles(ctx, t)
 	}
-	e.trLock(func() { e.tr.truncate(t.mark) })
+	e.root.lock(func() { e.root.tr.truncate(t.mark) })
 	e.forgetFrom(req.Turn)
 	e.bus.Publish(event.RolledBack{Turn: req.Turn, RevertFiles: req.RevertFiles})
 }

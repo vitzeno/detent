@@ -55,7 +55,7 @@ func TestAppended_RebuildResolvesAMarkTakenAfterCompaction(t *testing.T) {
 
 	r.run("first")
 	var mark int
-	r.eng.trLock(func() { mark = r.eng.tr.mark() })
+	r.eng.root.lock(func() { mark = r.eng.root.tr.mark() })
 	r.run("second")
 
 	require.NotEmpty(t, r.of(event.CompactedKind), "the budget must have forced a compaction")

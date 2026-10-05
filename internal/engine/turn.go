@@ -51,6 +51,8 @@ type turnState struct {
 
 	mu    sync.Mutex
 	notes []string
+	// used is every agent's spend this Turn, added from each one's goroutine.
+	used event.Usage
 	// waiting holds each open question's answer, keyed by its tool call,
 	// so several can wait at once and none takes another's.
 	waiting map[uuid.UUID]chan bool
@@ -68,7 +70,7 @@ func (e *Engine) startTurn(ctx context.Context, prompt string, done chan struct{
 	tctx, cancel := context.WithCancel(ctx)
 	e.turns++
 	// Repeats are counted per request: the same tests rerun in a later one are the job.
-	e.repeat.forget()
+	e.root.repeat.forget()
 	t := newTurnState(e.turns, prompt, cancel)
 	e.mu.Lock()
 	e.cur = t
@@ -86,75 +88,88 @@ func (e *Engine) startTurn(ctx context.Context, prompt string, done chan struct{
 	}()
 }
 
-// runTurn is the loop, blocking and linear. Everything it needs to
-// hear about arrives on t.inbox.
+// runTurn is what belongs to the Turn rather than to any agent: its
+// checkpoint, the prompt, and its end. Everything the root needs to hear
+// about arrives on t.inbox.
 func (e *Engine) runTurn(ctx context.Context, t *turnState) {
-	e.trLock(func() { t.mark = e.tr.mark() })
+	a := e.root
+	a.lock(func() { t.mark = a.tr.mark() })
 	e.bus.Publish(event.TurnStarted{Turn: t.id, N: t.n, Prompt: t.prompt})
 	e.checkpoint(ctx, t)
-	e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.user(t.n, t.prompt) })
+	e.appended(a, t.id, uuid.Nil, func() []event.Message { return a.tr.user(t.n, t.prompt) })
+	end := e.runAgent(ctx, t, a)
+	e.endTurn(ctx, t, end.reason, end.text, t.usage())
+}
 
-	var total event.Usage
+// agentEnd is how an agent's Steps ended, and its last words.
+type agentEnd struct {
+	reason event.EndReason
+	text   string
+}
+
+// runAgent is the loop, blocking and linear: Steps until the model stops
+// asking for tools. What only the root does is said where it happens.
+func (e *Engine) runAgent(ctx context.Context, t *turnState, a *agent) agentEnd {
 	limit, nudges, checked := e.maxSteps, 0, false
 	for step := 1; ; step++ {
-		t.drain()
-
-		if t.aborted.Load() || ctx.Err() != nil {
-			e.endTurn(ctx, t, event.EndAborted, "", total)
-			return
+		if a.root() {
+			t.drain()
 		}
-		if step > limit {
+		if t.aborted.Load() || ctx.Err() != nil {
+			return agentEnd{reason: event.EndAborted}
+		}
+		if step > limit && a.root() {
 			if !e.askContinue(ctx, t, step-1) {
-				e.endTurn(ctx, t, event.EndBound, "", total)
-				return
+				return agentEnd{reason: event.EndBound}
 			}
 			limit += e.maxSteps
 		}
-		for _, note := range t.takeNotes() {
-			e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(note) })
+		if a.root() {
+			for _, note := range t.takeNotes() {
+				e.appended(a, t.id, uuid.Nil, func() []event.Message { return a.tr.note(note) })
+			}
+			e.compact(ctx, t)
 		}
-		e.compact(ctx, t)
 
 		stepID := uuid.Must(uuid.NewV7())
 		e.bus.Publish(event.StepStarted{Turn: t.id, Step: stepID, N: step})
-		reply, used, err := e.model.Complete(ctx, e.messages(), e.tools.Schemas())
-		total = total.Add(used)
+		reply, used, err := a.model.Complete(ctx, a.messages(), a.tools.Schemas())
+		t.addUsage(used)
 		if err != nil {
 			if ctx.Err() != nil {
-				e.endTurn(ctx, t, event.EndAborted, "", total)
-				return
+				return agentEnd{reason: event.EndAborted}
 			}
-			e.notice("error", err.Error())
-			e.endTurn(ctx, t, event.EndError, err.Error(), total)
-			return
+			e.noticeFrom(a, "error", err.Error())
+			return agentEnd{reason: event.EndError, text: err.Error()}
 		}
 		e.bus.Publish(event.StepEnded{Turn: t.id, Step: stepID, Usage: used, ToolCalls: len(reply.Requests), Stop: reply.Stop})
-		e.bus.Publish(e.measure(used.PromptTokens))
+		if a.root() {
+			e.bus.Publish(e.measure(used.PromptTokens))
+		}
 		if reply.Text != "" {
 			e.bus.Publish(event.ModelText{Turn: t.id, Step: stepID, Text: reply.Text})
 		}
 
 		// No calls means the model is finished asking, unless it stopped mid-thought.
 		if len(reply.Requests) == 0 {
-			e.appended(t.id, stepID, func() []event.Message { return e.tr.say(reply.Text) })
+			e.appended(a, t.id, stepID, func() []event.Message { return a.tr.say(reply.Text) })
 			if reply.Unfinished() && nudges < maxNudges {
 				nudges++
-				e.notice("info", fmt.Sprintf("the model stopped with no answer and no call (%s), so it was told to carry on", stopReason(reply.Stop)))
-				e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(unfinishedNote) })
+				e.noticeFrom(a, "info", fmt.Sprintf("the model stopped with no answer and no call (%s), so it was told to carry on", stopReason(reply.Stop)))
+				e.appended(a, t.id, uuid.Nil, func() []event.Message { return a.tr.note(unfinishedNote) })
 				continue
 			}
-			if e.finishCheck && t.changed.Load() && !checked {
+			if a.root() && e.finishCheck && t.changed.Load() && !checked {
 				checked = true
 				e.notice("info", "asked the model to check its work against the request before finishing")
-				e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(finishNote) })
+				e.appended(a, t.id, uuid.Nil, func() []event.Message { return a.tr.note(finishNote) })
 				continue
 			}
-			e.endTurn(ctx, t, event.EndDone, reply.Text, total)
-			return
+			return agentEnd{reason: event.EndDone, text: reply.Text}
 		}
 		nudges = 0
-		answers := e.runStep(ctx, t, stepID, reply)
-		e.appended(t.id, stepID, func() []event.Message { return e.tr.step(reply, answers) })
+		answers := e.runStep(ctx, t, a, stepID, reply)
+		e.appended(a, t.id, stepID, func() []event.Message { return a.tr.step(reply, answers) })
 	}
 }
 
@@ -164,7 +179,7 @@ func (e *Engine) endTurn(ctx context.Context, t *turnState, why event.EndReason,
 	t.drain()
 	e.settle(ctx, t)
 	for _, n := range t.takeNotes() {
-		e.appended(t.id, uuid.Nil, func() []event.Message { return e.tr.note(n) })
+		e.appended(e.root, t.id, uuid.Nil, func() []event.Message { return e.root.tr.note(n) })
 	}
 	t.ended.Store(true)
 	e.bus.Publish(event.TurnEnded{Turn: t.id, Reason: why, Summary: summary, Usage: used})
@@ -283,6 +298,18 @@ func (t *turnState) answer(r event.ResolveApproval) {
 	case t.waiting[r.ToolCall] <- r.Approved:
 	default:
 	}
+}
+
+func (t *turnState) addUsage(u event.Usage) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.used = t.used.Add(u)
+}
+
+func (t *turnState) usage() event.Usage {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.used
 }
 
 func (t *turnState) takeNotes() []string {

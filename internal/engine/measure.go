@@ -47,8 +47,8 @@ func (e *Engine) measure(sent int) event.ContextMeasured {
 	var msgs []event.Message
 	var starts []start
 	var dropped int
-	e.trLock(func() {
-		msgs, starts, dropped = slices.Clone(e.tr.msgs), slices.Clone(e.tr.starts), e.tr.dropped
+	e.root.lock(func() {
+		msgs, starts, dropped = slices.Clone(e.root.tr.msgs), slices.Clone(e.root.tr.starts), e.root.tr.dropped
 	})
 	fixed := e.fixedParts()
 	history := historyParts(msgs, starts, dropped, e.current() != nil)
@@ -91,7 +91,7 @@ func (e *Engine) measure(sent int) event.ContextMeasured {
 // instructions, and the tool schemas, grouped by who offers them.
 func (e *Engine) fixedParts() []part {
 	var out []part
-	if s, ok := e.model.(PromptSizer); ok {
+	if s, ok := e.root.model.(PromptSizer); ok {
 		for _, p := range s.PromptParts() {
 			out = append(out, part{event.ContextPart{Name: p.Name, Detail: p.Detail}, p.Bytes, 0})
 		}
@@ -102,12 +102,12 @@ func (e *Engine) fixedParts() []part {
 		detail   string
 	}
 	groups := map[string]*group{}
-	for _, schema := range e.tools.Schemas() {
+	for _, schema := range e.root.tools.Schemas() {
 		raw, _ := json.Marshal(schema)
 		fn, _ := schema["function"].(map[string]any)
 		name, _ := fn["name"].(string)
 		var spec tool.Spec
-		if t, ok := e.tools.Lookup(name); ok {
+		if t, ok := e.root.tools.Lookup(name); ok {
 			spec = t.Describe()
 		}
 		key := cmp.Or(spec.Group, "tools")

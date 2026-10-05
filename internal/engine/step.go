@@ -53,14 +53,14 @@ const (
 
 // runStep answers every tool call however it went, in the order asked.
 // Contiguous read-only tool calls run together, never ahead of an earlier write.
-func (e *Engine) runStep(ctx context.Context, t *turnState, step uuid.UUID, reply model.Reply) []string {
-	plans := e.plan(ctx, step, reply)
+func (e *Engine) runStep(ctx context.Context, t *turnState, a *agent, step uuid.UUID, reply model.Reply) []string {
+	plans := e.plan(ctx, a, step, reply)
 	stopping := func() bool { return t.aborted.Load() || ctx.Err() != nil }
 
 	var batch []*toolCallPlan
 	flush := func() {
 		if len(batch) > 0 && !stopping() {
-			e.runParallel(ctx, batch)
+			e.runParallel(ctx, a, batch)
 		}
 		batch = nil
 	}
@@ -78,7 +78,7 @@ serial:
 			break
 		}
 		if p.risk.Dangerous {
-			switch e.approve(ctx, t, p) {
+			switch e.approve(ctx, t, a, p) {
 			case approved:
 			case declined:
 				p.finish("The human declined this call. Do not repeat it; try something else.")
@@ -87,7 +87,7 @@ serial:
 				break serial
 			}
 		}
-		e.execute(ctx, p)
+		e.execute(ctx, a, p)
 		if !p.readOnly() {
 			t.changed.Store(true)
 		}
@@ -109,14 +109,14 @@ serial:
 
 // plan validates and assesses, settling anything that cannot run.
 // Every failure here is an answer the model reads, never a Go error.
-func (e *Engine) plan(ctx context.Context, step uuid.UUID, reply model.Reply) []*toolCallPlan {
+func (e *Engine) plan(ctx context.Context, a *agent, step uuid.UUID, reply model.Reply) []*toolCallPlan {
 	out := make([]*toolCallPlan, 0, len(reply.Requests))
 	ids := make(map[string]bool, len(reply.Requests))
 	for i, c := range reply.Requests {
 		p := &toolCallPlan{id: uuid.Must(uuid.NewV7()), call: c}
 		out = append(out, p)
 		e.bus.Publish(event.ToolCallProposed{ToolCall: p.id, Step: step, Tool: c.Name, Args: c.Args,
-			Renders: e.renders(c.Name), Executor: e.executor(c.Name)})
+			Renders: renders(a, c.Name), Executor: executor(a, c.Name)})
 
 		dup := ids[c.ID]
 		ids[c.ID] = true
@@ -132,17 +132,17 @@ func (e *Engine) plan(ctx context.Context, step uuid.UUID, reply model.Reply) []
 			continue
 		}
 
-		prepared, err := e.tools.Prepare(c.Name, c.Args)
+		prepared, err := a.tools.Prepare(c.Name, c.Args)
 		if err != nil {
 			p.finish(err.Error())
 			continue
 		}
 		p.prepared, p.cmd = prepared, prepared.Command
-		if n, refused := e.repeat.refuses(prepared.Command); refused {
+		if n, refused := a.repeat.refuses(prepared.Command); refused {
 			p.finish(fmt.Sprintf("Not run: this exact command has already run %d times in this request and printed the same thing each time. Try something else.", n))
 			continue
 		}
-		p.risk = e.assess(ctx, prepared)
+		p.risk = e.assess(ctx, a, prepared)
 		e.bus.Publish(event.ToolCallAssessed{ToolCall: p.id, Risk: p.risk})
 	}
 	return out
@@ -150,8 +150,8 @@ func (e *Engine) plan(ctx context.Context, step uuid.UUID, reply model.Reply) []
 
 // renders asks the tool how its output should be read. Advisory: a
 // front-end may ignore it.
-func (e *Engine) renders(name string) event.RenderKind {
-	t, ok := e.tools.Lookup(name)
+func renders(a *agent, name string) event.RenderKind {
+	t, ok := a.tools.Lookup(name)
 	if !ok {
 		return ""
 	}
@@ -160,8 +160,8 @@ func (e *Engine) renders(name string) event.RenderKind {
 
 // executor names what runs a tool, empty for a shell command. A
 // front-end needs it to say what a rollback cannot take back.
-func (e *Engine) executor(name string) string {
-	t, ok := e.tools.Lookup(name)
+func executor(a *agent, name string) string {
+	t, ok := a.tools.Lookup(name)
 	if !ok {
 		return ""
 	}
@@ -170,20 +170,25 @@ func (e *Engine) executor(name string) string {
 
 // runParallel runs read-only tool calls together. They change nothing, so
 // nothing depends on their order.
-func (e *Engine) runParallel(ctx context.Context, plans []*toolCallPlan) {
+func (e *Engine) runParallel(ctx context.Context, a *agent, plans []*toolCallPlan) {
 	var wg sync.WaitGroup
 	for _, p := range plans {
-		wg.Go(func() { e.execute(ctx, p) })
+		wg.Go(func() { e.execute(ctx, a, p) })
 	}
 	wg.Wait()
 }
 
 // approve publishes the question and waits for its own answer, which
-// dispatch delivers by tool call id. Reading the inbox meanwhile keeps
-// notes typed during a long wait from overflowing it.
-func (e *Engine) approve(ctx context.Context, t *turnState, p *toolCallPlan) approval {
+// dispatch delivers by tool call id. The root reads the inbox meanwhile, so
+// notes typed during a long wait do not overflow it. Only the root, so
+// nothing on it is taken by a child's wait.
+func (e *Engine) approve(ctx context.Context, t *turnState, a *agent, p *toolCallPlan) approval {
 	answer, forget := t.await(p.id)
 	defer forget()
+	var inbox <-chan event.Event
+	if a.root() {
+		inbox = t.inbox
+	}
 	e.bus.Publish(event.ApprovalAsked{
 		ToolCall: p.id, Tool: p.call.Name, Args: p.call.Args,
 		Rationale: describe(p.risk), Risk: p.risk,
@@ -197,7 +202,7 @@ func (e *Engine) approve(ctx context.Context, t *turnState, p *toolCallPlan) app
 				return approved
 			}
 			return declined
-		case ev := <-t.inbox:
+		case ev := <-inbox:
 			t.absorb(ev)
 			if t.aborted.Load() {
 				return abandoned
@@ -206,7 +211,7 @@ func (e *Engine) approve(ctx context.Context, t *turnState, p *toolCallPlan) app
 	}
 }
 
-func (e *Engine) execute(ctx context.Context, p *toolCallPlan) {
+func (e *Engine) execute(ctx context.Context, a *agent, p *toolCallPlan) {
 	if p.prepared.Executor != "" {
 		e.invoke(ctx, p)
 		return
@@ -214,8 +219,8 @@ func (e *Engine) execute(ctx context.Context, p *toolCallPlan) {
 	runner, mode := e.runners.Select(p.risk)
 	// On the host a native tool runs here, the same on every OS. The
 	// sandbox only has its shell, so there it runs the lowered command.
-	if n, ok := e.tools.Native(p.prepared.Tool); ok && mode == hostMode {
-		e.runNative(ctx, p, n)
+	if n, ok := a.tools.Native(p.prepared.Tool); ok && mode == hostMode {
+		e.runNative(ctx, a, p, n)
 		return
 	}
 	if runner == nil {
@@ -250,11 +255,11 @@ func (e *Engine) execute(ctx context.Context, p *toolCallPlan) {
 	}
 	e.bus.Publish(event.ToolCallEnded{ToolCall: p.id, Result: out, Took: took})
 	p.finish(formatResult(p.cmd, out))
-	e.repeat.ran(p.cmd, p.answer)
+	a.repeat.ran(p.cmd, p.answer)
 }
 
 // runNative runs a native tool in this process, bounded like a command.
-func (e *Engine) runNative(ctx context.Context, p *toolCallPlan, n tool.Native) {
+func (e *Engine) runNative(ctx context.Context, a *agent, p *toolCallPlan, n tool.Native) {
 	p.ended = true
 	e.bus.Publish(event.ToolCallStarted{ToolCall: p.id, Runner: hostMode})
 	start := time.Now()
@@ -267,7 +272,7 @@ func (e *Engine) runNative(ctx context.Context, p *toolCallPlan, n tool.Native) 
 	}
 	e.bus.Publish(event.ToolCallEnded{ToolCall: p.id, Result: out, Took: time.Since(start)})
 	p.finish(formatResult(event.Command(p.prepared.Tool, p.prepared.Args), out))
-	e.repeat.ran(p.cmd, p.answer)
+	a.repeat.ran(p.cmd, p.answer)
 }
 
 // invoke runs a tool call with no command. Runner names the executor, so

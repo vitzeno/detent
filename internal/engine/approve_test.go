@@ -100,7 +100,7 @@ type question struct {
 func asking(ctx context.Context, e *Engine, tr *turnState) *question {
 	q := &question{id: uuid.Must(uuid.NewV7()), got: make(chan approval, 1)}
 	p := &toolCallPlan{id: q.id, call: bashCall(q.id.String(), "rm -rf build")}
-	go func() { q.got <- e.approve(ctx, tr, p) }()
+	go func() { q.got <- e.approve(ctx, tr, e.root, p) }()
 	return q
 }
 

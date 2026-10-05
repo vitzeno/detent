@@ -343,8 +343,12 @@ adding a fat dependency fails with the transitive import named.
   facts. `Run` is the actor and `runTurn` reads top to bottom. That is
   what lets front-ends subscribe rather than call, and why there is
   one loop instead of a blocking one for headless and a shattered one
-  for the TUI. `New` subscribes to intents, not `Run`, so a caller
-  that publishes the moment it returns cannot lose the intent.
+  for the TUI. A Turn's Steps are run by `runAgent` over an `agent`: a
+  model, its tools, its own hook chain and its transcript. The root
+  answers the human, and only it hears notes, asks to pass the bound,
+  checks its work, compacts and is measured. `New` subscribes to
+  intents, not `Run`, so a caller that publishes the moment it returns
+  cannot lose the intent.
   `Abort` is handled in `dispatch` rather than queued to the Turn: a
   blocked tool call never reaches a boundary, and the inbox is only drained
   at one. Intents name their Turn and one naming another is dropped,

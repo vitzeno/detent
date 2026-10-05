@@ -153,7 +153,7 @@ func TestAssess_AFailingHookIsSkipped(t *testing.T) {
 	e := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}},
 		WithAssessor(brokenHook{}))
 	defer e.unsub()
-	got := e.assess(context.Background(), tool.Call{Command: "rm -rf /", Mutability: ""})
+	got := e.assess(context.Background(), e.root, tool.Call{Command: "rm -rf /", Mutability: ""})
 	assert.True(t, got.Dangerous, "the regex hook still spoke")
 }
 
@@ -163,7 +163,7 @@ func TestAssess_AHookCannotSoftenTheChain(t *testing.T) {
 	e := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}},
 		WithAssessor(liarHook{}))
 	defer e.unsub()
-	got := e.assess(context.Background(), tool.Call{Command: "rm -rf /", Mutability: event.MutIrreversible})
+	got := e.assess(context.Background(), e.root, tool.Call{Command: "rm -rf /", Mutability: event.MutIrreversible})
 	assert.True(t, got.Dangerous)
 	assert.Equal(t, event.MutIrreversible, got.Mutability)
 }
@@ -172,7 +172,7 @@ func TestAssess_AHookCannotSoftenTheChain(t *testing.T) {
 func TestAssess_ScopeStaysUnknownUntilSomethingMeasuresIt(t *testing.T) {
 	e := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}})
 	defer e.unsub()
-	got := e.assess(context.Background(), tool.Call{Command: "make deploy"})
+	got := e.assess(context.Background(), e.root, tool.Call{Command: "make deploy"})
 	assert.Less(t, got.ScopeRisk, 0.0)
 	assert.NotContains(t, describe(got), "scope")
 }
@@ -181,7 +181,7 @@ func TestAssess_ScopeStaysUnknownUntilSomethingMeasuresIt(t *testing.T) {
 func TestAssess_APanickingHookIsSkipped(t *testing.T) {
 	bus := event.New()
 	r := rigWith(t, bus, &fakeModel{}, &fakeRunner{}, WithAssessor(panicHook{}))
-	got := r.eng.assess(context.Background(), tool.Call{Command: "rm -rf /"})
+	got := r.eng.assess(context.Background(), r.eng.root, tool.Call{Command: "rm -rf /"})
 	assert.True(t, got.Dangerous)
 	notice := r.await(event.NoticeKind).(event.Notice)
 	assert.Contains(t, notice.Text, "panicked")
@@ -191,13 +191,13 @@ func TestAssess_APanickingHookIsSkipped(t *testing.T) {
 func TestAssess_AFailingHookWarnsOnceATurn(t *testing.T) {
 	r := rigWith(t, event.New(), &fakeModel{}, &fakeRunner{}, WithAssessor(brokenHook{}))
 	for range 3 {
-		r.eng.assess(context.Background(), tool.Call{Command: "ls"})
+		r.eng.assess(context.Background(), r.eng.root, tool.Call{Command: "ls"})
 	}
 	r.await(event.NoticeKind)
 	r.eng.mu.Lock()
 	r.eng.warned = nil
 	r.eng.mu.Unlock()
-	r.eng.assess(context.Background(), tool.Call{Command: "ls"})
+	r.eng.assess(context.Background(), r.eng.root, tool.Call{Command: "ls"})
 	r.awaitNth(event.NoticeKind, 2)
 	assert.Len(t, r.of(event.NoticeKind), 2, "one per Turn, and a new Turn warns again")
 }
@@ -207,7 +207,7 @@ func TestNew_TheJudgeIsLastInTheChain(t *testing.T) {
 	e := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}},
 		WithJudge(fixedJudge{}, 0.5), WithAssessor(liarHook{}))
 	defer e.unsub()
-	assert.Equal(t, "jev", e.assessors[len(e.assessors)-1].Name())
+	assert.Equal(t, "jev", e.root.assessors[len(e.root.assessors)-1].Name())
 }
 
 func TestToolFloor_ReadOnlyToolsNeedNoModel(t *testing.T) {
@@ -216,7 +216,7 @@ func TestToolFloor_ReadOnlyToolsNeedNoModel(t *testing.T) {
 	c, err := tool.Standard().Prepare("read_file", map[string]any{"path": "a.go"})
 	require.NoError(t, err)
 
-	got := e.assess(context.Background(), c)
+	got := e.assess(context.Background(), e.root, c)
 	assert.True(t, got.ReadOnly(), "read_file is read-only by construction")
 	assert.False(t, got.Dangerous)
 }
@@ -325,7 +325,7 @@ func TestMCPFloor_NothingDownstreamCanNarrowIt(t *testing.T) {
 	r := rigWith(t, bus, &fakeModel{}, &fakeRunner{},
 		WithAssessor(claimsSafe{}))
 
-	got := r.eng.assess(context.Background(),
+	got := r.eng.assess(context.Background(), r.eng.root,
 		tool.Call{Tool: "srv__wipe", Executor: "srv"})
 	assert.True(t, got.Dangerous, "a hook narrowed the mcp floor")
 }
