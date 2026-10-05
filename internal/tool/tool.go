@@ -46,6 +46,9 @@ type Spec struct {
 	Renders event.RenderKind
 	// Executor names what runs this call, empty being a shell command.
 	Executor string
+	// Delegates says the call has no effect of its own: each effect is
+	// assessed when the delegate makes it. The engine runs such a call itself.
+	Delegates bool
 	// Raw is a schema detent did not build, handed to the model as
 	// given. Set when the parameters are not Param's small subset.
 	Raw map[string]any

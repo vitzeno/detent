@@ -162,6 +162,17 @@ func TestSchemas_MatchTheSpecs(t *testing.T) {
 }
 
 // An explicit null is how strict mode sends an absent optional.
+// A subagent's registry keeps the tools it is given, in the order the
+// model would see them, and nothing else.
+func TestRegistry_OnlyKeepsTheNamedToolsInOrder(t *testing.T) {
+	reg := Standard(SpawnAgent{})
+	sub := reg.Only("grep", "read_file", "no_such_tool")
+	assert.Equal(t, []string{"read_file", "grep"}, sub.Names())
+	_, ok := sub.Lookup(SpawnAgentName)
+	assert.False(t, ok, "a child must not be able to spawn")
+	assert.Error(t, sub.Register(ReadFile{}), "a kept built-in is still a built-in")
+}
+
 func TestPrepare_TreatsNullAsAbsent(t *testing.T) {
 	c, err := Standard().Prepare("read_file", map[string]any{"path": "a.go", "max_lines": nil})
 	require.NoError(t, err)

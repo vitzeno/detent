@@ -43,6 +43,24 @@ func StandardFor(shell Tool, extra ...Tool) *Registry {
 	return r
 }
 
+// Only is a registry of just the named tools, sharing them and keeping their
+// order, such as what a subagent may call. A name not registered is skipped.
+func (r *Registry) Only(names ...string) *Registry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := &Registry{tools: map[string]Tool{}}
+	for i, n := range r.order {
+		if t, ok := r.tools[n]; ok && slices.Contains(names, n) {
+			out.tools[n] = t
+			out.order = append(out.order, n)
+			if i < r.fixed {
+				out.fixed++
+			}
+		}
+	}
+	return out
+}
+
 // Call is one validated, lowered tool call.
 type Call struct {
 	Tool       string
@@ -51,7 +69,8 @@ type Call struct {
 	Args       Args
 	// Executor is empty for a shell command, and otherwise names what
 	// runs it instead.
-	Executor string
+	Executor  string
+	Delegates bool
 }
 
 // Prepare validates a call and lowers it. Every error here reaches the
@@ -76,7 +95,7 @@ func (r *Registry) Prepare(name string, args map[string]any) (Call, error) {
 		return Call{}, fmt.Errorf("%s: %w", name, err)
 	}
 	return Call{Tool: name, Command: cmd, Mutability: spec.Mutability,
-		Args: clean, Executor: spec.Executor}, nil
+		Args: clean, Executor: spec.Executor, Delegates: spec.Delegates}, nil
 }
 
 // Register adds a tool, replacing any of the same name except a built-in,
