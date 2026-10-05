@@ -30,12 +30,12 @@ func Decode(k Kind, payload []byte) (Event, error) {
 // Kinds is every kind that can be decoded, which is every kind, sorted.
 func Kinds() []Kind { return slices.Sorted(maps.Keys(codecs)) }
 
-// Subject is which Turn and ToolCall a fact is about, read off the fields
-// rather than switched on, since a switch is a second list.
-func Subject(e Event) (turn, call uuid.UUID) {
+// Subject is which Turn, ToolCall and Agent a fact is about, read off the
+// fields rather than switched on, since a switch is a second list.
+func Subject(e Event) (turn, call, agent uuid.UUID) {
 	v := reflect.ValueOf(e)
 	if v.Kind() != reflect.Struct {
-		return turn, call
+		return turn, call, agent
 	}
 	read := func(name string) (out uuid.UUID) {
 		f := v.FieldByName(name)
@@ -44,7 +44,7 @@ func Subject(e Event) (turn, call uuid.UUID) {
 		}
 		return out
 	}
-	return read("Turn"), read("ToolCall")
+	return read("Turn"), read("ToolCall"), read("Agent")
 }
 
 func codec[T Event](payload []byte) (Event, error) {
@@ -68,6 +68,9 @@ var codecs = map[Kind]func([]byte) (Event, error){
 	TurnEndedKind:       codec[TurnEnded],
 	BoundReachedKind:    codec[BoundReached],
 	RolledBackKind:      codec[RolledBack],
+
+	AgentStartedKind: codec[AgentStarted],
+	AgentEndedKind:   codec[AgentEnded],
 
 	StepStartedKind: codec[StepStarted],
 	StepEndedKind:   codec[StepEnded],
@@ -110,6 +113,7 @@ var codecs = map[Kind]func([]byte) (Event, error){
 
 	RunCommandKind:    codec[RunCommand],
 	CancelCommandKind: codec[CancelCommand],
+	StopAgentKind:     codec[StopAgent],
 
 	ListServersKind:     codec[ListServers],
 	AuthorizeServerKind: codec[AuthorizeServer],

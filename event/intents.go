@@ -123,6 +123,15 @@ type RunCommand struct {
 
 func (RunCommand) Kind() Kind { return RunCommandKind }
 
+// StopAgent stops one child, which still reports what it found. Its own
+// intent rather than a field on Abort, which stops everything.
+type StopAgent struct {
+	fact
+	Agent uuid.UUID `json:"Agent"`
+}
+
+func (StopAgent) Kind() Kind { return StopAgentKind }
+
 // CancelCommand stops one running command. Its own intent rather than
 // a field on Abort, so no two subscribers read the same kind.
 type CancelCommand struct {

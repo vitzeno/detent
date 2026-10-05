@@ -14,6 +14,9 @@ import (
 func Watch(bus *event.Bus) func() {
 	// Bus, not the publisher: the bus does not know who that was.
 	log := For(Bus)
+	// agents names the child each tool call came from, so its later records,
+	// which carry no Agent, still say whose they are. Handle runs one at a time.
+	agents := map[uuid.UUID]uuid.UUID{}
 	// The stop waits for the last record to be written, not merely
 	// received: a log that loses its tail at exit is worse than a slow one.
 	return bus.Handle(worthKeeping, func(rec event.Record) {
@@ -23,9 +26,25 @@ func Watch(bus *event.Bus) func() {
 			current.Store(&id)
 		}
 		level, fields := describe(rec.Event)
+		if agent := agentOf(rec.Event, agents); agent != uuid.Nil {
+			fields = append(fields, KeyAgent, agent)
+		}
 		log.Log(context.Background(), level, string(rec.Event.Kind()),
 			append([]any{KeyEvent, string(rec.Event.Kind()), KeyOrdinal, rec.Ordinal}, fields...)...)
 	})
+}
+
+// agentOf is the child a record is about: its own Agent field, or for a
+// later record of a child's tool call, the one its proposal named.
+func agentOf(e event.Event, agents map[uuid.UUID]uuid.UUID) uuid.UUID {
+	_, call, agent := event.Subject(e)
+	if p, ok := e.(event.ToolCallProposed); ok && agent != uuid.Nil {
+		agents[p.ToolCall] = agent
+	}
+	if agent == uuid.Nil {
+		agent = agents[call]
+	}
+	return agent
 }
 
 // worthKeeping takes every fact but live output, which is too noisy and
@@ -55,6 +74,10 @@ func describe(e event.Event) (slog.Level, []any) {
 		return slog.LevelWarn, []any{KeyTurn, v.Turn, "steps", v.Steps}
 	case event.RolledBack:
 		return slog.LevelInfo, []any{KeyTurn, v.Turn, "revert_files", v.RevertFiles}
+	case event.AgentStarted:
+		return slog.LevelInfo, []any{KeyToolCall, v.ToolCall, "name", v.Name, "task", Body(v.Task)}
+	case event.AgentEnded:
+		return slog.LevelInfo, []any{KeyReason, string(v.Reason), "tokens", v.Usage.Tokens()}
 	case event.StepStarted:
 		return slog.LevelDebug, []any{KeyTurn, v.Turn, KeyStep, v.Step, "n", v.N}
 	case event.StepEnded:

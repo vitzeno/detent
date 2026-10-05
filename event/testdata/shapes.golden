@@ -1,3 +1,13 @@
+agent.ended Agent uuid.UUID
+agent.ended Reason event.AgentReason
+agent.ended Usage.CompletionTokens int
+agent.ended Usage.Latency time.Duration
+agent.ended Usage.Model string
+agent.ended Usage.PromptTokens int
+agent.started Agent uuid.UUID
+agent.started Name string
+agent.started Task string
+agent.started ToolCall uuid.UUID
 auth.done Server string
 auth.failed Reason string
 auth.failed Server string
@@ -20,9 +30,11 @@ servers.listed Servers[].Tools int
 session.resumed Records int
 session.resumed Sandbox bool
 session.resumed Session uuid.UUID
+session.started Commit string
 session.started ContextTokens int
 session.started Instructions[] string
 session.started Judge string
+session.started MaxAgents int
 session.started MaxSteps int
 session.started Model string
 session.started Network bool
@@ -35,11 +47,13 @@ session.started Skills[].Description string
 session.started Skills[].Name string
 session.started Skills[].Project bool
 session.started Skills[].UserInvocable bool
+session.started Subagents bool
 sessions.listed Sessions[].Events int
 sessions.listed Sessions[].ID uuid.UUID
 sessions.listed Sessions[].Model string
 sessions.listed Sessions[].Name string
 sessions.listed Sessions[].Started time.Time
+step.ended Agent uuid.UUID
 step.ended Step uuid.UUID
 step.ended Stop string
 step.ended ToolCalls int
@@ -48,12 +62,15 @@ step.ended Usage.CompletionTokens int
 step.ended Usage.Latency time.Duration
 step.ended Usage.Model string
 step.ended Usage.PromptTokens int
+step.started Agent uuid.UUID
 step.started N int
 step.started Step uuid.UUID
 step.started Turn uuid.UUID
+step.text Agent uuid.UUID
 step.text Step uuid.UUID
 step.text Text string
 step.text Turn uuid.UUID
+tool_call.approval Agent uuid.UUID
 tool_call.approval Args{} interface {}
 tool_call.approval Rationale string
 tool_call.approval Risk.Dangerous bool
@@ -82,6 +99,7 @@ tool_call.judged GoalAchieved float64
 tool_call.judged RenderKind event.RenderKind
 tool_call.judged Status event.Status
 tool_call.judged ToolCall uuid.UUID
+tool_call.proposed Agent uuid.UUID
 tool_call.proposed Args{} interface {}
 tool_call.proposed Executor string
 tool_call.proposed Rationale string
@@ -91,6 +109,7 @@ tool_call.proposed Tool string
 tool_call.proposed ToolCall uuid.UUID
 tool_call.started Runner string
 tool_call.started ToolCall uuid.UUID
+transcript.appended Agent uuid.UUID
 transcript.appended Messages[].Content string
 transcript.appended Messages[].RequestID string
 transcript.appended Messages[].Requests[].Args{} interface {}

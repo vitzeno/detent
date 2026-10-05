@@ -11,7 +11,7 @@ const (
 	renameSession = `UPDATE sessions SET name = ? WHERE id = ?`
 
 	insert = `INSERT OR REPLACE INTO events
-	  (session, ordinal, at, kind, turn, tool_call, payload) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	  (session, ordinal, at, kind, turn, tool_call, agent, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 	selectSession = `SELECT ordinal, at, kind, payload FROM events
 	  WHERE session = ? ORDER BY ordinal`

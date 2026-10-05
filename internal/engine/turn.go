@@ -132,7 +132,7 @@ func (e *Engine) runAgent(ctx context.Context, t *turnState, a *agent) agentEnd 
 		}
 
 		stepID := uuid.Must(uuid.NewV7())
-		e.bus.Publish(event.StepStarted{Turn: t.id, Step: stepID, N: step})
+		e.bus.Publish(event.StepStarted{Turn: t.id, Step: stepID, N: step, Agent: a.id})
 		reply, used, err := a.model.Complete(ctx, a.messages(), a.tools.Schemas())
 		t.addUsage(used)
 		if err != nil {
@@ -142,12 +142,12 @@ func (e *Engine) runAgent(ctx context.Context, t *turnState, a *agent) agentEnd 
 			e.noticeFrom(a, "error", err.Error())
 			return agentEnd{reason: event.EndError, text: err.Error()}
 		}
-		e.bus.Publish(event.StepEnded{Turn: t.id, Step: stepID, Usage: used, ToolCalls: len(reply.Requests), Stop: reply.Stop})
+		e.bus.Publish(event.StepEnded{Turn: t.id, Step: stepID, Usage: used, ToolCalls: len(reply.Requests), Stop: reply.Stop, Agent: a.id})
 		if a.root() {
 			e.bus.Publish(e.measure(used.PromptTokens))
 		}
 		if reply.Text != "" {
-			e.bus.Publish(event.ModelText{Turn: t.id, Step: stepID, Text: reply.Text})
+			e.bus.Publish(event.ModelText{Turn: t.id, Step: stepID, Text: reply.Text, Agent: a.id})
 		}
 
 		// No calls means the model is finished asking, unless it stopped mid-thought.

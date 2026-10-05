@@ -12,6 +12,8 @@ type Appended struct {
 	Turn     uuid.UUID `json:"Turn"`
 	Step     uuid.UUID `json:"Step"`
 	Messages []Message `json:"Messages"`
+	// Agent is the subagent this came from, uuid.Nil for the root.
+	Agent uuid.UUID `json:"Agent"`
 }
 
 func (Appended) Kind() Kind { return AppendedKind }

@@ -57,6 +57,33 @@ func TestWatch_LogsEveryFactWithItsIDs(t *testing.T) {
 	}
 }
 
+// A child's records say whose they are, its tool calls' later ones included,
+// and the root's say nothing.
+func TestWatch_TagsAChildsRecordsWithItsAgent(t *testing.T) {
+	dir := t.TempDir()
+	closer, err := logging.Setup("w2", logging.WithDir(dir), logging.WithLevel("debug"))
+	require.NoError(t, err)
+	bus := event.New()
+	stop := logging.Watch(bus)
+
+	agent, spawn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	bus.Publish(event.ToolCallProposed{ToolCall: spawn, Tool: "spawn_agent"})
+	bus.Publish(event.AgentStarted{Agent: agent, ToolCall: spawn, Name: "explore", Task: "look"})
+	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "grep", Agent: agent})
+	bus.Publish(event.ToolCallEnded{ToolCall: call})
+	bus.Publish(event.ToolCallEnded{ToolCall: spawn})
+	bus.Settle(2 * time.Second)
+	stop()
+	require.NoError(t, closer())
+
+	got := records(t, dir, "w2")
+	require.Len(t, got, 5)
+	want := []any{nil, agent.String(), agent.String(), agent.String(), nil}
+	for i, r := range got {
+		assert.Equal(t, want[i], r[logging.KeyAgent], "record %d, %s", i, r[logging.KeyEvent])
+	}
+}
+
 // A command the human ran is logged like a tool call, under its own key:
 // the id has to be findable, and a failure has to be worth finding.
 func TestWatch_LogsAHumanCommand(t *testing.T) {

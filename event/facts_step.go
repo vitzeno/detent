@@ -10,6 +10,8 @@ type StepStarted struct {
 	Turn uuid.UUID `json:"Turn"`
 	Step uuid.UUID `json:"Step"`
 	N    int       `json:"N"`
+	// Agent is the subagent this came from, uuid.Nil for the root.
+	Agent uuid.UUID `json:"Agent"`
 }
 
 func (StepStarted) Kind() Kind { return StepStartedKind }
@@ -22,6 +24,8 @@ type StepEnded struct {
 	ToolCalls int       `json:"ToolCalls"` // how many the model asked for, 0 when it stopped
 	Stop      string    `json:"Stop"`      // the endpoint's reason the reply ended
 	Usage     Usage     `json:"Usage"`
+	// Agent is the subagent this came from, uuid.Nil for the root.
+	Agent uuid.UUID `json:"Agent"`
 }
 
 func (StepEnded) Kind() Kind { return StepEndedKind }
@@ -32,6 +36,8 @@ type ModelText struct {
 	Turn uuid.UUID `json:"Turn"`
 	Step uuid.UUID `json:"Step"`
 	Text string    `json:"Text"`
+	// Agent is the subagent this came from, uuid.Nil for the root.
+	Agent uuid.UUID `json:"Agent"`
 }
 
 func (ModelText) Kind() Kind { return ModelTextKind }

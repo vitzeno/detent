@@ -60,11 +60,13 @@ func TestCodecs_CoverEveryEventType(t *testing.T) {
 // payload once and reads it back much later.
 func TestCodec_RoundTripsEveryField(t *testing.T) {
 	turn, step, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	agent := uuid.Must(uuid.NewV7())
 	shell := uuid.Must(uuid.NewV7())
 	spec := &viewspec.Spec{Blocks: []viewspec.Block{{Kind: "log"}}}
 
 	cases := []Event{
-		SessionStarted{Session: turn, Model: "m", Sandbox: true, Network: true, MaxSteps: 50, Instructions: []string{"AGENTS.md"}},
+		SessionStarted{Session: turn, Model: "m", Sandbox: true, Network: true, MaxSteps: 50, Instructions: []string{"AGENTS.md"},
+			Subagents: true, MaxAgents: 10, Commit: "98d2dd2"},
 		SessionResumed{Session: turn, Records: 412, Sandbox: true},
 		TurnStarted{Turn: turn, N: 3, Prompt: "do it"},
 		TurnEnded{Turn: turn, Reason: EndDone, Summary: "did it",
@@ -73,7 +75,9 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		BoundReached{Turn: turn, Steps: 50, ToolCalls: 9},
 		RolledBack{Turn: turn, RevertFiles: true},
 		SessionReset{},
-		StepStarted{Turn: turn, Step: step, N: 2},
+		StepStarted{Turn: turn, Step: step, N: 2, Agent: agent},
+		AgentStarted{Agent: agent, ToolCall: call, Name: "explore-auth", Task: "find the session code"},
+		AgentEnded{Agent: agent, Reason: AgentPartial, Usage: Usage{PromptTokens: 7}},
 		StepEnded{Turn: turn, Step: step, ToolCalls: 3, Usage: Usage{PromptTokens: 1}},
 		ModelText{Turn: turn, Step: step, Text: "prose"},
 		Appended{Turn: turn, Step: step, Messages: []Message{
@@ -128,6 +132,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		ResetSession{},
 		RunCommand{Text: "git status"},
 		CancelCommand{UserCommand: shell},
+		StopAgent{Agent: agent},
 		AuthorizeServer{Server: "notion"},
 		OpenAuthorization{Server: "notion"},
 	}
@@ -153,20 +158,20 @@ func TestDecode_RefusesAnUnknownKind(t *testing.T) {
 
 // A store lifts these out as columns, so they have to come off the
 // event without a second list of which types carry what.
-func TestSubject_ReadsTurnAndToolCall(t *testing.T) {
-	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+func TestSubject_ReadsTurnToolCallAndAgent(t *testing.T) {
+	turn, call, agent := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 
-	gotTurn, gotCall := Subject(TurnStarted{Turn: turn})
-	assert.Equal(t, turn, gotTurn)
-	assert.Equal(t, uuid.Nil, gotCall)
+	gotTurn, gotCall, gotAgent := Subject(TurnStarted{Turn: turn})
+	assert.Equal(t, []uuid.UUID{turn, uuid.Nil, uuid.Nil}, []uuid.UUID{gotTurn, gotCall, gotAgent})
 
-	gotTurn, gotCall = Subject(ToolCallEnded{ToolCall: call})
-	assert.Equal(t, uuid.Nil, gotTurn)
-	assert.Equal(t, call, gotCall)
+	gotTurn, gotCall, gotAgent = Subject(ToolCallEnded{ToolCall: call})
+	assert.Equal(t, []uuid.UUID{uuid.Nil, call, uuid.Nil}, []uuid.UUID{gotTurn, gotCall, gotAgent})
 
-	gotTurn, gotCall = Subject(Notice{Text: "about nothing"})
-	assert.Equal(t, uuid.Nil, gotTurn)
-	assert.Equal(t, uuid.Nil, gotCall)
+	gotTurn, gotCall, gotAgent = Subject(ToolCallProposed{ToolCall: call, Agent: agent})
+	assert.Equal(t, []uuid.UUID{uuid.Nil, call, agent}, []uuid.UUID{gotTurn, gotCall, gotAgent})
+
+	gotTurn, gotCall, gotAgent = Subject(Notice{Text: "about nothing"})
+	assert.Equal(t, []uuid.UUID{uuid.Nil, uuid.Nil, uuid.Nil}, []uuid.UUID{gotTurn, gotCall, gotAgent})
 }
 
 func typeName(e Event) string {

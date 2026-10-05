@@ -116,7 +116,7 @@ func (e *Engine) plan(ctx context.Context, a *agent, step uuid.UUID, reply model
 		p := &toolCallPlan{id: uuid.Must(uuid.NewV7()), call: c}
 		out = append(out, p)
 		e.bus.Publish(event.ToolCallProposed{ToolCall: p.id, Step: step, Tool: c.Name, Args: c.Args,
-			Renders: renders(a, c.Name), Executor: executor(a, c.Name)})
+			Renders: renders(a, c.Name), Executor: executor(a, c.Name), Agent: a.id})
 
 		dup := ids[c.ID]
 		ids[c.ID] = true
@@ -191,7 +191,7 @@ func (e *Engine) approve(ctx context.Context, t *turnState, a *agent, p *toolCal
 	}
 	e.bus.Publish(event.ApprovalAsked{
 		ToolCall: p.id, Tool: p.call.Name, Args: p.call.Args,
-		Rationale: describe(p.risk), Risk: p.risk,
+		Rationale: describe(p.risk), Risk: p.risk, Agent: a.id,
 	})
 	for {
 		select {

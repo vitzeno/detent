@@ -38,6 +38,9 @@ const (
 	BoundReachedKind    Kind = "turn.bound"
 	RolledBackKind      Kind = "turn.rolledback"
 
+	AgentStartedKind Kind = "agent.started"
+	AgentEndedKind   Kind = "agent.ended"
+
 	StepStartedKind Kind = "step.started"
 	StepEndedKind   Kind = "step.ended"
 	ModelTextKind   Kind = "step.text"
@@ -87,6 +90,7 @@ const (
 	// usercommand's.
 	RunCommandKind    Kind = "do.run_command"
 	CancelCommandKind Kind = "do.cancel_command"
+	StopAgentKind     Kind = "do.stop_agent"
 
 	// mcp's.
 	ListServersKind     Kind = "do.list_servers"
@@ -103,7 +107,7 @@ var intents = map[Kind]bool{
 	AbortKind: true, SuggestFinishKind: true, ContinueKind: true,
 	RequestRollbackKind: true, ResetSessionKind: true, MeasureContextKind: true,
 	ListSessionsKind: true, RenameSessionKind: true, DeleteSessionKind: true,
-	RunCommandKind: true, CancelCommandKind: true,
+	RunCommandKind: true, CancelCommandKind: true, StopAgentKind: true,
 	ListServersKind: true, AuthorizeServerKind: true, OpenAuthKind: true,
 }
 

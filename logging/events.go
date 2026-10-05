@@ -28,6 +28,7 @@ const (
 	KeyTurn        = "turn"
 	KeyStep        = "step"
 	KeyToolCall    = "tool_call"
+	KeyAgent       = "agent"
 	KeyUserCommand = "user_command"
 	KeyEvent       = "event"
 	KeyReason      = "reason"

@@ -95,9 +95,9 @@ func (s *Store) Append(session uuid.UUID, r event.Record) error {
 			return fmt.Errorf("store: session header: %w", err)
 		}
 	}
-	turn, toolCall := event.Subject(r.Event)
+	turn, toolCall, agent := event.Subject(r.Event)
 	if _, err := tx.ExecContext(ctx, insert, session.String(), r.Ordinal, r.At.UnixMilli(),
-		string(r.Event.Kind()), nullable(turn), nullable(toolCall), payload); err != nil {
+		string(r.Event.Kind()), nullable(turn), nullable(toolCall), nullable(agent), payload); err != nil {
 		return fmt.Errorf("store: append %s: %w", r.Event.Kind(), err)
 	}
 	return tx.Commit()

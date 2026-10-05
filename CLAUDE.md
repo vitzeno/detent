@@ -236,7 +236,7 @@ undo refuses before touching the sandbox or the files.
 
 ## Architecture
 
-**Everything is an event.** 30 facts and 17 intents are the entire
+**Everything is an event.** 32 facts and 18 intents are the entire
 interface between components. Facts are past tense, intents are
 imperative, and either may come from anyone: the engine publishes most
 facts, but a subscriber answering a question publishes one too. An extension
@@ -698,7 +698,11 @@ adding a fat dependency fails with the transitive import named.
   nothing about the engine. A `sessions` header and an append-only
   `events` log with a foreign key between them: the header is written
   once from `SessionStarted` so it cannot drift, while a `turns` table
-  would be a mutable aggregate over several facts and would. The
+  would be a mutable aggregate over several facts and would. `turn`,
+  `tool_call` and `agent` are lifted from each payload by
+  `event.Subject`. A fact a child produced carries `Agent` (zero is the
+  root), and a child's later tool call records, which carry none, are
+  found by joining on their proposal's `tool_call`. The
   schema lives in `migrations/*.sql`, embedded, plus Go steps in
   `goSteps` for what SQL cannot say (rewriting payloads), numbered
   together and versioned by SQLite's own `PRAGMA user_version` rather

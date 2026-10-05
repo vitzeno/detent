@@ -24,6 +24,8 @@ type ToolCallProposed struct {
 	// Executor is empty for a shell command, and otherwise names what
 	// runs it. Nothing a checkpoint can undo.
 	Executor string `json:"Executor"`
+	// Agent is the subagent this came from, uuid.Nil for the root.
+	Agent uuid.UUID `json:"Agent"`
 }
 
 func (ToolCallProposed) Kind() Kind { return ToolCallProposedKind }
@@ -45,6 +47,8 @@ type ApprovalAsked struct {
 	Args      map[string]any `json:"Args"`
 	Rationale string         `json:"Rationale"`
 	Risk      Risk           `json:"Risk"`
+	// Agent is the subagent this came from, uuid.Nil for the root.
+	Agent uuid.UUID `json:"Agent"`
 }
 
 func (ApprovalAsked) Kind() Kind { return ApprovalAskedKind }

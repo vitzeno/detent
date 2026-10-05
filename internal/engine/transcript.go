@@ -60,7 +60,7 @@ func (e *Engine) appended(a *agent, turn, step uuid.UUID, fn func() []event.Mess
 	var added []event.Message
 	a.lock(func() { added = fn() })
 	if len(added) > 0 {
-		e.bus.Publish(event.Appended{Turn: turn, Step: step, Messages: added})
+		e.bus.Publish(event.Appended{Turn: turn, Step: step, Messages: added, Agent: a.id})
 	}
 }
 

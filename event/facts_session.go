@@ -30,6 +30,12 @@ type SessionStarted struct {
 	Instructions []string `json:"Instructions"`
 	// Skills are what the skill tool can load and the human can ask for.
 	Skills []SkillSummary `json:"Skills"`
+	// Subagents is whether the model may spawn them, and MaxAgents how many a Turn may.
+	Subagents bool `json:"Subagents"`
+	MaxAgents int  `json:"MaxAgents"`
+	// Commit is the work tree's HEAD at start, empty outside git, so a session
+	// can be replayed against the code it was asked about.
+	Commit string `json:"Commit"`
 }
 
 func (SessionStarted) Kind() Kind { return SessionStartedKind }
