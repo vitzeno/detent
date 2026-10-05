@@ -60,16 +60,20 @@ func (e *Engine) spawn(ctx context.Context, t *turnState, parent *agent, p *tool
 	// Every tool the parent has, MCP's included, but spawn_agent: one level deep.
 	child := newAgent(uuid.Must(uuid.NewV7()), name, e.childModel, parent.tools.Without(tool.SpawnAgentName), e.extra...)
 
+	// Stoppable before it is announced, so no stop is lost.
+	cctx, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
+	e.track(child.id, stop)
+	defer e.untrack(child.id)
+
 	p.ended = true
 	start := time.Now()
 	e.bus.Publish(event.ToolCallStarted{ToolCall: p.id, Runner: "agent"})
 	// Published before it has a slot, so a queued child can be seen and stopped.
 	e.bus.Publish(event.AgentStarted{Agent: child.id, ToolCall: p.id, Name: name, Task: task})
-
-	cctx, stop := context.WithCancelCause(ctx)
-	defer stop(nil)
-	e.track(child.id, stop)
-	defer e.untrack(child.id)
+	if e.afterAnnounce != nil {
+		e.afterAnnounce(child.id)
+	}
 
 	end := e.runChild(cctx, t, child, task)
 	reason, why, report := e.report(ctx, cctx, t, child, &end)

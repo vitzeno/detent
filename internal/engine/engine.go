@@ -94,6 +94,8 @@ type Engine struct {
 	gauge gauge
 	// lingerAfterTurn widens the gap between a Turn's end and its goroutine's, for tests.
 	lingerAfterTurn func()
+	// afterAnnounce runs once a child is announced, for tests.
+	afterAnnounce func(uuid.UUID)
 
 	// intents is subscribed in New, not Run, so a caller publishing the
 	// moment New returns cannot lose it.

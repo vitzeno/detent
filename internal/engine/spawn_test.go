@@ -281,6 +281,20 @@ func TestStopAgent_EndsOneChildAndLeavesItsSiblings(t *testing.T) {
 	assert.Contains(t, report, "half of it", "a stopped child still reports what it found")
 }
 
+// A stop sent the moment a child is announced must still reach it.
+func TestStopAgent_SentOnSeeingTheChildIsNotLost(t *testing.T) {
+	cm := &childModel{hang: true}
+	r := spawnRig(t, cm, spawns(spawnCall("a", "forever", "")))
+	// Handled before the spawn goes on, as a loaded machine can order it.
+	r.eng.afterAnnounce = func(agent uuid.UUID) {
+		r.bus.Publish(event.StopAgent{Agent: agent})
+		r.dispatched()
+	}
+	end := r.run("go")
+	assert.Equal(t, event.EndDone, end.Reason)
+	assert.Equal(t, event.AgentStopped, r.await(event.AgentEndedKind).(event.AgentEnded).Reason)
+}
+
 func TestAbort_EndsEveryAgentsOpenToolCalls(t *testing.T) {
 	cm := &childModel{hang: true}
 	r := spawnRig(t, cm, spawns(spawnCall("a", "one", ""), spawnCall("b", "two", "")))
