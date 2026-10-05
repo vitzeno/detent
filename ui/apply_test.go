@@ -142,6 +142,82 @@ func TestApproval_EndedCallLeavesTheQueue(t *testing.T) {
 	assert.Equal(t, modeInput, m.mode, "nothing is left to answer")
 }
 
+func TestApply_ChildCallsStayOutOfTheMainHistory(t *testing.T) {
+	m, sp := spawned(t)
+	m.apply(childCall(sp, "grep pattern=login"))
+	m.apply(event.ModelText{Turn: sp.turn, Text: "looking", Agent: sp.agent})
+
+	require.Len(t, m.rows(), 1, "main history shows the spawn and nothing of its work")
+	assert.Equal(t, sp.spawn, m.rows()[0].id)
+	assert.Len(t, m.agents[sp.agent].rows, 2, "the child's own rows hold it")
+}
+
+func TestApply_SpawnHeadlineFollowsItsAgent(t *testing.T) {
+	m, sp := spawned(t)
+	line := func() string { return stripStyle(strings.Join(m.rowLines(m.rows()[0], nil), "")) }
+	assert.Contains(t, line(), "◆ explore")
+	assert.Contains(t, line(), "queued")
+
+	m.apply(event.StepStarted{Turn: sp.turn, Step: uuid.Must(uuid.NewV7()), N: 1, Agent: sp.agent})
+	m.apply(childCall(sp, "grep pattern=Session"))
+	assert.Contains(t, line(), "1 call")
+	assert.Contains(t, line(), "Session")
+
+	m.apply(event.AgentEnded{Agent: sp.agent, Reason: event.AgentDone})
+	m.apply(event.ToolCallEnded{ToolCall: sp.spawn, Result: event.Result{Stdout: "the report"}, Took: 41 * time.Second})
+	assert.Contains(t, line(), "done 41.0s")
+}
+
+// A child writing "done" is still running until a fact says it ended.
+func TestApply_AgentStatusComesFromFactsNotText(t *testing.T) {
+	m, sp := spawned(t)
+	m.apply(event.StepStarted{Turn: sp.turn, Step: uuid.Must(uuid.NewV7()), N: 1, Agent: sp.agent})
+	m.apply(event.ModelText{Turn: sp.turn, Text: "done", Agent: sp.agent})
+	got := m.agentDetail(m.rows()[0])
+	assert.NotContains(t, got, "done")
+	running, _ := m.agentCounts()
+	assert.Equal(t, 1, running)
+}
+
+// The gauge is the root's context. A child's Steps measure its own.
+func TestApply_ContextGaugeIgnoresAChildsSteps(t *testing.T) {
+	m, sp := spawned(t)
+	m.apply(event.StepEnded{Turn: sp.turn, Step: uuid.Must(uuid.NewV7()), Usage: event.Usage{PromptTokens: 90_000}, Agent: sp.agent})
+	assert.Equal(t, 1_000, m.ctxTokens, "the root's last reading stands")
+	assert.Equal(t, 1, m.steps, "only the root's Step counts")
+
+	call := uuid.Must(uuid.NewV7())
+	m.apply(event.ToolCallProposed{ToolCall: call, Tool: "grep", Agent: sp.agent})
+	m.apply(event.ToolCallEnded{ToolCall: call, Result: event.Result{ExitCode: 1}})
+	assert.Zero(t, m.calls)
+	assert.Zero(t, m.errors)
+}
+
+// TurnEnded's usage already holds every child's, so adding theirs counts twice.
+func TestApply_TokensCountChildrenOnce(t *testing.T) {
+	m, sp := spawned(t)
+	m.apply(event.StepEnded{Turn: sp.turn, Step: uuid.Must(uuid.NewV7()), Usage: event.Usage{PromptTokens: 500}, Agent: sp.agent})
+	m.apply(event.TurnEnded{Turn: sp.turn, Reason: event.EndDone, Usage: event.Usage{PromptTokens: 1_500}})
+	assert.Equal(t, 1_500, m.tokens)
+}
+
+func TestApply_UndoDropsTheTurnsAgents(t *testing.T) {
+	m, first := spawned(t)
+	m.apply(event.TurnEnded{Turn: first.turn, Reason: event.EndDone})
+	second := spawnIn(&m, "second")
+	require.Len(t, m.agents, 2)
+
+	m.apply(event.RolledBack{Turn: second.turn})
+	require.Len(t, m.agents, 1)
+	assert.Contains(t, m.agents, first.agent)
+}
+
+func TestApply_NewSessionDropsEveryAgent(t *testing.T) {
+	m, _ := spawned(t)
+	m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7())})
+	assert.Empty(t, m.agents)
+}
+
 func TestApply_BoundPausesForAnAnswer(t *testing.T) {
 	turn, evs := aTurn("big job")
 	m := feed(t, append(evs, event.BoundReached{Turn: turn, Steps: 50})...)
@@ -486,6 +562,36 @@ func feed(t *testing.T, evs ...event.Event) Model {
 		m.apply(e)
 	}
 	return m
+}
+
+// spawn names one subagent and what started it.
+type spawn struct{ turn, spawn, agent uuid.UUID }
+
+// spawned is a Turn whose model asked for one subagent, named explore, after
+// one root Step that read 1000 prompt tokens.
+func spawned(t *testing.T) (Model, spawn) {
+	t.Helper()
+	m := feed(t, event.SessionStarted{Session: uuid.Must(uuid.NewV7())})
+	m.sizeViewport()
+	sp := spawnIn(&m, "explore")
+	return m, sp
+}
+
+func spawnIn(m *Model, name string) spawn {
+	sp := spawn{turn: uuid.Must(uuid.NewV7()), spawn: uuid.Must(uuid.NewV7()), agent: uuid.Must(uuid.NewV7())}
+	m.apply(event.TurnStarted{Turn: sp.turn, N: len(m.blocks) + 1, Prompt: "look into it"})
+	m.apply(event.StepEnded{Turn: sp.turn, Step: uuid.Must(uuid.NewV7()), Usage: event.Usage{PromptTokens: 1_000}})
+	m.apply(event.ToolCallProposed{ToolCall: sp.spawn, Tool: spawnTool, Args: map[string]any{"task": "find it"}})
+	m.apply(event.ToolCallStarted{ToolCall: sp.spawn, Runner: "agent"})
+	m.apply(event.AgentStarted{Agent: sp.agent, ToolCall: sp.spawn, Name: name, Task: "find it"})
+	return sp
+}
+
+// childCall is a call the subagent made, its command as a headline.
+func childCall(sp spawn, headline string) event.ToolCallProposed {
+	tool, arg, _ := strings.Cut(headline, " ")
+	k, v, _ := strings.Cut(arg, "=")
+	return event.ToolCallProposed{ToolCall: uuid.Must(uuid.NewV7()), Tool: tool, Args: map[string]any{k: v}, Agent: sp.agent}
 }
 
 // asked is an approval for a shell command.

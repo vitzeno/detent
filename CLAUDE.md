@@ -638,6 +638,11 @@ adding a fat dependency fails with the transitive import named.
   escape characters in anything the model wrote are shown, never sent
   to the terminal, and a command taller than the box shows a "more"
   marker and is not approved until its last line has been on screen.
+  A subagent is one row in history, its spawn call's, which draws its
+  name and a live status from its facts alone (queued, its calls, waiting
+  on you, then how it ended). Its own rows live on its `agentState`,
+  never in a Turn block, and its Steps never move the counters or the
+  `ctx %` gauge, which are the root's. `x` twice on that row stops it.
   Approvals queue in the order asked and the box shows the first, with how
   many wait. Each one shown starts unscrolled and unread, and settles anew,
   and the engine delivers each answer to its own tool call by id.

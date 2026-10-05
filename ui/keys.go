@@ -2,6 +2,7 @@ package ui
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 )
@@ -28,6 +29,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	// Anything else means they are still working, so the quit they
 	// half-asked for is no longer the next thing they meant.
 	m.quitArmed = false
+	if msg.String() != "x" {
+		m.stopArmed = uuid.Nil
+	}
 	if m.mode == modeUndo {
 		return m.undoKey(msg)
 	}
@@ -363,6 +367,8 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 			m.toggleExpand(r)
 		}
 		return m, nil
+	case "x":
+		return m.stopFocused()
 	}
 	var cmd tea.Cmd
 	m.output, cmd = m.output.Update(msg)

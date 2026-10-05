@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -81,10 +83,37 @@ func (m *Model) apply(ev event.Event) {
 		m.waiting = false
 		m.raise(modeBound)
 
+	case event.AgentStarted:
+		m.addAgent(v)
+
+	case event.AgentEnded:
+		if a := m.agents[v.Agent]; a != nil {
+			a.ended, a.reason = true, v.Reason
+			m.touch(a)
+		}
+
+	case event.StepStarted:
+		if a := m.agents[v.Agent]; a != nil {
+			a.steps++
+			m.touch(a)
+		}
+
 	case event.ModelText:
+		if a := m.agents[v.Agent]; a != nil {
+			a.rows = append(a.rows, &historyRow{prose: termsafe.Printable(v.Text)})
+			m.touch(a)
+			return
+		}
 		m.addProse(v.Text)
 
 	case event.ToolCallProposed:
+		if a := m.agents[v.Agent]; a != nil {
+			a.rows = append(a.rows, newCallRow(v))
+			a.calls++
+			a.last = termsafe.Printable(event.Command(v.Tool, v.Args))
+			m.touch(a)
+			return
+		}
 		m.addToolCall(v)
 
 	case event.ToolCallAssessed:
@@ -93,6 +122,10 @@ func (m *Model) apply(ev event.Event) {
 		}
 
 	case event.ApprovalAsked:
+		// A child waiting on the human shows on its spawn row.
+		if a := m.agents[v.Agent]; a != nil {
+			m.touch(a)
+		}
 		// One arriving behind the shown question leaves its scroll and settle alone.
 		m.asked = append(m.asked, v)
 		if len(m.asked) == 1 {
@@ -112,15 +145,18 @@ func (m *Model) apply(ev event.Event) {
 	case event.ToolCallEnded:
 		// A call can end unanswered, by an abort, and its question with it.
 		m.unask(v.ToolCall)
-		if r := m.row(v.ToolCall); r != nil {
+		if r, a := m.rowOf(v.ToolCall); r != nil {
 			r.running = false
 			result := styled(v.Result)
-			r.result = &result
+			r.result, r.took = &result, v.Took
 			r.created = createdDiff(r.wrote, result)
 			r.wrote = nil
-			m.calls++
-			if result.Err != "" || result.ExitCode != 0 {
-				m.errors++
+			// The counters are the root's. A child's work shows in its own figures.
+			if a == nil {
+				m.calls++
+				if result.Err != "" || result.ExitCode != 0 {
+					m.errors++
+				}
 			}
 		}
 
@@ -164,6 +200,13 @@ func (m *Model) apply(ev event.Event) {
 		m.clearHistory()
 
 	case event.StepEnded:
+		// A child's Steps are its own: the gauge and counters measure the root's
+		// context, and TurnEnded's usage already counts the child's spend.
+		if a := m.agents[v.Agent]; a != nil {
+			a.used = a.used.Add(v.Usage)
+			m.touch(a)
+			return
+		}
 		m.steps++
 		if v.Usage.PromptTokens > 0 {
 			m.ctxTokens = v.Usage.PromptTokens
@@ -216,12 +259,32 @@ func (m *Model) addToolCall(v event.ToolCallProposed) {
 		return
 	}
 	m.cur.rev++
-	m.cur.rows = append(m.cur.rows, &historyRow{
+	m.cur.rows = append(m.cur.rows, newCallRow(v))
+	m.trackNewest()
+}
+
+func newCallRow(v event.ToolCallProposed) *historyRow {
+	return &historyRow{
 		id: v.ToolCall, command: event.Command(v.Tool, v.Args), tool: v.Tool,
 		headline: headline(v.Tool, v.Args), wrote: wroteBy(v),
 		renders: v.Renders, executor: v.Executor,
-	})
-	m.trackNewest()
+	}
+}
+
+// addAgent ties a subagent to the spawn row that started it, which draws it.
+func (m *Model) addAgent(v event.AgentStarted) {
+	a := &agentState{id: v.Agent, name: termsafe.Printable(v.Name), task: termsafe.Printable(v.Task)}
+	if r := m.row(v.ToolCall); r != nil {
+		r.agent, a.spawn = a, r
+	}
+	m.agents[v.Agent] = a
+}
+
+// touch redraws the block holding an agent's spawn row, and no other.
+func (m *Model) touch(a *agentState) {
+	if a.spawn != nil {
+		m.row(a.spawn.id)
+	}
 }
 
 // addUserCommand puts a command in the Turn it interrupted, or its own
@@ -291,6 +354,9 @@ func (m *Model) rolledBack(id uuid.UUID) {
 			break
 		}
 	}
+	// Their agents went with their spawn rows, so nothing stale can be inspected.
+	kept := m.rows()
+	maps.DeleteFunc(m.agents, func(_ uuid.UUID, a *agentState) bool { return !slices.Contains(kept, a.spawn) })
 	m.nav.cursor = min(m.nav.cursor, max(0, len(m.rows())-1))
 	m.noteOK("undone")
 }
@@ -298,6 +364,7 @@ func (m *Model) rolledBack(id uuid.UUID) {
 // clearHistory forgets every block, as the engine forgot the transcript.
 func (m *Model) clearHistory() {
 	m.blocks, m.cur = nil, nil
+	clear(m.agents)
 	m.nav = navState{follow: true}
 	m.calls, m.steps, m.errors, m.views, m.tokens = 0, 0, 0, 0, 0
 	m.ctxTokens = 0
@@ -319,18 +386,33 @@ func (m *Model) block(id uuid.UUID) *turnBlock {
 }
 
 func (m *Model) row(id uuid.UUID) *historyRow {
+	r, _ := m.rowOf(id)
+	return r
+}
+
+// rowOf also says which subagent a row is, nil for history's own. A child's
+// row redraws its spawn row's block, which draws it.
+func (m *Model) rowOf(id uuid.UUID) (*historyRow, *agentState) {
 	if id == uuid.Nil {
-		return nil
+		return nil, nil
 	}
 	for i := len(m.blocks) - 1; i >= 0; i-- {
 		for _, r := range m.blocks[i].rows {
 			if r.id == id {
 				m.blocks[i].rev++
-				return r
+				return r, nil
 			}
 		}
 	}
-	return nil
+	for _, a := range m.agents {
+		for _, r := range a.rows {
+			if r.id == id {
+				m.touch(a)
+				return r, a
+			}
+		}
+	}
+	return nil, nil
 }
 
 // setCur moves the live block. Both ends redraw, since only the live

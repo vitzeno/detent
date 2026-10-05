@@ -50,17 +50,18 @@ func bakeCommand(p theme.Theme) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(p.TextPrimary).Background(p.Border)
 }
 
-// toolNames colour a tool's name by what it does: the shell, reading,
-// writing, the web, a server's tool and anything else, plus a command's program.
+// toolNames colour a tool's name by what it does: the shell, reading, writing,
+// the web, a server's tool, a subagent and anything else, plus a command's program.
 type toolNames struct {
-	shell, read, write, web, server, other, program lipgloss.Style
+	shell, read, write, web, server, agent, other, program lipgloss.Style
 }
 
 func bakeToolNames(p theme.Theme) toolNames {
 	label := func(c color.Color) lipgloss.Style { return lipgloss.NewStyle().Foreground(c).Bold(true) }
 	return toolNames{
 		shell: label(p.Tools.Shell), read: label(p.Tools.Read), write: label(p.Tools.Write),
-		web: label(p.Tools.Web), server: label(p.Tools.Server), other: label(p.Tools.Other),
+		web: label(p.Tools.Web), server: label(p.Tools.Server), agent: label(p.Tools.Agent),
+		other:   label(p.Tools.Other),
 		program: lipgloss.NewStyle().Foreground(p.TextPrimary).Bold(true),
 	}
 }

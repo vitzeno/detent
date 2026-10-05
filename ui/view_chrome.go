@@ -187,8 +187,30 @@ func (m Model) statusBar() string {
 	case m.waiting:
 		phase = "thinking…"
 	}
+	// Seen from anywhere, so a child waiting on the human is never missed.
+	if running, blocked := m.agentCounts(); running > 0 {
+		phase += fmt.Sprintf(" · agents %d", running)
+		if blocked > 0 {
+			phase += fmt.Sprintf(" · %d !", blocked)
+		}
+	}
 	return status.Bar(m.spinner.View(), phase, m.statusHint(),
 		status.Notice{Text: m.notice.text, Bad: m.notice.bad}, m.waiting)
+}
+
+// agentCounts is how many subagents are still running, and how many of
+// those wait on the human.
+func (m Model) agentCounts() (running, blocked int) {
+	for _, a := range m.agents {
+		if a.ended {
+			continue
+		}
+		running++
+		if m.blocked(a) {
+			blocked++
+		}
+	}
+	return running, blocked
 }
 
 // statusHint mirrors handleKey: the three questions it intercepts

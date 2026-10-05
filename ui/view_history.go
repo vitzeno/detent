@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -251,17 +252,61 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 	if r.human {
 		icon = styleGoal.Render(m.prompt.mark()) + icon
 	}
+	cell := func(width int) string { return commandCell(r, width) }
+	// A spawn row draws its agent rather than its arguments.
+	if a := r.agent; a != nil {
+		detail = m.agentDetail(r)
+		cell = func(width int) string { return agentCell(a, width) }
+		if m.blocked(a) {
+			icon = styleCaution.Render("!") + icon
+		}
+	}
 
 	// Truncated, not wrapped: a command is often one unbreakable token.
 	// Where there is no room for both, the command beats the detail.
 	head := lipgloss.Width(stripStyle(mark)) + lipgloss.Width(icon) + 1
 	tail := "· " + detail
 	if m.blockWidth()-head-1-lipgloss.Width(tail) < layout.MinTruncate {
-		cmd := commandCell(r, m.blockWidth()-head)
-		return []string{fmt.Sprintf("%s%s %s", mark, icon, cmd)}
+		return []string{fmt.Sprintf("%s%s %s", mark, icon, cell(m.blockWidth()-head))}
 	}
-	cmd := commandCell(r, m.blockWidth()-head-1-lipgloss.Width(tail))
+	cmd := cell(m.blockWidth() - head - 1 - lipgloss.Width(tail))
 	return []string{fmt.Sprintf("%s%s %s %s", mark, icon, cmd, styleMuted.Render(tail))}
+}
+
+// maxAgentLast bounds the latest call a spawn row shows, so its count fits.
+const maxAgentLast = 40
+
+// agentCell is a subagent's name in the agent colour, where a command goes.
+func agentCell(a *agentState, width int) string {
+	return toolName.agent.Render(layout.Truncate("◆ "+a.name, width))
+}
+
+// agentDetail is what a spawn row says of its agent. From facts only, never
+// from what the model wrote, so a child saying "done" is still running.
+func (m Model) agentDetail(r *historyRow) string {
+	a := r.agent
+	switch {
+	case a.ended && r.took > 0:
+		return string(a.reason) + " " + status.Dur(r.took)
+	case a.ended:
+		return string(a.reason)
+	case m.blocked(a):
+		return "waiting on you"
+	case a.steps == 0:
+		return "queued"
+	case a.calls == 0:
+		return "thinking"
+	}
+	calls := "1 call"
+	if a.calls != 1 {
+		calls = fmt.Sprintf("%d calls", a.calls)
+	}
+	return calls + " · " + layout.Truncate(a.last, maxAgentLast)
+}
+
+// blocked is whether a subagent has a question waiting on the human.
+func (m Model) blocked(a *agentState) bool {
+	return slices.ContainsFunc(m.asked, func(q event.ApprovalAsked) bool { return q.Agent == a.id })
 }
 
 // commandCell is a row's command in width cells: the tool's name in its
@@ -326,6 +371,8 @@ func toolStyle(r *historyRow) (lipgloss.Style, bool) {
 		return toolName.write, true
 	case "web_search":
 		return toolName.web, true
+	case spawnTool:
+		return toolName.agent, true
 	}
 	return toolName.other, true
 }

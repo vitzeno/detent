@@ -64,6 +64,9 @@ func (m Model) confirmTitle(a *event.ApprovalAsked) string {
 		}
 	}
 	title := styleDanger.Render("approve") + styleFaint.Render(" · ") + tool
+	if agent := m.agents[a.Agent]; agent != nil {
+		title += styleFaint.Render(" · from ") + toolName.agent.Render(agent.name)
+	}
 	if n := len(m.asked); n > 1 {
 		title += styleFaint.Render(fmt.Sprintf(" · 1 of %d", n))
 	}

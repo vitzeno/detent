@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -69,6 +70,8 @@ type historyRow struct {
 	human bool
 	// signin is set on a row that is a server asking to be signed in to.
 	signin *signInState
+	// agent is set on a spawn_agent row, which draws the subagent it started.
+	agent *agentState
 
 	risk    event.Risk
 	running bool
@@ -76,6 +79,7 @@ type historyRow struct {
 	dropped int
 
 	result *event.Result
+	took   time.Duration
 	post   *verdict
 
 	expanded    bool
@@ -93,6 +97,24 @@ type historyRow struct {
 	viewSource string
 }
 
+// agentState is one subagent, folded from its facts. Its rows are its own and
+// never in a Turn block, so main history shows it as its spawn's one row.
+type agentState struct {
+	id         uuid.UUID
+	name, task string
+	// spawn is the parent's spawn_agent row, which draws this agent.
+	spawn *historyRow
+	rows  []*historyRow
+	steps int
+	// calls counts what it asked for, and last is the newest one's headline.
+	calls int
+	last  string
+	// used is its own spend, from its Steps.
+	used   event.Usage
+	ended  bool
+	reason event.AgentReason
+}
+
 // verdict is the post-execution read, when one arrived.
 type verdict struct {
 	status     event.Status
@@ -103,6 +125,9 @@ type verdict struct {
 
 // written is a write_file call's path and content, defused.
 type written struct{ path, content string }
+
+// spawnTool is internal/tool.SpawnAgentName, which ui cannot import.
+const spawnTool = "spawn_agent"
 
 // newFileReport is how write_file says it created a file, rather than
 // showing a diff the model would pay to read (internal/tool/write_file.go).

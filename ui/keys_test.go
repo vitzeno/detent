@@ -192,6 +192,37 @@ func TestApprovalBox_FitsNarrowAndShortScreens(t *testing.T) {
 	}
 }
 
+// Stopping a child throws its work away but for its report, so a stray x
+// only arms it, and any other key disarms it.
+func TestApply_StopKeySendsStopAgentForTheFocusedSpawn(t *testing.T) {
+	k := newKeyed(t)
+	sp := spawnIn(&k.m, "explore")
+	k.m.nav.focus, k.m.nav.cursor = focusHistory, 0
+	k.m.prompt.Blur()
+
+	k.press(t, "x")
+	k.noIntent(t)
+	assert.Contains(t, k.m.notice.text, "x again to stop explore")
+	k.press(t, "down")
+	k.press(t, "x")
+	k.noIntent(t)
+
+	k.press(t, "x")
+	assert.Equal(t, event.StopAgent{Agent: sp.agent}, k.intentOf(t, event.StopAgentKind))
+}
+
+func TestApprovalBox_NamesTheAgent(t *testing.T) {
+	k := newKeyed(t)
+	sp := spawnIn(&k.m, "explore")
+	call := uuid.Must(uuid.NewV7())
+	k.m.apply(event.ToolCallProposed{ToolCall: call, Tool: "read_file", Agent: sp.agent})
+	k.m.apply(event.ApprovalAsked{ToolCall: call, Tool: "read_file", Agent: sp.agent})
+	k.m.sizeViewport()
+
+	assert.Contains(t, ansi.Strip(k.m.confirmBox()), "from explore")
+	assert.Contains(t, ansi.Strip(k.m.statusBar()), "agents 1 · 1 !", "a blocked child shows from anywhere")
+}
+
 // A command taller than the screen must not be approvable from its
 // head: the tail is where the damage would be.
 func TestKeys_TallApprovalRunsOnlyOnceReadToTheEnd(t *testing.T) {

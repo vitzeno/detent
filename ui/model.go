@@ -42,6 +42,8 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	spinner spinner.Model
 
 	blocks []*turnBlock
+	// agents are the subagents history's spawn rows draw, by id.
+	agents map[uuid.UUID]*agentState
 	// hist is the assembled history, behind a pointer so the copy of
 	// Model that View works on can still fill it.
 	hist *histCache
@@ -74,8 +76,10 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	// replaying suppresses the flashes, because a replayed fact is
 	// history and a notice says something just happened.
 	replaying bool
-	// quitArmed is a quit asked for once while a request was running.
+	// quitArmed is a quit asked for once while a request was running, and
+	// stopArmed a subagent the human asked once to stop.
 	quitArmed bool
+	stopArmed uuid.UUID
 	undo      undoState
 	forget    forgetState
 	finder    finderState
@@ -135,6 +139,7 @@ func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 		nav:     navState{follow: true},
 		facts:   facts,
 		hist:    &histCache{},
+		agents:  map[uuid.UUID]*agentState{},
 	}
 }
 
@@ -356,6 +361,9 @@ func (m *Model) unask(call uuid.UUID) {
 	i := slices.IndexFunc(m.asked, func(a event.ApprovalAsked) bool { return a.ToolCall == call })
 	if i < 0 {
 		return
+	}
+	if a := m.agents[m.asked[i].Agent]; a != nil {
+		m.touch(a)
 	}
 	m.asked = slices.Delete(m.asked, i, i+1)
 	if i > 0 {

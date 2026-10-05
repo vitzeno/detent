@@ -75,6 +75,32 @@ func TestBlockCache_NeverGoesStale(t *testing.T) {
 	}
 }
 
+// A spawn row draws its agent, whose facts never name the row: each must
+// still redraw it, and only its block.
+func TestBlockCache_FollowsASpawnsAgent(t *testing.T) {
+	m, sp := spawned(t)
+	call := uuid.Must(uuid.NewV7())
+	steps := []struct {
+		name string
+		ev   event.Event
+	}{
+		{"the child starts a Step", event.StepStarted{Turn: sp.turn, Step: uuid.Must(uuid.NewV7()), N: 1, Agent: sp.agent}},
+		{"the child calls a tool", event.ToolCallProposed{ToolCall: call, Tool: "grep", Agent: sp.agent,
+			Args: map[string]any{"pattern": "x"}}},
+		{"the child is asked about it", event.ApprovalAsked{ToolCall: call, Tool: "grep", Agent: sp.agent}},
+		{"its call ends", event.ToolCallEnded{ToolCall: call}},
+		{"the child ends", event.AgentEnded{Agent: sp.agent, Reason: event.AgentPartial}},
+		{"the spawn ends", event.ToolCallEnded{ToolCall: sp.spawn, Took: time.Second}},
+	}
+	for _, s := range steps {
+		m.historyAll()
+		m.apply(s.ev)
+		warm, _ := m.historyAll()
+		cold, _ := m.uncached().historyAll()
+		require.Equal(t, cold, warm, "after %s: the spawn row drew stale", s.name)
+	}
+}
+
 // The cache exists to be hit: correctness alone passes with it off.
 func TestBlockCache_IsActuallyHit(t *testing.T) {
 	m := session(40, 3, 8)
