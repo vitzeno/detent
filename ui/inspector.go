@@ -153,6 +153,8 @@ func (m Model) stopAgent(a *agentState) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.stopArmed = uuid.Nil
+	a.stopping = true
+	m.touch(a)
 	return m, m.send(event.StopAgent{Agent: a.id})
 }
 

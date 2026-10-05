@@ -125,6 +125,9 @@ type agentState struct {
 	// which is how full its context is.
 	used event.Usage
 	ctx  int
+	// stopping is a stop the human asked for, shown until the agent ends:
+	// it still writes its report first, which takes a model call.
+	stopping bool
 	// waitingSince is when its question went up, zero while none waits.
 	waitingSince time.Time
 	ended        bool

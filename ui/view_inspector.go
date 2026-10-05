@@ -56,6 +56,8 @@ func (m Model) inspectorStatus() string {
 		return styleCaution.Render("! blocked " + since(a.waitingSince))
 	case a.ended:
 		return m.agentGlyph(a) + " " + styleMuted.Render(m.endedDetail(a))
+	case a.stopping:
+		return m.agentGlyph(a) + " " + styleCaution.Render(stoppingNote)
 	case a.steps == 0:
 		return styleFaint.Render("queued")
 	}

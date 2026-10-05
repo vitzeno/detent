@@ -391,6 +391,25 @@ func TestInspector_StopKeyStopsThisAgent(t *testing.T) {
 	assert.Equal(t, event.StopAgent{Agent: k.m.insp.agent.id}, k.intentOf(t, event.StopAgentKind))
 }
 
+// A stopped agent still writes its report, so until it ends it says a stop
+// is under way rather than looking as if nothing happened.
+func TestInspector_AStopShowsUntilTheAgentEnds(t *testing.T) {
+	k := newKeyed(t)
+	sp := spawnIn(&k.m, "explore")
+	k.m.apply(event.StepStarted{Turn: sp.turn, Step: uuid.Must(uuid.NewV7()), N: 1, Agent: sp.agent})
+	openAgents(t, k)
+	k.press(t, "x")
+	k.press(t, "x")
+	k.intentOf(t, event.StopAgentKind)
+
+	assert.Contains(t, ansi.Strip(k.m.inspectorBox()), "stopping · writing its report")
+	assert.Contains(t, ansi.Strip(strings.Join(k.m.pinnedLines(), "\n")), "stopping")
+
+	k.m.apply(event.AgentEnded{Agent: sp.agent, Reason: event.AgentStopped})
+	assert.NotContains(t, ansi.Strip(k.m.inspectorBox()), "stopping ·")
+	assert.Contains(t, ansi.Strip(k.m.inspectorBox()), "stopped")
+}
+
 func TestInspector_DefusesWhatTheChildWrote(t *testing.T) {
 	k := newKeyed(t)
 	sp := spawnIn(&k.m, "explore")

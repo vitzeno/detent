@@ -57,6 +57,9 @@ func (m Model) urgency(a *agentState) int {
 	return 4
 }
 
+// stoppingNote says a stop was asked for and why the agent has not ended yet.
+const stoppingNote = "stopping · writing its report"
+
 // pinnedLines is the block, bordered, or nothing when no subagent runs.
 func (m Model) pinnedLines() []string {
 	agents := m.pinned()
@@ -86,6 +89,9 @@ func (m Model) pinnedRow(a *agentState, width int) string {
 	if a.ended {
 		return head + styleFaint.Render(layout.Truncate(m.endedDetail(a), room))
 	}
+	if a.stopping {
+		return head + styleCaution.Render(layout.Truncate(stoppingNote, room))
+	}
 	pct := m.agentContext(a)
 	label := fmt.Sprintf(" %3d%%", pct)
 	return head + m.contextBar(a, room-len(label), pct) + styleMuted.Render(label)
@@ -96,6 +102,8 @@ func (m Model) agentGlyph(a *agentState) string {
 	switch {
 	case m.blocked(a):
 		return styleCaution.Render("!")
+	case !a.ended && a.stopping:
+		return styleCaution.Render("⊘")
 	case !a.ended && a.steps == 0:
 		return styleFaint.Render("·")
 	case !a.ended:

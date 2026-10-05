@@ -307,6 +307,8 @@ func (m Model) agentDetail(r *historyRow) string {
 		return string(a.reason) + " " + status.Dur(r.took)
 	case a.ended:
 		return string(a.reason)
+	case a.stopping:
+		return stoppingNote
 	case m.blocked(a):
 		return "waiting on you"
 	case a.steps == 0:
