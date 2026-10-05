@@ -99,6 +99,8 @@ type inspectorState struct {
 	shown   uuid.UUID
 	shownAt time.Time
 	seenEnd bool
+	// back is the pane it was opened from, which esc returns to.
+	back focusPane
 }
 
 // forgetState is the session /delete is asking about.

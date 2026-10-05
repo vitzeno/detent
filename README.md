@@ -117,7 +117,7 @@ A command still running after 10 minutes is stopped, and the model is told so al
 
 Off by default. `subagents: true` in `~/.config/detent/config.yaml` turns them on everywhere, a project's `.detent.yaml` for that project, or `DETENT_SUBAGENTS=1` for one run. `/status` and the welcome pane say which it is
 
-With them on, the model can hand broad reading to `spawn_agent`: a subagent with its own conversation that only reads, and replies with a report and the files it read. Several run at once, each shows as one row in history, and `x` twice on that row stops it. They keep the main conversation small, at about twice the cost of reading everything itself
+With them on, the model can hand broad reading to `spawn_agent`: a subagent with its own conversation that only reads, and replies with a report and the files it read. Several run at once. While they do they sit in a block under history, where `a` selects one, `enter` opens its work and `x` twice stops it. `/agents` opens the same view for any subagent in the session, a resumed one's included. They keep the main conversation small, at about twice the cost of reading everything itself
 
 ## Your own commands
 

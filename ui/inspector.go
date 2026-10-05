@@ -2,6 +2,7 @@ package ui
 
 import (
 	"slices"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -21,7 +22,7 @@ func (m Model) openInspector(a *agentState) (Model, tea.Cmd) {
 	if a == nil {
 		return m, nil
 	}
-	m.insp = inspectorState{agent: a}
+	m.insp = inspectorState{agent: a, back: m.nav.focus}
 	rows := m.inspectorRows(a)
 	m.insp.cursor = len(rows) - 1
 	if i := slices.IndexFunc(rows, func(r *historyRow) bool { return m.askOf(r) != nil }); i >= 0 {
@@ -32,11 +33,46 @@ func (m Model) openInspector(a *agentState) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// closeInspector puts back whatever question waited for it to close.
+// closeInspector returns to the pane it was opened from, and puts up
+// whatever question waited for it to close.
 func (m Model) closeInspector() (Model, tea.Cmd) {
+	back := m.insp.back
 	m.insp = inspectorState{}
 	m.backToInput()
+	if m.mode == modeInput && back != focusInput {
+		m.nav.focus = back
+		m.prompt.Blur()
+	}
 	return m, nil
+}
+
+// showAgents is /agents: the inspector on the named subagent, else one waiting
+// on the human, else the newest. Agents of a resumed session are there too.
+func (m Model) showAgents(input string) (Model, tea.Cmd) {
+	if len(m.agentOrder) == 0 {
+		m.noteErr("no subagents in this session")
+		return m, nil
+	}
+	name := strings.TrimSpace(strings.TrimPrefix(input, "/agents"))
+	a := m.agentOrder[len(m.agentOrder)-1]
+	if i := slices.IndexFunc(m.agentOrder, m.blocked); i >= 0 {
+		a = m.agentOrder[i]
+	}
+	if name != "" {
+		a = nil
+		// The newest of that name, since a request may reuse one.
+		for _, b := range slices.Backward(m.agentOrder) {
+			if b.name == name {
+				a = b
+				break
+			}
+		}
+		if a == nil {
+			m.noteErr("no subagent named " + name)
+			return m, nil
+		}
+	}
+	return m.openInspector(a)
 }
 
 // inspectorKey owns every key while the inspector is open.

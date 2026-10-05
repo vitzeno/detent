@@ -289,6 +289,81 @@ func TestInspector_ARootQuestionWaitsUntilItCloses(t *testing.T) {
 	assert.Equal(t, modeConfirm, k.m.mode, "it comes up once the inspector closes")
 }
 
+// esc leaves the inspector for the pane it was opened from, not the input.
+func TestInspector_EscReturnsToWhereItWasOpened(t *testing.T) {
+	k := newKeyed(t)
+	spawnIn(&k.m, "explore")
+	enterBlock(t, k)
+	k.press(t, "enter")
+	require.Equal(t, modeInspector, k.m.mode)
+	k.press(t, "esc")
+	assert.Equal(t, modeInput, k.m.mode)
+	assert.Equal(t, focusHistory, k.m.nav.focus)
+	assert.True(t, k.m.nav.inAgents, "back in the block it was opened from")
+}
+
+// esc steps out of the block, and only a second one stops the request.
+func TestAgentsBlock_EscLeavesItWithoutAborting(t *testing.T) {
+	k := newKeyed(t)
+	spawnIn(&k.m, "explore")
+	enterBlock(t, k)
+	k.press(t, "esc")
+	assert.False(t, k.m.nav.inAgents)
+	k.noIntent(t)
+}
+
+func TestSlash_AgentsOpensTheInspector(t *testing.T) {
+	k := newKeyed(t)
+	k.m, _ = k.m.showAgents("/agents")
+	assert.Equal(t, modeInput, k.m.mode)
+	assert.Contains(t, k.m.notice.text, "no subagents")
+
+	first := spawnIn(&k.m, "first")
+	second := spawnAlso(&k.m, first.turn, "second")
+	k.m, _ = k.m.showAgents("/agents")
+	assert.Equal(t, second.agent, k.m.insp.agent.id, "the newest when none waits")
+
+	k.m, _ = k.m.closeInspector()
+	childAsks(&k.m, first, "cat x")
+	k.m, _ = k.m.showAgents("/agents")
+	assert.Equal(t, first.agent, k.m.insp.agent.id, "one waiting on the human first")
+
+	k.m, _ = k.m.closeInspector()
+	k.m, _ = k.m.showAgents("/agents second")
+	assert.Equal(t, second.agent, k.m.insp.agent.id)
+	k.m, _ = k.m.closeInspector()
+	k.m, _ = k.m.showAgents("/agents nobody")
+	assert.Contains(t, k.m.notice.text, "no subagent named nobody")
+}
+
+// A resumed session replays its subagents' facts, so their work can still be
+// looked into after detent quit.
+func TestSlash_AgentsBrowsesAResumedSessionsWork(t *testing.T) {
+	turn, spawn, agent, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	stored := asRecords([]event.Event{
+		event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Subagents: true},
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "trace login"},
+		event.ToolCallProposed{ToolCall: spawn, Tool: spawnTool, Args: map[string]any{"task": "trace"}},
+		event.AgentStarted{Agent: agent, ToolCall: spawn, Name: "trace", Task: "trace login"},
+		event.StepStarted{Turn: turn, Step: uuid.Must(uuid.NewV7()), N: 1, Agent: agent},
+		event.ToolCallProposed{ToolCall: call, Tool: "grep", Args: map[string]any{"pattern": "login"}, Agent: agent},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: "auth.go:12: func login"}},
+		event.AgentEnded{Agent: agent, Reason: event.AgentDone},
+		event.ToolCallEnded{ToolCall: spawn, Result: event.Result{Stdout: "login is in auth.go:12"}},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone},
+	})
+	k := newKeyed(t)
+	k.m = k.m.Restore(stored)
+	k.m.sizeViewport()
+
+	k.m, _ = k.m.showAgents("/agents")
+	require.Equal(t, modeInspector, k.m.mode)
+	box := ansi.Strip(k.m.inspectorBox())
+	assert.Contains(t, box, "login is in auth.go:12", "it opens on the report")
+	k.press(t, "up")
+	assert.Contains(t, ansi.Strip(k.m.inspectorBox()), "auth.go:12: func login", "and every call is there")
+}
+
 func TestInspector_EscClosesAndAnswersNothing(t *testing.T) {
 	k := inspecting(t)
 	k.m.insp.shownAt = time.Now().Add(-2 * time.Hour)

@@ -647,7 +647,8 @@ adding a fat dependency fails with the transitive import named.
   context is. Their spawn rows join history when it ends (`turnBlock.shown`).
   `a` enters that block, and `enter` on it or on a spawn row opens the
   inspector: that agent's rows and output, laid over the panes as the
-  finder is. A subagent's question never raises the box: it waits on its
+  finder is. `/agents` opens it for any agent in the session, resumed
+  ones too, since replaying a session's facts rebuilds its agents. A subagent's question never raises the box: it waits on its
   agent, marked `!`, and is answered in the inspector with the box's
   guards, the settle and the whole command read.
   Approvals queue in the order asked and the box shows the first, with how

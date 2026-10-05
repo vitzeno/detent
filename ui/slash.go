@@ -54,6 +54,7 @@ func slashCommands() []slashCmd {
 		{name: "/mcp", desc: "show the MCP servers, or /mcp auth <server> to sign in again", run: Model.listServers},
 		{name: "/rename", desc: "name this session, e.g. /rename the sandbox bug",
 			run: Model.renameSession, answers: true},
+		{name: "/agents", desc: "look into this session's subagents, e.g. /agents explore-auth", run: Model.showAgents},
 		{name: "/undo", desc: "undo a request and everything after it, e.g. /undo 2", run: Model.runUndo},
 		{name: "/delete", desc: "delete a stored session, e.g. /delete the sandbox bug",
 			run: Model.runForget, answers: true},
