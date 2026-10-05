@@ -79,6 +79,9 @@ func Watch(ctx context.Context, bus *event.Bus, asker classify.Asker) func() {
 	var prompt string
 	var turn uuid.UUID
 	cmds, started := map[uuid.UUID]string{}, map[uuid.UUID]bool{}
+	// children are a subagent's calls, which answer its task rather than the
+	// request. Its spawn call is judged instead, report and all.
+	children := map[uuid.UUID]bool{}
 	unhandle := bus.Handle(event.Only(
 		event.TurnStartedKind, event.TurnEndedKind, event.ToolCallProposedKind, event.ToolCallStartedKind,
 		event.ToolCallEndedKind), func(rec event.Record) {
@@ -87,17 +90,23 @@ func Watch(ctx context.Context, bus *event.Bus, asker classify.Asker) func() {
 			prompt, turn = v.Prompt, v.Turn
 			clear(cmds)
 			clear(started)
+			clear(children)
 			w.setTurn(v.Turn)
 		case event.TurnEnded:
 			w.setTurn(uuid.Nil)
 		case event.ToolCallProposed:
 			cmds[v.ToolCall] = event.Command(v.Tool, v.Args)
+			if v.Agent != uuid.Nil {
+				children[v.ToolCall] = true
+			}
 		case event.ToolCallStarted:
 			started[v.ToolCall] = true
 		case event.ToolCallEnded:
 			// A declined or abandoned tool call never ran, so there is nothing to judge.
-			if !started[v.ToolCall] {
+			if !started[v.ToolCall] || children[v.ToolCall] {
 				delete(cmds, v.ToolCall)
+				delete(started, v.ToolCall)
+				delete(children, v.ToolCall)
 				return
 			}
 			delete(started, v.ToolCall)

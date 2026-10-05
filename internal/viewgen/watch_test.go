@@ -143,6 +143,35 @@ func TestWatch_AnUnjudgedToolCallResolvesWhenItEnds(t *testing.T) {
 	assert.Equal(t, "go test", got.Spec.Match)
 }
 
+// A child's call is never judged, so it resolves as it ends, from views that
+// exist already: what a judge would compose is not worth a child's row.
+func TestWatch_DrawsAChildsShippedViewButComposesNothing(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	g, judge := composer(t, map[string]string{"render_kind": "table"}, viewgen.WithRegistry(ui.Registry()))
+	stop := g.Watch(t.Context(), bus)
+	views, unsub := bus.Subscribe(event.Only(event.ViewReadyKind))
+	defer unsub()
+
+	child := uuid.Must(uuid.NewV7())
+	shipped, unknown := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1})
+	bus.Publish(event.ToolCallProposed{ToolCall: unknown, Tool: "bash", Agent: child,
+		Args: map[string]any{"command": "cat weird.log"}})
+	bus.Publish(event.ToolCallEnded{ToolCall: unknown, Result: event.Result{Stdout: "a b\nc d\n"}})
+	bus.Publish(event.ToolCallProposed{ToolCall: shipped, Tool: "bash", Agent: child,
+		Args: map[string]any{"command": "go test ./..."}})
+	bus.Publish(event.ToolCallEnded{ToolCall: shipped, Result: event.Result{Stdout: goTest}})
+
+	got := viewFor(t, views, shipped)
+	assert.Equal(t, "go test", got.Spec.Match, "no ToolCallJudged came, and it still drew")
+	bus.Settle(time.Second)
+	stop() // waits for any composition already started
+	judge.mu.Lock()
+	defer judge.mu.Unlock()
+	assert.Empty(t, judge.asked, "a child's call was composed over the network")
+}
+
 // User commands of one shipped command resolve at once, in parallel, and share
 // nothing mutable with each other or with ui.
 func TestWatch_ParallelUserCommandsShareNoState(t *testing.T) {

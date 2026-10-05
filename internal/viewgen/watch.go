@@ -60,6 +60,9 @@ type pending struct {
 	command string
 	result  *event.Result
 	kind    event.RenderKind
+	// local is a child's call. Nothing judges it, so it resolves as it ends,
+	// and with no judged kind nothing is composed for it over the network.
+	local bool
 }
 
 func (w *watcher) take(e event.Event) {
@@ -68,7 +71,7 @@ func (w *watcher) take(e event.Event) {
 		clear(w.calls) // nothing from a finished Turn can still compose
 	case event.ToolCallProposed:
 		// The command, not the tool, or every bash call would key as "bash".
-		w.calls[v.ToolCall] = &pending{command: event.Command(v.Tool, v.Args)}
+		w.calls[v.ToolCall] = &pending{command: event.Command(v.Tool, v.Args), local: v.Agent != uuid.Nil}
 	case event.ToolCallEnded:
 		p := w.calls[v.ToolCall]
 		if p == nil {
@@ -76,8 +79,9 @@ func (w *watcher) take(e event.Event) {
 		}
 		result := v.Result
 		p.result = &result
-		// With no judge wired no ToolCallJudged follows, so the tool call resolves now.
-		if w.gen.unjudged {
+		// With no judge wired, or for a child's call, no ToolCallJudged follows,
+		// so the tool call resolves now.
+		if w.gen.unjudged || p.local {
 			w.start(v.ToolCall, p)
 		}
 	case event.ToolCallJudged:

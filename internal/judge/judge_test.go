@@ -238,6 +238,30 @@ func TestWatch_TheJudgeSeesTheCommand(t *testing.T) {
 	}
 }
 
+// A child's calls answer its task, not the request, so only its spawn is
+// judged, and that judges the report against the request.
+func TestJudge_SkipsAChildsCallsButJudgesTheSpawn(t *testing.T) {
+	bus := event.New()
+	defer bus.Close()
+	asker := recordingAsker{states: make(chan classify.State, 2)}
+	stop := Watch(t.Context(), bus, asker)
+
+	spawn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	bus.Publish(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "how does login work"})
+	bus.Publish(event.ToolCallProposed{ToolCall: spawn, Tool: "spawn_agent", Args: map[string]any{"task": "trace login"}})
+	bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "grep", Args: map[string]any{"pattern": "login"},
+		Agent: uuid.Must(uuid.NewV7())})
+	ran(bus, call, event.Result{Stdout: "auth.go:12: func login\n"})
+	ran(bus, spawn, event.Result{Stdout: "login is in auth.go:12"})
+	bus.Settle(3 * time.Second)
+	stop()
+
+	require.Len(t, asker.states, 1, "the child's call was judged")
+	m, ok := (<-asker.states).(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, m["command"], "spawn_agent")
+}
+
 // A tool call that was declined or abandoned never ran, so nobody asks about it.
 func TestWatch_AToolCallThatNeverRanIsNotJudged(t *testing.T) {
 	bus := event.New()
