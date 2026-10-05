@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"cmp"
 	"time"
 
 	"github.com/google/uuid"
@@ -81,6 +82,20 @@ func WithDescription(model, judge string, network, recorded bool) Option {
 // WithInstructions names the instruction files the model's prompt carries.
 func WithInstructions(paths []string) Option {
 	return func(e *Engine) { e.instructions = paths }
+}
+
+// WithChildModel runs subagents with m, whose prompt is a subagent's. Wire it
+// exactly when spawn_agent is registered, or the tool answers that it is not.
+func WithChildModel(m Completer) Option { return func(e *Engine) { e.childModel = m } }
+
+// WithAgentLimits bounds subagents: how many a Turn may start, how far one's
+// transcript may grow and how long one may run. Zero keeps a default.
+func WithAgentLimits(perTurn, contextTokens int, timeout time.Duration) Option {
+	return func(e *Engine) {
+		e.maxAgents = cmp.Or(perTurn, e.maxAgents)
+		e.childContext = cmp.Or(contextTokens, e.childContext)
+		e.childTimeout = cmp.Or(timeout, e.childTimeout)
+	}
 }
 
 // WithCommit names the commit the work tree was on, for SessionStarted.

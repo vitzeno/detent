@@ -53,6 +53,8 @@ type turnState struct {
 	notes []string
 	// used is every agent's spend this Turn, added from each one's goroutine.
 	used event.Usage
+	// spawned counts the subagents this Turn started, against maxAgents.
+	spawned atomic.Int32
 	// waiting holds each open question's answer, keyed by its tool call,
 	// so several can wait at once and none takes another's.
 	waiting map[uuid.UUID]chan bool
@@ -101,28 +103,44 @@ func (e *Engine) runTurn(ctx context.Context, t *turnState) {
 	e.endTurn(ctx, t, end.reason, end.text, t.usage())
 }
 
-// agentEnd is how an agent's Steps ended, and its last words.
+// agentEnd is how an agent's Steps ended, and its last words. cut says what
+// stopped a child short, and used and steps are its own.
 type agentEnd struct {
 	reason event.EndReason
 	text   string
+	cut    string
+	used   event.Usage
+	steps  int
 }
 
 // runAgent is the loop, blocking and linear: Steps until the model stops
 // asking for tools. What only the root does is said where it happens.
-func (e *Engine) runAgent(ctx context.Context, t *turnState, a *agent) agentEnd {
+func (e *Engine) runAgent(ctx context.Context, t *turnState, a *agent) (end agentEnd) {
 	limit, nudges, checked := e.maxSteps, 0, false
 	for step := 1; ; step++ {
 		if a.root() {
 			t.drain()
 		}
 		if t.aborted.Load() || ctx.Err() != nil {
-			return agentEnd{reason: event.EndAborted}
+			end.reason = event.EndAborted
+			return end
 		}
 		if step > limit && a.root() {
 			if !e.askContinue(ctx, t, step-1) {
-				return agentEnd{reason: event.EndBound}
+				end.reason = event.EndBound
+				return end
 			}
 			limit += e.maxSteps
+		}
+		// A child has hard limits instead: questions from a fan-out arriving
+		// together are worse than a partial report.
+		if !a.root() && step > childSteps {
+			end.reason, end.cut = event.EndBound, fmt.Sprintf("stopped at %d steps", childSteps)
+			return end
+		}
+		if !a.root() && a.over(e.childContext) {
+			end.reason, end.cut = event.EndBound, "ran out of context"
+			return end
 		}
 		if a.root() {
 			for _, note := range t.takeNotes() {
@@ -133,14 +151,18 @@ func (e *Engine) runAgent(ctx context.Context, t *turnState, a *agent) agentEnd 
 
 		stepID := uuid.Must(uuid.NewV7())
 		e.bus.Publish(event.StepStarted{Turn: t.id, Step: stepID, N: step, Agent: a.id})
+		end.steps = step
 		reply, used, err := a.model.Complete(ctx, a.messages(), a.tools.Schemas())
 		t.addUsage(used)
+		end.used = end.used.Add(used)
 		if err != nil {
 			if ctx.Err() != nil {
-				return agentEnd{reason: event.EndAborted}
+				end.reason = event.EndAborted
+				return end
 			}
 			e.noticeFrom(a, "error", err.Error())
-			return agentEnd{reason: event.EndError, text: err.Error()}
+			end.reason, end.text = event.EndError, err.Error()
+			return end
 		}
 		e.bus.Publish(event.StepEnded{Turn: t.id, Step: stepID, Usage: used, ToolCalls: len(reply.Requests), Stop: reply.Stop, Agent: a.id})
 		if a.root() {
@@ -165,7 +187,8 @@ func (e *Engine) runAgent(ctx context.Context, t *turnState, a *agent) agentEnd 
 				e.appended(a, t.id, uuid.Nil, func() []event.Message { return a.tr.note(finishNote) })
 				continue
 			}
-			return agentEnd{reason: event.EndDone, text: reply.Text}
+			end.reason, end.text = event.EndDone, reply.Text
+			return end
 		}
 		nudges = 0
 		answers := e.runStep(ctx, t, a, stepID, reply)

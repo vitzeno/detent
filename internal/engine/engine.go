@@ -50,6 +50,15 @@ type Engine struct {
 	judge   *jevHook
 	invoker Invoker
 
+	// childModel runs subagents, and without one spawn_agent answers that
+	// there are none. The limits below bound each child.
+	childModel   Completer
+	maxAgents    int
+	childContext int
+	childTimeout time.Duration
+	// slots holds one token per running child.
+	slots chan struct{}
+
 	session uuid.UUID
 	turns   int
 
@@ -96,12 +105,14 @@ type Engine struct {
 	// past is what can still be undone. Run goroutine only.
 	past map[uuid.UUID]*turnState
 
-	// mu guards cur and warned, which the Turn goroutine reads as well.
+	// mu guards cur, warned and agents, which the Turn goroutine reads as well.
 	mu sync.Mutex
 	// cur is the Turn in flight.
 	cur *turnState
 	// warned names the hooks that already failed this Turn, so an outage warns once.
 	warned map[string]bool
+	// agents is each running child's stop, for StopAgent.
+	agents map[uuid.UUID]context.CancelCauseFunc
 }
 
 // New builds an Engine and subscribes it to intents. Run starts it, and
@@ -117,10 +128,17 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 		contextTokens:  DefaultContextTokens,
 		stopGrace:      DefaultStopGrace,
 		past:           map[uuid.UUID]*turnState{},
+		maxAgents:      DefaultMaxAgents,
+		childContext:   DefaultChildContextTokens,
+		childTimeout:   DefaultChildTimeout,
+		slots:          make(chan struct{}, childSlots),
+		agents:         map[uuid.UUID]context.CancelCauseFunc{},
 	}
 	for _, o := range opts {
 		o(e)
 	}
+	// A child's budget is a share of the window, never more than all of it.
+	e.childContext = min(e.childContext, e.contextTokens)
 	// The network hook last.
 	if e.judge != nil {
 		e.extra = append(e.extra, e.judge)
@@ -259,6 +277,9 @@ func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{
 		if t != nil {
 			e.post(t, ev)
 		}
+	case event.StopAgent:
+		// Not queued: the root may be blocked on that very child.
+		e.stopAgent(v.Agent)
 	case event.ResolveApproval:
 		// Straight to its waiter: the Turn may be blocked where it reads no inbox.
 		if t != nil {
@@ -341,7 +362,7 @@ func (e *Engine) started() {
 		Network: e.network, MaxSteps: e.maxSteps,
 		Recorded: e.recorded, Resumed: e.resumed,
 		ContextTokens: e.budget(), Instructions: e.instructions, Skills: e.skills,
-		Commit: e.commit,
+		Commit: e.commit, Subagents: e.childModel != nil, MaxAgents: e.offered(),
 	})
 }
 
@@ -382,6 +403,14 @@ func (e *Engine) abortCurrent() {
 
 func (e *Engine) notice(level, text string) {
 	e.bus.Publish(event.Notice{Level: level, Text: text})
+}
+
+// offered is how many subagents a Turn may start, zero without any.
+func (e *Engine) offered() int {
+	if e.childModel == nil {
+		return 0
+	}
+	return e.maxAgents
 }
 
 // noticeFrom names a child in its notices, since several may be running.

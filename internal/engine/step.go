@@ -60,7 +60,7 @@ func (e *Engine) runStep(ctx context.Context, t *turnState, a *agent, step uuid.
 	var batch []*toolCallPlan
 	flush := func() {
 		if len(batch) > 0 && !stopping() {
-			e.runParallel(ctx, a, batch)
+			e.runParallel(ctx, t, a, batch)
 		}
 		batch = nil
 	}
@@ -87,8 +87,9 @@ serial:
 				break serial
 			}
 		}
-		e.execute(ctx, a, p)
-		if !p.readOnly() {
+		e.execute(ctx, t, a, p)
+		// A delegating call changes nothing itself: its delegate's own calls do.
+		if !p.readOnly() && !p.prepared.Delegates {
 			t.changed.Store(true)
 		}
 	}
@@ -170,10 +171,10 @@ func executor(a *agent, name string) string {
 
 // runParallel runs read-only tool calls together. They change nothing, so
 // nothing depends on their order.
-func (e *Engine) runParallel(ctx context.Context, a *agent, plans []*toolCallPlan) {
+func (e *Engine) runParallel(ctx context.Context, t *turnState, a *agent, plans []*toolCallPlan) {
 	var wg sync.WaitGroup
 	for _, p := range plans {
-		wg.Go(func() { e.execute(ctx, a, p) })
+		wg.Go(func() { e.execute(ctx, t, a, p) })
 	}
 	wg.Wait()
 }
@@ -211,7 +212,12 @@ func (e *Engine) approve(ctx context.Context, t *turnState, a *agent, p *toolCal
 	}
 }
 
-func (e *Engine) execute(ctx context.Context, a *agent, p *toolCallPlan) {
+func (e *Engine) execute(ctx context.Context, t *turnState, a *agent, p *toolCallPlan) {
+	// The one tool with a path the others lack: running it is running the engine.
+	if p.prepared.Delegates {
+		e.spawn(ctx, t, a, p)
+		return
+	}
 	if p.prepared.Executor != "" {
 		e.invoke(ctx, p)
 		return
