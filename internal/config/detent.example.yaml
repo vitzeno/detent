@@ -1,90 +1,55 @@
-# detent -init writes this to ~/.config/detent/config.yaml, and a copy
-# at ./.detent.yaml sets one repository's.
-# Precedence: flags > environment > this file > built-ins.
-# Empty or 0 means the built-in, so this file as-is changes nothing.
-# base_url, model, context_tokens, theme, views, host_shell and the log_* and sandbox_*
-# keys (bar image and workspace) also read DETENT_ plus the key in capitals.
-# A key not listed here is an error, so a typo cannot silently do nothing.
+# detent -init writes this to ~/.config/detent/config.yaml. ./.detent.yaml sets one repository's.
+# Flags > environment > this file > built-ins. Empty or 0 is the built-in, shown in brackets.
+# Each key also reads DETENT_<KEY>, except steps, headers, jev_*, risk_threshold,
+# sandbox_image and sandbox_workspace. An unknown key is an error.
 
 # --- Model: any OpenAI-compatible /chat/completions endpoint ---
 
-base_url: https://openrouter.ai/api/v1
+base_url: https://openrouter.ai/api/v1   # LM Studio: http://localhost:1234/v1
 model: openai/gpt-6-luna
-api_key: ""            # or DETENT_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY
-headers: {}            # extra request headers
+api_key: ""                # or OPENROUTER_API_KEY, OPENAI_API_KEY
+headers: {}                # extra request headers
 
-# Local LM Studio, no key:
-#   base_url: http://localhost:1234/v1
-# Hosted OpenAI:
-#   base_url: https://api.openai.com/v1
-#   model: gpt-4o-mini
+steps: 0                   # Steps before it asks to continue (100)
+command_timeout: ""        # stop a command after this long, e.g. 30m (10m)
+finish_check:              # ask the model to check its work before finishing (true)
+context_tokens: 0          # transcript budget before compacting (200000)
 
-steps: 0               # Steps per request before it asks to continue (100)
+# --- Subagents ---
 
-# Stop a command still running after this long, e.g. "30m" or "90s" (10m).
-# Host, sandbox and MCP calls alike. The model is told it was stopped and sees
-# what it printed so far. Also DETENT_COMMAND_TIMEOUT.
-command_timeout: ""
+subagents:                 # let the model spawn read-only subagents (false)
+max_agents: 0              # per request (10)
+child_context_tokens: 0    # one subagent's budget (64000)
+child_timeout: ""          # how long one may run (10m)
 
-# Before a request that changed something ends, ask the model once to check its
-# work against the request (true). Also DETENT_FINISH_CHECK.
-finish_check:          # true or false (true)
+# --- Jev judge: empty key runs without one ---
 
-# Let the model hand reading to subagents, which run several at once and each
-# reply with a report (false). Also DETENT_SUBAGENTS.
-subagents:             # true or false (false)
-# At most this many per request (10), a subagent's transcript budget in tokens
-# (64000, never above context_tokens) and how long one may run, e.g. "5m" (10m).
-# Also DETENT_MAX_AGENTS, DETENT_CHILD_CONTEXT_TOKENS and DETENT_CHILD_TIMEOUT.
-max_agents: 0
-child_context_tokens: 0
-child_timeout: ""
-
-# Transcript budget in tokens (200000). Past it, the oldest Turns are
-# summarised. Set it below the window for a small local model.
-context_tokens: 0
-
-# --- Jev judge: leave the key empty to run without one ---
-
-jev_api_key: ""        # or TYPESAFE_API_KEY
+jev_api_key: ""            # or TYPESAFE_API_KEY
 jev_model: ""
 jev_endpoint: ""
-risk_threshold: 0      # scope risk that needs your approval (0.5)
+risk_threshold: 0          # scope risk that needs approval (0.5)
 
-# --- Look ---
+# --- MCP: servers live in .mcp.json ---
 
-theme: ""              # dark, light, solarized, dracula (dark)
+mcp_trust_hints:           # run tools a server marks read-only unasked (true)
 
-# --- Host shell ---
+# --- Look and shell ---
 
-# What host commands run in: sh, pwsh (PowerShell 7) or gitbash. Empty picks
-# sh, or on Windows pwsh and then Git Bash. Also DETENT_HOST_SHELL.
-host_shell: ""
+theme: ""                  # dark, light, solarized, dracula (dark)
+host_shell: ""             # sh, pwsh or gitbash (sh, on Windows pwsh then gitbash)
+views: saved               # saved, or generate to compose new views with Jev
 
 # --- Sandbox ---
 
-sandbox_mode: ""       # host, or auto for the experimental sandbox (host)
-sandbox_socket: ""     # containerd socket, empty guesses per OS
-sandbox_image: ""      # fully qualified ref (Ubuntu with git and curl)
-sandbox_runtime: ""    # OCI runtime, e.g. io.containerd.runsc.v1 (runc)
-sandbox_network: ""    # host or none (host). On macOS host is the colima VM
-sandbox_workspace: ""  # where your directory is mounted (/workspace)
-
-# --- Views ---
-
-# saved: draw only from specs that exist.
-# generate: also compose one with Jev for output nothing covers (~600ms,
-# then saved). Needs jev_api_key.
-views: saved
+sandbox_mode: ""           # host, or auto for the experimental sandbox (host)
+sandbox_socket: ""         # containerd socket (guessed per OS)
+sandbox_image: ""          # fully qualified ref (Ubuntu with git and curl)
+sandbox_runtime: ""        # OCI runtime, e.g. io.containerd.runsc.v1 (runc)
+sandbox_network: ""        # host or none (host)
+sandbox_workspace: ""      # where your directory is mounted (/workspace)
 
 # --- Logs: ~/.local/state/detent/logs/<session>.jsonl ---
 
-log_level: info        # debug, info, warn, error
-log_bodies: false      # include prompts, replies and command output
+log_level: info            # debug, info, warn, error
+log_bodies: false          # include prompts, replies and output
 log_dir: ""
-
-# MCP servers live in .mcp.json, not here. See mcp.example.json.
-
-# Run a server's tool unasked when the server says it only reads (true). False
-# confirms every MCP call. Also DETENT_MCP_TRUST_HINTS.
-mcp_trust_hints:       # true or false (true)
