@@ -23,7 +23,9 @@ type AgentEnded struct {
 	fact
 	Agent  uuid.UUID   `json:"Agent"`
 	Reason AgentReason `json:"Reason"`
-	Usage  Usage       `json:"Usage"`
+	// Why says what cut it short, such as "stopped at 30 steps", empty when done.
+	Why   string `json:"Why"`
+	Usage Usage  `json:"Usage"`
 }
 
 func (AgentEnded) Kind() Kind { return AgentEndedKind }

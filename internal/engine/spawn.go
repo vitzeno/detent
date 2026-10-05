@@ -72,11 +72,11 @@ func (e *Engine) spawn(ctx context.Context, t *turnState, parent *agent, p *tool
 	defer e.untrack(child.id)
 
 	end := e.runChild(cctx, t, child, task)
-	reason, report := e.report(ctx, cctx, t, child, &end)
+	reason, why, report := e.report(ctx, cctx, t, child, &end)
 	// After the clip, so a long report never loses what backs it.
 	report = capture.Clip(report, capture.MaxResultBytes) + readList(child.messages())
 
-	e.bus.Publish(event.AgentEnded{Agent: child.id, Reason: reason, Usage: end.used})
+	e.bus.Publish(event.AgentEnded{Agent: child.id, Reason: reason, Why: why, Usage: end.used})
 	out := event.Result{Stdout: report}
 	if reason == event.AgentAborted {
 		out = event.Result{Err: "the request was aborted"}
@@ -105,20 +105,21 @@ func (e *Engine) runChild(ctx context.Context, t *turnState, child *agent, task 
 	return end
 }
 
-// report is how a child ended and what the parent reads. One cut short is
+// report is how a child ended, what cut it short, and what the parent reads. One cut short is
 // asked once more, with no tools, for what it found: the last Step of a
 // child still working rarely says anything useful.
-func (e *Engine) report(ctx, cctx context.Context, t *turnState, child *agent, end *agentEnd) (event.AgentReason, string) {
+func (e *Engine) report(ctx, cctx context.Context, t *turnState, child *agent, end *agentEnd) (reason event.AgentReason, why, report string) {
 	if end.reason == event.EndDone {
-		return event.AgentDone, end.text
+		return event.AgentDone, "", end.text
 	}
 	if t.aborted.Load() || ctx.Err() != nil {
-		return event.AgentAborted, "This subagent was not finished: the request was aborted."
+		return event.AgentAborted, "the request was aborted", "This subagent was not finished: the request was aborted."
 	}
 	if end.steps == 0 && errors.Is(context.Cause(cctx), errStopped) {
-		return event.AgentStopped, "[the human stopped this subagent before it started] Do not start it again with the same task."
+		return event.AgentStopped, "the human stopped this subagent before it started",
+			"[the human stopped this subagent before it started] Do not start it again with the same task."
 	}
-	reason, why := event.AgentPartial, end.cut
+	reason, why = event.AgentPartial, end.cut
 	switch {
 	case errors.Is(context.Cause(cctx), errStopped):
 		reason, why = event.AgentStopped, "the human stopped this subagent"
@@ -129,7 +130,7 @@ func (e *Engine) report(ctx, cctx context.Context, t *turnState, child *agent, e
 	if reason == event.AgentStopped {
 		prefix = "[the human stopped this subagent] Do not start it again with the same task.\n"
 	}
-	return reason, prefix + e.lastWords(ctx, t, child, why, end)
+	return reason, why, prefix + e.lastWords(ctx, t, child, why, end)
 }
 
 // lastWords asks a child that was cut short for its report, on the parent's

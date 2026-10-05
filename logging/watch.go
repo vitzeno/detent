@@ -59,8 +59,9 @@ func describe(e event.Event) (slog.Level, []any) {
 	switch v := e.(type) {
 	case event.SessionStarted:
 		return slog.LevelInfo, []any{"model", v.Model, "sandbox", v.Sandbox,
-			"network", v.Network, "max_steps", v.MaxSteps,
-			"recorded", v.Recorded, "resumed", v.Resumed}
+			"network", v.Network, "max_steps", v.MaxSteps, "context_tokens", v.ContextTokens,
+			"recorded", v.Recorded, "resumed", v.Resumed, "commit", v.Commit,
+			"subagents", v.Subagents, "max_agents", v.MaxAgents, "child_context_tokens", v.ChildContextTokens}
 	case event.SessionResumed:
 		return slog.LevelInfo, []any{"records", v.Records, "sandbox", v.Sandbox}
 	case event.TurnStarted:
@@ -77,7 +78,8 @@ func describe(e event.Event) (slog.Level, []any) {
 	case event.AgentStarted:
 		return slog.LevelInfo, []any{KeyToolCall, v.ToolCall, "name", v.Name, "task", Body(v.Task)}
 	case event.AgentEnded:
-		return slog.LevelInfo, []any{KeyReason, string(v.Reason), "tokens", v.Usage.Tokens()}
+		return slog.LevelInfo, append([]any{KeyReason, string(v.Reason), "why", Snippet(v.Why),
+			"tokens", v.Usage.Tokens()}, cost(v.Usage)...)
 	case event.StepStarted:
 		return slog.LevelDebug, []any{KeyTurn, v.Turn, KeyStep, v.Step, "n", v.N}
 	case event.StepEnded:
@@ -104,8 +106,13 @@ func describe(e event.Event) (slog.Level, []any) {
 	case event.ToolCallProposed:
 		// The command, not just the tool: most calls are bash, and a log
 		// that cannot say what ran answers nothing.
-		return slog.LevelInfo, []any{KeyToolCall, v.ToolCall, KeyStep, v.Step, "tool", v.Tool,
+		fields := []any{KeyToolCall, v.ToolCall, KeyStep, v.Step, "tool", v.Tool,
 			"command", Body(event.Command(v.Tool, v.Args))}
+		// Where it runs when not a shell: an MCP server's name.
+		if v.Executor != "" {
+			fields = append(fields, "executor", v.Executor)
+		}
+		return slog.LevelInfo, fields
 	case event.ToolCallAssessed:
 		return slog.LevelInfo, []any{KeyToolCall, v.ToolCall, "dangerous", v.Risk.Dangerous,
 			"mutability", v.Risk.Mutability, "scope_risk", v.Risk.ScopeRisk,

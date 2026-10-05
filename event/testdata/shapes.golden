@@ -8,6 +8,7 @@ agent.ended Usage.HasCost bool
 agent.ended Usage.Latency time.Duration
 agent.ended Usage.Model string
 agent.ended Usage.PromptTokens int
+agent.ended Why string
 agent.started Agent uuid.UUID
 agent.started Name string
 agent.started Task string

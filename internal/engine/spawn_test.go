@@ -161,7 +161,9 @@ func TestSpawn_EndsWithAReportAtTheStepCap(t *testing.T) {
 	report := toolAnswers(r.eng.messages())
 	assert.Contains(t, report, "[partial: stopped at 30 steps]")
 	assert.Contains(t, report, "found half of it", "the last call, with no tools, is the report")
-	assert.Equal(t, event.AgentPartial, r.await(event.AgentEndedKind).(event.AgentEnded).Reason)
+	ended := r.await(event.AgentEndedKind).(event.AgentEnded)
+	assert.Equal(t, event.AgentPartial, ended.Reason)
+	assert.Equal(t, "stopped at 30 steps", ended.Why, "the log can say which limit it hit")
 }
 
 func TestSpawn_EndsWithAReportAtItsContextBudget(t *testing.T) {

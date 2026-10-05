@@ -105,6 +105,30 @@ func TestWatch_LogsCacheAndOnlyAKnownCost(t *testing.T) {
 	assert.NotContains(t, got[1], "cost", "unknown is not free")
 }
 
+// A session says which features it ran with, and an agent why it stopped,
+// so a log answers both without the bodies log_bodies withholds.
+func TestWatch_LogsWhatSubagentsNeed(t *testing.T) {
+	dir := t.TempDir()
+	closer, err := logging.Setup("w4", logging.WithDir(dir), logging.WithLevel("debug"))
+	require.NoError(t, err)
+	bus := event.New()
+	stop := logging.Watch(bus)
+	bus.Publish(event.SessionStarted{Model: "m", Subagents: true, MaxAgents: 10, Commit: "abc123"})
+	bus.Publish(event.ToolCallProposed{ToolCall: uuid.Must(uuid.NewV7()), Tool: "github__list", Executor: "github"})
+	bus.Publish(event.AgentEnded{Agent: uuid.Must(uuid.NewV7()), Reason: event.AgentPartial, Why: "ran out of context",
+		Usage: event.Usage{Cost: 0.02, HasCost: true}})
+	bus.Settle(2 * time.Second)
+	stop()
+	require.NoError(t, closer())
+
+	by := byEvent(t, records(t, dir, "w4"))
+	assert.Equal(t, true, by["session.started"]["subagents"])
+	assert.Equal(t, "abc123", by["session.started"]["commit"])
+	assert.Equal(t, "github", by["tool_call.proposed"]["executor"])
+	assert.Equal(t, "ran out of context", by["agent.ended"]["why"])
+	assert.InDelta(t, 0.02, by["agent.ended"]["cost"], 1e-9)
+}
+
 // A command the human ran is logged like a tool call, under its own key:
 // the id has to be findable, and a failure has to be worth finding.
 func TestWatch_LogsAHumanCommand(t *testing.T) {
