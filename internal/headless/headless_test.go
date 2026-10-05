@@ -151,6 +151,33 @@ func TestHandle_DefusesWhatAModelOrCommandWrote(t *testing.T) {
 	}
 }
 
+// Four children interleave on stdout, so each line says whose it is. The
+// root's lines carry nothing, and a name is defused like anything a model wrote.
+func TestPrinter_PrefixesAChildsLinesWithItsName(t *testing.T) {
+	var out, errOut bytes.Buffer
+	bus := event.New()
+	t.Cleanup(bus.Close)
+	p := New(bus, func(event.ApprovalAsked) bool { return false }, &out, &errOut)
+	t.Cleanup(p.unsub)
+
+	child, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	p.handle(event.AgentStarted{Agent: child, Name: "explore"})
+	p.handle(event.ToolCallProposed{ToolCall: call, Tool: "grep", Args: map[string]any{"pattern": "x"}, Agent: child})
+	p.handle(event.ToolCallEnded{ToolCall: call})
+	p.handle(event.ToolCallProposed{Tool: "read_file", Args: map[string]any{"path": "a.go"}})
+	risky := uuid.Must(uuid.NewV7())
+	p.handle(event.AgentStarted{Agent: risky, Name: hostile})
+	p.handle(event.AgentEnded{Agent: child, Reason: event.AgentDone})
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	require.Len(t, lines, 4)
+	assert.Contains(t, lines[0], "[explore] → grep")
+	assert.Contains(t, lines[1], "[explore] exit 0")
+	assert.NotContains(t, lines[2], "[", "the root's line names nobody")
+	assert.Contains(t, lines[3], "[explore] done")
+	assertDefused(t, p.from(risky))
+}
+
 func TestClip(t *testing.T) {
 	assert.Equal(t, "ls", clip("ls", 10))
 	assert.Equal(t, "éééé…", clip(strings.Repeat("é", 8), 4), "cut by rune, never mid-character")

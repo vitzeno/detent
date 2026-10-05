@@ -12,6 +12,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/termsafe"
 )
@@ -25,6 +27,10 @@ type Printer struct {
 	approve Approver
 	out     io.Writer
 	errOut  io.Writer
+	// names are the subagents seen so far, and children which of them
+	// proposed each call, so lines interleaved from several say whose they are.
+	names    map[uuid.UUID]string
+	children map[uuid.UUID]uuid.UUID
 }
 
 // New subscribes to facts. approve decides the dangerous calls, and nil
@@ -34,7 +40,8 @@ func New(bus *event.Bus, approve Approver, out, errOut io.Writer) *Printer {
 		approve = Ask(os.Stdin, out)
 	}
 	facts, unsub := bus.Subscribe(event.Facts())
-	return &Printer{bus: bus, facts: facts, unsub: unsub, approve: approve, out: out, errOut: errOut}
+	return &Printer{bus: bus, facts: facts, unsub: unsub, approve: approve, out: out, errOut: errOut,
+		names: map[uuid.UUID]string{}, children: map[uuid.UUID]uuid.UUID{}}
 }
 
 // Run submits prompt, prints what happens, and returns when the Turn ends.
@@ -99,12 +106,20 @@ func (p *Printer) handle(ev event.Event) (event.EndReason, bool) {
 			where = "sandbox"
 		}
 		fmt.Fprintf(p.errOut, "detent: model %s, commands run on the %s\n", termsafe.Printable(v.Model), where)
+	case event.AgentStarted:
+		p.names[v.Agent] = termsafe.Printable(v.Name)
+	case event.AgentEnded:
+		fmt.Fprintf(p.out, "  %s%s\n", p.from(v.Agent), v.Reason)
 	case event.ToolCallProposed:
-		fmt.Fprintf(p.out, "  → %s\n", clip(event.Command(v.Tool, v.Args), 120))
+		if v.Agent != uuid.Nil {
+			p.children[v.ToolCall] = v.Agent
+		}
+		fmt.Fprintf(p.out, "  %s→ %s\n", p.from(v.Agent), clip(event.Command(v.Tool, v.Args), 120))
 	case event.ToolCallEnded:
-		fmt.Fprintln(p.out, "    "+termsafe.Printable(outcome(v.Result)))
+		fmt.Fprintln(p.out, "    "+p.from(p.children[v.ToolCall])+termsafe.Printable(outcome(v.Result)))
+		delete(p.children, v.ToolCall)
 	case event.ModelText:
-		fmt.Fprintf(p.out, "\n%s\n", termsafe.Printable(v.Text))
+		fmt.Fprintf(p.out, "\n%s%s\n", p.from(v.Agent), termsafe.Printable(v.Text))
 	case event.ApprovalAsked:
 		p.bus.Publish(event.ResolveApproval{ToolCall: v.ToolCall, Approved: p.approve(v)})
 	case event.BoundReached:
@@ -117,6 +132,15 @@ func (p *Printer) handle(ev event.Event) (event.EndReason, bool) {
 		return v.Reason, true
 	}
 	return "", false
+}
+
+// from prefixes a subagent's lines with its name, since several interleave.
+// The root's lines carry nothing.
+func (p *Printer) from(agent uuid.UUID) string {
+	if agent == uuid.Nil {
+		return ""
+	}
+	return "[" + p.names[agent] + "] "
 }
 
 // clip keeps a tool call to one line of at most n runes, defused.
