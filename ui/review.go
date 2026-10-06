@@ -451,6 +451,8 @@ func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m.startTriage()
 	case ">", "<":
 		m.jumpComment(map[string]int{">": 1, "<": -1}[key])
+	case "space":
+		m.toggleViewed()
 	}
 	return m, nil
 }
@@ -1117,4 +1119,35 @@ func (m *Model) jumpComment(d int) {
 		return
 	}
 	m.focusComment(comments[next].ID)
+}
+
+// toggleViewed marks the file under the cursor viewed, and moves on to the next
+// one not yet viewed, or unmarks it. Kept for the session, never stored.
+func (m *Model) toggleViewed() {
+	r := &m.review
+	f := r.selected()
+	if f == nil {
+		return
+	}
+	if m.viewed == nil {
+		m.viewed = map[uuid.UUID]map[string]bool{}
+	}
+	seen := m.viewed[r.id]
+	if seen == nil {
+		seen = map[string]bool{}
+		m.viewed[r.id] = seen
+	}
+	if seen[f.Path] {
+		delete(seen, f.Path)
+		return
+	}
+	seen[f.Path] = true
+	for i := range len(r.files) {
+		next := (r.file + 1 + i) % len(r.files)
+		if !seen[r.files[next].Path] {
+			r.pickFile(next)
+			return
+		}
+	}
+	m.noteOK(fmt.Sprintf("every file viewed, %d of %d", len(seen), len(r.files)))
 }

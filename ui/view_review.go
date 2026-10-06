@@ -72,6 +72,9 @@ func (m Model) reviewTitle() string {
 	if m.reviewSent() {
 		title += styleFaint.Render(" · sent")
 	}
+	if n := len(m.viewed[r.id]); n > 0 && len(r.files) > 0 {
+		title += styleFaint.Render(fmt.Sprintf(" · %d/%d viewed", n, len(r.files)))
+	}
 	if i := slices.IndexFunc(m.reviews, func(rec *reviewRecord) bool { return rec.id == r.id }); i >= 0 && len(m.reviews) > 1 {
 		title += styleFaint.Render(fmt.Sprintf(" · %d of %d", i+1, len(m.reviews)))
 	}
@@ -178,25 +181,29 @@ func (m Model) reviewLineComments() int {
 	return n
 }
 
-// reviewKeys offers what the cursor is on: the editor's keys while writing.
+// reviewKeys offers what the cursor is on, leading with what esc will close: it
+// closes a layer at a time, and the line is cut to the box, which hid "esc back".
 func (m Model) reviewKeys() string {
 	r := m.review
 	switch {
 	case r.edit != nil:
-		return "enter save · " + m.prompt.NewlineKey() + " newline · esc drop it"
+		return "esc drops the draft · enter save · " + m.prompt.NewlineKey() + " newline"
 	case r.triage != nil:
-		return fmt.Sprintf("comment %d of %d · y keep · n drop · e edit · esc stop", r.triage.at+1, len(r.triage.queue))
+		return fmt.Sprintf("esc stops triage · comment %d of %d · y keep · n drop · e edit",
+			r.triage.at+1, len(r.triage.queue))
+	case r.ranging:
+		return "esc drops the range · c comments on it · ↑↓ extend it"
 	case !r.diffFocused:
-		return "↑↓ file · enter diff · s scope · r reviewer · ←→ reviews · ctrl+s send · esc back"
+		return "esc closes · ↑↓ file · enter diff · space viewed · s scope · r reviewer · ←→ reviews · ctrl+s send"
 	}
 	rows := m.reviewRows()
 	if r.line < len(rows) && rows[r.line].comment != nil {
 		if r.deleting == rows[r.line].comment.ID {
 			return "x again deletes it · any other key keeps it"
 		}
-		return "c reply · e edit · x delete · </> comments · t triage · ctrl+s send · esc back"
+		return "esc closes · c reply · e edit · x delete · </> comments · t triage · ctrl+s send"
 	}
-	return "c comment · v range · ]/[ hunk · </> comments · n/p file · r reviewer · t triage · ctrl+s send · esc back"
+	return "esc closes · c comment · v range · ]/[ hunk · </> comments · n/p file · space viewed · r reviewer · t triage · ctrl+s send"
 }
 
 // reviewFileLines lists each changed file with what happened to it.
@@ -221,6 +228,13 @@ func (m Model) reviewFileLines(width, height int) []string {
 		}
 		if reading != nil {
 			mark += m.readMark(reading, f.Path)
+		}
+		// A file marked viewed steps back, the way a reviewed file folds away.
+		if m.viewed[r.id][f.Path] {
+			mark += styleSafe.Render("✓") + " "
+			if i != r.file {
+				style = styleFaint
+			}
 		}
 		stat := fileStat(f)
 		if n := len(m.fileComments(f.Path)); n > 0 {

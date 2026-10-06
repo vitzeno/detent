@@ -868,6 +868,39 @@ func TestEsc_ASecondEscAfterClosingAModalDoesNotAbort(t *testing.T) {
 	assert.Equal(t, event.Abort{Turn: turn}, k.intentOf(t, event.AbortKind))
 }
 
+// The key line leads with what esc will close, layer by layer, so it is never
+// cut off the end of a narrow box.
+func TestReview_TheKeysSayWhatEscWillClose(t *testing.T) {
+	k := loadedReview(t)
+	assert.True(t, strings.HasPrefix(k.m.reviewKeys(), "esc closes"))
+	k.press(t, "down")
+	k.press(t, "v")
+	assert.True(t, strings.HasPrefix(k.m.reviewKeys(), "esc drops the range"))
+	k.press(t, "c")
+	assert.True(t, strings.HasPrefix(k.m.reviewKeys(), "esc drops the draft"))
+	k.press(t, "esc")
+	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: event.ReviewComment{
+		ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "README.md", Side: "new", Start: 1, End: 1}})
+	k.press(t, "t")
+	assert.True(t, strings.HasPrefix(k.m.reviewKeys(), "esc stops triage"))
+}
+
+// space marks a file viewed and moves on to the next not yet viewed, the
+// title counting them, and space again on a viewed file unmarks it.
+func TestReview_SpaceMarksAFileViewedAndMovesOn(t *testing.T) {
+	k := loadedReview(t)
+	k.press(t, "tab")
+	k.send(t, tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
+	assert.Equal(t, 1, k.m.review.file, "on to README.md")
+	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "1/2 viewed")
+	assert.Contains(t, ansi.Strip(k.m.reviewFileLines(40, 10)[0]), "✓")
+	k.send(t, tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
+	assert.Contains(t, k.m.notice.text, "every file viewed")
+	k.press(t, "p")
+	k.send(t, tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
+	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "1/2 viewed", "unmarked")
+}
+
 // Closing the modal leaves the reviewer working: its comments still land on
 // the review, and its row counts them.
 func TestReview_TheModalClosesWhileTheReviewerWorks(t *testing.T) {

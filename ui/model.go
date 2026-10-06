@@ -102,6 +102,8 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	resume    resumeState
 	review    reviewState
 	reviews   []*reviewRecord
+	// viewed is the files the human has marked viewed, by review, for this session only.
+	viewed map[uuid.UUID]map[string]bool
 	// resuming is the session the picker asked for, replayed once it starts.
 	resuming *sessionPreview
 
