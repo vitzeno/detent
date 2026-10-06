@@ -19,7 +19,7 @@ import (
 func TestReview_OpensOnTheLastRequestBetweenItsTwoCheckpoints(t *testing.T) {
 	k := reviewable(t, "e1", "e2")
 	k.openReview("/review")
-	assert.Equal(t, modeReview, k.m.mode)
+	assert.NotNil(t, k.rev())
 	assert.Equal(t, event.LoadDiff{Base: "b2", Head: "e2"}, k.intentOf(t, event.LoadDiffKind))
 }
 
@@ -46,7 +46,7 @@ func TestReview_AnOldSessionReadsToTheNextRequestsStart(t *testing.T) {
 	k.press(t, "esc")
 	k.openReview("/review")
 	assert.Equal(t, event.LoadDiff{Base: "b2"}, k.intentOf(t, event.LoadDiffKind))
-	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "to your files now")
+	assert.Contains(t, ansi.Strip(k.rev().title(k.m)), "to your files now")
 }
 
 // The files on the left with what changed in each, the selected one's lines
@@ -68,8 +68,8 @@ func TestReview_IgnoresAnAnswerForOtherTrees(t *testing.T) {
 	k := reviewable(t, "e1", "e2")
 	k.openReview("/review")
 	k.m.apply(loadedDiff("b1", "e1"))
-	assert.True(t, k.m.review.loading)
-	assert.Empty(t, k.m.review.files)
+	assert.True(t, k.rev().loading)
+	assert.Empty(t, k.rev().files)
 }
 
 // File contents are untrusted: an escape is shown, never sent, and a CRLF
@@ -81,7 +81,7 @@ func TestReview_DefusesWhatTheFilesSay(t *testing.T) {
 		Path: "evil\x1b[2J.txt", Change: event.FileAdded, Hunks: []event.Hunk{{Header: "@@ -0,0 +1 @@",
 			Lines: []event.DiffLine{{Op: event.LineAdded, New: 1, Text: "a\x1b]52;c;aGk=\x07b\r"}}}},
 	}}})
-	f := k.m.review.files[0]
+	f := k.rev().files[0]
 	assert.NotContains(t, f.Path, "\x1b")
 	assert.Equal(t, "a^[]52;c;aGk=^Gb", f.Hunks[0].Lines[0].Text, "escapes shown, and no ^M from the CRLF")
 }
@@ -93,16 +93,16 @@ func TestReview_KeysMoveThroughFilesAndHunks(t *testing.T) {
 	k.intentOf(t, event.LoadDiffKind)
 	k.m.apply(loadedDiff("b2", "e2"))
 	k.press(t, "n")
-	assert.Equal(t, 1, k.m.review.file)
+	assert.Equal(t, 1, k.rev().file)
 	k.press(t, "p")
 	k.press(t, "tab")
-	require.True(t, k.m.review.diffFocused)
+	require.True(t, k.rev().diffFocused)
 	k.press(t, "]")
-	assert.Equal(t, 3, k.m.review.line, "the second hunk's header, after the first's two lines")
+	assert.Equal(t, 3, k.rev().line, "the second hunk's header, after the first's two lines")
 	k.press(t, "[")
-	assert.Equal(t, 0, k.m.review.line)
+	assert.Equal(t, 0, k.rev().line)
 	k.press(t, "down")
-	assert.Equal(t, 1, k.m.review.line)
+	assert.Equal(t, 1, k.rev().line)
 	k.press(t, "esc")
 	assert.Equal(t, modeInput, k.m.mode)
 	k.noIntent(t)
@@ -135,7 +135,7 @@ func TestReview_CommentsOnALineAndShowsItUnderIt(t *testing.T) {
 	k.typeText(t, "why")
 	k.press(t, "enter")
 	got := k.intentOf(t, event.CommentReviewKind).(event.CommentReview)
-	assert.Equal(t, k.m.review.id, got.Review)
+	assert.Equal(t, k.rev().id, got.Review)
 	assert.Equal(t, k.m.blocks[1].id, got.Reviewed)
 	assert.Equal(t, event.CommentAdded, got.Op)
 	want := got.Comment
@@ -144,7 +144,7 @@ func TestReview_CommentsOnALineAndShowsItUnderIt(t *testing.T) {
 		Quote: "-old line", Body: "why"}, want, "every line removed, so numbered as before")
 
 	k.m.apply(commented(got))
-	rows := k.m.reviewRows()
+	rows := k.rev().rows(k.m)
 	require.NotNil(t, rows[2].comment, "under the line it is about")
 	screen := ansi.Strip(k.m.withOverlay(k.m.baseView()))
 	assert.Regexp(t, `-old line\s*│[^\n]*\n[^┃]*┃ you\s[^\n]*\n[^┃]*┃ why\s`, screen, "its author, then its words")
@@ -174,7 +174,7 @@ func TestReview_ARangeStaysInOneHunk(t *testing.T) {
 	k.press(t, "]")
 	k.press(t, "down")
 	k.press(t, "c")
-	assert.Nil(t, k.m.review.edit)
+	assert.Nil(t, k.rev().edit)
 	assert.Contains(t, k.m.notice.text, "one hunk")
 }
 
@@ -188,7 +188,7 @@ func TestReview_AnEmptyOrDroppedCommentSendsNothing(t *testing.T) {
 	k.typeText(t, "no")
 	k.press(t, "esc")
 	k.noIntent(t)
-	assert.Equal(t, modeReview, k.m.mode, "esc dropped the draft, not the review")
+	assert.NotNil(t, k.rev(), "esc dropped the draft, not the review")
 }
 
 // On a reviewer's comment: c replies to it, e rewrites it, which makes it the
@@ -197,12 +197,12 @@ func TestReview_RepliesEditsAndDeletesAComment(t *testing.T) {
 	k := loadedReview(t)
 	theirs := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "ui/facts.go",
 		Side: "new", Start: 10, End: 10, Quote: "+new line", Body: "unclear"}
-	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Reviewed: k.m.blocks[1].id, Base: "b2", Head: "e2",
+	k.m.apply(event.ReviewCommented{Review: k.rev().id, Reviewed: k.m.blocks[1].id, Base: "b2", Head: "e2",
 		Op: event.CommentAdded, Comment: theirs})
 	k.press(t, "down")
 	k.press(t, "down")
 	k.press(t, "down")
-	require.NotNil(t, k.m.reviewRows()[k.m.review.line].comment, "on the comment")
+	require.NotNil(t, k.rev().rows(k.m)[k.rev().line].comment, "on the comment")
 
 	k.press(t, "c")
 	k.typeText(t, "agreed")
@@ -235,11 +235,11 @@ func TestReview_RepliesEditsAndDeletesAComment(t *testing.T) {
 func TestReview_ALongCommentWrapsWhole(t *testing.T) {
 	k := loadedReview(t)
 	body := "this renames the field but the store still reads the old key, so a resumed session loses it"
-	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: event.ReviewComment{
+	k.m.apply(event.ReviewCommented{Review: k.rev().id, Op: event.CommentAdded, Comment: event.ReviewComment{
 		ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "ui/facts.go", Side: "new", Start: 10, End: 10,
 		Body: body}})
 	var words []string
-	for _, l := range k.m.reviewDiffLines(30) {
+	for _, l := range k.rev().diffLines(k.m, 30) {
 		l = ansi.Strip(l)
 		if _, text, ok := strings.Cut(l, "┃ "); ok && !strings.HasPrefix(text, "reviewer") {
 			assert.NotContains(t, text, "…", "a comment is wrapped, never cut")
@@ -257,7 +257,7 @@ func TestReview_ALongDraftStaysInTheEditor(t *testing.T) {
 	k.press(t, "down")
 	k.press(t, "c")
 	k.typeText(t, strings.Repeat("word ", 60)+"last")
-	rows := k.m.commentEditor(k.m.reviewTextWidth())[1:]
+	rows := k.rev().editorLines(k.m.reviewTextWidth())[1:]
 	require.Len(t, rows, commentEditorLines)
 	for _, r := range rows {
 		assert.NotEmpty(t, strings.Trim(ansi.Strip(r), "┃ "), "a row of the editor is blank")
@@ -283,10 +283,10 @@ func TestReview_DeletingACommentDropsItsReplies(t *testing.T) {
 	k := loadedReview(t)
 	parent := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Path: "ui/facts.go", Side: "new", Start: 10, End: 10}
 	for _, c := range []event.ReviewComment{parent, {ID: uuid.Must(uuid.NewV7()), ReplyTo: parent.ID}} {
-		k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: c})
+		k.m.apply(event.ReviewCommented{Review: k.rev().id, Op: event.CommentAdded, Comment: c})
 	}
-	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentDeleted, Comment: event.ReviewComment{ID: parent.ID}})
-	assert.Empty(t, k.m.reviewByID(k.m.review.id).comments)
+	k.m.apply(event.ReviewCommented{Review: k.rev().id, Op: event.CommentDeleted, Comment: event.ReviewComment{ID: parent.ID}})
+	assert.Empty(t, k.m.reviewByID(k.rev().id).comments)
 }
 
 // ctrl+s sends every comment, and once the review is recorded as sent the
@@ -298,7 +298,7 @@ func TestReview_SubmitSendsTheCommentsAndCloses(t *testing.T) {
 	assert.Contains(t, k.m.notice.text, "nothing to send")
 
 	c := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Path: "ui/facts.go", Side: "new", Start: 10, End: 10, Body: "x"}
-	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: c})
+	k.m.apply(event.ReviewCommented{Review: k.rev().id, Op: event.CommentAdded, Comment: c})
 	k.ctrl(t, 's')
 	sub := k.intentOf(t, event.SubmitReviewKind).(event.SubmitReview)
 	assert.Equal(t, 2, sub.Request)
@@ -312,24 +312,24 @@ func TestReview_SubmitSendsTheCommentsAndCloses(t *testing.T) {
 // /review again finds the open review, and once that is sent starts another.
 func TestReview_ReopensTheOpenReviewAndStartsAnotherOnceSent(t *testing.T) {
 	k := loadedReview(t)
-	first := k.m.review.id
+	first := k.rev().id
 	k.m.apply(event.ReviewCommented{Review: first, Reviewed: k.m.blocks[1].id, Base: "b2", Head: "e2",
 		Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7())}})
 	k.press(t, "esc")
 	k.press(t, "esc")
 	k.openReview("/review")
-	assert.Equal(t, first, k.m.review.id)
+	assert.Equal(t, first, k.rev().id)
 
 	k.m.apply(event.ReviewSubmitted{Review: first, Comments: 1})
 	k.openReview("/review")
-	assert.NotEqual(t, first, k.m.review.id)
+	assert.NotEqual(t, first, k.rev().id)
 }
 
 // Undoing a request drops its reviews, and a replay brings them back otherwise.
 func TestReview_UndoDropsTheUndoneRequestsReviews(t *testing.T) {
 	k := loadedReview(t)
 	turn := k.m.blocks[1].id
-	added := event.ReviewCommented{Review: k.m.review.id, Reviewed: turn, Base: "b2", Head: "e2",
+	added := event.ReviewCommented{Review: k.rev().id, Reviewed: turn, Base: "b2", Head: "e2",
 		Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Body: "kept"}}
 	k.m.apply(added)
 
@@ -345,9 +345,9 @@ func TestReview_UndoDropsTheUndoneRequestsReviews(t *testing.T) {
 // A reviewer's words are a model's, shown rather than sent to the terminal.
 func TestReview_DefusesAComment(t *testing.T) {
 	k := loadedReview(t)
-	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded,
+	k.m.apply(event.ReviewCommented{Review: k.rev().id, Op: event.CommentAdded,
 		Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Author: "r\x1b[2J", Body: "b\x1b]52;c;x\x07"}})
-	c := k.m.reviewByID(k.m.review.id).comments[0]
+	c := k.m.reviewByID(k.rev().id).comments[0]
 	assert.NotContains(t, c.Author+c.Body, "\x1b")
 }
 
@@ -361,7 +361,7 @@ func TestReview_StepsBackPastARequestThatChangedNothing(t *testing.T) {
 	assert.Equal(t, event.LoadDiff{Base: "b1", Head: "e1"}, k.intentOf(t, event.LoadDiffKind))
 	k.update(t, factMsg{events: []event.Event{event.DiffLoaded{Base: "b1", Head: "e1"}}})
 	k.noIntent(t)
-	assert.Equal(t, 1, k.m.review.block.n)
+	assert.Equal(t, 1, k.rev().block.n)
 
 	k.press(t, "esc")
 	k.openReview("/review 2")
@@ -395,33 +395,33 @@ func TestReview_SkipsAScopeWithNothingToShow(t *testing.T) {
 	k.openReview("/review")
 	k.intentOf(t, event.LoadDiffKind)
 	k.press(t, "s")
-	assert.Equal(t, event.ScopeSince, k.m.review.scope, "no session of one request")
+	assert.Equal(t, event.ScopeSince, k.rev().scope, "no session of one request")
 	k.intentOf(t, event.LoadDiffKind)
 
 	k.press(t, "s")
 	k.intentOf(t, event.LoadDiffKind)
 	k.press(t, "s")
-	require.Equal(t, event.ScopeRequest, k.m.review.scope)
+	require.Equal(t, event.ScopeRequest, k.rev().scope)
 	k.intentOf(t, event.LoadDiffKind)
 
 	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 3, Prompt: "running"})
 	k.press(t, "s")
-	assert.Equal(t, event.ScopeBranch, k.m.review.scope, "nothing since, while a request runs")
+	assert.Equal(t, event.ScopeBranch, k.rev().scope, "nothing since, while a request runs")
 }
 
 // Each scope has its own review, found again on the way back round.
 func TestReview_EachScopeKeepsItsOwnReview(t *testing.T) {
 	k := reviewable(t, "e1", "e2")
 	k.openReview("/review")
-	request := k.m.review.id
+	request := k.rev().id
 	k.m.apply(event.ReviewCommented{Review: request, Reviewed: k.m.blocks[1].id, Base: "b2", Head: "e2",
 		Scope: event.ScopeRequest, Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7())}})
 	k.press(t, "s")
-	assert.NotEqual(t, request, k.m.review.id)
+	assert.NotEqual(t, request, k.rev().id)
 	for range 3 {
 		k.press(t, "s")
 	}
-	assert.Equal(t, request, k.m.review.id)
+	assert.Equal(t, request, k.rev().id)
 }
 
 // A branch is compared with main or a named ref. Its review is found by where
@@ -431,8 +431,8 @@ func TestReview_ABranchIsReviewedAgainstWhereItLeftARef(t *testing.T) {
 	k.openReview("/review branch main")
 	assert.Equal(t, event.LoadDiff{Branch: true, Against: "main"}, k.intentOf(t, event.LoadDiffKind))
 	k.m.apply(event.DiffLoaded{Branch: true, Base: "mb", Against: "main", Files: loadedDiff("", "").Files})
-	assert.Equal(t, "mb", k.m.review.base)
-	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "this branch against main")
+	assert.Equal(t, "mb", k.rev().base)
+	assert.Contains(t, ansi.Strip(k.rev().title(k.m)), "this branch against main")
 
 	k.press(t, "tab")
 	k.press(t, "down")
@@ -455,7 +455,7 @@ func TestReview_ABranchIsReviewedAgainstWhereItLeftARef(t *testing.T) {
 	k.openReview("/review branch main")
 	k.intentOf(t, event.LoadDiffKind)
 	k.m.apply(event.DiffLoaded{Branch: true, Base: "mb", Against: "main"})
-	assert.Equal(t, c.Review, k.m.review.id, "the same branch point finds the same review")
+	assert.Equal(t, c.Review, k.rev().id, "the same branch point finds the same review")
 }
 
 // No request owns a branch's review, so undoing one leaves it alone.
@@ -475,7 +475,7 @@ func TestReview_OpensOntoAScopeByName(t *testing.T) {
 	k.press(t, "esc")
 	k.openReview("/review since")
 	assert.Equal(t, event.LoadDiff{Base: "e2"}, k.intentOf(t, event.LoadDiffKind))
-	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "your edits since request 2")
+	assert.Contains(t, ansi.Strip(k.rev().title(k.m)), "your edits since request 2")
 }
 
 // r asks for a reviewer on exactly what the modal shows: its scope, its trees,
@@ -490,7 +490,7 @@ func TestReview_RStartsAReviewerOnWhatTheModalShows(t *testing.T) {
 	k.m.apply(event.DiffLoaded{Base: "b2", Head: "e2", Files: files})
 	k.press(t, "r")
 	got := k.intentOf(t, event.ReviewChangesKind).(event.ReviewChanges)
-	assert.Equal(t, event.ReviewChanges{Review: k.m.review.id, Reviewed: k.m.blocks[1].id, Scope: event.ScopeRequest,
+	assert.Equal(t, event.ReviewChanges{Review: k.rev().id, Reviewed: k.m.blocks[1].id, Scope: event.ScopeRequest,
 		Base: "b2", Head: "e2", Request: 2, Asked: "edit", Files: files}, got,
 		"the file's own bytes, tab and CR, not the screen's")
 }
@@ -532,8 +532,8 @@ func TestReview_IsOneLineInHistoryThatOpensIt(t *testing.T) {
 	k.m.nav.cursor = len(k.m.rows()) - 1
 	k.m.nav.focus = focusHistory
 	k.press(t, "enter")
-	assert.Equal(t, modeReview, k.m.mode)
-	assert.Equal(t, review, k.m.review.id)
+	assert.NotNil(t, k.rev())
+	assert.Equal(t, review, k.rev().id)
 	assert.Equal(t, event.LoadDiff{Base: "b2", Head: "e2"}, k.intentOf(t, event.LoadDiffKind))
 }
 
@@ -551,21 +551,21 @@ func TestReview_ArrowsStepBetweenReviews(t *testing.T) {
 	runCmd(cmd)
 	k.intentOf(t, event.LoadDiffKind)
 	k.send(t, tea.KeyPressMsg{Code: tea.KeyLeft})
-	assert.Equal(t, ids[0], k.m.review.id)
+	assert.Equal(t, ids[0], k.rev().id)
 	assert.Equal(t, event.LoadDiff{Base: "b1", Head: "e1"}, k.intentOf(t, event.LoadDiffKind))
 	k.send(t, tea.KeyPressMsg{Code: tea.KeyLeft})
 	k.noIntent(t)
-	assert.Equal(t, ids[0], k.m.review.id, "nothing older")
+	assert.Equal(t, ids[0], k.rev().id, "nothing older")
 	k.send(t, tea.KeyPressMsg{Code: tea.KeyRight})
-	assert.Equal(t, ids[1], k.m.review.id)
+	assert.Equal(t, ids[1], k.rev().id)
 }
 
 // A sent review is read, not written: comments, edits and a reviewer are refused.
 func TestReview_ASentReviewIsReadOnly(t *testing.T) {
 	k := loadedReview(t)
-	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded,
+	k.m.apply(event.ReviewCommented{Review: k.rev().id, Op: event.CommentAdded,
 		Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Path: "ui/facts.go", Side: "new", Start: 10, End: 10}})
-	k.m.apply(event.ReviewSubmitted{Review: k.m.review.id, Comments: 1})
+	k.m.apply(event.ReviewSubmitted{Review: k.rev().id, Comments: 1})
 	k.openReview("/review")
 	k.intentOf(t, event.LoadDiffKind)
 	var cmd tea.Cmd
@@ -577,7 +577,7 @@ func TestReview_ASentReviewIsReadOnly(t *testing.T) {
 	k.press(t, "down")
 	for _, key := range []string{"c", "r"} {
 		k.press(t, key)
-		assert.Nil(t, k.m.review.edit)
+		assert.Nil(t, k.rev().edit)
 		assert.Contains(t, k.m.notice.text, "was sent")
 	}
 	k.noIntent(t)
@@ -606,7 +606,7 @@ func TestReview_ABranchReviewOpenedByNameKeepsItsID(t *testing.T) {
 	runCmd(cmd)
 	assert.Equal(t, event.LoadDiff{Branch: true, Against: "main"}, k.intentOf(t, event.LoadDiffKind))
 	k.m.apply(event.DiffLoaded{Branch: true, Base: "new-base", Against: "main"})
-	assert.Equal(t, id, k.m.review.id)
+	assert.Equal(t, id, k.rev().id)
 }
 
 // The reviewer is a subagent: in the agents block while it works, a opening it in
@@ -640,7 +640,7 @@ func TestReview_TheReviewerIsASubagentWhileItWorks(t *testing.T) {
 	assert.Contains(t, ansi.Strip(strings.Join(lines, "\n")), "review of request 2 · 1 comment")
 	k.m.nav.cursor, k.m.nav.focus = len(k.m.rows())-1, focusHistory
 	k.press(t, "enter")
-	assert.Equal(t, modeReview, k.m.mode, "the review, not the inspector")
+	assert.NotNil(t, k.rev(), "the review, not the inspector")
 }
 
 // A reviewer looks like what it is: its own colour, a glyph that breathes rather
@@ -673,18 +673,18 @@ func TestReview_TheReviewerLooksLikeAReviewer(t *testing.T) {
 // store came in long ago, so it never does.
 func TestReview_ANewCommentStandsOutThenSettles(t *testing.T) {
 	k := loadedReview(t)
-	id := k.m.review.id
+	id := k.rev().id
 	c := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "ui/facts.go", Side: "new", Start: 10, End: 10, Body: "x"}
 	k.m.apply(event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: c})
 	row := diffRow{comment: &k.m.reviewByID(id).comments[0], author: true}
-	fresh := k.m.commentLine(row)
+	fresh := k.rev().commentLine(k.m, row)
 	require.NotNil(t, k.m.fadeTick(), "a tick to fade it by")
 	assert.Nil(t, k.m.fadeTick(), "and only one")
 
 	k.m.reviewByID(id).arrived[c.ID] = time.Now().Add(-fadeFor / 2)
-	midway := k.m.commentLine(row)
+	midway := k.rev().commentLine(k.m, row)
 	k.m.reviewByID(id).arrived[c.ID] = time.Now().Add(-2 * fadeFor)
-	settled := k.m.commentLine(row)
+	settled := k.rev().commentLine(k.m, row)
 	assert.NotEqual(t, fresh, midway, "lit, then only coloured")
 	assert.NotEqual(t, midway, settled, "then settled")
 	k.m.fadeTicking = false
@@ -700,27 +700,27 @@ func TestReview_ANewCommentStandsOutThenSettles(t *testing.T) {
 func TestReview_TheFileListShowsWhereTheReviewerIs(t *testing.T) {
 	k := loadedReview(t)
 	turn, agent, step := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: k.m.review.id})
-	k.m.apply(event.ReviewStarted{Review: k.m.review.id, Scope: event.ScopeRequest, Files: 2})
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: k.rev().id})
+	k.m.apply(event.ReviewStarted{Review: k.rev().id, Scope: event.ScopeRequest, Files: 2})
 	k.m.apply(event.AgentStarted{Agent: agent, Turn: turn, Name: "reviewer"})
 	k.m.apply(event.StepStarted{Turn: turn, Step: step, N: 1, Agent: agent})
 	for _, p := range []string{"README.md", "ui/facts.go"} {
 		k.m.apply(event.ToolCallProposed{Step: step, ToolCall: uuid.Must(uuid.NewV7()), Tool: event.ToolReviewDiff,
 			Args: map[string]any{"path": p}, Agent: agent})
 	}
-	lines := k.m.reviewFileLines(40, 10)
+	lines := k.rev().fileLines(k.m, 40, 10)
 	assert.Contains(t, ansi.Strip(lines[0]), "◉ M", "reading ui/facts.go")
 	assert.Contains(t, ansi.Strip(lines[1]), "· A", "README.md read")
 	k.m.pulse += 4
-	assert.Contains(t, ansi.Strip(k.m.reviewFileLines(40, 10)[0]), "○ M", "and it pulses")
+	assert.Contains(t, ansi.Strip(k.rev().fileLines(k.m, 40, 10)[0]), "○ M", "and it pulses")
 }
 
 // Once the reviewer finishes, its verdict sits above the diff, a few lines of it.
 func TestReview_TheVerdictSitsAboveTheDiff(t *testing.T) {
 	k := loadedReview(t)
-	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: event.ReviewComment{
+	k.m.apply(event.ReviewCommented{Review: k.rev().id, Op: event.CommentAdded, Comment: event.ReviewComment{
 		ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Body: strings.Repeat("a long verdict word ", 40)}})
-	lines := k.m.reviewDiffLines(30)
+	lines := k.rev().diffLines(k.m, 30)
 	assert.Contains(t, ansi.Strip(lines[0]), "reviewer's verdict · 0 comments on lines", "comments plural, never liness")
 	assert.True(t, strings.HasSuffix(ansi.Strip(lines[maxVerdictLines]), "…"), "cut to a few lines")
 	assert.Contains(t, ansi.Strip(lines[maxVerdictLines+2]), "@@ -10,2 +10,2 @@", "then the diff")
@@ -730,7 +730,7 @@ func TestReview_TheVerdictSitsAboveTheDiff(t *testing.T) {
 // the human's and the verdict: y keeps, n drops, e rewrites, and the end says how it went.
 func TestReview_TriageWalksTheReviewersComments(t *testing.T) {
 	k := loadedReview(t)
-	id := k.m.review.id
+	id := k.rev().id
 	add := func(c event.ReviewComment) uuid.UUID {
 		c.ID = uuid.Must(uuid.NewV7())
 		k.m.apply(event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: c})
@@ -743,43 +743,43 @@ func TestReview_TriageWalksTheReviewersComments(t *testing.T) {
 	add(event.ReviewComment{Author: "reviewer", Body: "the verdict"})
 
 	k.press(t, "t")
-	require.NotNil(t, k.m.review.triage)
-	assert.Equal(t, []uuid.UUID{early, late, readme}, k.m.review.triage.queue, "files in order, then lines")
-	assert.Equal(t, early, k.m.reviewRows()[k.m.review.line].comment.ID, "the cursor on the first")
+	require.NotNil(t, k.rev().triage)
+	assert.Equal(t, []uuid.UUID{early, late, readme}, k.rev().triage.queue, "files in order, then lines")
+	assert.Equal(t, early, k.rev().rows(k.m)[k.rev().line].comment.ID, "the cursor on the first")
 
 	k.press(t, "y")
-	assert.Equal(t, late, k.m.reviewRows()[k.m.review.line].comment.ID)
+	assert.Equal(t, late, k.rev().rows(k.m)[k.rev().line].comment.ID)
 	k.press(t, "n")
 	del := k.intentOf(t, event.CommentReviewKind).(event.CommentReview)
 	assert.Equal(t, event.CommentDeleted, del.Op)
 	assert.Equal(t, late, del.Comment.ID)
-	assert.Equal(t, 1, k.m.review.file, "on to README.md")
+	assert.Equal(t, 1, k.rev().file, "on to README.md")
 
 	k.press(t, "e")
-	require.NotNil(t, k.m.review.edit)
+	require.NotNil(t, k.rev().edit)
 	k.typeText(t, " here")
 	k.press(t, "enter")
 	edit := k.intentOf(t, event.CommentReviewKind).(event.CommentReview)
 	assert.Equal(t, event.CommentEdited, edit.Op)
 	assert.Equal(t, readme, edit.Comment.ID)
-	assert.Nil(t, k.m.review.triage, "that was the last")
+	assert.Nil(t, k.rev().triage, "that was the last")
 	assert.Contains(t, k.m.notice.text, "kept 2, dropped 1")
-	assert.Equal(t, modeReview, k.m.mode)
+	assert.NotNil(t, k.rev())
 }
 
 func TestReview_TriageNeedsReviewerCommentsAndEscOnlyStopsIt(t *testing.T) {
 	k := loadedReview(t)
 	k.press(t, "t")
-	assert.Nil(t, k.m.review.triage)
+	assert.Nil(t, k.rev().triage)
 	assert.Contains(t, k.m.notice.text, "no reviewer comments")
 
-	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: event.ReviewComment{
+	k.m.apply(event.ReviewCommented{Review: k.rev().id, Op: event.CommentAdded, Comment: event.ReviewComment{
 		ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "README.md", Side: "new", Start: 1, End: 1}})
 	k.press(t, "t")
-	require.NotNil(t, k.m.review.triage)
+	require.NotNil(t, k.rev().triage)
 	k.press(t, "esc")
-	assert.Nil(t, k.m.review.triage)
-	assert.Equal(t, modeReview, k.m.mode, "the walk stopped, not the review")
+	assert.Nil(t, k.rev().triage)
+	assert.NotNil(t, k.rev(), "the walk stopped, not the review")
 	k.noIntent(t)
 }
 
@@ -792,7 +792,7 @@ func TestReview_ARunningReviewCanBeFoundAgain(t *testing.T) {
 	k.m.apply(event.ReviewStarted{Review: review, Scope: event.ScopeBranch, Base: "mb", Against: "main", Files: 9})
 
 	k.openReview("/review")
-	assert.Equal(t, review, k.m.review.id, "the running review, not the last request")
+	assert.Equal(t, review, k.rev().id, "the running review, not the last request")
 	assert.Equal(t, event.LoadDiff{Branch: true, Against: "main"}, k.intentOf(t, event.LoadDiffKind))
 	k.press(t, "esc")
 
@@ -800,7 +800,7 @@ func TestReview_ARunningReviewCanBeFoundAgain(t *testing.T) {
 	k.openReview("/review branch main")
 	k.intentOf(t, event.LoadDiffKind)
 	k.m.apply(event.DiffLoaded{Branch: true, Base: "mb", Against: "main"})
-	assert.Equal(t, review, k.m.review.id, "its scope leads back to it")
+	assert.Equal(t, review, k.rev().id, "its scope leads back to it")
 }
 
 // A review stored before comments named their scope opens as what it was, and
@@ -822,9 +822,9 @@ func TestReview_AnOldOrOrphanedReviewOpensWithoutAPanic(t *testing.T) {
 
 	k.send(t, tea.KeyPressMsg{Code: tea.KeyRight})
 	k.intentOf(t, event.LoadDiffKind)
-	assert.Equal(t, orphan, k.m.review.id)
+	assert.Equal(t, orphan, k.rev().id)
 	assert.NotPanics(t, func() { k.m.withOverlay(k.m.baseView()) })
-	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "a request no longer here")
+	assert.Contains(t, ansi.Strip(k.rev().title(k.m)), "a request no longer here")
 }
 
 // A reviewer's context is measured against the whole window it is given, not a
@@ -843,7 +843,7 @@ func TestReview_TheReviewersContextIsOfTheWholeWindow(t *testing.T) {
 // order, from wherever the cursor is, and say when there are no more.
 func TestReview_ArrowsJumpBetweenComments(t *testing.T) {
 	k := loadedReview(t)
-	id := k.m.review.id
+	id := k.rev().id
 	add := func(path string, line int) uuid.UUID {
 		c := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Path: path, Side: "new", Start: line, End: line, Body: "x"}
 		k.m.apply(event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: c})
@@ -853,7 +853,7 @@ func TestReview_ArrowsJumpBetweenComments(t *testing.T) {
 	far := add("ui/facts.go", 40)
 	near := add("ui/facts.go", 10)
 	at := func() uuid.UUID {
-		row := k.m.reviewRows()[k.m.review.line]
+		row := k.rev().rows(k.m)[k.rev().line]
 		require.NotNil(t, row.comment, "the cursor is on a comment")
 		return row.comment.ID
 	}
@@ -867,15 +867,15 @@ func TestReview_ArrowsJumpBetweenComments(t *testing.T) {
 	assert.Contains(t, k.m.notice.text, "no more comments")
 	k.press(t, "<")
 	assert.Equal(t, far, at(), "and back across files")
-	assert.Equal(t, 0, k.m.review.file)
+	assert.Equal(t, 0, k.rev().file)
 
 	k.press(t, "p")
-	for i, row := range k.m.reviewRows() {
-		if row.line >= 0 && row.comment == nil && k.m.review.files[0].Hunks[row.hunk].Lines[row.line].New == 40 {
-			k.m.review.line = i
+	for i, row := range k.rev().rows(k.m) {
+		if row.line >= 0 && row.comment == nil && k.rev().files[0].Hunks[row.hunk].Lines[row.line].New == 40 {
+			k.rev().line = i
 		}
 	}
-	require.Nil(t, k.m.reviewRows()[k.m.review.line].comment, "on line 40 itself")
+	require.Nil(t, k.rev().rows(k.m)[k.rev().line].comment, "on line 40 itself")
 	k.press(t, "<")
 	assert.Equal(t, near, at(), "from a line, the nearest comment before it")
 }
@@ -885,7 +885,7 @@ func TestReview_ArrowsJumpBetweenComments(t *testing.T) {
 func TestEsc_OneNeverStopsARequestAndTwoDo(t *testing.T) {
 	k := loadedReview(t)
 	turn := uuid.Must(uuid.NewV7())
-	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: k.m.review.id})
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: k.rev().id})
 	k.press(t, "esc")
 	require.Equal(t, modeInput, k.m.mode)
 	k.press(t, "esc")
@@ -986,7 +986,7 @@ func TestReview_FillsTheOutputPane(t *testing.T) {
 // the review, and its row counts them.
 func TestReview_TheModalClosesWhileTheReviewerWorks(t *testing.T) {
 	k := loadedReview(t)
-	id := k.m.review.id
+	id := k.rev().id
 	turn := uuid.Must(uuid.NewV7())
 	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: id})
 	k.press(t, "esc")
@@ -1046,6 +1046,9 @@ func loadedReview(t *testing.T) *keyed {
 	k.press(t, "tab")
 	return k
 }
+
+// rev is the open review, nil when it is not.
+func (k *keyed) rev() *reviewModal { return modalAs[*reviewModal](k.m) }
 
 // commented is the fact internal/review records for a comment.
 func commented(v event.CommentReview) event.ReviewCommented {

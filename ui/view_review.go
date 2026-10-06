@@ -37,20 +37,19 @@ type splitRow struct{ left, right, across int }
 // hunkKey names one hunk of one file of the diff shown.
 type hunkKey struct{ file, hunk int }
 
-func (m Model) reviewBox() string {
+func (r *reviewModal) box(m Model) string {
 	left, right := m.reviewPaneWidths()
 	h := m.modalPaneHeight()
-	r := m.review
 	title := "diff"
 	if f := r.selected(); f != nil {
 		title = f.Path
 	}
 	body := m.modalPanes(left, right,
-		modalPane{title: countOf(len(r.files), "file"), lines: m.reviewFileLines(island.Inner(left), h),
+		modalPane{title: countOf(len(r.files), "file"), lines: r.fileLines(m, island.Inner(left), h),
 			focused: !r.diffFocused},
-		modalPane{title: layout.Truncate(title, island.Inner(right)), lines: m.reviewDiffLines(h),
+		modalPane{title: layout.Truncate(title, island.Inner(right)), lines: r.diffLines(m, h),
 			focused: r.diffFocused})
-	return m.modalBox(m.reviewTitle(), body, boxLine(m.reviewHints()...))
+	return m.modalBox(r.title(m), body, boxLine(r.hints(m)...))
 }
 
 // reviewPaneWidths gives the list under a third, since the diff is what is read.
@@ -66,10 +65,9 @@ func (m Model) reviewTextWidth() int {
 	return island.Inner(right)
 }
 
-// reviewTitle names the scope, what it changed in all and the comments so far.
-func (m Model) reviewTitle() string {
-	r := m.review
-	title := styleBrand.Render("review") + styleFaint.Render(" · "+m.scopeLabel())
+// title names the scope, what it changed in all and the comments so far.
+func (r *reviewModal) title(m Model) string {
+	title := styleBrand.Render("review") + styleFaint.Render(" · "+r.scopeLabel(m))
 	if len(r.files) > 0 {
 		var add, del int
 		for _, f := range r.files {
@@ -85,7 +83,7 @@ func (m Model) reviewTitle() string {
 	if m.cur != nil && m.cur.review == r.id && r.id != uuid.Nil {
 		title += styleFaint.Render(" · ") + m.spinner.View() + styleFaint.Render(" the reviewer is reading")
 	}
-	if m.reviewSent() {
+	if r.sent(m) {
 		title += styleFaint.Render(" · sent")
 	}
 	if n := len(m.viewed[r.id]); n > 0 && len(r.files) > 0 {
@@ -102,8 +100,7 @@ func (m Model) reviewTitle() string {
 
 // scopeLabel says which changes are shown, from where to where. A review can
 // outlive its request, after an undo or in an older session, so none is assumed.
-func (m Model) scopeLabel() string {
-	r := m.review
+func (r *reviewModal) scopeLabel(m Model) string {
 	n := "?"
 	if r.block != nil {
 		n = strconv.Itoa(r.block.n)
@@ -134,10 +131,10 @@ func (m Model) scopeLabel() string {
 	return label
 }
 
-// reviewHints offers what the cursor is on, leading with what esc will close: it
+// hints offers what the cursor is on, leading with what esc will close: it
 // closes a layer at a time, and the line is cut to the box, which hid "esc back".
-func (m Model) reviewHints() []hint {
-	r, k := m.review, keymap.review
+func (r *reviewModal) hints(m Model) []hint {
+	k := keymap.review
 	switch {
 	case r.edit != nil:
 		return []hint{does("drops the draft", k.drop), does("save", k.save),
@@ -155,7 +152,7 @@ func (m Model) reviewHints() []hint {
 			does("reviews", k.prevReview, k.nextReview), does("send", k.send),
 			does("first/last", k.move.top, k.move.bottom)}
 	}
-	rows := m.reviewRows()
+	rows := r.rows(m)
 	if r.line < len(rows) && rows[r.line].comment != nil {
 		if r.deleting == rows[r.line].comment.ID {
 			return []hint{does("again deletes it", k.remove), note("any other key keeps it")}
@@ -171,17 +168,16 @@ func (m Model) reviewHints() []hint {
 		does("first/last", k.move.top, k.move.bottom)}
 }
 
-// reviewEsc is what esc does in the review, for the bar, none when esc is not first.
-func (m Model) reviewEsc() hint {
-	if hs := m.reviewHints(); hs[0].keys == keymap.review.close.Help().Key {
+// esc is what esc does in the review, for the bar, none when esc is not first.
+func (r *reviewModal) esc(m Model) hint {
+	if hs := r.hints(m); hs[0].keys == keymap.review.close.Help().Key {
 		return hs[0]
 	}
 	return hint{}
 }
 
-// reviewFileLines lists each changed file with what happened to it.
-func (m Model) reviewFileLines(width, height int) []string {
-	r := m.review
+// fileLines lists each changed file with what happened to it.
+func (r *reviewModal) fileLines(m Model, width, height int) []string {
 	switch {
 	case r.loading:
 		return []string{styleFaint.Render("reading the changes…")}
@@ -191,7 +187,7 @@ func (m Model) reviewFileLines(width, height int) []string {
 		return []string{styleFaint.Render("nothing changed")}
 	}
 	var out []string
-	reading := m.reviewer()
+	reading := r.reviewer(m)
 	start, end := listWindow(len(r.files), r.file, height)
 	for i := start; i < end; i++ {
 		f := r.files[i]
@@ -210,7 +206,7 @@ func (m Model) reviewFileLines(width, height int) []string {
 			}
 		}
 		stat := fileStat(f)
-		if n := len(m.fileComments(f.Path)); n > 0 {
+		if n := len(r.fileComments(m, f.Path)); n > 0 {
 			stat += " ✎" + strconv.Itoa(n)
 		}
 		room := max(1, width-ansi.StringWidth(mark)-2-ansi.StringWidth(stat)-1)
@@ -238,10 +234,9 @@ func (m Model) readMark(a *agentState, path string) string {
 	return "  "
 }
 
-// reviewDiffLines is the selected file's diff around the cursor, numbered on
+// diffLines is the selected file's diff around the cursor, numbered on
 // both sides with comments under their lines, or why it is not drawn.
-func (m Model) reviewDiffLines(height int) []string {
-	r := m.review
+func (r *reviewModal) diffLines(m Model, height int) []string {
 	f := r.selected()
 	switch {
 	case r.loading || r.err != "":
@@ -258,14 +253,14 @@ func (m Model) reviewDiffLines(height int) []string {
 	width := m.reviewTextWidth()
 	var editor, card []string
 	if r.edit != nil {
-		editor = m.commentEditor(width)
+		editor = r.editorLines(width)
 		height = max(1, height-len(editor))
 	}
-	if v := m.reviewVerdict(); v != nil && height > 8 {
-		card = m.verdictCard(v, width)
+	if v := r.verdict(m); v != nil && height > 8 {
+		card = r.verdictCard(m, v, width)
 		height -= len(card)
 	}
-	rows := m.reviewRows()
+	rows := r.rows(m)
 	nw := (reviewGutter(*f) - 3) / 2
 	num := func(n int) string {
 		if n == 0 {
@@ -295,16 +290,16 @@ func (m Model) reviewDiffLines(height int) []string {
 		h := f.Hunks[row.hunk]
 		switch {
 		case row.comment != nil:
-			return gutter.Render(mark) + strings.Repeat(" ", 2*nw+2) + m.commentLine(row)
+			return gutter.Render(mark) + strings.Repeat(" ", 2*nw+2) + r.commentLine(m, row)
 		case row.line < 0:
 			return gutter.Render(mark) + " " + styleFaint.Render(layout.Truncate(h.Header, width-2))
 		}
 		l := h.Lines[row.line]
-		return gutter.Render(mark+num(l.Old)+" "+num(l.New)) + " " + m.codeLine(row.hunk, row.line, max(1, width-2*nw-3))
+		return gutter.Render(mark+num(l.Old)+" "+num(l.New)) + " " + r.codeLine(row.hunk, row.line, max(1, width-2*nw-3))
 	}
 	out := card
 	if r.split && m.splitFits() {
-		out = append(out, m.splitLines(*f, rows, height, width, nw, marked, inline)...)
+		out = append(out, r.splitLines(*f, rows, height, width, nw, marked, inline)...)
 		return append(out, editor...)
 	}
 	start, end := listWindow(len(rows), r.line, height)
@@ -366,11 +361,11 @@ func pairRows(rows []diffRow, f event.FileDiff) []splitRow {
 
 // splitLines draws the diff side by side, the old file on the left and the new
 // on the right, windowed round the line the cursor is on.
-func (m Model) splitLines(f event.FileDiff, rows []diffRow, height, width, nw int,
+func (r *reviewModal) splitLines(f event.FileDiff, rows []diffRow, height, width, nw int,
 	marked func(int) (string, lipgloss.Style), inline func(int) string) []string {
 	pairs := pairRows(rows, f)
 	at := slices.IndexFunc(pairs, func(p splitRow) bool {
-		return p.left == m.review.line || p.right == m.review.line || p.across == m.review.line
+		return p.left == r.line || p.right == r.line || p.across == r.line
 	})
 	half := (width - 3) / 2
 	cell := func(i int, old bool) string {
@@ -383,7 +378,7 @@ func (m Model) splitLines(f event.FileDiff, rows []diffRow, height, width, nw in
 			n = l.Old
 		}
 		mark, gutter := marked(i)
-		s := gutter.Render(mark+fmt.Sprintf("%*s", nw, lineNo(n))) + " " + m.codeLine(rows[i].hunk, rows[i].line, max(1, half-nw-2))
+		s := gutter.Render(mark+fmt.Sprintf("%*s", nw, lineNo(n))) + " " + r.codeLine(rows[i].hunk, rows[i].line, max(1, half-nw-2))
 		return s + strings.Repeat(" ", max(0, half-lipgloss.Width(s)))
 	}
 	var out []string
@@ -400,10 +395,10 @@ func (m Model) splitLines(f event.FileDiff, rows []diffRow, height, width, nw in
 
 // codeLine is a line of the selected file coloured by language, an added or removed
 // one tinted the width of it. A file no lexer knows is drawn as before.
-func (m Model) codeLine(hunk, line, width int) string {
-	f := m.review.selected()
+func (r *reviewModal) codeLine(hunk, line, width int) string {
+	f := r.selected()
 	l := f.Hunks[hunk].Lines[line]
-	code := m.codeOf(hunk)
+	code := r.codeOf(hunk)
 	if code == nil {
 		return lineStyle(l.Op).Render(layout.Truncate(string(rune(l.Op))+l.Text, width))
 	}
@@ -427,8 +422,7 @@ func (m Model) codeLine(hunk, line, width int) string {
 
 // codeOf is a hunk of the selected file coloured by language, made once and
 // kept, nil when no lexer knows the file.
-func (m Model) codeOf(hunk int) []string {
-	r := m.review
+func (r *reviewModal) codeOf(hunk int) []string {
 	key := hunkKey{file: r.file, hunk: hunk}
 	if code, ok := r.code[key]; ok {
 		return code
@@ -447,9 +441,9 @@ func (m Model) codeOf(hunk int) []string {
 
 // commentLine is one line of a comment: who wrote it, or a line of its words.
 // One that just came in stands out, its name lit then its bar, and settles.
-func (m Model) commentLine(row diffRow) string {
+func (r *reviewModal) commentLine(m Model, row diffRow) string {
 	c := row.comment
-	fresh := m.freshness(c.ID)
+	fresh := r.freshness(m, c.ID)
 	barStyle, labelStyle := styleBrand, styleBrand
 	if fresh < 1 {
 		barStyle, labelStyle = toolName.review, toolName.review
@@ -475,9 +469,9 @@ func (m Model) commentLine(row diffRow) string {
 	return bar + label
 }
 
-// commentEditor is the comment being written, under a line saying what it is for.
-func (m Model) commentEditor(width int) []string {
-	e := m.review.edit
+// editorLines is the comment being written, under a line saying what it is for.
+func (r *reviewModal) editorLines(width int) []string {
+	e := r.edit
 	what := "comment"
 	switch {
 	case e.op == event.CommentEdited:
@@ -489,10 +483,10 @@ func (m Model) commentEditor(width int) []string {
 	return append([]string{rule}, strings.Split(e.input.View(), "\n")...)
 }
 
-// reviewVerdict is the reviewer's summary of the open review, its newest
+// verdict is the reviewer's summary of the open review, its newest
 // comment on no line, nil until it has finished.
-func (m Model) reviewVerdict() *event.ReviewComment {
-	rec := m.reviewByID(m.review.id)
+func (r *reviewModal) verdict(m Model) *event.ReviewComment {
+	rec := m.reviewByID(r.id)
 	if rec == nil {
 		return nil
 	}
@@ -506,12 +500,12 @@ func (m Model) reviewVerdict() *event.ReviewComment {
 
 // verdictCard is the reviewer's summary above the diff: what it concluded, in
 // a few lines, lit for a moment when it lands.
-func (m Model) verdictCard(c *event.ReviewComment, width int) []string {
+func (r *reviewModal) verdictCard(m Model, c *event.ReviewComment, width int) []string {
 	head := toolName.review
-	if m.freshness(c.ID) < 0.35 {
+	if r.freshness(m, c.ID) < 0.35 {
 		head = head.Reverse(true)
 	}
-	out := []string{head.Render("◆ "+c.Author+"'s verdict") + styleFaint.Render(" · "+countOf(m.reviewLineComments(), "comment")+" on lines")}
+	out := []string{head.Render("◆ "+c.Author+"'s verdict") + styleFaint.Render(" · "+countOf(r.lineCommentCount(m), "comment")+" on lines")}
 	lines := wrapPlain(c.Body, max(8, width-2))
 	if len(lines) > maxVerdictLines {
 		lines = append(lines[:maxVerdictLines-1], layout.Truncate(lines[maxVerdictLines-1], width-3)+"…")
@@ -522,10 +516,10 @@ func (m Model) verdictCard(c *event.ReviewComment, width int) []string {
 	return append(out, styleFaint.Render(strings.Repeat("─", width)))
 }
 
-// reviewLineComments counts the comments on lines, not the verdict or replies.
-func (m Model) reviewLineComments() int {
+// lineCommentCount counts the comments on lines, not the verdict or replies.
+func (r *reviewModal) lineCommentCount(m Model) int {
 	n := 0
-	if rec := m.reviewByID(m.review.id); rec != nil {
+	if rec := m.reviewByID(r.id); rec != nil {
 		for _, c := range rec.comments {
 			if c.Path != "" && c.ReplyTo == uuid.Nil {
 				n++

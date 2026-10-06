@@ -33,6 +33,49 @@ type reviewRecord struct {
 	submitted    bool
 }
 
+// reviewModal is the review: one request's changes, the file selected
+// and the line in it, and which pane the arrows move.
+type reviewModal struct {
+	// block is the request the review belongs to, the last one for a wider
+	// scope and none for a branch, and request the one request scope shows.
+	block, request *turnBlock
+	scope          event.ReviewScope
+	// against is the ref a branch is compared with, "" until named or known.
+	against string
+	// raw is files as the endpoint should read them, before defusing for the screen.
+	raw []event.FileDiff
+	// pinned keeps the id of a review opened by name when its diff arrives.
+	pinned bool
+	// stepBack is set while /review with no number looks for a request that
+	// changed something, and reload when it has moved to an earlier one.
+	stepBack, reload bool
+	base, head       string
+	// id is the review comments go to, open or about to be.
+	id         uuid.UUID
+	loading    bool
+	files      []event.FileDiff
+	cut        bool
+	err        string
+	file, line int
+	// diffFocused is whether the arrows move the line rather than the file.
+	diffFocused bool
+	// ranging is a v range running from anchor to the line.
+	ranging bool
+	anchor  int
+	edit    *commentEdit
+	// deleting is the comment x was pressed on once, deleted on the second.
+	deleting uuid.UUID
+	// triage walks the reviewer's comments one at a time, nil when not.
+	triage *triageState
+	// split draws the diff side by side, when the pane is wide enough.
+	split bool
+	// code is each hunk's lines coloured by language, filled as hunks are drawn
+	// and kept for the diff it was made from: a map, so a copy of Model shares it.
+	code map[hunkKey][]string
+	// back is the pane it was opened from, which esc returns to.
+	back focusPane
+}
+
 // reviewScopes is the order s cycles through them.
 var reviewScopes = []event.ReviewScope{event.ScopeRequest, event.ScopeSession, event.ScopeSince, event.ScopeBranch}
 
@@ -89,13 +132,13 @@ func (m Model) showReview(input string) (Model, tea.Cmd) {
 		m.noteErr(why)
 		return m, nil
 	}
-	m.review = reviewState{block: b, back: m.nav.focus, against: strings.TrimSpace(ref), stepBack: arg == "" && word == ""}
-	m.mode = modeReview
-	if !m.scopeOpen(scope) {
+	r := &reviewModal{block: b, back: m.nav.focus, against: strings.TrimSpace(ref), stepBack: arg == "" && word == ""}
+	m.openModal(r)
+	if !r.scopeOpen(m, scope) {
 		m.noteErr(fmt.Sprintf("no %s to review yet", scopeNoun(scope)))
 		scope = event.ScopeRequest
 	}
-	m.loadScope(scope)
+	r.load(&m, scope)
 	return m, nil
 }
 
@@ -126,14 +169,14 @@ func (m Model) reviewTarget(arg string) (*turnBlock, string) {
 // openReview shows a recorded review: its own scope and trees, and its id
 // kept whatever a branch's base has become.
 func (m Model) openReview(rec *reviewRecord) (Model, tea.Cmd) {
-	back := m.review.back
-	if m.mode != modeReview {
-		back = m.nav.focus
+	back := m.nav.focus
+	// Stepping to another review keeps the pane the first was opened from.
+	if was := modalAs[*reviewModal](m); was != nil {
+		back = was.back
 	}
 	blk := m.blockByID(rec.reviewed)
-	m.review = reviewState{block: blk, request: blk, scope: rec.scope, base: rec.base, head: rec.head,
-		against: rec.against, id: rec.id, pinned: true, loading: true, back: back}
-	m.mode = modeReview
+	m.openModal(&reviewModal{block: blk, request: blk, scope: rec.scope, base: rec.base, head: rec.head,
+		against: rec.against, id: rec.id, pinned: true, loading: true, back: back})
 	if rec.scope == event.ScopeBranch {
 		m.send(event.LoadDiff{Branch: true, Against: rec.against})
 		return m, nil
@@ -151,28 +194,27 @@ func (m Model) openReviewRow(r *historyRow) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// stepReview opens the review d away, oldest first, as the inspector steps
+// step opens the review d away, oldest first, as the inspector steps
 // between agents. A review not yet recorded is past the newest.
-func (m Model) stepReview(d int) (Model, tea.Cmd) {
-	i := slices.IndexFunc(m.reviews, func(rec *reviewRecord) bool { return rec.id == m.review.id })
+func (r *reviewModal) step(m *Model, d int) {
+	i := slices.IndexFunc(m.reviews, func(rec *reviewRecord) bool { return rec.id == r.id })
 	if i < 0 {
 		i = len(m.reviews)
 	}
 	i += d
 	if i < 0 || i >= len(m.reviews) {
-		return m, nil
+		return
 	}
-	return m.openReview(m.reviews[i])
+	*m, _ = m.openReview(m.reviews[i])
 }
 
-// loadScope switches the review to scope and asks for its changes. A branch's
+// load switches the review to scope and asks for its changes. A branch's
 // base is only known once they come, so its review is found then.
-func (m *Model) loadScope(scope event.ReviewScope) {
-	r := &m.review
+func (r *reviewModal) load(m *Model, scope event.ReviewScope) {
 	if r.request == nil {
 		r.request = r.block
 	}
-	base, head, _ := m.scopeTrees(scope)
+	base, head, _ := r.trees(*m, scope)
 	r.scope, r.base, r.head, r.loading = scope, base, head, true
 	r.files, r.err, r.cut, r.file, r.line, r.ranging, r.edit, r.triage = nil, "", false, 0, 0, false, nil, nil
 	r.block = r.request
@@ -184,36 +226,42 @@ func (m *Model) loadScope(scope event.ReviewScope) {
 		m.send(event.LoadDiff{Branch: true, Against: r.against})
 		return
 	}
-	r.id = m.openReviewOf(m.reviewed(), base, head)
+	r.id = m.openReviewOf(r.reviewed(), base, head)
 	m.send(event.LoadDiff{Base: base, Head: head})
 }
 
 // nextScope cycles to the next scope with something to show.
-func (m Model) nextScope() (Model, tea.Cmd) {
-	i := slices.Index(reviewScopes, m.review.scope)
+func (r *reviewModal) nextScope(m *Model) {
+	i := slices.Index(reviewScopes, r.scope)
 	for range len(reviewScopes) - 1 {
 		i = (i + 1) % len(reviewScopes)
-		if m.scopeOpen(reviewScopes[i]) {
-			m.loadScope(reviewScopes[i])
-			return m, nil
+		if r.scopeOpen(*m, reviewScopes[i]) {
+			r.load(m, reviewScopes[i])
+			return
 		}
 	}
-	return m, nil
 }
 
-// reloadReview asks again for a review diffLoaded moved, since a fact cannot send.
-func (m *Model) reloadReview() {
-	if m.mode != modeReview || !m.review.reload {
-		return
+// sync asks again for a review diffLoaded moved, since a fact cannot send, and
+// sizes the editor where it is laid out, so typing wraps at the width shown.
+func (r *reviewModal) sync(m *Model) {
+	if e := r.edit; e != nil {
+		e.input.SetWidth(max(8, m.reviewTextWidth()-2))
 	}
-	m.review.reload = false
-	m.loadScope(m.review.scope)
+	if r.reload {
+		r.reload = false
+		r.load(m, r.scope)
+	}
 }
 
-// scopeTrees is what a scope compares, the session ending where since begins,
+// hint leads with what esc will do in the review, its other keys being in the box.
+func (r *reviewModal) hint(m Model) string {
+	return barLine(r.esc(m), note("the review's keys are in the box"))
+}
+
+// trees is what a scope compares, the session ending where since begins,
 // and ok is false for a scope with nothing to show.
-func (m Model) scopeTrees(scope event.ReviewScope) (base, head string, ok bool) {
-	r := m.review
+func (r *reviewModal) trees(m Model, scope event.ReviewScope) (base, head string, ok bool) {
 	switch scope {
 	case event.ScopeSession:
 		first, last := m.firstReviewable(), m.lastReviewable(true)
@@ -237,8 +285,8 @@ func (m Model) scopeTrees(scope event.ReviewScope) (base, head string, ok bool) 
 	return r.request.base, m.reviewHead(r.request), true
 }
 
-func (m Model) scopeOpen(scope event.ReviewScope) bool {
-	_, _, ok := m.scopeTrees(scope)
+func (r *reviewModal) scopeOpen(m Model, scope event.ReviewScope) bool {
+	_, _, ok := r.trees(m, scope)
 	return ok
 }
 
@@ -300,17 +348,20 @@ func (m Model) openReviewOf(reviewed uuid.UUID, base, head string) uuid.UUID {
 
 // reviewed is the request a review belongs to, which undoing it drops, and
 // none for a branch, which no request owns.
-func (m Model) reviewed() uuid.UUID {
-	if m.review.scope == event.ScopeBranch || m.review.block == nil {
+func (r *reviewModal) reviewed() uuid.UUID {
+	if r.scope == event.ScopeBranch || r.block == nil {
 		return uuid.Nil
 	}
-	return m.review.block.id
+	return r.block.id
 }
 
 // diffLoaded fills the review it answers, defusing what the files say once, here.
 // A branch's answer names where it left its base, which finds its review.
 func (m *Model) diffLoaded(v event.DiffLoaded) {
-	r := &m.review
+	r := modalAs[*reviewModal](*m)
+	if r == nil {
+		return
+	}
 	branch := r.scope == event.ScopeBranch
 	if !r.loading || v.Branch != branch || !branch && (v.Base != r.base || v.Head != r.head) {
 		return
@@ -389,8 +440,8 @@ func (m *Model) reviewSubmitted(v event.ReviewSubmitted) {
 		return
 	}
 	rec.submitted = true
-	if m.mode == modeReview && m.review.id == v.Review {
-		*m, _ = m.closeReview()
+	if r := modalAs[*reviewModal](*m); r != nil && r.id == v.Review {
+		r.close(m)
 		m.noteOK(fmt.Sprintf("sent %s to the agent", countOf(v.Comments, "comment")))
 	}
 }
@@ -422,44 +473,32 @@ func (m *Model) countComments(rec *reviewRecord) {
 	}
 }
 
-// closeReview returns to the pane the review was opened from.
-func (m Model) closeReview() (Model, tea.Cmd) {
-	back := m.review.back
-	m.review = reviewState{}
-	m.backToInput()
-	if m.mode == modeInput && back != focusInput {
-		m.nav.focus = back
-		m.prompt.Blur()
-	}
-	return m, nil
-}
+// close returns to the pane the review was opened from.
+func (r *reviewModal) close(m *Model) { m.closeModal(r.back) }
 
-// reviewKey owns every key while the review is open, the editor's first.
-func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	r := &m.review
+// key takes every key while the review is open, the editor's first.
+func (r *reviewModal) key(m *Model, msg tea.KeyPressMsg) tea.Cmd {
 	if r.edit != nil {
-		return m.editKey(msg)
+		return r.editKey(m, msg)
 	}
 	k := keymap.review
-	if r.triage != nil {
-		if next, cmd, ok := m.triageKey(msg); ok {
-			return next, cmd
-		}
+	if r.triage != nil && r.triageKey(m, msg) {
+		return nil
 	}
 	if !key.Matches(msg, k.remove) {
 		r.deleting = uuid.Nil
 	}
-	if key.Matches(msg, k.comment, k.edit, k.remove, k.send, k.reviewer, k.triage) && m.reviewSent() {
+	if key.Matches(msg, k.comment, k.edit, k.remove, k.send, k.reviewer, k.triage) && r.sent(*m) {
 		m.noteErr("this review was sent: s or /review starts another")
-		return m, nil
+		return nil
 	}
 	switch {
 	case key.Matches(msg, k.close):
 		if r.ranging {
 			r.ranging = false
-			return m, nil
+			return nil
 		}
-		return m.closeReview()
+		r.close(m)
 	case key.Matches(msg, k.pane):
 		r.diffFocused = !r.diffFocused
 	case key.Matches(msg, k.diff):
@@ -469,35 +508,35 @@ func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	case key.Matches(msg, k.prevFile):
 		r.pickFile(r.file - 1)
 	case key.Matches(msg, k.hunk):
-		r.line = m.nextHunk(1)
+		r.line = r.nextHunk(*m, 1)
 	case key.Matches(msg, k.prevHunk):
-		r.line = m.nextHunk(-1)
+		r.line = r.nextHunk(*m, -1)
 	case key.Matches(msg, k.rng):
-		m.toggleRange()
+		r.toggleRange(*m)
 	case key.Matches(msg, k.comment):
-		return m.startComment()
+		r.startComment(m)
 	case key.Matches(msg, k.edit):
-		return m.startEdit()
+		r.startEdit(*m)
 	case key.Matches(msg, k.remove):
-		return m.deleteComment()
+		r.deleteComment(*m)
 	case key.Matches(msg, k.send):
-		return m.submitReview()
+		r.submit(m)
 	case key.Matches(msg, k.scope):
-		return m.nextScope()
+		r.nextScope(m)
 	case key.Matches(msg, k.reviewer):
-		return m.startReviewer()
+		r.startReviewer(m)
 	case key.Matches(msg, k.prevReview):
-		return m.stepReview(-1)
+		r.step(m, -1)
 	case key.Matches(msg, k.nextReview):
-		return m.stepReview(1)
+		r.step(m, 1)
 	case key.Matches(msg, k.triage):
-		return m.startTriage()
+		r.startTriage(m)
 	case key.Matches(msg, k.prevComment):
-		m.jumpComment(-1)
+		r.jumpComment(m, -1)
 	case key.Matches(msg, k.nextComment):
-		m.jumpComment(1)
+		r.jumpComment(m, 1)
 	case key.Matches(msg, k.viewed):
-		m.toggleViewed()
+		r.toggleViewed(m)
 	case key.Matches(msg, k.split):
 		if !m.splitFits() {
 			m.noteErr(fmt.Sprintf("too narrow to split: the diff needs %d columns", splitMin))
@@ -506,31 +545,29 @@ func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		r.split = !r.split
 	default:
 		if d, ok := k.move.delta(msg, m.modalPaneHeight()); ok {
-			m.reviewMove(d)
+			r.move(m, d)
 		}
 	}
-	return m, nil
+	return nil
 }
 
-// reviewMove steps the line in the diff pane, or the file in the list.
-func (m *Model) reviewMove(d int) {
-	r := &m.review
+// move steps the line in the diff pane, or the file in the list.
+func (r *reviewModal) move(m *Model, d int) {
 	if !r.diffFocused {
 		r.pickFile(r.file + d)
 		return
 	}
-	r.line = min(max(r.line+d, 0), max(0, len(m.reviewRows())-1))
+	r.line = min(max(r.line+d, 0), max(0, len(r.rows(*m))-1))
 }
 
 // pickFile selects file i, from its first line.
-func (r *reviewState) pickFile(i int) {
+func (r *reviewModal) pickFile(i int) {
 	r.file, r.line, r.ranging = min(max(i, 0), max(0, len(r.files)-1)), 0, false
 }
 
 // toggleRange starts a range of lines at the cursor, or drops one.
-func (m *Model) toggleRange() {
-	r := &m.review
-	rows := m.reviewRows()
+func (r *reviewModal) toggleRange(m Model) {
+	rows := r.rows(m)
 	if r.ranging || r.line >= len(rows) || rows[r.line].line < 0 {
 		r.ranging = false
 		return
@@ -540,11 +577,10 @@ func (m *Model) toggleRange() {
 
 // startComment opens the editor: a reply on a comment, else a new comment
 // on the range or the line under the cursor.
-func (m Model) startComment() (Model, tea.Cmd) {
-	r := &m.review
-	rows := m.reviewRows()
+func (r *reviewModal) startComment(m *Model) {
+	rows := r.rows(*m)
 	if !r.diffFocused || r.line >= len(rows) {
-		return m, nil
+		return
 	}
 	if c := rows[r.line].comment; c != nil {
 		root := c.ID
@@ -552,7 +588,7 @@ func (m Model) startComment() (Model, tea.Cmd) {
 			root = c.ReplyTo
 		}
 		r.edit = newCommentEdit(event.CommentAdded, root, "")
-		return m, nil
+		return
 	}
 	from, to := r.line, r.line
 	if r.ranging {
@@ -560,74 +596,69 @@ func (m Model) startComment() (Model, tea.Cmd) {
 	}
 	if rows[from].line < 0 || rows[from].hunk != rows[to].hunk {
 		m.noteErr("a comment covers lines of one hunk")
-		return m, nil
+		return
 	}
 	r.edit = newCommentEdit(event.CommentAdded, uuid.Nil, "")
 	r.edit.from, r.edit.to = from, to
-	return m, nil
 }
 
 // startEdit opens the editor on the comment under the cursor, its words in it.
-func (m Model) startEdit() (Model, tea.Cmd) {
-	rows := m.reviewRows()
-	if m.review.line >= len(rows) || rows[m.review.line].comment == nil {
-		return m, nil
+func (r *reviewModal) startEdit(m Model) {
+	rows := r.rows(m)
+	if r.line >= len(rows) || rows[r.line].comment == nil {
+		return
 	}
-	c := rows[m.review.line].comment
-	m.review.edit = newCommentEdit(event.CommentEdited, c.ID, c.Body)
-	return m, nil
+	c := rows[r.line].comment
+	r.edit = newCommentEdit(event.CommentEdited, c.ID, c.Body)
 }
 
 // deleteComment deletes the comment under the cursor on a second x, since a
 // reviewer's comment, once gone, cannot be written again.
-func (m Model) deleteComment() (Model, tea.Cmd) {
-	r := &m.review
-	rows := m.reviewRows()
+func (r *reviewModal) deleteComment(m Model) {
+	rows := r.rows(m)
 	if r.line >= len(rows) || rows[r.line].comment == nil {
-		return m, nil
+		return
 	}
 	c := rows[r.line].comment
 	if r.deleting != c.ID {
 		r.deleting = c.ID
-		return m, nil
+		return
 	}
 	r.deleting = uuid.Nil
 	r.line = max(0, r.line-1)
-	m.sendComment(event.CommentDeleted, event.ReviewComment{ID: c.ID})
-	return m, nil
+	r.sendComment(m, event.CommentDeleted, event.ReviewComment{ID: c.ID})
 }
 
 // editKey writes into the editor: enter saves, esc drops the draft.
-func (m Model) editKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	r := &m.review
+func (r *reviewModal) editKey(m *Model, msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, keymap.review.drop):
 		r.edit = nil
-		return m, nil
+		return nil
 	case key.Matches(msg, keymap.review.save):
 		e := r.edit
 		r.edit, r.ranging = nil, false
 		body := strings.TrimSpace(e.input.Value())
 		if body == "" {
-			return m, nil
+			return nil
 		}
-		m.saveComment(e, body)
+		r.saveComment(*m, e, body)
 		// An edit made in triage counts as kept, and moves on.
 		if r.triage != nil && e.op == event.CommentEdited {
 			r.triage.kept++
-			m.nextTriage()
+			r.nextTriage(m)
 		}
-		return m, nil
+		return nil
 	}
 	var cmd tea.Cmd
 	r.edit.input, cmd = r.edit.input.Update(msg)
-	return m, cmd
+	return cmd
 }
 
 // saveComment sends what the editor holds as the comment it was opened for.
-func (m Model) saveComment(e *commentEdit, body string) {
+func (r *reviewModal) saveComment(m Model, e *commentEdit, body string) {
 	if e.op == event.CommentEdited {
-		c := m.commentByID(e.target)
+		c := r.comment(m, e.target)
 		if c == nil {
 			return
 		}
@@ -637,24 +668,24 @@ func (m Model) saveComment(e *commentEdit, body string) {
 			edited.Original, edited.Author = edited.Body, ""
 		}
 		edited.Body = body
-		m.sendComment(event.CommentEdited, edited)
+		r.sendComment(m, event.CommentEdited, edited)
 		return
 	}
 	c := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Body: body, ReplyTo: e.target}
-	if parent := m.commentByID(e.target); parent != nil {
+	if parent := r.comment(m, e.target); parent != nil {
 		c.Path, c.Side, c.Start, c.End = parent.Path, parent.Side, parent.Start, parent.End
-		m.sendComment(event.CommentAdded, c)
+		r.sendComment(m, event.CommentAdded, c)
 		return
 	}
-	m.anchor(&c, e.from, e.to)
-	m.sendComment(event.CommentAdded, c)
+	r.anchorAt(m, &c, e.from, e.to)
+	r.sendComment(m, event.CommentAdded, c)
 }
 
 // anchor places c on rows from to to: the new side's numbers, unless every
 // line was removed, with the lines quoted as the diff shows them.
-func (m Model) anchor(c *event.ReviewComment, from, to int) {
-	f := m.review.selected()
-	rows := m.reviewRows()
+func (r *reviewModal) anchorAt(m Model, c *event.ReviewComment, from, to int) {
+	f := r.selected()
+	rows := r.rows(m)
 	var lines []event.DiffLine
 	for _, row := range rows[from : to+1] {
 		if row.line >= 0 && row.comment == nil {
@@ -683,56 +714,51 @@ func (m Model) anchor(c *event.ReviewComment, from, to int) {
 	c.Quote = strings.Join(quote, "\n")
 }
 
-func (m Model) sendComment(op event.CommentOp, c event.ReviewComment) {
-	r := m.review
-	m.send(event.CommentReview{Review: r.id, Reviewed: m.reviewed(), Base: r.base, Head: r.head,
+func (r *reviewModal) sendComment(m Model, op event.CommentOp, c event.ReviewComment) {
+	m.send(event.CommentReview{Review: r.id, Reviewed: r.reviewed(), Base: r.base, Head: r.head,
 		Scope: r.scope, Op: op, Comment: c})
 }
 
-// submitReview sends the review's comments to the agent as its next prompt.
-func (m Model) submitReview() (Model, tea.Cmd) {
-	rec := m.reviewByID(m.review.id)
+// submit sends the review's comments to the agent as its next prompt.
+func (r *reviewModal) submit(m *Model) {
+	rec := m.reviewByID(r.id)
 	if rec == nil || len(rec.comments) == 0 {
 		m.noteErr("nothing to send: c comments on the line under the cursor")
-		return m, nil
-	}
-	n := 0
-	if m.review.block != nil {
-		n = m.review.block.n
-	}
-	m.send(event.SubmitReview{Review: rec.id, Scope: m.review.scope, Request: n,
-		Against: m.review.against, Comments: slices.Clone(rec.comments)})
-	return m, nil
-}
-
-// startReviewer asks for a reviewer on what the modal shows, the scope chosen
-// and its diff on screen, so the reviewer reads exactly what the human does.
-func (m Model) startReviewer() (Model, tea.Cmd) {
-	r := m.review
-	switch {
-	case !m.run.Subagents:
-		m.noteErr("a reviewer needs subagents on: set subagents: true in your config")
-		return m, nil
-	case r.loading || r.err != "" || len(r.raw) == 0:
-		m.noteErr("nothing here for a reviewer to read")
-		return m, nil
-	case m.cur != nil:
-		m.noteErr("a request is running: start the reviewer once it ends")
-		return m, nil
+		return
 	}
 	n := 0
 	if r.block != nil {
 		n = r.block.n
 	}
-	m.send(event.ReviewChanges{Review: r.id, Reviewed: m.reviewed(), Scope: r.scope,
-		Base: r.base, Head: r.head, Against: r.against, Request: n, Asked: m.reviewAsked(), Files: r.raw})
-	return m, nil
+	m.send(event.SubmitReview{Review: rec.id, Scope: r.scope, Request: n,
+		Against: r.against, Comments: slices.Clone(rec.comments)})
 }
 
-// reviewAsked is what the changes were made for: one request's prompt, every
+// startReviewer asks for a reviewer on what the modal shows, the scope chosen
+// and its diff on screen, so the reviewer reads exactly what the human does.
+func (r *reviewModal) startReviewer(m *Model) {
+	switch {
+	case !m.run.Subagents:
+		m.noteErr("a reviewer needs subagents on: set subagents: true in your config")
+		return
+	case r.loading || r.err != "" || len(r.raw) == 0:
+		m.noteErr("nothing here for a reviewer to read")
+		return
+	case m.cur != nil:
+		m.noteErr("a request is running: start the reviewer once it ends")
+		return
+	}
+	n := 0
+	if r.block != nil {
+		n = r.block.n
+	}
+	m.send(event.ReviewChanges{Review: r.id, Reviewed: r.reviewed(), Scope: r.scope,
+		Base: r.base, Head: r.head, Against: r.against, Request: n, Asked: r.asked(*m), Files: r.raw})
+}
+
+// asked is what the changes were made for: one request's prompt, every
 // request's for a wider scope, and nothing for the human's own edits.
-func (m Model) reviewAsked() string {
-	r := m.review
+func (r *reviewModal) asked(m Model) string {
 	switch r.scope {
 	case event.ScopeSince:
 		return ""
@@ -754,73 +780,69 @@ func (m Model) reviewAsked() string {
 
 // startTriage goes through the reviewer's comments on lines one at a time, in
 // the order of the files and their lines, the way a human curates a review.
-func (m Model) startTriage() (Model, tea.Cmd) {
+func (r *reviewModal) startTriage(m *Model) {
 	t := &triageState{}
-	for _, c := range m.lineComments() {
+	for _, c := range r.lineComments(*m) {
 		if c.Author != "" {
 			t.queue = append(t.queue, c.ID)
 		}
 	}
 	if len(t.queue) == 0 {
 		m.noteErr("no reviewer comments to go through")
-		return m, nil
+		return
 	}
-	m.review.triage = t
-	m.focusComment(t.queue[0])
-	return m, nil
+	r.triage = t
+	r.focusComment(*m, t.queue[0])
 }
 
 // triageKey answers the comment under triage: y keeps it, n drops it, e
-// rewrites it, and esc stops. ok is false for any other key.
-func (m Model) triageKey(msg tea.KeyPressMsg) (Model, tea.Cmd, bool) {
-	t := m.review.triage
+// rewrites it, and esc stops. It is false for any other key.
+func (r *reviewModal) triageKey(m *Model, msg tea.KeyPressMsg) bool {
+	t := r.triage
 	k := keymap.review
 	switch {
 	case key.Matches(msg, k.keep):
 		t.kept++
-		m.nextTriage()
-		return m, nil, true
+		r.nextTriage(m)
 	case key.Matches(msg, k.discard):
 		t.dropped++
-		m.sendComment(event.CommentDeleted, event.ReviewComment{ID: t.queue[t.at]})
-		m.nextTriage()
-		return m, nil, true
+		r.sendComment(*m, event.CommentDeleted, event.ReviewComment{ID: t.queue[t.at]})
+		r.nextTriage(m)
 	case key.Matches(msg, k.edit):
-		m.focusComment(t.queue[t.at])
-		next, cmd := m.startEdit()
-		return next, cmd, true
+		r.focusComment(*m, t.queue[t.at])
+		r.startEdit(*m)
 	case key.Matches(msg, k.close):
-		m.review.triage = nil
-		return m, nil, true
+		r.triage = nil
+	default:
+		return false
 	}
-	return m, nil, false
+	return true
 }
 
 // nextTriage moves to the next comment still there, or ends the walk saying how it went.
-func (m *Model) nextTriage() {
-	t := m.review.triage
+func (r *reviewModal) nextTriage(m *Model) {
+	t := r.triage
 	for t.at++; t.at < len(t.queue); t.at++ {
-		if m.commentByID(t.queue[t.at]) != nil {
-			m.focusComment(t.queue[t.at])
+		if r.comment(*m, t.queue[t.at]) != nil {
+			r.focusComment(*m, t.queue[t.at])
 			return
 		}
 	}
-	m.review.triage = nil
+	r.triage = nil
 	m.noteOK(fmt.Sprintf("went through the reviewer's comments: kept %d, dropped %d", t.kept, t.dropped))
 }
 
 // focusComment puts the diff cursor on a comment, in its file.
-func (m *Model) focusComment(id uuid.UUID) {
-	c := m.commentByID(id)
+func (r *reviewModal) focusComment(m Model, id uuid.UUID) {
+	c := r.comment(m, id)
 	if c == nil {
 		return
 	}
-	r := &m.review
 	if i := slices.IndexFunc(r.files, func(f event.FileDiff) bool { return f.Path == c.Path }); i >= 0 {
 		r.file = i
 	}
 	r.diffFocused, r.ranging = true, false
-	for i, row := range m.reviewRows() {
+	for i, row := range r.rows(m) {
 		if row.comment != nil && row.comment.ID == id && row.author {
 			r.line = i
 			return
@@ -830,18 +852,17 @@ func (m *Model) focusComment(id uuid.UUID) {
 
 // jumpComment moves to the next comment in direction d, across files: from a
 // comment to its neighbour, else to the nearest past the cursor.
-func (m *Model) jumpComment(d int) {
-	comments := m.lineComments()
+func (r *reviewModal) jumpComment(m *Model, d int) {
+	comments := r.lineComments(*m)
 	if len(comments) == 0 {
 		m.noteErr("no comments on lines yet: c adds one")
 		return
 	}
-	r := &m.review
 	order := func(path string) int {
 		return slices.IndexFunc(r.files, func(f event.FileDiff) bool { return f.Path == path })
 	}
 	file, line, on := r.file, 0, -1
-	if rows := m.reviewRows(); r.line < len(rows) {
+	if rows := r.rows(*m); r.line < len(rows) {
 		row := rows[r.line]
 		switch {
 		case row.comment != nil:
@@ -871,13 +892,12 @@ func (m *Model) jumpComment(d int) {
 		m.noteOK("no more comments that way")
 		return
 	}
-	m.focusComment(comments[next].ID)
+	r.focusComment(*m, comments[next].ID)
 }
 
 // toggleViewed marks the file under the cursor viewed, and moves on to the next
 // one not yet viewed, or unmarks it. Kept for the session, never stored.
-func (m *Model) toggleViewed() {
-	r := &m.review
+func (r *reviewModal) toggleViewed(m *Model) {
 	f := r.selected()
 	if f == nil {
 		return
@@ -906,8 +926,8 @@ func (m *Model) toggleViewed() {
 }
 
 // freshness is how far into its fade a comment is, 0 just in and 1 or more done.
-func (m Model) freshness(id uuid.UUID) float64 {
-	rec := m.reviewByID(m.review.id)
+func (r *reviewModal) freshness(m Model, id uuid.UUID) float64 {
+	rec := m.reviewByID(r.id)
 	if rec == nil {
 		return 1
 	}
@@ -920,8 +940,12 @@ func (m Model) freshness(id uuid.UUID) float64 {
 
 // fading is whether a comment of the open review still stands out.
 func (m Model) fading() bool {
-	rec := m.reviewByID(m.review.id)
-	if m.mode != modeReview || rec == nil {
+	r := modalAs[*reviewModal](m)
+	if r == nil {
+		return false
+	}
+	rec := m.reviewByID(r.id)
+	if rec == nil {
 		return false
 	}
 	for _, at := range rec.arrived {
@@ -942,18 +966,18 @@ func (m *Model) fadeTick() tea.Cmd {
 }
 
 // reviewer is the reviewer working on the open review, nil when none is.
-func (m Model) reviewer() *agentState {
+func (r *reviewModal) reviewer(m Model) *agentState {
 	for _, a := range m.agentOrder {
-		if r := reviewerOf(a); r != nil && r.review == m.review.id && !a.ended {
+		if rv := reviewerOf(a); rv != nil && rv.review == r.id && !a.ended {
 			return a
 		}
 	}
 	return nil
 }
 
-// reviewSent is whether the review shown was sent, which leaves it to read.
-func (m Model) reviewSent() bool {
-	rec := m.reviewByID(m.review.id)
+// sent is whether the review shown was sent, which leaves it to read.
+func (r *reviewModal) sent(m Model) bool {
+	rec := m.reviewByID(r.id)
 	return rec != nil && rec.submitted
 }
 
@@ -966,8 +990,8 @@ func (m Model) reviewByID(id uuid.UUID) *reviewRecord {
 	return nil
 }
 
-func (m Model) commentByID(id uuid.UUID) *event.ReviewComment {
-	rec := m.reviewByID(m.review.id)
+func (r *reviewModal) comment(m Model, id uuid.UUID) *event.ReviewComment {
+	rec := m.reviewByID(r.id)
 	if rec == nil || id == uuid.Nil {
 		return nil
 	}
@@ -990,21 +1014,21 @@ func (m Model) blockByID(id uuid.UUID) *turnBlock {
 }
 
 // selected is the file under the cursor, nil while there is none.
-func (r *reviewState) selected() *event.FileDiff {
+func (r *reviewModal) selected() *event.FileDiff {
 	if r.file >= len(r.files) {
 		return nil
 	}
 	return &r.files[r.file]
 }
 
-// reviewRows is the selected file as the diff pane lists it: each hunk's header,
+// rows is the selected file as the diff pane lists it: each hunk's header,
 // its lines, and under the line a comment ends on, the comment and its replies.
-func (m Model) reviewRows() []diffRow {
-	f := m.review.selected()
+func (r *reviewModal) rows(m Model) []diffRow {
+	f := r.selected()
 	if f == nil {
 		return nil
 	}
-	comments := m.fileComments(f.Path)
+	comments := r.fileComments(m, f.Path)
 	// What the gutter and a reply's indent leave of the pane.
 	width := max(8, m.reviewTextWidth()-reviewGutter(*f)-4)
 	var out []diffRow
@@ -1042,8 +1066,8 @@ func thread(c *event.ReviewComment, all []event.ReviewComment, hunk, width int) 
 }
 
 // fileComments is the open review's comments on path.
-func (m Model) fileComments(path string) []event.ReviewComment {
-	rec := m.reviewByID(m.review.id)
+func (r *reviewModal) fileComments(m Model, path string) []event.ReviewComment {
+	rec := m.reviewByID(r.id)
 	if rec == nil {
 		return nil
 	}
@@ -1058,8 +1082,8 @@ func (m Model) fileComments(path string) []event.ReviewComment {
 
 // lineComments is the open review's comments on lines, in file then line
 // order: what > and < step through. Replies ride with their comment.
-func (m Model) lineComments() []*event.ReviewComment {
-	rec := m.reviewByID(m.review.id)
+func (r *reviewModal) lineComments(m Model) []*event.ReviewComment {
+	rec := m.reviewByID(r.id)
 	if rec == nil {
 		return nil
 	}
@@ -1070,7 +1094,7 @@ func (m Model) lineComments() []*event.ReviewComment {
 		}
 	}
 	order := func(path string) int {
-		return slices.IndexFunc(m.review.files, func(f event.FileDiff) bool { return f.Path == path })
+		return slices.IndexFunc(r.files, func(f event.FileDiff) bool { return f.Path == path })
 	}
 	slices.SortStableFunc(out, func(a, b *event.ReviewComment) int {
 		return cmp.Or(cmp.Compare(order(a.Path), order(b.Path)), cmp.Compare(a.End, b.End))
@@ -1080,9 +1104,8 @@ func (m Model) lineComments() []*event.ReviewComment {
 
 // nextHunk is the row of the next hunk's header in direction d, or the line
 // unmoved when there is none that way.
-func (m Model) nextHunk(d int) int {
-	rows := m.reviewRows()
-	r := m.review
+func (r *reviewModal) nextHunk(m Model, d int) int {
+	rows := r.rows(m)
 	for i := r.line + d; i >= 0 && i < len(rows); i += d {
 		if rows[i].line < 0 && rows[i].comment == nil {
 			return i

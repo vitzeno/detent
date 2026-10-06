@@ -1,10 +1,6 @@
 package ui
 
-import (
-	"github.com/google/uuid"
-
-	"github.com/vitzeno/detent/event"
-)
+import "github.com/vitzeno/detent/event"
 
 // The small state values Model is composed of. Grouped rather than
 // spread across Model's own fields, so a handler takes one thing.
@@ -18,7 +14,6 @@ const (
 	modeBound        // the engine hit its step bound and is asking
 	modeUndo         // asks before reverting the human's own files
 	modeForget       // asks before deleting a stored session
-	modeReview       // a request's changes to the human's files, over the panes, until esc
 	modeModal        // the modal holds every key until it closes
 )
 
@@ -68,49 +63,6 @@ const (
 	panelMCP
 	panelSkills
 )
-
-// reviewState is the review modal: one request's changes, the file selected
-// and the line in it, and which pane the arrows move.
-type reviewState struct {
-	// block is the request the review belongs to, the last one for a wider
-	// scope and none for a branch, and request the one request scope shows.
-	block, request *turnBlock
-	scope          event.ReviewScope
-	// against is the ref a branch is compared with, "" until named or known.
-	against string
-	// raw is files as the endpoint should read them, before defusing for the screen.
-	raw []event.FileDiff
-	// pinned keeps the id of a review opened by name when its diff arrives.
-	pinned bool
-	// stepBack is set while /review with no number looks for a request that
-	// changed something, and reload when it has moved to an earlier one.
-	stepBack, reload bool
-	base, head       string
-	// id is the review comments go to, open or about to be.
-	id         uuid.UUID
-	loading    bool
-	files      []event.FileDiff
-	cut        bool
-	err        string
-	file, line int
-	// diffFocused is whether the arrows move the line rather than the file.
-	diffFocused bool
-	// ranging is a v range running from anchor to the line.
-	ranging bool
-	anchor  int
-	edit    *commentEdit
-	// deleting is the comment x was pressed on once, deleted on the second.
-	deleting uuid.UUID
-	// triage walks the reviewer's comments one at a time, nil when not.
-	triage *triageState
-	// split draws the diff side by side, when the pane is wide enough.
-	split bool
-	// code is each hunk's lines coloured by language, filled as hunks are drawn
-	// and kept for the diff it was made from: a map, so a copy of Model shares it.
-	code map[hunkKey][]string
-	// back is the pane it was opened from, which esc returns to.
-	back focusPane
-}
 
 // forgetState is the session /delete is asking about.
 type forgetState struct {

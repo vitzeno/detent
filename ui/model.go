@@ -96,7 +96,6 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	stopArmed uuid.UUID
 	undo      undoState
 	forget    forgetState
-	review    reviewState
 	// modal is the box over the panes holding every key, nil when none is open.
 	modal   modal
 	reviews []*reviewRecord
@@ -227,9 +226,7 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 		for _, e := range msg.events {
 			m.apply(e)
 		}
-		// A listing may have put another session under the picker's cursor.
-		// And /new may have brought the welcome back.
-		m.reloadReview()
+		// A comment may have started to fade, or /new brought the welcome back.
 		load := tea.Batch(m.fadeTick(), m.welcomeTick())
 		var cmd tea.Cmd
 		// Edge only: Tick carries the live tag, so re-arming restarts

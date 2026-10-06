@@ -224,9 +224,6 @@ func (m Model) statusHint() string {
 	switch m.mode {
 	case modeModal:
 		return m.modal.hint(m)
-	case modeReview:
-		// The box's key line leads with what esc closes, which the bar repeats.
-		return barLine(m.reviewEsc(), note("the review's keys are in the box"))
 	case modeUndo:
 		return barLine(m.undoHints()...)
 	case modeBound:

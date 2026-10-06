@@ -57,9 +57,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		cmd := m.modal.key(&m, msg)
 		return m, cmd
 	}
-	if m.mode == modeReview {
-		return m.reviewKey(msg)
-	}
 	switch {
 	case key.Matches(msg, keymap.app.find):
 		return m.openFinder("")
@@ -92,8 +89,8 @@ func (m Model) handlePaste(text string) (Model, tea.Cmd) {
 		f.add(m, text)
 		return m, nil
 	}
-	if e := m.review.edit; m.mode == modeReview && e != nil {
-		e.input.InsertString(text)
+	if r := modalAs[*reviewModal](m); r != nil && r.edit != nil {
+		r.edit.input.InsertString(text)
 		return m, nil
 	}
 	if m.mode != modeInput {

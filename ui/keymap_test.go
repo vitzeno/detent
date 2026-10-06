@@ -128,16 +128,16 @@ func TestTopAndEnd_Resume(t *testing.T) {
 // In the diff g and G reach its first and last line, and in the list the files.
 func TestTopAndEnd_Review(t *testing.T) {
 	k := loadedReview(t)
-	require.True(t, k.m.review.diffFocused)
+	require.True(t, k.rev().diffFocused)
 	k.press(t, "G")
-	assert.Equal(t, len(k.m.reviewRows())-1, k.m.review.line)
+	assert.Equal(t, len(k.rev().rows(k.m))-1, k.rev().line)
 	k.press(t, "g")
-	assert.Zero(t, k.m.review.line)
+	assert.Zero(t, k.rev().line)
 	k.press(t, "tab")
 	k.press(t, "end")
-	assert.Equal(t, len(k.m.review.files)-1, k.m.review.file)
+	assert.Equal(t, len(k.rev().files)-1, k.rev().file)
 	k.press(t, "home")
-	assert.Zero(t, k.m.review.file)
+	assert.Zero(t, k.rev().file)
 }
 
 // longOutput is a finished command whose output is taller than its pane.
