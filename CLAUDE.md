@@ -510,7 +510,10 @@ adding a fat dependency fails with the transitive import named.
   directory. The engine checkpoints again as a Turn ends, so a revert
   leaves alone anything changed after it and says so. Checkpoints are
   unreferenced trees, so `git gc` eventually prunes them and an old one
-  reports `ErrGone`.
+  reports `ErrGone`. `Patch` diffs two trees against an empty index, because
+  git reads a blob from its file when the index says they match, and with
+  filters off that put the disk's bytes where a commit's belonged: a filtered
+  or CRLF file vanished from the diff.
 
 - **`internal/classify`**: `JevJudge`, the HTTP adapter, and
   `RiskJudge`, which adapts it to the engine's hook chain. It answers.

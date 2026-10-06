@@ -236,7 +236,14 @@ func (d *Dir) Patch(ctx context.Context, base, head Checkpoint, limit int) (patc
 	} else if err := d.exists(ctx, head); err != nil {
 		return "", false, err
 	}
-	patch, cut, err = runLimited(ctx, d.top, limit, "diff-tree", "-r", "-p", "--no-renames",
+	// An empty index, since git reads a blob its index entry matches from the file
+	// instead, and with filters off that put the disk's bytes in a commit's place.
+	empty, cleanup, err := scratchIndex()
+	if err != nil {
+		return "", false, err
+	}
+	defer cleanup()
+	patch, cut, err = runLimited(ctx, d.top, empty, limit, "diff-tree", "-r", "-p", "--no-renames",
 		"--no-ext-diff", "--no-textconv", string(base), string(head), "--", d.pathspec())
 	if err != nil {
 		return "", false, fmt.Errorf("worktree: patch: %w", err)
@@ -393,10 +400,10 @@ func run(ctx context.Context, dir, index string, stdin io.Reader, args ...string
 
 // runLimited reads at most limit bytes, ending at a whole line, and stops git
 // there, since a generated file's diff can be far more than anyone reads.
-func runLimited(ctx context.Context, dir string, limit int, args ...string) (string, bool, error) {
+func runLimited(ctx context.Context, dir, index string, limit int, args ...string) (string, bool, error) {
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
-	cmd := command(ctx, dir, "", args...)
+	cmd := command(ctx, dir, index, args...)
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
 	stdout, err := cmd.StdoutPipe()

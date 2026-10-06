@@ -442,6 +442,24 @@ func TestPatch_ShowsOnlyTheLineThatChanged(t *testing.T) {
 	assert.NotContains(t, patch, "-one")
 }
 
+// git reads a blob from the file when the index says they match. With filters
+// off that file is not what the blob holds, and the change vanished from the patch.
+func TestPatch_ReadsWhatTheTreesHoldNotTheFiles(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	userGit(t, dir, "config", "filter.up.clean", "tr a-z A-Z")
+	userGit(t, dir, "config", "filter.up.smudge", "tr A-Z a-z")
+	write(t, dir, ".gitattributes", "*.dat filter=up\n")
+	write(t, dir, "x.dat", "hello\n")
+	userGit(t, dir, "add", "-A")
+	userGit(t, dir, "commit", "-qm", "filtered")
+	d := open(t, dir)
+
+	patch, _, err := d.Patch(ctx, Checkpoint(strings.TrimSpace(git(t, dir, "rev-parse", "HEAD^{tree}"))), "", 1<<20)
+	require.NoError(t, err)
+	assert.Contains(t, patch, "-HELLO\n+hello\n", "the commit holds HELLO and the raw capture hello")
+}
+
 // A diff past the limit ends at a whole line within it, and says it was cut.
 func TestPatch_CutsAtAWholeLine(t *testing.T) {
 	ctx := t.Context()
