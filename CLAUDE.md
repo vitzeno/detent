@@ -721,6 +721,11 @@ adding a fat dependency fails with the transitive import named.
   (first request's start to the last one's end), the human's edits since, and
   the branch against main or a ref, uncommitted work included. Each scope has
   its own review, and only a branch's belongs to no request, so undo leaves it.
+  `r` starts a reviewer on the scope shown, its diff already on screen, and
+  only there: the reviewer reads exactly what the human does. A review is one
+  line in history, its comments counted on the row since a block draws from
+  its own state, and enter on it reopens it. `←`/`→` step between reviews,
+  oldest first, and a review once sent is read, never edited.
   `ctrl+s` sends the review as the next prompt,
   which `internal/review` writes so a reviewer's words are always framed as
   opinions to weigh and the human's as instructions, then closes it.

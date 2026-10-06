@@ -129,7 +129,7 @@ func (r *reviewRun) answer(e *Engine, c tool.Call) (string, error) {
 func (r *reviewRun) commented(c event.ReviewComment) event.ReviewCommented {
 	v := r.v
 	return event.ReviewCommented{Review: v.Review, Reviewed: v.Reviewed, Base: v.Base, Head: v.Head,
-		Scope: v.Scope, Op: event.CommentAdded, Comment: c}
+		Scope: v.Scope, Against: v.Against, Op: event.CommentAdded, Comment: c}
 }
 
 // reviewLabel is what the review's Turn is called.

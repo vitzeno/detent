@@ -38,6 +38,8 @@ type turnBlock struct {
 	// files and container say what that checkpoint covers.
 	files, container bool
 	err              string
+	// review is set on a review's Turn, no request: one row, drawn as a line.
+	review uuid.UUID
 	// base and tree are the human's files as the Turn began and ended, which
 	// /review reads its changes between. Kept on a resume, unlike undo.
 	base, tree string
@@ -70,6 +72,9 @@ type historyRow struct {
 	// headline its arguments as history leads with them.
 	tool     event.ToolName
 	headline string
+	// review is the review this row stands for, its comments counted so far.
+	review   uuid.UUID
+	comments int
 	// wrote is what write_file was given, kept until its result says whether
 	// the file was new, when created becomes that content as a diff.
 	wrote   *written

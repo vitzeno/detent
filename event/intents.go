@@ -148,6 +148,7 @@ type CommentReview struct {
 	Base     string        `json:"Base"`
 	Head     string        `json:"Head"`
 	Scope    ReviewScope   `json:"Scope"`
+	Against  string        `json:"Against"`
 	Op       CommentOp     `json:"Op"`
 	Comment  ReviewComment `json:"Comment"`
 }

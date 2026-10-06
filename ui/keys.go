@@ -376,6 +376,9 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		if r := m.focused(); r != nil && r.agent != nil {
 			return m.openInspector(r.agent)
 		}
+		if r := m.focused(); r != nil && r.review != uuid.Nil {
+			return m.openReviewRow(r)
+		}
 		if r := m.focused(); r != nil && !r.running {
 			m.toggleExpand(r)
 		}

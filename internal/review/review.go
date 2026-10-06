@@ -31,8 +31,8 @@ func Watch(ctx context.Context, bus *event.Bus, files Patcher) func() {
 		case event.LoadDiff:
 			bus.Publish(load(ctx, files, v))
 		case event.CommentReview:
-			bus.Publish(event.ReviewCommented{Review: v.Review, Reviewed: v.Reviewed,
-				Base: v.Base, Head: v.Head, Op: v.Op, Comment: v.Comment})
+			bus.Publish(event.ReviewCommented{Review: v.Review, Reviewed: v.Reviewed, Base: v.Base,
+				Head: v.Head, Scope: v.Scope, Against: v.Against, Op: v.Op, Comment: v.Comment})
 		case event.SubmitReview:
 			// Closed before the prompt, so the review cannot be sent twice from what it starts.
 			bus.Publish(event.ReviewSubmitted{Review: v.Review, Comments: len(v.Comments)})

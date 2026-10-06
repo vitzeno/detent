@@ -22,6 +22,7 @@ import (
 type reviewRecord struct {
 	id, reviewed uuid.UUID
 	scope        event.ReviewScope
+	against      string
 	base, head   string
 	comments     []event.ReviewComment
 	submitted    bool
@@ -259,7 +260,7 @@ func (m *Model) diffLoaded(v event.DiffLoaded) {
 		return
 	}
 	r.loading, r.cut, r.err = false, v.Cut, v.Err
-	r.files = defused(v.Files)
+	r.files, r.raw = defused(v.Files), v.Files
 	if r.stepBack && r.scope == event.ScopeRequest && len(r.files) == 0 && r.err == "" {
 		// The last request may only have answered a question, so the one before is meant.
 		if prev := m.reviewableBefore(r.request); prev != nil {
@@ -270,7 +271,10 @@ func (m *Model) diffLoaded(v event.DiffLoaded) {
 	r.stepBack = false
 	if branch {
 		r.base, r.against = v.Base, v.Against
-		r.id = m.openReviewOf(uuid.Nil, v.Base, "")
+		// A review opened by name keeps its id, though main may have moved since.
+		if !r.pinned {
+			r.id = m.openReviewOf(uuid.Nil, v.Base, "")
+		}
 	}
 }
 
@@ -278,9 +282,11 @@ func (m *Model) diffLoaded(v event.DiffLoaded) {
 func (m *Model) reviewCommented(v event.ReviewCommented) {
 	rec := m.reviewByID(v.Review)
 	if rec == nil {
-		rec = &reviewRecord{id: v.Review, reviewed: v.Reviewed, scope: v.Scope, base: v.Base, head: v.Head}
+		rec = &reviewRecord{id: v.Review, reviewed: v.Reviewed, scope: v.Scope, against: v.Against,
+			base: v.Base, head: v.Head}
 		m.reviews = append(m.reviews, rec)
 	}
+	defer m.countComments(rec)
 	c := defusedComment(v.Comment)
 	switch v.Op {
 	case event.CommentAdded:
@@ -370,6 +376,13 @@ func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		r.line = m.nextHunk(-1)
 	case "v":
 		m.toggleRange()
+	case "c", "e", "x", "ctrl+s", "r":
+		if m.reviewSent() {
+			m.noteErr("this review was sent: s or /review starts another")
+			return m, nil
+		}
+	}
+	switch key {
 	case "c":
 		return m.startComment()
 	case "e":
@@ -380,6 +393,10 @@ func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m.submitReview()
 	case "s":
 		return m.nextScope()
+	case "r":
+		return m.startReviewer()
+	case "left", "right":
+		return m.stepReview(map[string]int{"left": -1, "right": 1}[key])
 	}
 	return m, nil
 }
@@ -708,4 +725,133 @@ func defusedComment(c event.ReviewComment) event.ReviewComment {
 	c.Body = termsafe.Printable(c.Body)
 	c.Original = termsafe.Printable(c.Original)
 	return c
+}
+
+// startReviewBlock is a review's Turn: one row, which enter opens, and no
+// prompt, since nobody asked a request of the model.
+func (m *Model) startReviewBlock(v event.TurnStarted) {
+	row := &historyRow{id: v.Turn, review: v.Review, running: true}
+	if rec := m.reviewByID(v.Review); rec != nil {
+		row.comments = len(rec.comments)
+	}
+	b := &turnBlock{id: v.Turn, prompt: v.Prompt, review: v.Review, rows: []*historyRow{row}}
+	m.blocks = append(m.blocks, b)
+	m.setCur(b)
+	m.followNewest()
+}
+
+// countComments keeps a review's history row in step with its comments, as a
+// block draws from its own state alone.
+func (m *Model) countComments(rec *reviewRecord) {
+	for _, b := range m.blocks {
+		if b.review != rec.id {
+			continue
+		}
+		for _, r := range b.rows {
+			r.comments = len(rec.comments)
+		}
+		b.rev++
+	}
+}
+
+// startReviewer asks for a reviewer on what the modal shows, the scope chosen
+// and its diff on screen, so the reviewer reads exactly what the human does.
+func (m Model) startReviewer() (Model, tea.Cmd) {
+	r := m.review
+	switch {
+	case !m.run.Subagents:
+		m.noteErr("a reviewer needs subagents on: set subagents: true in your config")
+		return m, nil
+	case r.loading || r.err != "" || len(r.raw) == 0:
+		m.noteErr("nothing here for a reviewer to read")
+		return m, nil
+	case m.cur != nil:
+		m.noteErr("a request is running: start the reviewer once it ends")
+		return m, nil
+	}
+	n := 0
+	if r.block != nil {
+		n = r.block.n
+	}
+	return m, m.send(event.ReviewChanges{Review: r.id, Reviewed: m.reviewed(), Scope: r.scope,
+		Base: r.base, Head: r.head, Against: r.against, Request: n, Asked: m.reviewAsked(), Files: r.raw})
+}
+
+// reviewAsked is what the changes were made for: one request's prompt, every
+// request's for a wider scope, and nothing for the human's own edits.
+func (m Model) reviewAsked() string {
+	r := m.review
+	switch r.scope {
+	case event.ScopeSince:
+		return ""
+	case event.ScopeRequest:
+		if r.block != nil {
+			return r.block.prompt
+		}
+		return ""
+	case event.ScopeSession, event.ScopeBranch:
+	}
+	var b strings.Builder
+	for _, blk := range m.blocks {
+		if blk.n > 0 && blk.review == uuid.Nil {
+			fmt.Fprintf(&b, "%d. %s\n", blk.n, blk.prompt)
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// stepReview opens the review d away, oldest first, as the inspector steps
+// between agents. A review not yet recorded is past the newest.
+func (m Model) stepReview(d int) (Model, tea.Cmd) {
+	i := slices.IndexFunc(m.reviews, func(rec *reviewRecord) bool { return rec.id == m.review.id })
+	if i < 0 {
+		i = len(m.reviews)
+	}
+	i += d
+	if i < 0 || i >= len(m.reviews) {
+		return m, nil
+	}
+	return m.openReview(m.reviews[i])
+}
+
+// openReview shows a recorded review: its own scope and trees, and its id
+// kept whatever a branch's base has become.
+func (m Model) openReview(rec *reviewRecord) (Model, tea.Cmd) {
+	back := m.review.back
+	if m.mode != modeReview {
+		back = m.nav.focus
+	}
+	blk := m.blockByID(rec.reviewed)
+	m.review = reviewState{block: blk, request: blk, scope: rec.scope, base: rec.base, head: rec.head,
+		against: rec.against, id: rec.id, pinned: true, loading: true, back: back}
+	m.mode = modeReview
+	if rec.scope == event.ScopeBranch {
+		return m, m.send(event.LoadDiff{Branch: true, Against: rec.against})
+	}
+	return m, m.send(event.LoadDiff{Base: rec.base, Head: rec.head})
+}
+
+// openReviewRow opens the review a history row stands for.
+func (m Model) openReviewRow(r *historyRow) (Model, tea.Cmd) {
+	if rec := m.reviewByID(r.review); rec != nil {
+		return m.openReview(rec)
+	}
+	m.noteOK("the reviewer has not commented yet")
+	return m, nil
+}
+
+// reviewSent is whether the review shown was sent, which leaves it to read.
+func (m Model) reviewSent() bool {
+	rec := m.reviewByID(m.review.id)
+	return rec != nil && rec.submitted
+}
+
+// blockByID finds a block without marking it to redraw, as block does.
+func (m Model) blockByID(id uuid.UUID) *turnBlock {
+	for _, b := range m.blocks {
+		if id != uuid.Nil && b.id == id {
+			return b
+		}
+	}
+	return nil
 }

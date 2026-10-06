@@ -108,7 +108,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		Notice{Level: "warn", Text: "careful"},
 		SessionLoaded{Session: turn, Err: "no such session"},
 		DiffLoaded{Base: "a1", Head: "b2", Branch: true, Against: "main", Cut: true, Err: "gone"},
-		ReviewCommented{Review: turn, Reviewed: turn, Base: "a1", Head: "b2", Scope: ScopeBranch, Op: CommentEdited,
+		ReviewCommented{Review: turn, Reviewed: turn, Base: "a1", Head: "b2", Scope: ScopeBranch, Against: "main", Op: CommentEdited,
 			Comment: ReviewComment{ID: call, ReplyTo: turn, Author: "reviewer", Path: "a.go", Side: "new",
 				Start: 3, End: 4, Quote: "+x", Body: "why?", Original: "was"}},
 		ReviewSubmitted{Review: turn, Comments: 2},

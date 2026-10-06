@@ -9,6 +9,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/layout"
@@ -179,8 +180,9 @@ func (m Model) drawBlock(b *turnBlock, focused *historyRow) (lines []string, cur
 	if b.seam != nil {
 		return m.railed(b, []string{m.seamLine(b.seam)}), -1
 	}
-	// A user-command block has no prompt: nobody asked for anything.
-	if !b.userCommands {
+	// A user-command block has no prompt: nobody asked for anything. A review's
+	// row says what it is, so it has none either.
+	if !b.userCommands && b.review == uuid.Nil {
 		for _, gl := range wrapPlain(b.prompt, m.blockWidth()) {
 			add(styleGoal.Render(gl))
 		}
@@ -194,7 +196,7 @@ func (m Model) drawBlock(b *turnBlock, focused *historyRow) (lines []string, cur
 			add(previewLines(r, m.blockWidth()-6)...)
 		}
 	}
-	if b.ended {
+	if b.ended && b.review == uuid.Nil {
 		add(m.bannerLines(b)...)
 	} else if b == m.cur && m.waiting && !anyRunning(b) {
 		add(fmt.Sprintf("  %s %s", m.spinner.View(), styleFaint.Render("thinking…")))
@@ -223,6 +225,9 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 	}
 	if r.signin != nil {
 		return m.signInRowLines(mark, r.signin)
+	}
+	if r.review != uuid.Nil {
+		return []string{m.reviewRowLine(mark, r)}
 	}
 	// The model speaking, not a command: no status badge, because
 	// nothing ran and there is no exit code to report.

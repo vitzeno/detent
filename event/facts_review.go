@@ -70,6 +70,7 @@ type ReviewCommented struct {
 	Base     string        `json:"Base"`
 	Head     string        `json:"Head"`
 	Scope    ReviewScope   `json:"Scope"`
+	Against  string        `json:"Against"` // the ref a branch is compared with
 	Op       CommentOp     `json:"Op"`
 	Comment  ReviewComment `json:"Comment"`
 }

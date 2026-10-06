@@ -448,6 +448,137 @@ func TestReview_OpensOntoAScopeByName(t *testing.T) {
 	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "your edits since request 2")
 }
 
+// r asks for a reviewer on exactly what the modal shows: its scope, its trees,
+// the request it was for, and the files as the endpoint should read them.
+func TestReview_RStartsAReviewerOnWhatTheModalShows(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	k.m.run.Subagents = true
+	k.openReview("/review")
+	k.intentOf(t, event.LoadDiffKind)
+	files := []event.FileDiff{{Path: "a.go", Change: event.FileModified, Hunks: []event.Hunk{{Header: "@@ -1 +1 @@",
+		Lines: []event.DiffLine{{Op: event.LineAdded, New: 1, Text: "\tx := 1\r"}}}}}}
+	k.m.apply(event.DiffLoaded{Base: "b2", Head: "e2", Files: files})
+	k.press(t, "r")
+	got := k.intentOf(t, event.ReviewChangesKind).(event.ReviewChanges)
+	assert.Equal(t, event.ReviewChanges{Review: k.m.review.id, Reviewed: k.m.blocks[1].id, Scope: event.ScopeRequest,
+		Base: "b2", Head: "e2", Request: 2, Asked: "edit", Files: files}, got,
+		"the file's own bytes, tab and CR, not the screen's")
+}
+
+func TestReview_RIsRefusedWithoutAReviewerOrMidRequest(t *testing.T) {
+	k := loadedReview(t)
+	k.press(t, "r")
+	k.noIntent(t)
+	assert.Contains(t, k.m.notice.text, "subagents on")
+
+	k.m.run.Subagents = true
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 3, Prompt: "running"})
+	k.press(t, "r")
+	k.noIntent(t)
+	assert.Contains(t, k.m.notice.text, "a request is running")
+}
+
+// A review is one line in history, saying what it reviewed and how many
+// comments it left, and enter on it opens it on its own trees.
+func TestReview_IsOneLineInHistoryThatOpensIt(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	review, turn := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: review})
+	for range 2 {
+		k.m.apply(event.ReviewCommented{Review: review, Reviewed: k.m.blocks[1].id, Base: "b2", Head: "e2",
+			Scope: event.ScopeRequest, Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Author: "reviewer"}})
+	}
+	k.m.sizeViewport()
+	lines, _ := k.m.historyAll()
+	assert.Contains(t, ansi.Strip(strings.Join(lines, "\n")), "review of request 2",
+		"a running review still names what it reviews in a narrow pane")
+	k.m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	k.m.sizeViewport()
+	lines, _ = k.m.historyAll()
+	history := ansi.Strip(strings.Join(lines, "\n"))
+	assert.Equal(t, 1, strings.Count(history, "review of request 2"), "one line, no prompt above it")
+	assert.Contains(t, history, "review of request 2 · 2 comments")
+
+	k.m.nav.cursor = len(k.m.rows()) - 1
+	k.m.nav.focus = focusHistory
+	k.press(t, "enter")
+	assert.Equal(t, modeReview, k.m.mode)
+	assert.Equal(t, review, k.m.review.id)
+	assert.Equal(t, event.LoadDiff{Base: "b2", Head: "e2"}, k.intentOf(t, event.LoadDiffKind))
+}
+
+// left and right step between reviews, oldest first, each on its own trees.
+func TestReview_ArrowsStepBetweenReviews(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	ids := []uuid.UUID{uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())}
+	for i, id := range ids {
+		k.m.apply(event.ReviewCommented{Review: id, Reviewed: k.m.blocks[i].id, Base: []string{"b1", "b2"}[i],
+			Head: []string{"e1", "e2"}[i], Scope: event.ScopeRequest, Op: event.CommentAdded,
+			Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7())}})
+	}
+	var cmd tea.Cmd
+	k.m, cmd = k.m.openReview(k.m.reviews[1])
+	runCmd(cmd)
+	k.intentOf(t, event.LoadDiffKind)
+	k.send(t, tea.KeyPressMsg{Code: tea.KeyLeft})
+	assert.Equal(t, ids[0], k.m.review.id)
+	assert.Equal(t, event.LoadDiff{Base: "b1", Head: "e1"}, k.intentOf(t, event.LoadDiffKind))
+	k.send(t, tea.KeyPressMsg{Code: tea.KeyLeft})
+	k.noIntent(t)
+	assert.Equal(t, ids[0], k.m.review.id, "nothing older")
+	k.send(t, tea.KeyPressMsg{Code: tea.KeyRight})
+	assert.Equal(t, ids[1], k.m.review.id)
+}
+
+// A sent review is read, not written: comments, edits and a reviewer are refused.
+func TestReview_ASentReviewIsReadOnly(t *testing.T) {
+	k := loadedReview(t)
+	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded,
+		Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Path: "ui/facts.go", Side: "new", Start: 10, End: 10}})
+	k.m.apply(event.ReviewSubmitted{Review: k.m.review.id, Comments: 1})
+	k.openReview("/review")
+	k.intentOf(t, event.LoadDiffKind)
+	var cmd tea.Cmd
+	k.m, cmd = k.m.openReview(k.m.reviews[0])
+	runCmd(cmd)
+	k.intentOf(t, event.LoadDiffKind)
+	k.m.apply(loadedDiff("b2", "e2"))
+	k.press(t, "tab")
+	k.press(t, "down")
+	for _, key := range []string{"c", "r"} {
+		k.press(t, key)
+		assert.Nil(t, k.m.review.edit)
+		assert.Contains(t, k.m.notice.text, "was sent")
+	}
+	k.noIntent(t)
+}
+
+// Undo passes over a review's line to the request before it, since a review
+// changed nothing to take back.
+func TestUndo_PassesOverAReview(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	turn := uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: uuid.Must(uuid.NewV7())})
+	k.m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	target, _ := k.m.undoTarget("")
+	require.NotNil(t, target)
+	assert.Equal(t, 2, target.n)
+}
+
+// A branch review opened by name keeps its id when main has moved under it.
+func TestReview_ABranchReviewOpenedByNameKeepsItsID(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	id := uuid.Must(uuid.NewV7())
+	k.m.apply(event.ReviewCommented{Review: id, Base: "old-base", Scope: event.ScopeBranch, Against: "main",
+		Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7())}})
+	var cmd tea.Cmd
+	k.m, cmd = k.m.openReview(k.m.reviews[0])
+	runCmd(cmd)
+	assert.Equal(t, event.LoadDiff{Branch: true, Against: "main"}, k.intentOf(t, event.LoadDiffKind))
+	k.m.apply(event.DiffLoaded{Branch: true, Base: "new-base", Against: "main"})
+	assert.Equal(t, id, k.m.review.id)
+}
+
 // openReview runs a /review line and what it asks for.
 func (k *keyed) openReview(line string) {
 	var cmd tea.Cmd

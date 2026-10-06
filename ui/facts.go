@@ -72,6 +72,10 @@ func (m *Model) apply(ev event.Event) {
 		m.measured = v
 
 	case event.TurnStarted:
+		if v.Review != uuid.Nil {
+			m.startReviewBlock(v)
+			break
+		}
 		b := &turnBlock{id: v.Turn, n: v.N, prompt: v.Prompt}
 		m.blocks = append(m.blocks, b)
 		m.setCur(b)
@@ -252,6 +256,11 @@ func (m *Model) endTurn(v event.TurnEnded) {
 	// nothing may be left waiting on it.
 	if b := m.block(v.Turn); b != nil {
 		b.ended, b.end, b.summary, b.used, b.tree = true, v.Reason, v.Summary, v.Usage, v.Tree
+		for _, r := range b.rows {
+			if r.review != uuid.Nil {
+				r.running = false
+			}
+		}
 		if v.Reason == event.EndError {
 			b.err = v.Summary
 		}

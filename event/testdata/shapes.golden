@@ -26,6 +26,7 @@ output.chunk Line string
 output.chunk Stderr bool
 output.chunk ToolCall uuid.UUID
 output.chunk UserCommand uuid.UUID
+review.commented Against string
 review.commented Base string
 review.commented Comment.Author string
 review.commented Comment.Body string

@@ -123,6 +123,10 @@ type reviewState struct {
 	scope          event.ReviewScope
 	// against is the ref a branch is compared with, "" until named or known.
 	against string
+	// raw is files as the endpoint should read them, before defusing for the screen.
+	raw []event.FileDiff
+	// pinned keeps the id of a review opened by name when its diff arrives.
+	pinned bool
 	// stepBack is set while /review with no number looks for a request that
 	// changed something, and reload when it has moved to an earlier one.
 	stepBack, reload bool

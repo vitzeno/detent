@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -65,6 +66,15 @@ func (m Model) reviewTitle() string {
 	if rec := m.reviewByID(r.id); rec != nil && len(rec.comments) > 0 {
 		title += styleFaint.Render(" · ") + styleBrand.Render(countOf(len(rec.comments), "comment"))
 	}
+	if m.cur != nil && m.cur.review == r.id && r.id != uuid.Nil {
+		title += styleFaint.Render(" · ") + m.spinner.View() + styleFaint.Render(" the reviewer is reading")
+	}
+	if m.reviewSent() {
+		title += styleFaint.Render(" · sent")
+	}
+	if i := slices.IndexFunc(m.reviews, func(rec *reviewRecord) bool { return rec.id == r.id }); i >= 0 && len(m.reviews) > 1 {
+		title += styleFaint.Render(fmt.Sprintf(" · %d of %d", i+1, len(m.reviews)))
+	}
 	if r.cut {
 		title += styleCaution.Render(" · too large, the last files are missing")
 	}
@@ -100,7 +110,7 @@ func (m Model) reviewKeys() string {
 	case r.edit != nil:
 		return "enter save · " + m.prompt.NewlineKey() + " newline · esc drop it"
 	case !r.diffFocused:
-		return "↑↓ file · enter diff · s scope · ctrl+s send · esc back"
+		return "↑↓ file · enter diff · s scope · r reviewer · ←→ reviews · ctrl+s send · esc back"
 	}
 	rows := m.reviewRows()
 	if r.line < len(rows) && rows[r.line].comment != nil {
@@ -109,7 +119,7 @@ func (m Model) reviewKeys() string {
 		}
 		return "c reply · e edit · x delete · ctrl+s send · esc back"
 	}
-	return "c comment · v range · ]/[ hunk · n/p file · ctrl+s send · esc back"
+	return "c comment · v range · ]/[ hunk · n/p file · r reviewer · ctrl+s send · esc back"
 }
 
 // reviewFileLines lists each changed file with what happened to it.
@@ -308,4 +318,27 @@ func lineStyle(op event.LineOp) lipgloss.Style {
 	case event.LineContext:
 	}
 	return styleGoal
+}
+
+// reviewRowLine is a review in history: what it reviewed, how many comments it
+// has, and a spinner while its reviewer works.
+func (m Model) reviewRowLine(mark string, r *historyRow) string {
+	b := m.blockByID(r.id)
+	label := "review"
+	if b != nil {
+		label = b.prompt
+	}
+	icon, state := styleBrand.Render("◆"), ""
+	switch {
+	case r.running:
+		// The spinner says it is still reading, which leaves room for what it reviews.
+		icon = m.spinner.View()
+	case b != nil && b.end == event.EndAborted:
+		state = " · stopped"
+	case b != nil && b.end == event.EndError:
+		state = " · failed"
+	}
+	tail := " · " + countOf(r.comments, "comment") + state
+	room := max(layout.MinTruncate, m.blockWidth()-lipgloss.Width(mark+icon+" ")-lipgloss.Width(tail))
+	return mark + icon + " " + styleGoal.Render(layout.Truncate(label, room)) + styleFaint.Render(tail)
 }
