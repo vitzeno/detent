@@ -223,18 +223,16 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 	// One message type for every fact: the UI learns everything the same way.
 	case factMsg:
 		spinning := m.spinning()
+		cmds := make([]tea.Cmd, 0, len(msg.events)+2)
 		for _, e := range msg.events {
-			m.apply(e)
+			cmds = append(cmds, m.apply(e))
 		}
-		// A comment may have started to fade, or /new brought the welcome back.
-		load := tea.Batch(m.fadeTick(), m.welcomeTick())
-		var cmd tea.Cmd
 		// Edge only: Tick carries the live tag, so re-arming restarts
-		// the chain and costs a frame.
+		// the chain and costs a frame. Spinning is the whole state's, no one fact's.
 		if m.spinning() && !spinning {
-			cmd = m.spinner.Tick
+			cmds = append(cmds, m.spinner.Tick)
 		}
-		return m, tea.Batch(cmd, load, nextFact(m.facts))
+		return m, tea.Batch(append(cmds, nextFact(m.facts))...)
 
 	case fadeMsg:
 		m.fadeTicking = false

@@ -653,7 +653,10 @@ adding a fat dependency fails with the transitive import named.
   sandbox, network, step bound, whether anything is recording it and
   how much it resumed from. `ui.SessionInfo` carries only what no
   fact does, so the panes and the log cannot disagree about what ran. `facts.go` folds facts in and is the one place it learns
-  anything. `Model.send` is the one place it asks for anything, and
+  anything. `apply` returns what a fact sets going, a comment's fade or the
+  welcome's animation, so nothing is polled after a batch, and a fold that must
+  ask for something sends it then, since `send` publishes at once. `Restore`
+  replays from empty history, so a replay never depends on what was on screen. `Model.send` is the one place it asks for anything, and
   `intents.go` holds most of its callers. It publishes as the key is
   handled rather than from a `tea.Cmd`, which Bubble Tea runs on a
   goroutine of its own, so intents arrive in the order asked. Eight

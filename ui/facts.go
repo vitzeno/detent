@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
@@ -18,8 +19,10 @@ import (
 // is counted away and the full output arrives with ToolCallEnded.
 const maxLiveLines = 200
 
-// Restore rebuilds history from a stored session by looping over apply.
+// Restore rebuilds history from a stored session by looping over apply, from
+// nothing, so what it shows never depends on what was there before.
 func (m Model) Restore(records []event.Record) Model {
+	m.clearHistory()
 	m.replaying = true
 	for _, r := range records {
 		m.apply(r.Event)
@@ -33,9 +36,9 @@ func (m Model) Restore(records []event.Record) Model {
 	return m
 }
 
-// apply folds one fact into the Model, and is the whole of how the UI
-// learns anything. A test drives it with events and no harness.
-func (m *Model) apply(ev event.Event) {
+// apply folds one fact into the Model, and is the whole of how the UI learns
+// anything, returning what the fact sets going. A test drives it with events.
+func (m *Model) apply(ev event.Event) tea.Cmd {
 	// Any fact may change what history assembles. A block's own drawing
 	// goes stale only through the lookups below, which bump its rev.
 	m.histRev++
@@ -49,6 +52,8 @@ func (m *Model) apply(ev event.Event) {
 		m.run = v
 		m.skillCmds = skillCommands(v.Skills)
 		m.prompt.SetExtraCommands(m.skillCmds)
+		// After /new the welcome is back, and its animation stopped once history hid it.
+		return m.welcomeTick()
 
 	case event.SessionsListed:
 		m.sessions = v.Sessions
@@ -64,6 +69,7 @@ func (m *Model) apply(ev event.Event) {
 
 	case event.ReviewCommented:
 		m.reviewCommented(v)
+		return m.fadeTick()
 
 	case event.ReviewSubmitted:
 		m.reviewSubmitted(v)
@@ -125,7 +131,7 @@ func (m *Model) apply(ev event.Event) {
 		if a := m.agents[v.Agent]; a != nil {
 			a.rows = append(a.rows, &historyRow{prose: termsafe.Printable(v.Text)})
 			m.touch(a)
-			return
+			return nil
 		}
 		m.addProse(v.Text)
 
@@ -144,7 +150,7 @@ func (m *Model) apply(ev event.Event) {
 			}
 			a.last = termsafe.Printable(event.Command(v.Tool, v.Args))
 			m.touch(a)
-			return
+			return nil
 		}
 		m.addToolCall(v)
 
@@ -161,7 +167,7 @@ func (m *Model) apply(ev event.Event) {
 				a.waitingSince = time.Now()
 			}
 			m.touch(a)
-			return
+			return nil
 		}
 		// One arriving behind the shown question leaves its scroll and settle alone.
 		m.asked = append(m.asked, v)
@@ -243,7 +249,7 @@ func (m *Model) apply(ev event.Event) {
 			a.used = a.used.Add(v.Usage)
 			a.ctx = v.Usage.PromptTokens
 			m.touch(a)
-			return
+			return nil
 		}
 		m.steps++
 		if v.Usage.PromptTokens > 0 {
@@ -259,6 +265,7 @@ func (m *Model) apply(ev event.Event) {
 	case event.Notice:
 		m.noteLevel(v.Level, v.Text)
 	}
+	return nil
 }
 
 func (m *Model) endTurn(v event.TurnEnded) {

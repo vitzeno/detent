@@ -357,7 +357,8 @@ func TestReview_StepsBackPastARequestThatChangedNothing(t *testing.T) {
 	k := reviewable(t, "e1", "e2")
 	k.openReview("/review")
 	k.intentOf(t, event.LoadDiffKind)
-	k.update(t, factMsg{events: []event.Event{event.DiffLoaded{Base: "b2", Head: "e2"}}})
+	// The fact asks for the request before on its own, with no message after it.
+	k.m.apply(event.DiffLoaded{Base: "b2", Head: "e2"})
 	assert.Equal(t, event.LoadDiff{Base: "b1", Head: "e1"}, k.intentOf(t, event.LoadDiffKind))
 	k.update(t, factMsg{events: []event.Event{event.DiffLoaded{Base: "b1", Head: "e1"}}})
 	k.noIntent(t)
@@ -675,10 +676,10 @@ func TestReview_ANewCommentStandsOutThenSettles(t *testing.T) {
 	k := loadedReview(t)
 	id := k.rev().id
 	c := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "ui/facts.go", Side: "new", Start: 10, End: 10, Body: "x"}
-	k.m.apply(event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: c})
+	tick := k.m.apply(event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: c})
 	row := diffRow{comment: &k.m.reviewByID(id).comments[0], author: true}
 	fresh := k.rev().commentLine(k.m, row)
-	require.NotNil(t, k.m.fadeTick(), "a tick to fade it by")
+	assert.True(t, sends[fadeMsg](tick), "the comment sets a tick going to fade it by")
 	assert.Nil(t, k.m.fadeTick(), "and only one")
 
 	k.m.reviewByID(id).arrived[c.ID] = time.Now().Add(-fadeFor / 2)
@@ -1069,4 +1070,18 @@ func (k *keyed) update(t *testing.T, msg tea.Msg) {
 	var cmd tea.Cmd
 	k.m, cmd = k.m.update(msg)
 	runCmd(cmd)
+}
+
+// A comment that came in while the review was shut still fades once it opens,
+// which nothing started until the next fact did.
+func TestReview_OpeningStartsAFadeAlreadyUnderWay(t *testing.T) {
+	k := loadedReview(t)
+	id := k.rev().id
+	k.press(t, "esc")
+	c := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "ui/facts.go", Side: "new", Start: 10, End: 10, Body: "x"}
+	require.Nil(t, k.m.apply(event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: c}),
+		"nothing on screen to fade")
+	var cmd tea.Cmd
+	k.m, cmd = k.m.openReview(k.m.reviewByID(id))
+	assert.True(t, sends[fadeMsg](cmd))
 }

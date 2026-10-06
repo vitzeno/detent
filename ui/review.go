@@ -46,10 +46,9 @@ type reviewModal struct {
 	raw []event.FileDiff
 	// pinned keeps the id of a review opened by name when its diff arrives.
 	pinned bool
-	// stepBack is set while /review with no number looks for a request that
-	// changed something, and reload when it has moved to an earlier one.
-	stepBack, reload bool
-	base, head       string
+	// stepBack is set while /review with no number looks for a request that changed something.
+	stepBack   bool
+	base, head string
 	// id is the review comments go to, open or about to be.
 	id         uuid.UUID
 	loading    bool
@@ -139,7 +138,8 @@ func (m Model) showReview(input string) (Model, tea.Cmd) {
 		scope = event.ScopeRequest
 	}
 	r.load(&m, scope)
-	return m, nil
+	tick := m.fadeTick()
+	return m, tick
 }
 
 // reviewTarget is the request /review means, or why there is none.
@@ -179,10 +179,12 @@ func (m Model) openReview(rec *reviewRecord) (Model, tea.Cmd) {
 		against: rec.against, id: rec.id, pinned: true, loading: true, back: back})
 	if rec.scope == event.ScopeBranch {
 		m.send(event.LoadDiff{Branch: true, Against: rec.against})
-		return m, nil
+	} else {
+		m.send(event.LoadDiff{Base: rec.base, Head: rec.head})
 	}
-	m.send(event.LoadDiff{Base: rec.base, Head: rec.head})
-	return m, nil
+	// A comment that came in while it was shut may still be fading.
+	tick := m.fadeTick()
+	return m, tick
 }
 
 // openReviewRow opens the review a history row stands for.
@@ -242,15 +244,10 @@ func (r *reviewModal) nextScope(m *Model) {
 	}
 }
 
-// sync asks again for a review diffLoaded moved, since a fact cannot send, and
-// sizes the editor where it is laid out, so typing wraps at the width shown.
+// sync sizes the editor where it is laid out, so typing wraps at the width shown.
 func (r *reviewModal) sync(m *Model) {
 	if e := r.edit; e != nil {
 		e.input.SetWidth(max(8, m.reviewTextWidth()-2))
-	}
-	if r.reload {
-		r.reload = false
-		r.load(m, r.scope)
 	}
 }
 
@@ -371,7 +368,8 @@ func (m *Model) diffLoaded(v event.DiffLoaded) {
 	if r.stepBack && r.scope == event.ScopeRequest && len(r.files) == 0 && r.err == "" {
 		// The last request may only have answered a question, so the one before is meant.
 		if prev := m.reviewableBefore(r.request); prev != nil {
-			r.request, r.reload = prev, true
+			r.request = prev
+			r.load(m, r.scope)
 			return
 		}
 	}

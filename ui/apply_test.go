@@ -682,3 +682,14 @@ func TestWriteFile_ANewFileIsShownAsADiff(t *testing.T) {
 	assert.Equal(t, "created notes.md, 2 lines\n", ended("created notes.md, 2 lines\n", 1).rows()[0].text(),
 		"a failure is shown as it came")
 }
+
+// Restore starts from nothing, so a replay never keeps what was on screen, even
+// when the session it replays is the one already there.
+func TestRestore_StartsFromNothing(t *testing.T) {
+	_, turn := oneTurn("go", "go vet ./...", "ok\n")
+	records := asRecords(append([]event.Event{event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Model: "m"}}, turn...))
+	once := New(t.Context(), event.New(), SessionInfo{}).Restore(records)
+	require.Len(t, once.blocks, 1)
+	twice := once.Restore(records)
+	assert.Len(t, twice.blocks, 1, "the replay was added to what was there")
+}
