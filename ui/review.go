@@ -449,6 +449,8 @@ func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m.stepReview(map[string]int{"left": -1, "right": 1}[key])
 	case "t":
 		return m.startTriage()
+	case ">", "<":
+		m.jumpComment(map[string]int{">": 1, "<": -1}[key])
 	}
 	return m, nil
 }
@@ -977,28 +979,15 @@ type triageState struct {
 // startTriage goes through the reviewer's comments on lines one at a time, in
 // the order of the files and their lines, the way a human curates a review.
 func (m Model) startTriage() (Model, tea.Cmd) {
-	rec := m.reviewByID(m.review.id)
-	var queue []*event.ReviewComment
-	if rec != nil {
-		for i := range rec.comments {
-			if c := &rec.comments[i]; c.Author != "" && c.Path != "" && c.ReplyTo == uuid.Nil {
-				queue = append(queue, c)
-			}
+	t := &triageState{}
+	for _, c := range m.lineComments() {
+		if c.Author != "" {
+			t.queue = append(t.queue, c.ID)
 		}
 	}
-	if len(queue) == 0 {
+	if len(t.queue) == 0 {
 		m.noteErr("no reviewer comments to go through")
 		return m, nil
-	}
-	order := func(path string) int {
-		return slices.IndexFunc(m.review.files, func(f event.FileDiff) bool { return f.Path == path })
-	}
-	slices.SortStableFunc(queue, func(a, b *event.ReviewComment) int {
-		return cmp.Or(cmp.Compare(order(a.Path), order(b.Path)), cmp.Compare(a.Start, b.Start))
-	})
-	t := &triageState{}
-	for _, c := range queue {
-		t.queue = append(t.queue, c.ID)
 	}
 	m.review.triage = t
 	m.focusComment(t.queue[0])
@@ -1060,4 +1049,72 @@ func (m *Model) focusComment(id uuid.UUID) {
 			return
 		}
 	}
+}
+
+// lineComments is the open review's comments on lines, in file then line
+// order: what > and < step through. Replies ride with their comment.
+func (m Model) lineComments() []*event.ReviewComment {
+	rec := m.reviewByID(m.review.id)
+	if rec == nil {
+		return nil
+	}
+	var out []*event.ReviewComment
+	for i := range rec.comments {
+		if c := &rec.comments[i]; c.Path != "" && c.ReplyTo == uuid.Nil {
+			out = append(out, c)
+		}
+	}
+	order := func(path string) int {
+		return slices.IndexFunc(m.review.files, func(f event.FileDiff) bool { return f.Path == path })
+	}
+	slices.SortStableFunc(out, func(a, b *event.ReviewComment) int {
+		return cmp.Or(cmp.Compare(order(a.Path), order(b.Path)), cmp.Compare(a.End, b.End))
+	})
+	return out
+}
+
+// jumpComment moves to the next comment in direction d, across files: from a
+// comment to its neighbour, else to the nearest past the cursor.
+func (m *Model) jumpComment(d int) {
+	comments := m.lineComments()
+	if len(comments) == 0 {
+		m.noteErr("no comments on lines yet: c adds one")
+		return
+	}
+	r := &m.review
+	order := func(path string) int {
+		return slices.IndexFunc(r.files, func(f event.FileDiff) bool { return f.Path == path })
+	}
+	file, line, on := r.file, 0, -1
+	if rows := m.reviewRows(); r.line < len(rows) {
+		row := rows[r.line]
+		switch {
+		case row.comment != nil:
+			on = slices.IndexFunc(comments, func(c *event.ReviewComment) bool {
+				return c.ID == row.comment.ID || c.ID == row.comment.ReplyTo
+			})
+		case row.line >= 0:
+			l := r.files[r.file].Hunks[row.hunk].Lines[row.line]
+			line = max(l.New, l.Old)
+		}
+	}
+	next := on + d
+	if on < 0 {
+		// Not on a comment: the first one past the cursor that way.
+		next = -1
+		for i, c := range comments {
+			at := cmp.Or(cmp.Compare(order(c.Path), file), cmp.Compare(c.End, line))
+			if d > 0 && at > 0 && next < 0 {
+				next = i
+			}
+			if d < 0 && at < 0 {
+				next = i
+			}
+		}
+	}
+	if next < 0 || next >= len(comments) {
+		m.noteOK("no more comments that way")
+		return
+	}
+	m.focusComment(comments[next].ID)
 }

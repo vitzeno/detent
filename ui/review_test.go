@@ -811,6 +811,47 @@ func TestReview_TheReviewersContextIsOfTheWholeWindow(t *testing.T) {
 	assert.Equal(t, 50, k.m.agentContext(k.m.agents[agent]))
 }
 
+// > and < step through the comments on lines across files, in file and line
+// order, from wherever the cursor is, and say when there are no more.
+func TestReview_ArrowsJumpBetweenComments(t *testing.T) {
+	k := loadedReview(t)
+	id := k.m.review.id
+	add := func(path string, line int) uuid.UUID {
+		c := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Path: path, Side: "new", Start: line, End: line, Body: "x"}
+		k.m.apply(event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: c})
+		return c.ID
+	}
+	readme := add("README.md", 1)
+	far := add("ui/facts.go", 40)
+	near := add("ui/facts.go", 10)
+	at := func() uuid.UUID {
+		row := k.m.reviewRows()[k.m.review.line]
+		require.NotNil(t, row.comment, "the cursor is on a comment")
+		return row.comment.ID
+	}
+
+	for _, want := range []uuid.UUID{near, far, readme} {
+		k.press(t, ">")
+		assert.Equal(t, want, at())
+	}
+	k.press(t, ">")
+	assert.Equal(t, readme, at(), "nothing after the last")
+	assert.Contains(t, k.m.notice.text, "no more comments")
+	k.press(t, "<")
+	assert.Equal(t, far, at(), "and back across files")
+	assert.Equal(t, 0, k.m.review.file)
+
+	k.press(t, "p")
+	for i, row := range k.m.reviewRows() {
+		if row.line >= 0 && row.comment == nil && k.m.review.files[0].Hunks[row.hunk].Lines[row.line].New == 40 {
+			k.m.review.line = i
+		}
+	}
+	require.Nil(t, k.m.reviewRows()[k.m.review.line].comment, "on line 40 itself")
+	k.press(t, "<")
+	assert.Equal(t, near, at(), "from a line, the nearest comment before it")
+}
+
 // Closing the modal leaves the reviewer working: its comments still land on
 // the review, and its row counts them.
 func TestReview_TheModalClosesWhileTheReviewerWorks(t *testing.T) {

@@ -194,9 +194,9 @@ func (m Model) reviewKeys() string {
 		if r.deleting == rows[r.line].comment.ID {
 			return "x again deletes it · any other key keeps it"
 		}
-		return "c reply · e edit · x delete · t triage · ctrl+s send · esc back"
+		return "c reply · e edit · x delete · </> comments · t triage · ctrl+s send · esc back"
 	}
-	return "c comment · v range · ]/[ hunk · n/p file · r reviewer · t triage · ctrl+s send · esc back"
+	return "c comment · v range · ]/[ hunk · </> comments · n/p file · r reviewer · t triage · ctrl+s send · esc back"
 }
 
 // reviewFileLines lists each changed file with what happened to it.
