@@ -139,8 +139,6 @@ func (m Model) undoHints() []hint {
 	return []hint{does(keep, k.no, k.enter), does("revert your files too", k.yes), does("cancel", k.esc)}
 }
 
-// split separates what a checkpoint covers from what it does not.
-// Prose is neither: nothing ran.
 // withAgents is a request's rows and its subagents', whose calls it undoes too.
 func (m Model) withAgents(b *turnBlock) []*historyRow {
 	rows := slices.Clone(b.rows)
@@ -152,6 +150,8 @@ func (m Model) withAgents(b *turnBlock) []*historyRow {
 	return rows
 }
 
+// split separates what a checkpoint covers from what it does not.
+// Prose is neither: nothing ran.
 func split(rows []*historyRow) (reversible, standing []*historyRow) {
 	for _, r := range rows {
 		switch {

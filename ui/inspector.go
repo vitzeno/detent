@@ -13,9 +13,8 @@ import (
 	"github.com/vitzeno/detent/termsafe"
 )
 
-// The inspector: one subagent's work laid over the panes, the way the
-// finder is. Its question can be answered here, with every guard the
-// approval box has: the settle and the whole command read.
+// The inspector: one subagent's work over the panes. Its question is answered
+// here with every guard the approval box has, the settle and the whole command read.
 
 // inspectorModal is the subagent being looked into and where in its work.
 type inspectorModal struct {
