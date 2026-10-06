@@ -228,10 +228,10 @@ func TestApproval_AChildsQuestionTakesNoKeys(t *testing.T) {
 
 func TestInspector_OpensOnTheBlockedCall(t *testing.T) {
 	k := inspecting(t)
-	assert.Equal(t, modeInspector, k.m.mode)
-	require.NotNil(t, k.m.askOf(k.m.inspectorRow()))
-	assert.Contains(t, ansi.Strip(k.m.inspectorBox()), "! blocked")
-	assert.Contains(t, ansi.Strip(k.m.inspectorBox()), "y run · n decline")
+	assert.NotNil(t, k.insp())
+	require.NotNil(t, k.m.askOf(k.insp().row(k.m)))
+	assert.Contains(t, ansi.Strip(k.insp().box(k.m)), "! blocked")
+	assert.Contains(t, ansi.Strip(k.insp().box(k.m)), "y run · n decline")
 	frame := strings.Split(k.m.View().Content, "\n")
 	assert.Len(t, frame, k.m.layout.height, "the frame fills the screen and no more")
 }
@@ -242,7 +242,7 @@ func TestInspector_OpensOnTheReportWhenDone(t *testing.T) {
 	k.m.apply(event.AgentEnded{Agent: sp.agent, Reason: event.AgentDone})
 	k.m.apply(event.ToolCallEnded{ToolCall: sp.spawn, Result: event.Result{Stdout: "the report"}})
 	openAgents(t, k)
-	assert.Equal(t, sp.spawn, k.m.inspectorRow().id)
+	assert.Equal(t, sp.spawn, k.insp().row(k.m).id)
 }
 
 // Answered in the inspector, a question keeps the box's guards: the settle,
@@ -252,17 +252,17 @@ func TestInspector_AnswersWithTheBoxsGuards(t *testing.T) {
 	k.press(t, "y")
 	k.noIntent(t)
 
-	k.m.insp.shownAt = time.Now().Add(-2 * time.Hour)
+	k.insp().shownAt = time.Now().Add(-2 * time.Hour)
 	k.press(t, "y")
 	got, ok := k.intent(t).(event.ResolveApproval)
 	require.True(t, ok)
 	assert.True(t, got.Approved)
-	assert.Nil(t, k.m.askOf(k.m.inspectorRow()), "an answered question leaves the agent unblocked")
+	assert.Nil(t, k.m.askOf(k.insp().row(k.m)), "an answered question leaves the agent unblocked")
 }
 
 func TestInspector_ATallCommandMustBeReadFirst(t *testing.T) {
 	k := inspecting(t, tallCommand("rm -rf ~/important"))
-	k.m.insp.shownAt = time.Now().Add(-2 * time.Hour)
+	k.insp().shownAt = time.Now().Add(-2 * time.Hour)
 	k.press(t, "y")
 	k.noIntent(t)
 	assert.Contains(t, k.m.notice.text, "read to the end")
@@ -271,7 +271,7 @@ func TestInspector_ATallCommandMustBeReadFirst(t *testing.T) {
 	for range 100 {
 		k.press(t, "pgdown")
 	}
-	assert.Contains(t, ansi.Strip(k.m.inspectorBox()), "rm -rf ~/important")
+	assert.Contains(t, ansi.Strip(k.insp().box(k.m)), "rm -rf ~/important")
 	k.press(t, "y")
 	assert.IsType(t, event.ResolveApproval{}, k.intent(t))
 }
@@ -281,7 +281,8 @@ func TestInspector_ATallCommandMustBeReadFirst(t *testing.T) {
 func TestInspector_ARootQuestionWaitsUntilItCloses(t *testing.T) {
 	k := inspecting(t)
 	k.m.apply(asked(uuid.Must(uuid.NewV7()), "rm -rf build"))
-	assert.Equal(t, modeInspector, k.m.mode, "the question did not take the screen")
+	assert.Equal(t, modeModal, k.m.mode, "the question did not take the screen")
+	assert.NotNil(t, k.insp())
 	k.press(t, "n")
 	assert.NotNil(t, k.m.asking(), "n in the inspector answered the root's question")
 
@@ -318,17 +319,17 @@ func TestSlash_AgentsOpensTheInspector(t *testing.T) {
 	first := spawnIn(&k.m, "first")
 	second := spawnAlso(&k.m, first.turn, "second")
 	k.m, _ = k.m.showAgents("/agents")
-	assert.Equal(t, second.agent, k.m.insp.agent.id, "the newest when none waits")
+	assert.Equal(t, second.agent, k.insp().agent.id, "the newest when none waits")
 
-	k.m, _ = k.m.closeInspector()
+	k.m.closeModal(focusInput)
 	childAsks(&k.m, first, "cat x")
 	k.m, _ = k.m.showAgents("/agents")
-	assert.Equal(t, first.agent, k.m.insp.agent.id, "one waiting on the human first")
+	assert.Equal(t, first.agent, k.insp().agent.id, "one waiting on the human first")
 
-	k.m, _ = k.m.closeInspector()
+	k.m.closeModal(focusInput)
 	k.m, _ = k.m.showAgents("/agents second")
-	assert.Equal(t, second.agent, k.m.insp.agent.id)
-	k.m, _ = k.m.closeInspector()
+	assert.Equal(t, second.agent, k.insp().agent.id)
+	k.m.closeModal(focusInput)
 	k.m, _ = k.m.showAgents("/agents nobody")
 	assert.Contains(t, k.m.notice.text, "no subagent named nobody")
 }
@@ -354,16 +355,16 @@ func TestSlash_AgentsBrowsesAResumedSessionsWork(t *testing.T) {
 	k.m.sizeViewport()
 
 	k.m, _ = k.m.showAgents("/agents")
-	require.Equal(t, modeInspector, k.m.mode)
-	box := ansi.Strip(k.m.inspectorBox())
+	require.NotNil(t, k.insp())
+	box := ansi.Strip(k.insp().box(k.m))
 	assert.Contains(t, box, "login is in auth.go:12", "it opens on the report")
 	k.press(t, "up")
-	assert.Contains(t, ansi.Strip(k.m.inspectorBox()), "auth.go:12: func login", "and every call is there")
+	assert.Contains(t, ansi.Strip(k.insp().box(k.m)), "auth.go:12: func login", "and every call is there")
 }
 
 func TestInspector_EscClosesAndAnswersNothing(t *testing.T) {
 	k := inspecting(t)
-	k.m.insp.shownAt = time.Now().Add(-2 * time.Hour)
+	k.insp().shownAt = time.Now().Add(-2 * time.Hour)
 	k.press(t, "esc")
 	assert.Equal(t, modeInput, k.m.mode)
 	k.noIntent(t)
@@ -375,13 +376,13 @@ func TestInspector_ArrowsMoveBetweenAgentsInSpawnOrder(t *testing.T) {
 	first := spawnIn(&k.m, "first")
 	second := spawnAlso(&k.m, first.turn, "second")
 	openAgents(t, k)
-	assert.Equal(t, second.agent, k.m.insp.agent.id, "a opens on the newest")
+	assert.Equal(t, second.agent, k.insp().agent.id, "a opens on the newest")
 	k.press(t, "left")
-	assert.Equal(t, first.agent, k.m.insp.agent.id)
+	assert.Equal(t, first.agent, k.insp().agent.id)
 	k.press(t, "left")
-	assert.Equal(t, first.agent, k.m.insp.agent.id, "the first stays the first")
+	assert.Equal(t, first.agent, k.insp().agent.id, "the first stays the first")
 	k.press(t, "right")
-	assert.Equal(t, second.agent, k.m.insp.agent.id)
+	assert.Equal(t, second.agent, k.insp().agent.id)
 }
 
 func TestInspector_StopKeyStopsThisAgent(t *testing.T) {
@@ -389,7 +390,7 @@ func TestInspector_StopKeyStopsThisAgent(t *testing.T) {
 	k.press(t, "x")
 	k.noIntent(t)
 	k.press(t, "x")
-	assert.Equal(t, event.StopAgent{Agent: k.m.insp.agent.id}, k.intentOf(t, event.StopAgentKind))
+	assert.Equal(t, event.StopAgent{Agent: k.insp().agent.id}, k.intentOf(t, event.StopAgentKind))
 }
 
 // A stopped agent still writes its report, so until it ends it says a stop
@@ -403,12 +404,12 @@ func TestInspector_AStopShowsUntilTheAgentEnds(t *testing.T) {
 	k.press(t, "x")
 	k.intentOf(t, event.StopAgentKind)
 
-	assert.Contains(t, ansi.Strip(k.m.inspectorBox()), "stopping · writing its report")
+	assert.Contains(t, ansi.Strip(k.insp().box(k.m)), "stopping · writing its report")
 	assert.Contains(t, ansi.Strip(strings.Join(k.m.pinnedLines(), "\n")), "stopping")
 
 	k.m.apply(event.AgentEnded{Agent: sp.agent, Reason: event.AgentStopped})
-	assert.NotContains(t, ansi.Strip(k.m.inspectorBox()), "stopping ·")
-	assert.Contains(t, ansi.Strip(k.m.inspectorBox()), "stopped")
+	assert.NotContains(t, ansi.Strip(k.insp().box(k.m)), "stopping ·")
+	assert.Contains(t, ansi.Strip(k.insp().box(k.m)), "stopped")
 }
 
 func TestInspector_DefusesWhatTheChildWrote(t *testing.T) {
@@ -417,7 +418,7 @@ func TestInspector_DefusesWhatTheChildWrote(t *testing.T) {
 	k.m.apply(event.ModelText{Turn: sp.turn, Text: "look\x1b]52;c;cm0gLXJmIH4=\x07 here", Agent: sp.agent})
 	openAgents(t, k)
 	k.press(t, "down")
-	assert.NotContains(t, k.m.inspectorBox(), "\x1b]52", "an escape the child wrote reached the terminal")
+	assert.NotContains(t, k.insp().box(k.m), "\x1b]52", "an escape the child wrote reached the terminal")
 }
 
 func TestAgentsBlock_OrdersBlockedFirstAndCapsRows(t *testing.T) {
@@ -484,8 +485,8 @@ func TestAgents_AKeyOpensTheInspector(t *testing.T) {
 		k.m.nav.focus = pane
 		k.m.prompt.Blur()
 		k.press(t, "a")
-		assert.Equal(t, modeInspector, k.m.mode, "from pane %d", pane)
-		assert.Equal(t, sp.agent, k.m.insp.agent.id)
+		assert.NotNil(t, k.insp(), "from pane %d", pane)
+		assert.Equal(t, sp.agent, k.insp().agent.id)
 	}
 }
 
@@ -762,6 +763,9 @@ func childAsks(m *Model, sp spawn, cmd string) {
 	m.apply(event.ApprovalAsked{ToolCall: call, Tool: "bash", Args: args, Rationale: "regex: drop column", Agent: sp.agent})
 }
 
+// insp is the open inspector, nil when it is not.
+func (k *keyed) insp() *inspectorModal { return modalAs[*inspectorModal](k.m) }
+
 // openAgents opens the inspector with a, from history.
 func openAgents(t *testing.T, k *keyed) {
 	t.Helper()
@@ -769,7 +773,7 @@ func openAgents(t *testing.T, k *keyed) {
 	k.m.prompt.Blur()
 	k.m.sizeViewport()
 	k.press(t, "a")
-	require.Equal(t, modeInspector, k.m.mode)
+	require.NotNil(t, k.insp())
 }
 
 // queued is a Turn with a question per command, the first settled and up. A

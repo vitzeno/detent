@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"time"
-
 	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
@@ -15,15 +13,14 @@ import (
 type mode int
 
 const (
-	modeInput     mode = iota
-	modeConfirm        // a dangerous call is waiting on an answer
-	modeBound          // the engine hit its step bound and is asking
-	modeUndo           // asks before reverting the human's own files
-	modeForget         // asks before deleting a stored session
-	modeFinder         // the finder holds every key until it jumps or closes
-	modeInspector      // one subagent's work, over the panes, until esc
-	modeReview         // a request's changes to the human's files, over the panes, until esc
-	modeModal          // the modal holds every key until it closes
+	modeInput   mode = iota
+	modeConfirm      // a dangerous call is waiting on an answer
+	modeBound        // the engine hit its step bound and is asking
+	modeUndo         // asks before reverting the human's own files
+	modeForget       // asks before deleting a stored session
+	modeFinder       // the finder holds every key until it jumps or closes
+	modeReview       // a request's changes to the human's files, over the panes, until esc
+	modeModal        // the modal holds every key until it closes
 )
 
 // focusPane is which zone the arrow keys act in.
@@ -83,22 +80,6 @@ type finderState struct {
 	// scroll moves the preview from where it centres on the match.
 	scroll int
 	saved  navState
-}
-
-// inspectorState is the subagent being looked into and where in its work.
-type inspectorState struct {
-	agent  *agentState
-	cursor int
-	// output is the left pane's scroll, and outputFocused that arrows move it.
-	output        int
-	outputFocused bool
-	// shown is the question on screen and when it appeared, so a key typed
-	// before it did is not an answer, and seenEnd whether all of it was read.
-	shown   uuid.UUID
-	shownAt time.Time
-	seenEnd bool
-	// back is the pane it was opened from, which esc returns to.
-	back focusPane
 }
 
 // reviewState is the review modal: one request's changes, the file selected

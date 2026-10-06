@@ -56,9 +56,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.mode == modeFinder {
 		return m.finderKey(msg)
 	}
-	if m.mode == modeInspector {
-		return m.inspectorKey(msg)
-	}
 	if m.modal != nil {
 		cmd := m.modal.key(&m, msg)
 		return m, cmd

@@ -226,8 +226,6 @@ func (m Model) statusHint() string {
 		k := keymap.finder
 		return barLine(does("closes", k.close), does("jump", k.jump), does("kind", k.kind),
 			does("move", k.move.up, k.move.down))
-	case modeInspector:
-		return barLine(does("back", keymap.inspector.close), note("the agent's keys are in the box"))
 	case modeModal:
 		return m.modal.hint(m)
 	case modeReview:

@@ -83,14 +83,14 @@ func TestTopAndEnd_Inspector(t *testing.T) {
 	k := inspecting(t)
 	for range 3 {
 		k.m.apply(event.ToolCallProposed{ToolCall: uuid.Must(uuid.NewV7()), Tool: "bash",
-			Args: map[string]any{"command": "ls"}, Agent: k.m.insp.agent.id})
+			Args: map[string]any{"command": "ls"}, Agent: k.insp().agent.id})
 	}
-	rows := k.m.inspectorRows(k.m.insp.agent)
+	rows := k.m.inspectorRows(k.insp().agent)
 	require.Greater(t, len(rows), 1)
 	k.press(t, "G")
-	assert.Equal(t, len(rows)-1, k.m.insp.cursor)
+	assert.Equal(t, len(rows)-1, k.insp().cursor)
 	k.press(t, "g")
-	assert.Zero(t, k.m.insp.cursor)
+	assert.Zero(t, k.insp().cursor)
 }
 
 // In the list g and G pick the first and last session, and in the preview they

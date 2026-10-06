@@ -17,33 +17,40 @@ import (
 // finder is. Its question can be answered here, with every guard the
 // approval box has: the settle and the whole command read.
 
+// inspectorModal is the subagent being looked into and where in its work.
+type inspectorModal struct {
+	agent  *agentState
+	cursor int
+	// output is the left pane's scroll, and outputFocused that arrows move it.
+	output        int
+	outputFocused bool
+	// shown is the question on screen and when it appeared, so a key typed
+	// before it did is not an answer, and seenEnd whether all of it was read.
+	shown   uuid.UUID
+	shownAt time.Time
+	seenEnd bool
+	// back is the pane it was opened from, which esc returns to.
+	back focusPane
+}
+
 // openInspector shows a's work, on its waiting call when it has one, else
 // on its report once done, else on its newest row.
 func (m Model) openInspector(a *agentState) (Model, tea.Cmd) {
 	if a == nil {
 		return m, nil
 	}
-	m.insp = inspectorState{agent: a, back: m.nav.focus}
+	in := &inspectorModal{agent: a, back: m.nav.focus}
+	// Stepping to another agent keeps the pane the first was opened from.
+	if was := modalAs[*inspectorModal](m); was != nil {
+		in.back = was.back
+	}
 	rows := m.inspectorRows(a)
-	m.insp.cursor = len(rows) - 1
+	in.cursor = len(rows) - 1
 	if i := slices.IndexFunc(rows, func(r *historyRow) bool { return m.askOf(r) != nil }); i >= 0 {
-		m.insp.cursor = i
+		in.cursor = i
 	}
-	m.mode = modeInspector
-	m.syncInspector()
-	return m, nil
-}
-
-// closeInspector returns to the pane it was opened from, and puts up
-// whatever question waited for it to close.
-func (m Model) closeInspector() (Model, tea.Cmd) {
-	back := m.insp.back
-	m.insp = inspectorState{}
-	m.backToInput()
-	if m.mode == modeInput && back != focusInput {
-		m.nav.focus = back
-		m.prompt.Blur()
-	}
+	m.openModal(in)
+	in.sync(&m)
 	return m, nil
 }
 
@@ -76,73 +83,70 @@ func (m Model) showAgents(input string) (Model, tea.Cmd) {
 	return m.openInspector(a)
 }
 
-// inspectorKey owns every key while the inspector is open.
-func (m Model) inspectorKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	rows := m.inspectorRows(m.insp.agent)
+func (in *inspectorModal) key(m *Model, msg tea.KeyPressMsg) tea.Cmd {
+	rows := m.inspectorRows(in.agent)
 	k := keymap.inspector
 	switch {
 	case key.Matches(msg, k.close):
-		return m.closeInspector()
+		m.closeModal(in.back)
+		return nil
 	case key.Matches(msg, k.pane):
-		m.insp.outputFocused = !m.insp.outputFocused
+		in.outputFocused = !in.outputFocused
 	case key.Matches(msg, k.move.pageUp, k.move.pageDown):
 		d, _ := k.move.delta(msg, m.modalPaneHeight())
-		m.scrollInspector(d)
+		in.scrollBy(*m, d)
 	case key.Matches(msg, k.prevAgent):
-		return m.nextAgent(false)
+		in.step(m, -1)
 	case key.Matches(msg, k.nextAgent):
-		return m.nextAgent(true)
+		in.step(m, 1)
 	case key.Matches(msg, k.stop):
-		return m.stopAgent(m.insp.agent)
+		*m, _ = m.stopAgent(in.agent)
 	case key.Matches(msg, k.yes):
-		return m.answerInInspector(true)
+		in.answer(m, true)
 	case key.Matches(msg, k.no):
-		return m.answerInInspector(false)
+		in.answer(m, false)
 	default:
 		d, ok := k.move.delta(msg, 0)
 		switch {
 		case !ok:
-		case m.insp.outputFocused:
-			m.scrollInspector(d)
+		case in.outputFocused:
+			in.scrollBy(*m, d)
 		default:
-			m.insp.cursor = min(max(m.insp.cursor+d, 0), len(rows)-1)
-			m.insp.output = 0
+			in.cursor = min(max(in.cursor+d, 0), len(rows)-1)
+			in.output = 0
 		}
 	}
-	m.syncInspector()
-	return m, nil
+	return nil
 }
 
-// nextAgent moves to the agent started before or after this one.
-func (m Model) nextAgent(forward bool) (Model, tea.Cmd) {
-	i := slices.Index(m.agentOrder, m.insp.agent)
-	if forward {
-		i++
-	} else {
-		i--
-	}
+func (in *inspectorModal) hint(Model) string {
+	return barLine(does("back", keymap.inspector.close), note("the agent's keys are in the box"))
+}
+
+// step moves to the agent started d before or after this one.
+func (in *inspectorModal) step(m *Model, d int) {
+	i := slices.Index(m.agentOrder, in.agent) + d
 	if i < 0 || i >= len(m.agentOrder) {
-		return m, nil
+		return
 	}
-	return m.openInspector(m.agentOrder[i])
+	*m, _ = m.openInspector(m.agentOrder[i])
 }
 
-// answerInInspector answers the selected row's question, once it has settled
-// and every line of its command has been on screen.
-func (m Model) answerInInspector(yes bool) (Model, tea.Cmd) {
-	q := m.askOf(m.inspectorRow())
-	if q == nil || time.Since(m.insp.shownAt) < questionSettle {
-		return m, nil
+// answer answers the selected row's question, once it has settled and every
+// line of its command has been on screen.
+func (in *inspectorModal) answer(m *Model, yes bool) {
+	q := m.askOf(in.row(*m))
+	if q == nil || time.Since(in.shownAt) < questionSettle {
+		return
 	}
-	if yes && !m.insp.seenEnd {
+	if yes && !in.seenEnd {
 		m.noteErr("read to the end of the command first: tab, then ↓ scrolls it")
-		return m, nil
+		return
 	}
 	call := q.ToolCall
 	m.unask(call)
-	m.syncInspector()
+	in.sync(m)
 	m.send(event.ResolveApproval{ToolCall: call, Approved: yes})
-	return m, nil
 }
 
 // stopAgent stops a subagent, asked twice so a stray key keeps its work.
@@ -174,13 +178,13 @@ func (m Model) inspectorRows(a *agentState) []*historyRow {
 	return rows
 }
 
-// inspectorRow is the selected row.
-func (m Model) inspectorRow() *historyRow {
-	rows := m.inspectorRows(m.insp.agent)
+// row is the selected row.
+func (in *inspectorModal) row(m Model) *historyRow {
+	rows := m.inspectorRows(in.agent)
 	if len(rows) == 0 {
 		return nil
 	}
-	return rows[min(max(m.insp.cursor, 0), len(rows)-1)]
+	return rows[min(max(in.cursor, 0), len(rows)-1)]
 }
 
 // askOf is the question a row's call is waiting on, nil for none.
@@ -195,33 +199,30 @@ func (m Model) askOf(r *historyRow) *event.ApprovalAsked {
 	return &m.childAsks[i]
 }
 
-// syncInspector notices a question coming on screen, which starts its settle
-// and its reading afresh, and whether all of it already fits.
-func (m *Model) syncInspector() {
-	if m.mode != modeInspector {
-		return
-	}
-	q := m.askOf(m.inspectorRow())
+// sync notices a question coming on screen, which starts its settle and its
+// reading afresh, and whether all of it already fits.
+func (in *inspectorModal) sync(m *Model) {
+	q := m.askOf(in.row(*m))
 	if q == nil {
-		m.insp.shown = uuid.Nil
+		in.shown = uuid.Nil
 		return
 	}
-	if q.ToolCall != m.insp.shown {
-		m.insp.shown, m.insp.shownAt, m.insp.seenEnd = q.ToolCall, time.Now(), false
-		m.insp.output = 0
+	if q.ToolCall != in.shown {
+		in.shown, in.shownAt, in.seenEnd = q.ToolCall, time.Now(), false
+		in.output = 0
 	}
-	if len(m.inspectorOutput()) <= m.modalPaneHeight() {
-		m.insp.seenEnd = true
+	if len(in.outputLines(*m)) <= m.modalPaneHeight() {
+		in.seenEnd = true
 	}
 }
 
-// scrollInspector moves the output pane, marking a question read once its
-// last line has been on screen.
-func (m *Model) scrollInspector(d int) {
-	lines, h := len(m.inspectorOutput()), m.modalPaneHeight()
-	m.insp.output = min(max(m.insp.output+d, 0), max(0, lines-h))
-	if m.insp.output+h >= lines {
-		m.insp.seenEnd = true
+// scrollBy moves the output pane, marking a question read once its last line
+// has been on screen.
+func (in *inspectorModal) scrollBy(m Model, d int) {
+	lines, h := len(in.outputLines(m)), m.modalPaneHeight()
+	in.output = min(max(in.output+d, 0), max(0, lines-h))
+	if in.output+h >= lines {
+		in.seenEnd = true
 	}
 }
 

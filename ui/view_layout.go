@@ -31,7 +31,7 @@ func (m *Model) sizeViewport() {
 	// input grows with what is typed.
 	var bottom int
 	switch m.mode {
-	case modeInput, modeFinder, modeInspector, modeModal, modeReview:
+	case modeInput, modeFinder, modeModal, modeReview:
 		bottom = m.prompt.Rows() + 2
 	case modeConfirm:
 		bottom = len(strings.Split(m.confirmBox(), "\n"))
@@ -55,7 +55,6 @@ func (m *Model) sizeViewport() {
 		e.input.SetWidth(max(8, m.reviewTextWidth()-2))
 	}
 	m.refreshViewport()
-	m.syncInspector()
 	if m.modal != nil {
 		m.modal.sync(m)
 	}

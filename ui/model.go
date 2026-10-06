@@ -55,7 +55,6 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	// agentOrder the same in the order they started.
 	agents     map[uuid.UUID]*agentState
 	agentOrder []*agentState
-	insp       inspectorState
 	// hist is the assembled history, behind a pointer so the copy of
 	// Model that View works on can still fill it.
 	hist *histCache

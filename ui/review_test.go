@@ -628,8 +628,8 @@ func TestReview_TheReviewerIsASubagentWhileItWorks(t *testing.T) {
 	k.m.nav.focus = focusHistory
 	k.m.prompt.Blur()
 	k.press(t, "a")
-	require.Equal(t, modeInspector, k.m.mode)
-	assert.Equal(t, agent, k.m.insp.agent.id)
+	require.NotNil(t, k.insp())
+	assert.Equal(t, agent, k.insp().agent.id)
 	k.press(t, "esc")
 
 	k.m.apply(event.AgentEnded{Agent: agent, Reason: event.AgentDone})
