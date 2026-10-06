@@ -25,6 +25,9 @@ Commands run on your machine, and anything flagged dangerous waits for you to ap
   <tr>
     <td colspan="2"><img src=".github/assets/sub-agents.png" alt="The inspector over a session: one subagent's output on the left and its own history of calls on the right, with the main history's finished subagents behind it"><br><sub><b>Subagents</b>: <code>a</code> opens one's work, <code>←</code>/<code>→</code> moves between them</sub></td>
   </tr>
+  <tr>
+    <td colspan="2"><img src=".github/assets/review_2.png" alt="The review modal over a session: the changed files on the left, the selected file's diff on the right with the reviewer's verdict above it and its comment under the line it is about"><br><sub><b>Review</b>: <code>/review</code> a request, your edits or the branch, comment yourself or let a reviewer</sub></td>
+  </tr>
 </table>
 
 ## Configuration
@@ -141,6 +144,16 @@ exit 0
 `ctrl+f` opens a fuzzy finder over everything in this session, press enter to jump to it in history.
 
 Pressing `ctrl+f` again narrows search to requests, commands or outputs
+
+## Reviews
+
+`/review` opens what the last request changed, files on the left and the diff on the right
+
+`s` switches between a request, the whole session, your own edits since and the branch against main
+
+`c` comments on a line or a `v` range and `ctrl+s` sends them to the agent as its next prompt
+
+With subagents on `r` starts a reviewer that reads the diff and comments as it goes, `t` then walks its comments to keep or drop each one
 
 ## Undoing
 
