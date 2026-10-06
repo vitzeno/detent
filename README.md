@@ -244,7 +244,7 @@ detent -resume "the sandbox bug"    # or one you named
 
 ## Generative Output (**Experimental**)
 
-Currently thirty widgets over nine parse kinds, including
+Currently thirty widgets over ten parse kinds, including
 gauges, histograms, box plots, gantt charts, braille scatter plots and
 heatmaps
 
