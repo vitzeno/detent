@@ -246,7 +246,7 @@ func TestWatch_RenameSaysWhetherItTook(t *testing.T) {
 	bus.Publish(event.RenameSession{Session: session, Name: store.ReservedName})
 	got = next(t)
 	assert.Equal(t, "error", got.Level)
-	assert.Contains(t, got.Text, "newest session")
+	assert.Contains(t, got.Text, "most recently used session")
 }
 
 // /new publishes the next session's SessionStarted, and from there records go
@@ -282,4 +282,39 @@ func TestWatch_ANewSessionLeavesTheOldOneWhole(t *testing.T) {
 	all, err := s.Sessions()
 	require.NoError(t, err)
 	assert.Len(t, all, 2, "both can be resumed")
+}
+
+// The resume picker previews another session from its records, and those
+// must not land in the session being recorded, or it would hold both.
+func TestWatch_LoadSessionAnswersWithRecordsItDoesNotStore(t *testing.T) {
+	s := open(t)
+	old, current := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	bus := event.New()
+	stop := store.Watch(bus, s, old)
+	turn := uuid.Must(uuid.NewV7())
+	bus.Publish(event.SessionStarted{Session: old, Model: "m"})
+	bus.Publish(event.TurnStarted{Turn: turn, N: 1, Prompt: "before"})
+	bus.Publish(event.SessionStarted{Session: current, Model: "m"})
+
+	loaded, unsub := bus.Subscribe(event.Only(event.SessionLoadedKind))
+	defer unsub()
+	bus.Publish(event.LoadSession{Session: old})
+	var got event.SessionLoaded
+	select {
+	case rec := <-loaded:
+		got = rec.Event.(event.SessionLoaded)
+	case <-time.After(3 * time.Second):
+		t.Fatal("a load went unanswered")
+	}
+	bus.Drain(3 * time.Second)
+	stop()
+
+	assert.Equal(t, old, got.Session)
+	assert.Empty(t, got.Err)
+	require.Len(t, got.Records, 2)
+	assert.Equal(t, turn, got.Records[1].Event.(event.TurnStarted).Turn)
+
+	kept, err := s.Replay(current)
+	require.NoError(t, err)
+	assert.Len(t, kept, 1, "only the header, not the answer")
 }

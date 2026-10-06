@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/google/uuid"
@@ -43,6 +44,48 @@ func (e *Engine) Restore(records []event.Record) {
 			}
 		}
 	})
+}
+
+// resume leaves this session as stored and continues another, as a
+// restart with -resume would but keeping the container and the servers.
+func (e *Engine) resume(id uuid.UUID) {
+	if e.sessions == nil {
+		e.notice("error", "sessions are not being recorded, so none can be resumed")
+		return
+	}
+	if id == e.session {
+		return
+	}
+	records, err := e.sessions.Replay(id)
+	if err == nil && len(records) == 0 {
+		err = fmt.Errorf("session %s has nothing recorded", id)
+	}
+	if err != nil {
+		e.notice("error", "could not resume: "+err.Error())
+		return
+	}
+	e.root.lock(func() { e.root.tr.reset() })
+	e.root.repeat.forget()
+	e.turns, e.settled = 0, ""
+	e.mu.Lock()
+	clear(e.past)
+	e.mu.Unlock()
+	e.Restore(records)
+	e.session = id
+	// Raised before the header, or its records land on ordinals already stored.
+	e.bus.Resume(Resumable(records))
+	open := e.leftOpen
+	e.leftOpen = openWork{}
+	e.started()
+	_, mode := e.runners.Select(event.UnknownRisk())
+	e.bus.Publish(event.SessionResumed{Session: id, Records: len(records), Sandbox: mode == "sandbox"})
+	// In the order a restart gives them: what was cut off, then what did not come back.
+	e.endLeftOpen(open)
+	if e.resumeNote != nil {
+		note := e.resumeNote(records)
+		e.appended(e.root, uuid.Nil, uuid.Nil, func() []event.Message { return e.root.tr.note(note) })
+	}
+	e.bus.Publish(e.measure(0))
 }
 
 // Resumable reports the last ordinal a session reached, which is what

@@ -81,6 +81,17 @@ type SessionsListed struct {
 
 func (SessionsListed) Kind() Kind { return SessionsListedKind }
 
+// SessionLoaded answers LoadSession with a stored session's records, or
+// why there are none. Never stored itself, so the records carry no key.
+type SessionLoaded struct {
+	fact
+	Session uuid.UUID `json:"Session"`
+	Records []Record  `json:"-"`
+	Err     string    `json:"Err"`
+}
+
+func (SessionLoaded) Kind() Kind { return SessionLoadedKind }
+
 // SessionSummary is one resumable session, as a listing shows it.
 // Started is UTC, since a time crossing the wire keeps only its instant.
 type SessionSummary struct {
@@ -88,8 +99,10 @@ type SessionSummary struct {
 	// Name is what a human called it, "" until they do.
 	Name    string    `json:"Name"`
 	Started time.Time `json:"Started"`
-	Model   string    `json:"Model"`
-	Events  int       `json:"Events"`
+	// Used is when its newest record was written, which a listing is ordered by.
+	Used   time.Time `json:"Used"`
+	Model  string    `json:"Model"`
+	Events int       `json:"Events"`
 }
 
 // Notice is anything to say that is not about one tool call.

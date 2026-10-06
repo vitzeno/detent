@@ -16,10 +16,12 @@ const (
 	selectSession = `SELECT ordinal, at, kind, payload FROM events
 	  WHERE session = ? ORDER BY ordinal`
 
-	// The count comes off the events primary key rather than a scan.
-	selectSessions = `SELECT s.id, s.name, s.started, s.model, COUNT(e.ordinal)
+	// Both come off the events primary key rather than a scan: ordinals only
+	// grow, so a session's highest is when it was last used.
+	selectSessions = `SELECT s.id, s.name, s.started, s.model, COUNT(e.ordinal),
+	  COALESCE((SELECT at FROM events WHERE session = s.id ORDER BY ordinal DESC LIMIT 1), s.started) AS used
 	  FROM sessions s LEFT JOIN events e ON e.session = s.id
-	  GROUP BY s.id ORDER BY s.started DESC`
+	  GROUP BY s.id ORDER BY used DESC`
 
 	// The events go with it, since the foreign key cascades.
 	deleteSession = `DELETE FROM sessions WHERE id = ?`

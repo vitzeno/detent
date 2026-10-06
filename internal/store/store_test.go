@@ -100,12 +100,31 @@ func TestStore_AppendIsIdempotent(t *testing.T) {
 	assert.Len(t, got, 2)
 }
 
+// The one picked up most recently comes first, however long ago it began.
+func TestStore_ListsSessionsMostRecentlyUsedFirst(t *testing.T) {
+	s := open(t)
+	older, newer := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	require.NoError(t, s.Append(older, event.Record{Ordinal: 1,
+		At: time.UnixMilli(1_000), Event: event.SessionStarted{Session: older}}))
+	require.NoError(t, s.Append(newer, event.Record{Ordinal: 1,
+		At: time.UnixMilli(5_000), Event: event.SessionStarted{Session: newer}}))
+	require.NoError(t, s.Append(older, event.Record{Ordinal: 2,
+		At: time.UnixMilli(9_000), Event: event.Notice{Text: "resumed"}}))
+
+	got, err := s.Sessions()
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, older, got[0].ID, "used last, so first")
+	assert.Equal(t, time.UnixMilli(9_000).UTC(), got[0].Used)
+	assert.Equal(t, time.UnixMilli(1_000).UTC(), got[0].Started, "and it still says when it began")
+}
+
 func TestStore_ListsSessionsNewestFirst(t *testing.T) {
 	s := open(t)
 	older, newer := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	require.NoError(t, s.Append(older, event.Record{Ordinal: 1,
 		At: time.UnixMilli(1_000), Event: event.SessionStarted{Session: older, Model: "old-model"}}))
-	require.NoError(t, s.Append(older, rec(2, event.Notice{Text: "b"})))
+	require.NoError(t, s.Append(older, event.Record{Ordinal: 2, At: time.UnixMilli(2_000), Event: event.Notice{Text: "b"}}))
 	require.NoError(t, s.Append(newer, event.Record{Ordinal: 1,
 		At: time.UnixMilli(9_000), Event: event.SessionStarted{Session: newer, Model: "new-model"}}))
 
@@ -253,8 +272,8 @@ func TestRename_RefusesANameNobodyCouldUse(t *testing.T) {
 		name string
 		want string
 	}{
-		{"last", "newest session"},
-		{"LAST", "newest session"},
+		{"last", "most recently used session"},
+		{"LAST", "most recently used session"},
 		{uuid.Must(uuid.NewV7()).String(), "reads as a session id"},
 		{"   ", "cannot be blank"},
 	}

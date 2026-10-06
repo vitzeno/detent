@@ -66,6 +66,12 @@ func WithAssessor(a Assessor) Option {
 // snapshot never covers.
 func WithWorktree(w Worktreer) Option { return func(e *Engine) { e.worktreer = w } }
 
+// WithSessions lets ResumeSession continue a stored session, telling the
+// model what did not come back with note. Without it a resume is refused.
+func WithSessions(log SessionLog, note func([]event.Record) string) Option {
+	return func(e *Engine) { e.sessions, e.resumeNote = log, note }
+}
+
 // WithInvoker wires what answers a tool call with no command. Without one
 // those tool calls come back saying so, rather than running.
 func WithInvoker(in Invoker) Option { return func(e *Engine) { e.invoker = in } }

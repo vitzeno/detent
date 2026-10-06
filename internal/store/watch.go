@@ -51,6 +51,14 @@ func (s *Store) serve(bus *event.Bus, e event.Event) bool {
 			return true
 		}
 		bus.Publish(event.Notice{Level: "info", Text: "named " + v.Name})
+	case event.LoadSession:
+		records, err := s.Replay(v.Session)
+		loaded := event.SessionLoaded{Session: v.Session, Records: records}
+		if err != nil {
+			loaded.Err = err.Error()
+		}
+		bus.Publish(loaded)
+		return true
 	case event.ListSessions:
 	default:
 		return false
@@ -64,13 +72,13 @@ func (s *Store) serve(bus *event.Bus, e event.Event) bool {
 	return true
 }
 
-// wanted is every fact bar live output, which CallEnded carries whole,
-// plus the questions this package answers.
+// wanted is every fact bar live output, which CallEnded carries whole, and
+// another session's records, plus the questions this package answers.
 func wanted(e event.Event) bool {
 	switch e.Kind() {
-	case event.OutputChunkKind:
+	case event.OutputChunkKind, event.SessionLoadedKind:
 		return false
-	case event.ListSessionsKind, event.RenameSessionKind:
+	case event.ListSessionsKind, event.RenameSessionKind, event.LoadSessionKind:
 		return true
 	default:
 		return !e.Kind().IsIntent()

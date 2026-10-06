@@ -61,6 +61,7 @@ var codecs = map[Kind]func([]byte) (Event, error){
 	SessionResumedKind: codec[SessionResumed],
 	SessionResetKind:   codec[SessionReset],
 	SessionsListedKind: codec[SessionsListed],
+	SessionLoadedKind:  codec[SessionLoaded],
 	NoticeKind:         codec[Notice],
 
 	TurnStartedKind:     codec[TurnStarted],
@@ -106,9 +107,11 @@ var codecs = map[Kind]func([]byte) (Event, error){
 	RequestRollbackKind: codec[RequestRollback],
 	ResetSessionKind:    codec[ResetSession],
 	MeasureContextKind:  codec[MeasureContext],
+	ResumeSessionKind:   codec[ResumeSession],
 
 	ListSessionsKind:  codec[ListSessions],
 	RenameSessionKind: codec[RenameSession],
+	LoadSessionKind:   codec[LoadSession],
 	DeleteSessionKind: codec[DeleteSession],
 
 	RunCommandKind:    codec[RunCommand],

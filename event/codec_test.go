@@ -106,6 +106,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		UserCommandEnded{UserCommand: shell, Took: 8 * time.Millisecond, Result: Result{
 			ExitCode: 1, Stdout: "o", Stderr: "e", Truncated: true, Err: "x"}},
 		Notice{Level: "warn", Text: "careful"},
+		SessionLoaded{Session: turn, Err: "no such session"},
 		SessionsListed{Sessions: []SessionSummary{{ID: turn, Name: "named", Started: time.UnixMilli(1_700_000_000_000).UTC(), Model: "m", Events: 12}}},
 		ServersListed{Servers: []ServerSummary{
 			{Name: "github", Command: "docker", Tools: 12},
@@ -130,6 +131,8 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		DeleteSession{Session: turn},
 		RenameSession{Session: turn, Name: "the sandbox bug"},
 		ResetSession{},
+		ResumeSession{Session: turn},
+		LoadSession{Session: turn},
 		RunCommand{Text: "git status"},
 		CancelCommand{UserCommand: shell},
 		StopAgent{Agent: agent},

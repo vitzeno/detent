@@ -30,6 +30,7 @@ const (
 	SessionResumedKind Kind = "session.resumed"
 	SessionResetKind   Kind = "session.reset"
 	SessionsListedKind Kind = "sessions.listed"
+	SessionLoadedKind  Kind = "session.loaded"
 	NoticeKind         Kind = "notice"
 
 	TurnStartedKind     Kind = "turn.started"
@@ -79,10 +80,12 @@ const (
 	RequestRollbackKind Kind = "do.rollback"
 	ResetSessionKind    Kind = "do.reset"
 	MeasureContextKind  Kind = "do.measure_context"
+	ResumeSessionKind   Kind = "do.resume_session"
 
 	// The store's.
 	ListSessionsKind  Kind = "do.list_sessions"
 	RenameSessionKind Kind = "do.rename_session"
+	LoadSessionKind   Kind = "do.load_session"
 
 	// forget's.
 	DeleteSessionKind Kind = "do.delete_session"
@@ -106,7 +109,8 @@ var intents = map[Kind]bool{
 	SubmitPromptKind: true, NoteContextKind: true, ResolveApprovalKind: true,
 	AbortKind: true, SuggestFinishKind: true, ContinueKind: true,
 	RequestRollbackKind: true, ResetSessionKind: true, MeasureContextKind: true,
-	ListSessionsKind: true, RenameSessionKind: true, DeleteSessionKind: true,
+	ResumeSessionKind: true,
+	ListSessionsKind:  true, RenameSessionKind: true, LoadSessionKind: true, DeleteSessionKind: true,
 	RunCommandKind: true, CancelCommandKind: true, StopAgentKind: true,
 	ListServersKind: true, AuthorizeServerKind: true, OpenAuthKind: true,
 }

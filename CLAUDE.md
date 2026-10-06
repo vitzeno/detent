@@ -46,7 +46,7 @@ is done, 1 on an error, 3 at the step bound and 130 when
 aborted. Headless runs do not load MCP configuration or connect to MCP
 servers. MCP is available in the TUI.
 `-init` writes a starting config. `-sessions` lists what can be resumed and `-resume <id>` (or
-`-resume last`) continues one.
+`-resume last`) continues one, as `/resume` does in the TUI.
 
 Run a single package's tests: `go test ./internal/engine/...`
 Run a single test: `go test ./ui/ -run TestApply`
@@ -239,7 +239,7 @@ undo refuses before touching the sandbox or the files.
 
 ## Architecture
 
-**Everything is an event.** 32 facts and 18 intents are the entire
+**Everything is an event.** 33 facts and 20 intents are the entire
 interface between components. Facts are past tense, intents are
 imperative, and either may come from anyone: the engine publishes most
 facts, but a subscriber answering a question publishes one too. An extension
@@ -254,7 +254,7 @@ subscribers:
 | `ui` | draws the TUI | the engine still runs |
 | `internal/headless` | prints one Turn | the TUI still runs |
 | `logging` | the JSONL stream | nothing else notices |
-| `internal/store` | the SQLite log, answers `ListSessions` | resume stops, nothing else |
+| `internal/store` | the SQLite log, answers `ListSessions` and `LoadSession` | resume stops, nothing else |
 | `internal/judge` | scores a finished tool call, may `SuggestFinish` | rows lose their verdict |
 | `internal/viewgen` | composes the view for an output, and draws shipped and saved ones with no key | rows fall back to text |
 | `internal/mcp` | answers `ListServers`, signs in on `AuthorizeServer` | `/mcp` draws nothing, no server signs in |
@@ -390,8 +390,11 @@ adding a fat dependency fails with the transitive import named.
   session replays it rather than bringing back what the human threw away.
   `/new` starts another session under a new id: the engine publishes its
   `SessionStarted`, the store, log and `forget` follow it, and the old
-  session is left whole and resumable. `SessionReset` is only read from
-  sessions stored before that. A crash's end is a fact too: a
+  session is left whole and resumable. `/resume` continues a stored one the
+  same way (`WithSessions`), refused mid-request: the engine replays it,
+  raises the bus past its last ordinal so its records land after the stored
+  ones, and keeps the container and the servers. `SessionReset` is only read
+  from sessions stored before that. A crash's end is a fact too: a
   resumed session's `Run` ends whatever the old process left open (its
   Turn, tool calls and the human's command) with ordinary facts the store
   records, and tells the model its last request was cut off.
@@ -681,6 +684,13 @@ adding a fat dependency fails with the transitive import named.
   `!`, and is answered in the inspector with the box's guards, the settle
   and the whole command read.
 
+  **The finder, the inspector and the resume picker are modals**
+  (`view_modal.go`): a box over the dimmed panes sharing one frame, geometry
+  and two-pane body, each with its own `mode` and keys. `/resume` lists the
+  stored sessions beside the selected one's history, drawn by replaying its
+  records into a Model of its own, and enter replays them into this one once
+  the engine has moved onto that session.
+
   **A thing leaves `ui` when it stops needing Model.** That is why
   `island`, `layout`, `markdown`, `search`, `status`, `theme` and `welcome` are
   subpackages and nothing else is: they take values and return
@@ -759,8 +769,9 @@ adding a fat dependency fails with the transitive import named.
   parses the package to prove no type lacks a codec. `Watch` is the
   subscriber, wired beside `logging.Watch`. It skips `OutputChunk`
   because a replayed tool call has already finished and `ToolCallEnded` carries
-  the whole output. It also answers `ListSessions` over the bus, since
-  `ui` cannot import it to ask directly. Its pragmas (`foreign_keys`,
+  the whole output. It also answers `ListSessions` and `LoadSession` over the bus,
+  since `ui` cannot import it to ask directly, and never stores `SessionLoaded`,
+  another session's records. Its pragmas (`foreign_keys`,
   `busy_timeout`, WAL) are in the DSN and the pool holds one connection,
   because a pragma set by `Exec` reaches one pooled connection and a
   delete's cascade silently skipped the rest. WAL leaves `-wal` and

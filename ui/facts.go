@@ -45,9 +45,10 @@ func (m *Model) apply(ev event.Event) {
 	m.histRev++
 	switch v := ev.(type) {
 	case event.SessionStarted:
-		// Another id is /new: the old session stays stored, and history starts again.
+		// Another id is /new or /resume: the old session stays stored, and history starts again.
 		if m.run.Session != uuid.Nil && v.Session != m.run.Session {
 			m.clearHistory()
+			m.resumed(v)
 		}
 		m.run = v
 		m.skillCmds = skillCommands(v.Skills)
@@ -55,6 +56,9 @@ func (m *Model) apply(ev event.Event) {
 
 	case event.SessionsListed:
 		m.sessions = v.Sessions
+
+	case event.SessionLoaded:
+		m.loaded(v)
 
 	case event.ServersListed:
 		m.servers = v.Servers

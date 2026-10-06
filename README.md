@@ -224,7 +224,7 @@ can be replayed rather than reconstructed.
 
 ```sh
 detent -sessions                    # what can be resumed
-detent -resume last                 # continue the most recent
+detent -resume last                 # continue the most recently used
 detent -resume <id>                 # or a specific one
 detent -resume "the sandbox bug"    # or one you named
 ```

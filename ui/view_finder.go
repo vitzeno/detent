@@ -12,52 +12,21 @@ import (
 	"github.com/vitzeno/detent/ui/search"
 )
 
-// The finder's box: hits on the left, the selected one drawn on the right,
-// floated over the panes, which stay in view round it, dimmed.
+// The finder's box: hits on the left, the selected one drawn on the right.
 
-const (
-	// finderChrome is the box's lines that hold no hit: title, query, two
-	// rules and the key line.
-	finderChrome = 5
-	// A small terminal gives up the padding before the box gets this small.
-	finderMinWidth = 60
-	finderMinBody  = 4
-)
-
-// withOverlay floats the finder's or the inspector's box over base, with the
-// panes behind it dimmed.
-func (m Model) withOverlay(base string) string {
-	var box string
-	switch m.mode {
-	case modeFinder:
-		box = m.finderBox()
-	case modeInspector:
-		box = m.inspectorBox()
-	default:
-		return base
-	}
-	lines := strings.Split(base, "\n")
-	// The panes start under the session bar.
-	for i := 1; i <= m.finderArea() && i < len(lines); i++ {
-		lines[i] = styleFaint.Render(ansi.Strip(lines[i]))
-	}
-	x, y := m.finderPadding()
-	return lipgloss.NewCompositor(
-		lipgloss.NewLayer(strings.Join(lines, "\n")),
-		lipgloss.NewLayer(box).X(x).Y(1+y).Z(1),
-	).Render()
-}
+// finderChrome is the box's lines that hold no hit: title, query, two
+// rules and the key line.
+const finderChrome = 5
 
 func (m Model) finderBox() string {
-	inner := island.Inner(m.finderWidth())
+	inner := island.Inner(m.modalWidth())
 	rule := styleFaint.Render(strings.Repeat("─", inner))
 	next := finderKindNames[(m.finder.kind+1)%finderKind(len(finderKindNames))]
 	keys := "enter jump · ctrl+f " + next + " · ↑↓ move · ctrl+u/d scroll · esc back"
 
 	lines := []string{m.finderQueryLine(inner), rule}
 	lines = append(lines, m.finderBodyLines()...)
-	lines = append(lines, rule, styleFaint.Render(layout.Truncate(keys, inner)))
-	return island.Render(m.finderTitle(), palette.Accent, lines, m.finderWidth(), m.finderHeight()-2)
+	return m.modalBox(m.finderTitle(), append(lines, rule), keys)
 }
 
 func (m Model) finderTitle() string {
@@ -119,9 +88,9 @@ func (m Model) finderListLines(width, height int) []string {
 		}
 		return []string{styleFaint.Render("  " + msg)}
 	}
-	top := max(0, m.finder.cursor-height+1)
+	top, end := listWindow(len(m.finder.hits), m.finder.cursor, height)
 	var out []string
-	for i := top; i < min(top+height, len(m.finder.hits)); i++ {
+	for i := top; i < end; i++ {
 		h := m.finder.hits[i]
 		mark := "  "
 		if i == m.finder.cursor {
@@ -191,32 +160,11 @@ func (m Model) requestPreview(b *turnBlock, width int) []string {
 	return lines
 }
 
-// finderArea is the height of the panes the box floats over.
-func (m Model) finderArea() int { return m.nav.histHeight + islandOverhead }
-
-// finderPadding is an eighth of the width each side and a sixth of the
-// panes above and below, less when the box would get too small.
-func (m Model) finderPadding() (x, y int) {
-	x = min(m.layout.width/8, max(0, (m.layout.width-finderMinWidth)/2))
-	y = min(m.finderArea()/6, max(0, (m.finderArea()-2-finderChrome-finderMinBody)/2))
-	return x, y
-}
-
-func (m Model) finderWidth() int {
-	x, _ := m.finderPadding()
-	return max(minPaneWidth, m.layout.width-2*x)
-}
-
-func (m Model) finderHeight() int {
-	_, y := m.finderPadding()
-	return m.finderArea() - 2*y
-}
-
-func (m Model) finderBodyHeight() int { return max(1, m.finderHeight()-2-finderChrome) }
-func (m Model) finderListWidth() int  { return island.Inner(m.finderWidth()) * 2 / 5 }
+func (m Model) finderBodyHeight() int { return max(1, m.modalHeight()-2-finderChrome) }
+func (m Model) finderListWidth() int  { return island.Inner(m.modalWidth()) * 2 / 5 }
 
 func (m Model) finderPreviewWidth() int {
-	return max(1, island.Inner(m.finderWidth())-m.finderListWidth()-3)
+	return max(1, island.Inner(m.modalWidth())-m.finderListWidth()-3)
 }
 
 // previewStart puts the match a third of the way down, moved by scroll,

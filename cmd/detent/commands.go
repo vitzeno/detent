@@ -40,7 +40,7 @@ func listSessions() error {
 			name = s.Name
 		}
 		fmt.Printf("%s  %s  %-12s %s\n", s.ID,
-			s.Started.Local().Format("2006-01-02 15:04"),
+			s.Used.Local().Format("2006-01-02 15:04"),
 			fmt.Sprintf("%d events", s.Events), name)
 	}
 	return nil

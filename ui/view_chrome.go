@@ -226,6 +226,9 @@ func (m Model) statusHint() string {
 	if m.mode == modeInspector {
 		return "the agent's keys are in the box · [esc] back"
 	}
+	if m.mode == modeResume {
+		return "[enter] resume · [↑/↓] move · [esc] back"
+	}
 	if m.mode == modeUndo {
 		return m.undoKeys(" · ")
 	}

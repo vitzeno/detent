@@ -89,6 +89,9 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	undo      undoState
 	forget    forgetState
 	finder    finderState
+	resume    resumeState
+	// resuming is the session the picker asked for, replayed once it starts.
+	resuming *sessionPreview
 
 	// Counters for /context and /status, folded from the stream rather
 	// than read back from anywhere.
@@ -207,13 +210,15 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 		for _, e := range msg.events {
 			m.apply(e)
 		}
+		// A listing may have put another session under the picker's cursor.
+		load := m.loadSelected()
 		var cmd tea.Cmd
 		// Edge only: Tick carries the live tag, so re-arming restarts
 		// the chain and costs a frame.
 		if m.spinning() && !spinning {
 			cmd = m.spinner.Tick
 		}
-		return m, tea.Batch(cmd, nextFact(m.facts))
+		return m, tea.Batch(cmd, load, nextFact(m.facts))
 
 	case welcomeTickMsg:
 		if !m.showWelcome() {
@@ -401,7 +406,7 @@ func (m Model) settling() bool { return time.Since(m.askedAt) < questionSettle }
 // askingOwn is whether the human is in something they opened, which a fact
 // must not pull out from under them: a key typed there must never answer it.
 func (m Model) askingOwn() bool {
-	return m.mode == modeUndo || m.mode == modeForget || m.mode == modeFinder || m.mode == modeInspector
+	return m.mode == modeUndo || m.mode == modeForget || m.inModal()
 }
 
 // trackNewest keeps up with a new row only while following, so a human reading

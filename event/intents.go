@@ -77,6 +77,15 @@ type ResetSession struct{ fact }
 
 func (ResetSession) Kind() Kind { return ResetSessionKind }
 
+// ResumeSession leaves this session as stored and continues another, once
+// no request is running. The container keeps running, as for a reset.
+type ResumeSession struct {
+	fact
+	Session uuid.UUID `json:"Session"`
+}
+
+func (ResumeSession) Kind() Kind { return ResumeSessionKind }
+
 // MeasureContext asks the engine for a ContextMeasured now, rather than
 // after the next Step.
 type MeasureContext struct{ fact }
@@ -90,6 +99,15 @@ func (MeasureContext) Kind() Kind { return MeasureContextKind }
 type ListSessions struct{ fact }
 
 func (ListSessions) Kind() Kind { return ListSessionsKind }
+
+// LoadSession asks for a stored session's records, to look at before
+// resuming. Whatever holds the log answers with SessionLoaded.
+type LoadSession struct {
+	fact
+	Session uuid.UUID `json:"Session"`
+}
+
+func (LoadSession) Kind() Kind { return LoadSessionKind }
 
 // RenameSession gives a session a name a human will recognise. Not in the
 // log: the name is the header's own, and its holder answers with a listing.

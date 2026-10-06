@@ -77,6 +77,58 @@ func TestReset_StartsANewSessionAndLeavesTheOldAlone(t *testing.T) {
 	assert.Empty(t, r.of(event.SessionResetKind), "nothing is reset in the old session")
 }
 
+// /resume continues a stored session in this process. Its records go on
+// under its own id and past its last ordinal, or the store refuses them.
+func TestResume_ContinuesAStoredSessionUnderItsOwnId(t *testing.T) {
+	stored, turn := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	records := []event.Record{
+		{Ordinal: 500, Event: event.SessionStarted{Session: stored}},
+		{Ordinal: 501, Event: event.TurnStarted{Turn: turn, N: 4, Prompt: "earlier"}},
+		{Ordinal: 502, Event: event.Appended{Turn: turn, Messages: []event.Message{{Role: event.RoleUser, Content: "earlier"}}}},
+		{Ordinal: 503, Event: event.TurnEnded{Turn: turn, Reason: event.EndDone}},
+	}
+	log := fakeLog{stored: records}
+	r := newRig(t, []model.Reply{{Text: "a"}}, WithSessions(log, func([]event.Record) string { return "resumed" }))
+	r.run("before")
+	headers, unsub := r.bus.Subscribe(event.Only(event.SessionStartedKind))
+	defer unsub()
+
+	r.bus.Publish(event.ResumeSession{Session: stored})
+	rec := <-headers
+	started := rec.Event.(event.SessionStarted)
+	assert.Equal(t, stored, started.Session)
+	assert.Equal(t, len(records), started.Resumed)
+	assert.Greater(t, rec.Ordinal, uint64(503), "a record on an ordinal already stored is refused")
+	seam := r.await(event.SessionResumedKind).(event.SessionResumed)
+	assert.Equal(t, stored, seam.Session)
+
+	r.dispatched()
+	assert.Equal(t, []event.Message{{Role: event.RoleUser, Content: "earlier"}, {Role: event.RoleUser, Content: "resumed"}},
+		r.eng.messages(), "only the stored transcript, and what did not come back")
+	r.bus.Publish(event.SubmitPrompt{Text: "after"})
+	assert.Equal(t, 5, r.awaitNth(event.TurnStartedKind, 2).(event.TurnStarted).N, "numbering carries on")
+}
+
+// A resume mid-request would swap the transcript under the running Turn.
+func TestResume_IsRefusedWhileARequestRuns(t *testing.T) {
+	stored := uuid.Must(uuid.NewV7())
+	log := fakeLog{stored: asRecords([]event.Event{event.SessionStarted{Session: stored}})}
+	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "sleep 60")}}},
+		WithSessions(log, nil))
+	r.runner.mu.Lock()
+	r.runner.hold = make(chan struct{})
+	r.runner.mu.Unlock()
+	r.bus.Publish(event.SubmitPrompt{Text: "go"})
+	r.await(event.ToolCallStartedKind)
+
+	r.bus.Publish(event.ResumeSession{Session: stored})
+	r.dispatched()
+	close(r.runner.hold)
+	r.await(event.TurnEndedKind)
+	assert.Len(t, r.of(event.SessionStartedKind), 1, "the session did not change")
+	assert.Contains(t, r.of(event.NoticeKind)[0].(event.Notice).Text, "while a request is running")
+}
+
 // Undo and reset are facts, so a resumed session does not bring back
 // what the human took back.
 func TestRestore_HonoursUndoAndReset(t *testing.T) {
@@ -278,3 +330,8 @@ type failingRunner struct{}
 func (failingRunner) Run(context.Context, string, chan<- capture.StreamEvent) (capture.Result, error) {
 	return capture.Result{}, errors.New("sandbox: create task: already exists")
 }
+
+// fakeLog is a stored session log holding one session.
+type fakeLog struct{ stored []event.Record }
+
+func (f fakeLog) Replay(uuid.UUID) ([]event.Record, error) { return f.stored, nil }

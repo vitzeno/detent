@@ -73,6 +73,9 @@ type Engine struct {
 	stopGrace     time.Duration
 
 	worktreer Worktreer
+	// sessions is the stored log a resume reads, and resumeNote what it tells the model.
+	sessions   SessionLog
+	resumeNote func([]event.Record) string
 	// settled is the tree as the last Turn left it, so a rollback can tell
 	// the human's later edits from the Turn's own.
 	settled string
@@ -225,6 +228,11 @@ type Worktreer interface {
 	Restore(ctx context.Context, id, seen string) error
 }
 
+// SessionLog replays a stored session, satisfied structurally by store.Store.
+type SessionLog interface {
+	Replay(session uuid.UUID) ([]event.Record, error)
+}
+
 // dispatch routes one intent. A running Turn owns the transcript, so
 // only an idle engine touches it here.
 func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{}) {
@@ -255,6 +263,12 @@ func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{
 			return
 		}
 		e.reset()
+	case event.ResumeSession:
+		if t != nil {
+			e.notice("warn", "cannot resume another session while a request is running")
+			return
+		}
+		e.resume(v.Session)
 	case event.RequestRollback:
 		if t != nil {
 			e.notice("warn", "cannot roll back while a request is running")

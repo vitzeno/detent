@@ -150,8 +150,9 @@ func (s *Store) Sessions() ([]event.SessionSummary, error) {
 			at     int64
 			model  string
 			events int
+			used   int64
 		)
-		if err := rows.Scan(&id, &name, &at, &model, &events); err != nil {
+		if err := rows.Scan(&id, &name, &at, &model, &events, &used); err != nil {
 			return nil, fmt.Errorf("store: scan session: %w", err)
 		}
 		parsed, err := uuid.Parse(id)
@@ -159,7 +160,7 @@ func (s *Store) Sessions() ([]event.SessionSummary, error) {
 			continue // not ours to offer
 		}
 		out = append(out, event.SessionSummary{ID: parsed, Name: name, Model: model,
-			Started: time.UnixMilli(at).UTC(), Events: events})
+			Started: time.UnixMilli(at).UTC(), Used: time.UnixMilli(used).UTC(), Events: events})
 	}
 	return out, rows.Err()
 }
@@ -204,7 +205,7 @@ func usableName(name string) error {
 	case strings.TrimSpace(name) == "":
 		return fmt.Errorf("a name cannot be blank")
 	case strings.EqualFold(name, ReservedName):
-		return fmt.Errorf("%q is what -resume calls the newest session, so a name would never be read", ReservedName)
+		return fmt.Errorf("%q is what -resume calls the most recently used session, so a name would never be read", ReservedName)
 	}
 	if _, err := uuid.Parse(name); err == nil {
 		return fmt.Errorf("%q reads as a session id, so a name would never be read", name)

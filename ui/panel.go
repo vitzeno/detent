@@ -119,11 +119,13 @@ func (m *Model) helpLines() []string {
 		"  "+styleFaint.Render("ctrl+c    quit"))
 }
 
-// sessionLines is what can be resumed. Read-only, because resuming
-// is a process rather than a keystroke. The id is here to be copied.
+// sessionLines is what can be resumed. Read-only: /resume is where one is
+// picked. The id is here to be copied.
 func (m *Model) sessionLines() []string {
+	const date = "2006-01-02 15:04"
 	out := []string{styleGoal.Render("sessions"), "",
-		styleFaint.Render("  resume one with  detent -resume <id or name>"), ""}
+		styleFaint.Render("  resume one with  /resume, or detent -resume <id or name>"), "",
+		styleFaint.Render(fmt.Sprintf("  %-36s  %-16s  %-16s  %-12s  %s", "id", "last used", "created", "events", "name"))}
 	for _, s := range m.sessions {
 		mark := "  "
 		if s.ID == m.run.Session {
@@ -133,9 +135,10 @@ func (m *Model) sessionLines() []string {
 		if s.Name != "" {
 			name = styleGoal.Render(s.Name)
 		}
-		out = append(out, fmt.Sprintf("%s%s  %s  %s  %s", mark,
+		out = append(out, fmt.Sprintf("%s%s  %s  %s  %s  %s", mark,
 			styleGoal.Render(s.ID.String()),
-			styleFaint.Render(s.Started.Local().Format("2006-01-02 15:04")),
+			styleFaint.Render(padWidth(m.lastUsed(s, date), len(date))),
+			styleFaint.Render(s.Started.Local().Format(date)),
 			styleFaint.Render(padWidth(countOf(s.Events, "event"), 12)), name))
 	}
 	if len(m.sessions) == 0 {

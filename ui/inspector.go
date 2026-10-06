@@ -95,9 +95,9 @@ func (m Model) inspectorKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		m.insp.cursor = min(max(m.insp.cursor+d, 0), len(rows)-1)
 		m.insp.output = 0
 	case "pgup":
-		m.scrollInspector(-m.inspectorHeight())
+		m.scrollInspector(-m.modalPaneHeight())
 	case "pgdown":
-		m.scrollInspector(m.inspectorHeight())
+		m.scrollInspector(m.modalPaneHeight())
 	case "left", "right":
 		return m.nextAgent(msg.String() == "right")
 	case "x":
@@ -206,7 +206,7 @@ func (m *Model) syncInspector() {
 		m.insp.shown, m.insp.shownAt, m.insp.seenEnd = q.ToolCall, time.Now(), false
 		m.insp.output = 0
 	}
-	if len(m.inspectorOutput()) <= m.inspectorHeight() {
+	if len(m.inspectorOutput()) <= m.modalPaneHeight() {
 		m.insp.seenEnd = true
 	}
 }
@@ -214,7 +214,7 @@ func (m *Model) syncInspector() {
 // scrollInspector moves the output pane, marking a question read once its
 // last line has been on screen.
 func (m *Model) scrollInspector(d int) {
-	lines, h := len(m.inspectorOutput()), m.inspectorHeight()
+	lines, h := len(m.inspectorOutput()), m.modalPaneHeight()
 	m.insp.output = min(max(m.insp.output+d, 0), max(0, lines-h))
 	if m.insp.output+h >= lines {
 		m.insp.seenEnd = true

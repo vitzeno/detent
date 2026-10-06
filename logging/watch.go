@@ -155,6 +155,8 @@ func describe(e event.Event) (slog.Level, []any) {
 		return slog.LevelDebug, []any{"total", v.Total, "budget", v.Budget, "exact", v.Exact}
 	case event.SessionsListed:
 		return slog.LevelDebug, []any{"sessions", len(v.Sessions)}
+	case event.SessionLoaded:
+		return slog.LevelDebug, []any{KeySession, v.Session, "records", len(v.Records), KeyReason, Snippet(v.Err)}
 	case event.ServersListed:
 		return slog.LevelDebug, []any{"servers", len(v.Servers)}
 	case event.AuthorizationWaiting:

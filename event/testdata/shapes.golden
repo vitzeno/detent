@@ -32,6 +32,8 @@ servers.listed Servers[].Disabled bool
 servers.listed Servers[].Err string
 servers.listed Servers[].Name string
 servers.listed Servers[].Tools int
+session.loaded Err string
+session.loaded Session uuid.UUID
 session.resumed Records int
 session.resumed Sandbox bool
 session.resumed Session uuid.UUID
@@ -59,6 +61,7 @@ sessions.listed Sessions[].ID uuid.UUID
 sessions.listed Sessions[].Model string
 sessions.listed Sessions[].Name string
 sessions.listed Sessions[].Started time.Time
+sessions.listed Sessions[].Used time.Time
 step.ended Agent uuid.UUID
 step.ended Step uuid.UUID
 step.ended Stop string
