@@ -23,7 +23,7 @@ const (
 
 // inModal is whether a modal holds every key.
 func (m Model) inModal() bool {
-	return m.mode == modeFinder || m.mode == modeInspector || m.mode == modeResume || m.mode == modeReview
+	return m.mode == modeFinder || m.mode == modeInspector || m.mode == modeModal || m.mode == modeReview
 }
 
 // withOverlay floats the open modal over base, with the panes behind it dimmed.
@@ -34,8 +34,8 @@ func (m Model) withOverlay(base string) string {
 		box = m.finderBox()
 	case modeInspector:
 		box = m.inspectorBox()
-	case modeResume:
-		box = m.resumeBox()
+	case modeModal:
+		box = m.modal.box(m)
 	case modeReview:
 		box = m.reviewBox()
 	default:

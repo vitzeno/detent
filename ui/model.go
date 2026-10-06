@@ -98,9 +98,10 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	undo      undoState
 	forget    forgetState
 	finder    finderState
-	resume    resumeState
 	review    reviewState
-	reviews   []*reviewRecord
+	// modal is the box over the panes holding every key, nil when none is open.
+	modal   modal
+	reviews []*reviewRecord
 	// viewed is the files the human has marked viewed, by review, for this session only.
 	viewed map[uuid.UUID]map[string]bool
 	// resuming is the session the picker asked for, replayed once it starts.
@@ -230,7 +231,6 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		// A listing may have put another session under the picker's cursor.
 		// And /new may have brought the welcome back.
-		m.loadSelected()
 		m.reloadReview()
 		load := tea.Batch(m.fadeTick(), m.welcomeTick())
 		var cmd tea.Cmd

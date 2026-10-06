@@ -11,12 +11,12 @@ import (
 
 // The resume picker's box: stored sessions beside the selected one's history.
 
-func (m Model) resumeBox() string {
+func (p *resumeModal) box(m Model) string {
 	left, right := m.resumePaneWidths()
 	h := m.modalPaneHeight()
 	body := m.modalPanes(left, right,
-		modalPane{title: "sessions", lines: m.resumeListLines(left-4, h), focused: !m.resume.previewFocused},
-		modalPane{title: "history", lines: m.resumePreviewLines(right, h), focused: m.resume.previewFocused})
+		modalPane{title: "sessions", lines: p.listLines(m, left-4, h), focused: !p.previewFocused},
+		modalPane{title: "history", lines: p.previewLines(m, right, h), focused: p.previewFocused})
 	k := keymap.resume
 	return m.modalBox(m.resumeTitle(), body, boxLine(does("resume", k.resume),
 		does("move", k.move.up, k.move.down), does("pane", k.pane), does("back", k.close),
@@ -34,9 +34,9 @@ func (m Model) resumeTitle() string {
 // ageWidth fits every age the picker writes, "59m ago" to "Aug 2026".
 const ageWidth = 9
 
-// resumeListLines is each session by name, or id until named, with how long ago
+// listLines is each session by name, or id until named, with how long ago
 // it was last used and created: ages, so a narrow pane still has room for names.
-func (m Model) resumeListLines(width, height int) []string {
+func (p *resumeModal) listLines(m Model, width, height int) []string {
 	if len(m.sessions) == 0 {
 		return []string{styleFaint.Render("nothing recorded yet")}
 	}
@@ -44,11 +44,11 @@ func (m Model) resumeListLines(width, height int) []string {
 	cell := func(s string, n int) string { return fmt.Sprintf("%-*s", n, layout.Truncate(s, n)) }
 	out := []string{styleFaint.Render("  " + cell("session", room) + " " + cell("last used", ageWidth) +
 		" " + cell("created", ageWidth))}
-	start, end := listWindow(len(m.sessions), m.resume.cursor, height-1)
+	start, end := listWindow(len(m.sessions), p.cursor, height-1)
 	for i := start; i < end; i++ {
 		s := m.sessions[i]
 		mark, style := "  ", styleGoal
-		if i == m.resume.cursor {
+		if i == p.cursor {
 			mark, style = "▸ ", styleRowCursor
 		}
 		label := s.Name
@@ -111,37 +111,37 @@ func (m Model) resumePaneWidths() (left, right int) {
 	return left, inner - left
 }
 
-// resumePreviewLines is the selected session's history as the history pane
+// previewLines is the selected session's history as the history pane
 // draws it, from its newest line up by the scroll.
-func (m Model) resumePreviewLines(paneWidth, height int) []string {
-	s := m.selectedSession()
+func (p *resumeModal) previewLines(m Model, paneWidth, height int) []string {
+	s := p.selected(m)
 	if s == nil {
 		return nil
 	}
-	p := m.resume.loaded[s.ID]
+	pv := p.loaded[s.ID]
 	switch {
-	case p == nil || p.model == nil && p.err == "":
+	case pv == nil || pv.model == nil && pv.err == "":
 		return []string{styleFaint.Render("loading…")}
-	case p.err != "":
-		return []string{styleDanger.Render(layout.Truncate(p.err, paneWidth-4))}
+	case pv.err != "":
+		return []string{styleDanger.Render(layout.Truncate(pv.err, paneWidth-4))}
 	}
-	lines := m.resumeHistory(paneWidth)
-	end := max(0, len(lines)-min(m.resume.scroll, max(0, len(lines)-height)))
+	lines := p.history(m, paneWidth)
+	end := max(0, len(lines)-min(p.scroll, max(0, len(lines)-height)))
 	return lines[max(0, end-height):end]
 }
 
-// resumeHistory is every line of the selected session's history, nil until loaded.
-func (m Model) resumeHistory(paneWidth int) []string {
-	s := m.selectedSession()
+// history is every line of the selected session's history, nil until loaded.
+func (p *resumeModal) history(m Model, paneWidth int) []string {
+	s := p.selected(m)
 	if s == nil {
 		return nil
 	}
-	p := m.resume.loaded[s.ID]
-	if p == nil || p.model == nil {
+	pv := p.loaded[s.ID]
+	if pv == nil || pv.model == nil {
 		return nil
 	}
 	// blockWidth fits rows to the history pane, so it is handed this one's width.
-	p.model.layout.histColW = paneWidth + railWidth
-	lines, _ := p.model.historyAll()
+	pv.model.layout.histColW = paneWidth + railWidth
+	lines, _ := pv.model.historyAll()
 	return lines
 }

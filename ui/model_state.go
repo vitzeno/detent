@@ -22,8 +22,8 @@ const (
 	modeForget         // asks before deleting a stored session
 	modeFinder         // the finder holds every key until it jumps or closes
 	modeInspector      // one subagent's work, over the panes, until esc
-	modeResume         // the stored sessions, over the panes, until one resumes or esc
 	modeReview         // a request's changes to the human's files, over the panes, until esc
+	modeModal          // the modal holds every key until it closes
 )
 
 // focusPane is which zone the arrow keys act in.
@@ -97,19 +97,6 @@ type inspectorState struct {
 	shown   uuid.UUID
 	shownAt time.Time
 	seenEnd bool
-	// back is the pane it was opened from, which esc returns to.
-	back focusPane
-}
-
-// resumeState is the resume picker: which stored session is selected and
-// each one's preview, asked for as the cursor first reaches it.
-type resumeState struct {
-	cursor int
-	// scroll is how far the preview is moved up from its newest line, and
-	// previewFocused that arrows move it.
-	scroll         int
-	previewFocused bool
-	loaded         map[uuid.UUID]*sessionPreview
 	// back is the pane it was opened from, which esc returns to.
 	back focusPane
 }

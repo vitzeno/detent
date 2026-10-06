@@ -19,8 +19,8 @@ import (
 func TestResume_PreviewsTheSelectedSessionsHistory(t *testing.T) {
 	k, other := resumable(t)
 	k.openResume()
-	require.Equal(t, modeResume, k.m.mode)
-	assert.Equal(t, other, k.m.selectedSession().ID, "it opens on another session, not this one")
+	require.NotNil(t, k.picker())
+	assert.Equal(t, other, k.picker().selected(k.m).ID, "it opens on another session, not this one")
 	k.m.apply(storedSession(other, "fix the flaky test"))
 	screen := ansi.Strip(k.m.withOverlay(k.m.baseView()))
 	assert.Contains(t, screen, "the sandbox", "sessions are listed by name")
@@ -35,7 +35,7 @@ func TestResume_ListsWhenEachSessionWasUsedAndCreated(t *testing.T) {
 	used, created := time.Now().Add(-3*time.Hour), time.Now().Add(-12*24*time.Hour)
 	k.m.sessions[1].Used, k.m.sessions[1].Started = used, created
 	k.openResume()
-	lines := k.m.resumeListLines(40, 10)
+	lines := k.picker().listLines(k.m, 40, 10)
 	require.Len(t, lines, 3, "a header and two sessions")
 	assert.Contains(t, ansi.Strip(lines[1]), "now", "this session is the one in use")
 	row := ansi.Strip(lines[2])
@@ -90,7 +90,7 @@ func TestResume_IsRefusedWhileARequestRuns(t *testing.T) {
 	k.press(t, "enter")
 	k.noIntent(t)
 	assert.Contains(t, k.m.notice.text, "a request is running")
-	assert.Equal(t, modeResume, k.m.mode)
+	assert.NotNil(t, k.picker())
 }
 
 func TestResume_EscLeavesWithoutResuming(t *testing.T) {
@@ -101,6 +101,9 @@ func TestResume_EscLeavesWithoutResuming(t *testing.T) {
 	assert.Equal(t, modeInput, k.m.mode)
 	k.noIntent(t)
 }
+
+// picker is the open resume picker, nil when it is not.
+func (k *keyed) picker() *resumeModal { return modalAs[*resumeModal](k.m) }
 
 // openResume opens the picker and runs what it asks for.
 func (k *keyed) openResume() {

@@ -99,9 +99,9 @@ func TestTopAndEnd_Resume(t *testing.T) {
 	k, other := resumable(t)
 	k.openResume()
 	k.press(t, "G")
-	assert.Equal(t, len(k.m.sessions)-1, k.m.resume.cursor)
+	assert.Equal(t, len(k.m.sessions)-1, k.picker().cursor)
 	k.press(t, "g")
-	assert.Zero(t, k.m.resume.cursor)
+	assert.Zero(t, k.picker().cursor)
 
 	k.press(t, "G")
 	long := storedSession(other, "the sandbox bug")
@@ -116,13 +116,13 @@ func TestTopAndEnd_Resume(t *testing.T) {
 	k.press(t, "tab")
 	k.press(t, "g")
 	_, right := k.m.resumePaneWidths()
-	top := len(k.m.resumeHistory(right)) - k.m.modalPaneHeight()
+	top := len(k.picker().history(k.m, right)) - k.m.modalPaneHeight()
 	require.Positive(t, top, "the test needs a preview taller than its pane")
-	assert.Equal(t, top, k.m.resume.scroll, "held at the oldest line, not past it")
+	assert.Equal(t, top, k.picker().scroll, "held at the oldest line, not past it")
 	k.press(t, "down")
-	assert.Equal(t, top-1, k.m.resume.scroll, "so the next key moves at once")
+	assert.Equal(t, top-1, k.picker().scroll, "so the next key moves at once")
 	k.press(t, "G")
-	assert.Zero(t, k.m.resume.scroll)
+	assert.Zero(t, k.picker().scroll)
 }
 
 // In the diff g and G reach its first and last line, and in the list the files.

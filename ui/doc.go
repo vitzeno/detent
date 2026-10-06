@@ -15,6 +15,7 @@
 //	intents.go      intents out, though every publish anywhere goes through send
 //	keys.go         which pane owns a keystroke
 //	keymap.go       every key binding, and the hints drawn from them
+//	modal.go        the interface the finder, inspector, resume picker and review share
 //	nav.go          what a keystroke moves
 //
 //	prompt.go       the input box and its slash dropdown

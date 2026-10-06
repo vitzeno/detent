@@ -228,9 +228,8 @@ func (m Model) statusHint() string {
 			does("move", k.move.up, k.move.down))
 	case modeInspector:
 		return barLine(does("back", keymap.inspector.close), note("the agent's keys are in the box"))
-	case modeResume:
-		k := keymap.resume
-		return barLine(does("closes", k.close), does("resume", k.resume), does("move", k.move.up, k.move.down))
+	case modeModal:
+		return m.modal.hint(m)
 	case modeReview:
 		// The box's key line leads with what esc closes, which the bar repeats.
 		return barLine(m.reviewEsc(), note("the review's keys are in the box"))
