@@ -72,9 +72,10 @@ type historyRow struct {
 	// headline its arguments as history leads with them.
 	tool     event.ToolName
 	headline string
-	// review is the review this row stands for, its comments counted so far.
-	review   uuid.UUID
-	comments int
+	// review is the review this row stands for, its comments counted so far,
+	// and files how many its diff holds.
+	review          uuid.UUID
+	comments, files int
 	// wrote is what write_file was given, kept until its result says whether
 	// the file was new, when created becomes that content as a diff.
 	wrote   *written
@@ -141,6 +142,9 @@ type agentState struct {
 	waitingSince time.Time
 	ended        bool
 	reason       event.AgentReason
+	// read is every file a reviewer has asked review_diff for, and reading the newest.
+	read    map[string]bool
+	reading string
 }
 
 // verdict is the post-execution read, when one arrived.

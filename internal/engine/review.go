@@ -53,7 +53,7 @@ func (e *Engine) startReview(ctx context.Context, v event.ReviewChanges, done ch
 // runReview is the reviewer's whole run. Its report is the review's summary,
 // a comment on no line.
 func (e *Engine) runReview(ctx context.Context, t *turnState, v event.ReviewChanges) {
-	e.bus.Publish(event.TurnStarted{Turn: t.id, Prompt: t.prompt, Review: v.Review})
+	e.bus.Publish(event.TurnStarted{Turn: t.id, Prompt: t.prompt, Review: v.Review, Files: len(v.Files)})
 	tools := e.root.tools.Only(tool.ReviewReads...)
 	run := &reviewRun{v: v, diff: tool.NewReviewDiff(v.Files), comment: tool.NewReviewComment(v.Files)}
 	for _, rt := range []tool.Tool{run.diff, run.comment} {

@@ -132,6 +132,13 @@ func (m *Model) apply(ev event.Event) {
 			r.child = true
 			a.rows = append(a.rows, r)
 			a.calls++
+			if path, ok := v.Args["path"].(string); ok && v.Tool == event.ToolReviewDiff {
+				if a.read == nil {
+					a.read = map[string]bool{}
+				}
+				a.reading = termsafe.Printable(path)
+				a.read[a.reading] = true
+			}
 			a.last = termsafe.Printable(event.Command(v.Tool, v.Args))
 			m.touch(a)
 			return

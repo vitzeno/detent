@@ -45,7 +45,7 @@ func TestThemes_ToolColoursAreReadableAndDistinct(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			tools := map[string]color.Color{"Shell": th.Tools.Shell, "Read": th.Tools.Read,
 				"Write": th.Tools.Write, "Web": th.Tools.Web, "Server": th.Tools.Server, "Agent": th.Tools.Agent,
-				"Other": th.Tools.Other}
+				"Review": th.Tools.Review, "Other": th.Tools.Other}
 			bg := lum(t, th.Background)
 			for what, c := range tools {
 				require.NotNil(t, c, what)

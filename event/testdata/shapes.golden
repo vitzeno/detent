@@ -199,6 +199,7 @@ turn.ended Usage.Model string
 turn.ended Usage.PromptTokens int
 turn.rolledback RevertFiles bool
 turn.rolledback Turn uuid.UUID
+turn.started Files int
 turn.started N int
 turn.started Prompt string
 turn.started Review uuid.UUID

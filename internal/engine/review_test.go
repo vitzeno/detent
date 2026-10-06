@@ -33,6 +33,7 @@ func TestReview_CommentsOnTheDiffAndTouchesNoRequest(t *testing.T) {
 	start := r.await(event.TurnStartedKind).(event.TurnStarted)
 	assert.Equal(t, v.Review, start.Review)
 	assert.Zero(t, start.N, "no request number")
+	assert.Equal(t, 1, start.Files, "how many files the reviewer has to read")
 	assert.Equal(t, "review of request 2", start.Prompt)
 
 	task := rm.seen[0][0].Content

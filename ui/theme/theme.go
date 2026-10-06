@@ -42,9 +42,9 @@ type Theme struct {
 }
 
 // ToolColors are the shell, reading, writing, the web, a server's tool, a
-// subagent, and anything else such as a skill.
+// subagent, a reviewer, and anything else such as a skill.
 type ToolColors struct {
-	Shell, Read, Write, Web, Server, Agent, Other color.Color
+	Shell, Read, Write, Web, Server, Agent, Review, Other color.Color
 }
 
 // Names lists every valid theme name, sorted.
@@ -73,7 +73,7 @@ var dark = Theme{
 	Tools: ToolColors{
 		Shell: lipgloss.Color("#C792EA"), Read: lipgloss.Color("#4FA8FF"), Write: lipgloss.Color("#F2C14E"),
 		Web: lipgloss.Color("#3DDC84"), Server: lipgloss.Color("#FF5C5C"),
-		Agent: lipgloss.Color("#F037D0"), Other: lipgloss.Color("#7A8296"),
+		Agent: lipgloss.Color("#F037D0"), Review: lipgloss.Color("#00E5FF"), Other: lipgloss.Color("#7A8296"),
 	},
 }
 
@@ -91,7 +91,7 @@ var light = Theme{
 	Tools: ToolColors{
 		Shell: lipgloss.Color("#8250DF"), Read: lipgloss.Color("#0B6BD3"), Write: lipgloss.Color("#A87000"),
 		Web: lipgloss.Color("#15803D"), Server: lipgloss.Color("#CF222E"),
-		Agent: lipgloss.Color("#F037D0"), Other: lipgloss.Color("#6B7280"),
+		Agent: lipgloss.Color("#F037D0"), Review: lipgloss.Color("#1A1A9E"), Other: lipgloss.Color("#6B7280"),
 	},
 }
 
@@ -109,7 +109,7 @@ var solarized = Theme{
 	Tools: ToolColors{
 		Shell: lipgloss.Color("#C792EA"), Read: lipgloss.Color("#4FA8FF"), Write: lipgloss.Color("#F2C14E"),
 		Web: lipgloss.Color("#3DDC84"), Server: lipgloss.Color("#FF5C5C"),
-		Agent: lipgloss.Color("#F037D0"), Other: lipgloss.Color("#7A8296"),
+		Agent: lipgloss.Color("#F037D0"), Review: lipgloss.Color("#00E5FF"), Other: lipgloss.Color("#7A8296"),
 	},
 }
 
@@ -127,6 +127,6 @@ var dracula = Theme{
 	Tools: ToolColors{
 		Shell: lipgloss.Color("#BD93F9"), Read: lipgloss.Color("#8BE9FD"), Write: lipgloss.Color("#F1FA8C"),
 		Web: lipgloss.Color("#50FA7B"), Server: lipgloss.Color("#FF5555"),
-		Agent: lipgloss.Color("#F037D0"), Other: lipgloss.Color("#6272A4"),
+		Agent: lipgloss.Color("#F037D0"), Review: lipgloss.Color("#00E5FF"), Other: lipgloss.Color("#6272A4"),
 	},
 }

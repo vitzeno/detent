@@ -730,7 +730,7 @@ func defusedComment(c event.ReviewComment) event.ReviewComment {
 // startReviewBlock is a review's Turn: one row, which enter opens, and no
 // prompt, since nobody asked a request of the model.
 func (m *Model) startReviewBlock(v event.TurnStarted) {
-	row := &historyRow{id: v.Turn, review: v.Review, running: true}
+	row := &historyRow{id: v.Turn, review: v.Review, running: true, files: v.Files}
 	if rec := m.reviewByID(v.Review); rec != nil {
 		row.comments = len(rec.comments)
 	}

@@ -8,6 +8,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/google/uuid"
+
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/island"
 	"github.com/vitzeno/detent/ui/layout"
@@ -83,7 +85,11 @@ func (m Model) pinnedLines() []string {
 // is, or how it ended.
 func (m Model) pinnedRow(a *agentState, width int) string {
 	mark := "  "
-	name := toolName.agent.Render(fmt.Sprintf("%-*s", pinnedName, layout.Truncate(a.name, pinnedName)))
+	style := toolName.agent
+	if reviewerOf(a) != nil {
+		style = toolName.review
+	}
+	name := style.Render(fmt.Sprintf("%-*s", pinnedName, layout.Truncate(a.name, pinnedName)))
 	head := mark + m.agentGlyph(a) + " " + name + " "
 	room := max(0, width-lipgloss.Width(head))
 	if a.ended {
@@ -92,9 +98,35 @@ func (m Model) pinnedRow(a *agentState, width int) string {
 	if a.stopping {
 		return head + styleCaution.Render(layout.Truncate(stoppingNote, room))
 	}
+	// A reviewer's progress is the diff it has read, not how full its context is.
+	if r := reviewerOf(a); r != nil {
+		read := min(len(a.read), r.files)
+		label := fmt.Sprintf(" %d/%d ✎%d", read, r.files, r.comments)
+		pct := 0
+		if r.files > 0 {
+			pct = read * 100 / r.files
+		}
+		return head + m.contextBar(a, room-lipgloss.Width(label), pct) + styleMuted.Render(label)
+	}
 	pct := m.agentContext(a)
 	label := fmt.Sprintf(" %3d%%", pct)
 	return head + m.contextBar(a, room-len(label), pct) + styleMuted.Render(label)
+}
+
+// reviewerOf is the review row a reviewer stands in for, nil for any other agent.
+func reviewerOf(a *agentState) *historyRow {
+	if a.spawn != nil && a.spawn.review != uuid.Nil {
+		return a.spawn
+	}
+	return nil
+}
+
+// reviewGlyph breathes, filled then hollow, so a reviewer reads as its own thing.
+func (m Model) reviewGlyph() string {
+	if m.pulse/4%2 == 0 {
+		return toolName.review.Render("◆")
+	}
+	return toolName.review.Render("◇")
 }
 
 // agentGlyph says how an agent stands at a glance.
@@ -106,6 +138,8 @@ func (m Model) agentGlyph(a *agentState) string {
 		return styleCaution.Render("⊘")
 	case !a.ended && a.steps == 0:
 		return styleFaint.Render("·")
+	case !a.ended && reviewerOf(a) != nil:
+		return m.reviewGlyph()
 	case !a.ended:
 		return m.spinner.View()
 	case a.reason == event.AgentDone:

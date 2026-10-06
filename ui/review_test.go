@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -611,6 +612,31 @@ func TestReview_TheReviewerIsASubagentWhileItWorks(t *testing.T) {
 	k.m.nav.cursor, k.m.nav.focus = len(k.m.rows())-1, focusHistory
 	k.press(t, "enter")
 	assert.Equal(t, modeReview, k.m.mode, "the review, not the inspector")
+}
+
+// A reviewer looks like what it is: its own colour, a glyph that breathes rather
+// than spins, and the files it has read out of the diff where a context gauge would be.
+func TestReview_TheReviewerLooksLikeAReviewer(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	review, turn, agent, step := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: review, Files: 3})
+	k.m.apply(event.AgentStarted{Agent: agent, Turn: turn, Name: "reviewer"})
+	k.m.apply(event.StepStarted{Turn: turn, Step: step, N: 1, Agent: agent})
+	for _, p := range []string{"a.go", "b.go", "a.go"} {
+		k.m.apply(event.ToolCallProposed{Step: step, ToolCall: uuid.Must(uuid.NewV7()), Tool: event.ToolReviewDiff,
+			Args: map[string]any{"path": p}, Agent: agent})
+	}
+	k.m.apply(event.ReviewCommented{Review: review, Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7())}})
+
+	a := k.m.agents[agent]
+	row := k.m.pinnedRow(a, 60)
+	assert.Contains(t, row, toolName.review.Render(fmt.Sprintf("%-*s", pinnedName, "reviewer")))
+	assert.Contains(t, ansi.Strip(row), "2/3 ✎1", "a.go read twice is one file")
+	assert.NotContains(t, ansi.Strip(row), "%")
+	first := ansi.Strip(k.m.agentGlyph(a))
+	k.m.pulse += 4
+	assert.NotEqual(t, first, ansi.Strip(k.m.agentGlyph(a)), "it breathes")
+	assert.NotEqual(t, ansi.Strip(k.m.spinner.View()), first)
 }
 
 // Closing the modal leaves the reviewer working: its comments still land on

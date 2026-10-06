@@ -40,6 +40,8 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	prompt  prompt
 	output  viewport.Model
 	spinner spinner.Model
+	// pulse counts spinner ticks, the clock a reviewer's glyph breathes by.
+	pulse int
 
 	blocks []*turnBlock
 	// agents are the subagents history's spawn rows draw, by id, and
@@ -204,6 +206,7 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
+		m.pulse++
 		return m, cmd
 
 	// One message type for every fact: the UI learns everything the same way.
