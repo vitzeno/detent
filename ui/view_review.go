@@ -81,14 +81,23 @@ func (m Model) reviewTitle() string {
 	return title
 }
 
-// scopeLabel says which changes are shown, from where to where.
+// scopeLabel says which changes are shown, from where to where. A review can
+// outlive its request, after an undo or in an older session, so none is assumed.
 func (m Model) scopeLabel() string {
 	r := m.review
+	n := "?"
+	if r.block != nil {
+		n = strconv.Itoa(r.block.n)
+	}
 	switch r.scope {
 	case event.ScopeSession:
-		return fmt.Sprintf("the session, requests %d to %d", m.firstReviewable().n, r.block.n)
+		first := "?"
+		if b := m.firstReviewable(); b != nil {
+			first = strconv.Itoa(b.n)
+		}
+		return fmt.Sprintf("the session, requests %s to %s", first, n)
 	case event.ScopeSince:
-		return fmt.Sprintf("your edits since request %d", r.block.n)
+		return "your edits since request " + n
 	case event.ScopeBranch:
 		if r.against == "" {
 			return "this branch"
@@ -96,7 +105,10 @@ func (m Model) scopeLabel() string {
 		return "this branch against " + r.against + ", uncommitted too"
 	case event.ScopeRequest:
 	}
-	label := fmt.Sprintf("request %d", r.block.n)
+	label := "request " + n
+	if r.block == nil {
+		label = "a request no longer here"
+	}
 	if r.head == "" {
 		label += " · to your files now"
 	}

@@ -288,6 +288,18 @@ func (m *Model) diffLoaded(v event.DiffLoaded) {
 	}
 }
 
+// scopeOf is a comment's scope. One stored before comments said is a branch's
+// when no request owns it, since only a branch's never has one, else a request's.
+func scopeOf(v event.ReviewCommented) event.ReviewScope {
+	switch {
+	case v.Scope != "":
+		return v.Scope
+	case v.Reviewed == uuid.Nil:
+		return event.ScopeBranch
+	}
+	return event.ScopeRequest
+}
+
 // reviewStarted records a review as its reviewer begins, so /review, s and the
 // arrows find it before it has commented on anything.
 func (m *Model) reviewStarted(v event.ReviewStarted) {
@@ -309,7 +321,7 @@ func (m *Model) reviewStarted(v event.ReviewStarted) {
 func (m *Model) reviewCommented(v event.ReviewCommented) {
 	rec := m.reviewByID(v.Review)
 	if rec == nil {
-		rec = &reviewRecord{id: v.Review, reviewed: v.Reviewed, scope: v.Scope, against: v.Against,
+		rec = &reviewRecord{id: v.Review, reviewed: v.Reviewed, scope: scopeOf(v), against: v.Against,
 			base: v.Base, head: v.Head}
 		m.reviews = append(m.reviews, rec)
 	}

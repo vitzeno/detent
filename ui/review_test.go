@@ -775,6 +775,30 @@ func TestReview_ARunningReviewCanBeFoundAgain(t *testing.T) {
 	assert.Equal(t, review, k.m.review.id, "its scope leads back to it")
 }
 
+// A review stored before comments named their scope opens as what it was, and
+// one whose request is gone still draws: the arrows panicked on both.
+func TestReview_AnOldOrOrphanedReviewOpensWithoutAPanic(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	branch, orphan := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	k.m.apply(event.ReviewCommented{Review: branch, Base: "mb", Op: event.CommentAdded,
+		Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7())}})
+	k.m.apply(event.ReviewCommented{Review: orphan, Reviewed: uuid.Must(uuid.NewV7()), Base: "b9", Head: "e9",
+		Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7())}})
+
+	var cmd tea.Cmd
+	k.m, cmd = k.m.openReview(k.m.reviews[0])
+	runCmd(cmd)
+	assert.Equal(t, event.LoadDiff{Branch: true}, k.intentOf(t, event.LoadDiffKind),
+		"read as the branch it was, never a checkpoint against a commit")
+	assert.NotPanics(t, func() { k.m.withOverlay(k.m.baseView()) })
+
+	k.send(t, tea.KeyPressMsg{Code: tea.KeyRight})
+	k.intentOf(t, event.LoadDiffKind)
+	assert.Equal(t, orphan, k.m.review.id)
+	assert.NotPanics(t, func() { k.m.withOverlay(k.m.baseView()) })
+	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "a request no longer here")
+}
+
 // Closing the modal leaves the reviewer working: its comments still land on
 // the review, and its row counts them.
 func TestReview_TheModalClosesWhileTheReviewerWorks(t *testing.T) {
