@@ -73,6 +73,7 @@ func (m *Model) refreshViewport() {
 	if key == m.detail {
 		return
 	}
+	prev := m.detail
 	m.detail = key
 	if m.panel.open != panelNone {
 		m.setViewContent(strings.Join(m.panelLines(), "\n"))
@@ -129,8 +130,10 @@ func (m *Model) refreshViewport() {
 		m.setViewContent(styleFaint.Render("(no output)"))
 		return
 	}
+	// Follow a running row from its end only, so scrolling up to read stays put.
+	follow := r.running && (prev.row != r || m.output.AtBottom())
 	m.setViewContent(body)
-	if r.running {
+	if follow {
 		m.output.GotoBottom()
 	}
 	if cursor >= 0 {
