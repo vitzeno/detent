@@ -2,9 +2,12 @@ package ui
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/key"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -153,4 +156,37 @@ func longOutput(t *testing.T) *keyed {
 	k.m.sizeViewport()
 	require.Greater(t, k.m.output.TotalLineCount(), k.m.output.Height(), "the test needs output to scroll")
 	return k
+}
+
+// /help is drawn from keyGroups, so a binding added to keymap but not there
+// would work and be listed nowhere.
+func TestHelp_ListsEveryBinding(t *testing.T) {
+	listed := 0
+	for _, g := range keyGroups() {
+		for _, b := range g.keys {
+			require.NotEmpty(t, b.Keys(), "%s lists a binding with no keys", g.place)
+			require.NotEmpty(t, b.Help().Desc, "%s lists %v saying nothing", g.place, b.Keys())
+			listed++
+		}
+	}
+	assert.Equal(t, bindingsIn(reflect.ValueOf(keymap)), listed)
+
+	page := ansi.Strip(strings.Join(newKeyed(t).m.helpLines(), "\n"))
+	assert.Contains(t, page, "home g")
+	assert.Contains(t, page, "the comment after, across files")
+}
+
+// bindingsIn counts the bindings with keys in v, a keymap or a part of one.
+func bindingsIn(v reflect.Value) int {
+	if v.Type() == reflect.TypeFor[key.Binding]() {
+		if v.IsZero() {
+			return 0
+		}
+		return 1
+	}
+	n := 0
+	for _, f := range v.Fields() {
+		n += bindingsIn(f)
+	}
+	return n
 }

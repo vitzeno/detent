@@ -108,15 +108,14 @@ func (m *Model) helpLines() []string {
 		out = append(out, fmt.Sprintf("  %s  %s", styleGoal.Render(padWidth(c.name, 12)),
 			styleFaint.Render(c.desc)))
 	}
-	return append(out, "", styleGoal.Render("keys"), "",
-		"  "+styleFaint.Render("tab       move between input, history and output"),
-		"  "+styleFaint.Render("↑ ↓       move the cursor, or scroll the output"),
-		"  "+styleFaint.Render("end       jump to the newest row and follow it again"),
-		"  "+styleFaint.Render("ctrl+f    find anything in history and jump to it"),
-		"  "+styleFaint.Render("space     expand a tool call's output inline"),
-		"  "+styleFaint.Render("enter     seed the prompt from a view's selection"),
-		"  "+styleFaint.Render("esc       back out, or abort a running request"),
-		"  "+styleFaint.Render("ctrl+c    quit"))
+	out = append(out, "", styleGoal.Render("keys"))
+	for _, g := range keyGroups() {
+		out = append(out, "", "  "+styleGoal.Render(g.place))
+		for _, b := range g.keys {
+			out = append(out, "  "+styleFaint.Render(padWidth(strings.Join(b.Keys(), " "), 15)+" "+b.Help().Desc))
+		}
+	}
+	return out
 }
 
 // sessionLines is what can be resumed. Read-only: /resume is where one is

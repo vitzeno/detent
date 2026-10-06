@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -101,13 +102,13 @@ var keymap = struct {
 		pageUp:   bind("pgup", "scroll the output", "pgup"),
 		pageDown: bind("pgdn", "scroll the output", "pgdown"),
 		pick: moveKeys{
-			up:   bind("↑", "pick a command", "up"),
-			down: bind("↓", "pick a command", "down"),
+			up:   bind("↑", "pick in the slash menu", "up"),
+			down: bind("↓", "pick in the slash menu", "down"),
 		},
-		complete: bind("tab", "complete the command", "tab"),
+		complete: bind("tab", "complete the slash menu's pick", "tab"),
 	},
 	history: historyKeys{
-		move:     lettered("move the cursor", "scroll the output"),
+		move:     lettered("move the cursor", "scroll the output", "the first row", "the newest row, followed again"),
 		open:     bind("enter", "open a review or an agent, or expand a tool call", "enter"),
 		expand:   bind("space", "expand a tool call's output inline", "space", "v"),
 		agents:   bind("a", "look into the agents", "a"),
@@ -116,15 +117,15 @@ var keymap = struct {
 		copyLink: bind("c", "copy a sign-in link", "c"),
 	},
 	output: outputKeys{
-		move:   lettered("scroll", "scroll a page"),
+		move:   lettered("scroll", "scroll a page", "the top", "the end"),
 		expand: bind("enter", "seed the prompt from a view's selection, or expand", "enter", "v", "space"),
 	},
 	ask: askKeys{
 		yes:   bind("y", "yes", "y", "Y"),
 		no:    bind("n", "no", "n", "N"),
-		enter: bind("enter", "the safe answer", "enter"),
+		enter: bind("enter", "yes to an approval or the step bound, the safe answer to undo", "enter"),
 		esc:   bind("esc", "cancel", "esc"),
-		read:  lettered("read", "read a page"),
+		read:  lettered("read", "read a page", "the top", "the end, read whole"),
 	},
 	finder: finderKeys{
 		close:     bind("esc", "close", "esc"),
@@ -149,13 +150,13 @@ var keymap = struct {
 		stop:      bind("x", "stop the agent, asked twice", "x"),
 		yes:       bind("y", "run its tool call", "y", "Y", "enter"),
 		no:        bind("n", "decline its tool call", "n", "N"),
-		move:      lettered("move, or scroll its output", "scroll a page"),
+		move:      lettered("move, or scroll its output", "scroll a page", "the first row or line", "the last"),
 	},
 	resume: resumeKeys{
 		close:  bind("esc", "back", "esc"),
 		resume: bind("enter", "resume the session", "enter"),
 		pane:   bind("tab", "switch pane", "tab"),
-		move:   lettered("move, or scroll the preview", "scroll a page"),
+		move:   lettered("move, or scroll the preview", "scroll a page", "the first session or line", "the last"),
 	},
 	review: reviewKeys{
 		close:       bind("esc", "close, a layer at a time", "esc"),
@@ -194,6 +195,44 @@ var keymap = struct {
 	},
 }
 
+// keyGroup is one place's keys, as /help lists them.
+type keyGroup struct {
+	place string
+	keys  []key.Binding
+}
+
+// keyGroups is every binding in keymap, by where it works.
+func keyGroups() []keyGroup {
+	k := keymap
+	return []keyGroup{
+		{"anywhere", []key.Binding{k.app.quit, k.app.find, k.app.esc, k.app.tab, k.app.entry}},
+		{"the prompt", append([]key.Binding{k.input.run, k.input.pageUp, k.input.pageDown, k.input.complete},
+			k.input.pick.bindings()...)},
+		{"history", append(k.history.move.bindings(), k.history.open, k.history.expand, k.history.agents,
+			k.history.stop, k.history.signIn, k.history.copyLink)},
+		{"output", append(k.output.move.bindings(), k.output.expand)},
+		{"a question", append([]key.Binding{k.ask.yes, k.ask.no, k.ask.enter, k.ask.esc}, k.ask.read.bindings()...)},
+		{"the finder", append([]key.Binding{k.finder.close, k.finder.jump, k.finder.kind, k.finder.erase,
+			k.finder.eraseWord}, k.finder.move.bindings()...)},
+		{"an agent", append([]key.Binding{k.inspector.close, k.inspector.pane, k.inspector.prevAgent,
+			k.inspector.nextAgent, k.inspector.stop, k.inspector.yes, k.inspector.no},
+			k.inspector.move.bindings()...)},
+		{"resume", append([]key.Binding{k.resume.close, k.resume.resume, k.resume.pane}, k.resume.move.bindings()...)},
+		{"a review", append([]key.Binding{k.review.close, k.review.pane, k.review.diff, k.review.file,
+			k.review.prevFile, k.review.hunk, k.review.prevHunk, k.review.rng, k.review.comment, k.review.edit,
+			k.review.remove, k.review.send, k.review.scope, k.review.reviewer, k.review.prevReview,
+			k.review.nextReview, k.review.prevComment, k.review.nextComment, k.review.triage, k.review.viewed,
+			k.review.split, k.review.save, k.review.drop, k.review.keep, k.review.discard},
+			k.review.move.bindings()...)},
+	}
+}
+
+// bindings is k's keys, those it has, for /help.
+func (k moveKeys) bindings() []key.Binding {
+	all := []key.Binding{k.up, k.down, k.pageUp, k.pageDown, k.top, k.bottom}
+	return slices.DeleteFunc(all, func(b key.Binding) bool { return len(b.Keys()) == 0 })
+}
+
 // bind is a binding labelled label in a hint, doing desc.
 func bind(label, desc string, keys ...string) key.Binding {
 	return key.NewBinding(key.WithKeys(keys...), key.WithHelp(label, desc))
@@ -201,14 +240,14 @@ func bind(label, desc string, keys ...string) key.Binding {
 
 // lettered is the arrows, pages and both ends, with g and G for the ends since
 // a laptop may have no home or end, which is safe only where nothing is typed.
-func lettered(step, page string) moveKeys {
+func lettered(step, page, top, end string) moveKeys {
 	return moveKeys{
 		up:       bind("↑", step, "up"),
 		down:     bind("↓", step, "down"),
 		pageUp:   bind("pgup", page, "pgup"),
 		pageDown: bind("pgdn", page, "pgdown"),
-		top:      bind("g", "the top", "home", "g"),
-		bottom:   bind("G", "the end", "end", "G"),
+		top:      bind("g", top, "home", "g"),
+		bottom:   bind("G", end, "end", "G"),
 	}
 }
 
