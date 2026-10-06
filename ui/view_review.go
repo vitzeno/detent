@@ -203,7 +203,7 @@ func (m Model) reviewKeys() string {
 		}
 		return "esc closes · c reply · e edit · x delete · </> comments · t triage · ctrl+s send"
 	}
-	return "esc closes · c comment · v range · ]/[ hunk · </> comments · n/p file · space viewed · r reviewer · t triage · ctrl+s send"
+	return "esc closes · c comment · v range · ]/[ hunk · </> comments · n/p file · space viewed · w split · r reviewer · t triage · ctrl+s send"
 }
 
 // reviewFileLines lists each changed file with what happened to it.
@@ -290,30 +290,143 @@ func (m Model) reviewDiffLines(height int) []string {
 	if r.ranging {
 		lo, hi = min(r.anchor, r.line), max(r.anchor, r.line)
 	}
-	out := card
-	start, end := listWindow(len(rows), r.line, height)
-	for i := start; i < end; i++ {
-		row := rows[i]
-		mark, gutter := " ", styleFaint
+	// marked is row i's cursor or range mark, and the gutter style to draw it in.
+	marked := func(i int) (string, lipgloss.Style) {
 		switch {
 		case i == r.line && r.diffFocused:
-			mark, gutter = "▸", styleRowCursor
+			return "▸", styleRowCursor
 		case r.ranging && i >= lo && i <= hi:
-			mark, gutter = "┃", styleRowCursor
+			return "┃", styleRowCursor
 		}
+		return " ", styleFaint
+	}
+	// inline is row i as one line across the pane: how every row is drawn
+	// inline, and a header or comment is in the split view too.
+	inline := func(i int) string {
+		row := rows[i]
+		mark, gutter := marked(i)
 		h := f.Hunks[row.hunk]
 		switch {
 		case row.comment != nil:
-			out = append(out, gutter.Render(mark)+strings.Repeat(" ", 2*nw+2)+m.commentLine(row))
+			return gutter.Render(mark) + strings.Repeat(" ", 2*nw+2) + m.commentLine(row)
 		case row.line < 0:
-			out = append(out, gutter.Render(mark)+" "+styleFaint.Render(layout.Truncate(h.Header, width-2)))
-		default:
-			l := h.Lines[row.line]
-			out = append(out, gutter.Render(mark+num(l.Old)+" "+num(l.New))+" "+
-				lineStyle(l.Op).Render(layout.Truncate(string(rune(l.Op))+l.Text, max(1, width-2*nw-3))))
+			return gutter.Render(mark) + " " + styleFaint.Render(layout.Truncate(h.Header, width-2))
 		}
+		l := h.Lines[row.line]
+		return gutter.Render(mark+num(l.Old)+" "+num(l.New)) + " " +
+			lineStyle(l.Op).Render(layout.Truncate(string(rune(l.Op))+l.Text, max(1, width-2*nw-3)))
+	}
+	out := card
+	if r.split && m.splitFits() {
+		out = append(out, m.splitLines(*f, rows, height, width, nw, marked, inline)...)
+		return append(out, editor...)
+	}
+	start, end := listWindow(len(rows), r.line, height)
+	for i := start; i < end; i++ {
+		out = append(out, inline(i))
 	}
 	return append(out, editor...)
+}
+
+// splitMin is the narrowest diff pane the split view draws in, each side then
+// keeping room for its numbers and a readable stretch of code.
+const splitMin = 90
+
+func (m Model) splitFits() bool { return m.reviewTextWidth() >= splitMin }
+
+// splitRow is one line of the split view: a line on each side, or a header or
+// comment across both. Each is an index into reviewRows, -1 for none.
+type splitRow struct{ left, right, across int }
+
+// pairRows lays rows side by side: each run of removed lines against the added
+// lines that replaced it, a pair to a line, with any comment on them after the run.
+func pairRows(rows []diffRow, f event.FileDiff) []splitRow {
+	var out []splitRow
+	var removed, added, comments []int
+	flush := func() {
+		for k := range max(len(removed), len(added)) {
+			s := splitRow{left: -1, right: -1, across: -1}
+			if k < len(removed) {
+				s.left = removed[k]
+			}
+			if k < len(added) {
+				s.right = added[k]
+			}
+			out = append(out, s)
+		}
+		for _, c := range comments {
+			out = append(out, splitRow{left: -1, right: -1, across: c})
+		}
+		removed, added, comments = nil, nil, nil
+	}
+	for i, row := range rows {
+		switch {
+		case row.comment != nil && len(removed)+len(added) > 0:
+			comments = append(comments, i)
+			continue
+		case row.comment != nil || row.line < 0:
+			flush()
+			out = append(out, splitRow{left: -1, right: -1, across: i})
+			continue
+		}
+		switch f.Hunks[row.hunk].Lines[row.line].Op {
+		case event.LineRemoved:
+			if len(added) > 0 {
+				flush()
+			}
+			removed = append(removed, i)
+		case event.LineAdded:
+			added = append(added, i)
+		case event.LineContext:
+			flush()
+			out = append(out, splitRow{left: i, right: i, across: -1})
+		}
+	}
+	flush()
+	return out
+}
+
+// splitLines draws the diff side by side, the old file on the left and the new
+// on the right, windowed round the line the cursor is on.
+func (m Model) splitLines(f event.FileDiff, rows []diffRow, height, width, nw int,
+	marked func(int) (string, lipgloss.Style), inline func(int) string) []string {
+	pairs := pairRows(rows, f)
+	at := slices.IndexFunc(pairs, func(p splitRow) bool {
+		return p.left == m.review.line || p.right == m.review.line || p.across == m.review.line
+	})
+	half := (width - 3) / 2
+	cell := func(i int, old bool) string {
+		if i < 0 {
+			return strings.Repeat(" ", half)
+		}
+		l := f.Hunks[rows[i].hunk].Lines[rows[i].line]
+		n := l.New
+		if old {
+			n = l.Old
+		}
+		mark, gutter := marked(i)
+		s := gutter.Render(mark+fmt.Sprintf("%*s", nw, lineNo(n))) + " " +
+			lineStyle(l.Op).Render(layout.Truncate(string(rune(l.Op))+l.Text, max(1, half-nw-2)))
+		return s + strings.Repeat(" ", max(0, half-lipgloss.Width(s)))
+	}
+	var out []string
+	start, end := listWindow(len(pairs), max(at, 0), height)
+	for _, p := range pairs[start:end] {
+		if p.across >= 0 {
+			out = append(out, inline(p.across))
+			continue
+		}
+		out = append(out, cell(p.left, true)+styleFaint.Render(" │ ")+cell(p.right, false))
+	}
+	return out
+}
+
+// lineNo is a line number, blank on the side a line is not on.
+func lineNo(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return strconv.Itoa(n)
 }
 
 // commentLine is one line of a comment: who wrote it, or a line of its words.

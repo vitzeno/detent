@@ -148,6 +148,8 @@ type reviewState struct {
 	deleting uuid.UUID
 	// triage walks the reviewer's comments one at a time, nil when not.
 	triage *triageState
+	// split draws the diff side by side, when the pane is wide enough.
+	split bool
 	// back is the pane it was opened from, which esc returns to.
 	back focusPane
 }

@@ -453,6 +453,12 @@ func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		m.jumpComment(map[string]int{">": 1, "<": -1}[key])
 	case "space":
 		m.toggleViewed()
+	case "w":
+		if !m.splitFits() {
+			m.noteErr(fmt.Sprintf("too narrow to split: the diff needs %d columns", splitMin))
+			break
+		}
+		r.split = !r.split
 	}
 	return m, nil
 }

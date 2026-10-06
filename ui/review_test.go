@@ -901,6 +901,60 @@ func TestReview_SpaceMarksAFileViewedAndMovesOn(t *testing.T) {
 	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "1/2 viewed", "unmarked")
 }
 
+// Side by side, a run of removed lines faces the added lines that replaced it,
+// an unchanged line sits on both sides, and a comment follows the run it is on.
+func TestPairRows_FacesEachRemovedRunWithWhatReplacedIt(t *testing.T) {
+	f := event.FileDiff{Hunks: []event.Hunk{{Lines: []event.DiffLine{
+		{Op: event.LineContext}, {Op: event.LineRemoved}, {Op: event.LineRemoved}, {Op: event.LineAdded}, {Op: event.LineContext},
+	}}}}
+	c := &event.ReviewComment{}
+	rows := []diffRow{{hunk: 0, line: -1}, {line: 0}, {line: 1}, {line: 2}, {line: 3}, {line: -1, comment: c}, {line: 4}}
+	assert.Equal(t, []splitRow{
+		{left: -1, right: -1, across: 0},
+		{left: 1, right: 1, across: -1},
+		{left: 2, right: 4, across: -1},
+		{left: 3, right: -1, across: -1},
+		{left: -1, right: -1, across: 5},
+		{left: 6, right: 6, across: -1},
+	}, pairRows(rows, f))
+
+	// A comment on the first of two removed lines still waits for the run to end,
+	// and a removed line after added ones starts a run of its own.
+	f = event.FileDiff{Hunks: []event.Hunk{{Lines: []event.DiffLine{
+		{Op: event.LineRemoved}, {Op: event.LineRemoved}, {Op: event.LineAdded}, {Op: event.LineAdded}, {Op: event.LineRemoved},
+	}}}}
+	rows = []diffRow{{line: 0}, {line: -1, comment: c}, {line: 1}, {line: 2}, {line: 3}, {line: 4}}
+	assert.Equal(t, []splitRow{
+		{left: 0, right: 3, across: -1},
+		{left: 2, right: 4, across: -1},
+		{left: -1, right: -1, across: 1},
+		{left: 5, right: -1, across: -1},
+	}, pairRows(rows, f))
+}
+
+// w splits the diff when the pane is wide enough, the cursor's mark on the side
+// its line is on, and says so when it is too narrow.
+func TestReview_WSplitsTheDiffWhenThereIsRoom(t *testing.T) {
+	k := loadedReview(t)
+	k.press(t, "w")
+	assert.False(t, k.m.review.split)
+	assert.Contains(t, k.m.notice.text, "too narrow")
+
+	k.m.layout.width = 230
+	k.m.sizeViewport()
+	k.press(t, "w")
+	require.True(t, k.m.review.split)
+	k.press(t, "down")
+	k.press(t, "down")
+	lines := k.m.reviewDiffLines(20)
+	paired := ansi.Strip(lines[1])
+	left, right, ok := strings.Cut(paired, "│")
+	require.True(t, ok, "one line, two sides: %q", paired)
+	assert.Contains(t, left, "-old line")
+	assert.Contains(t, right, "▸")
+	assert.Contains(t, right, "+new line", "the added line faces the removed one")
+}
+
 // Closing the modal leaves the reviewer working: its comments still land on
 // the review, and its row counts them.
 func TestReview_TheModalClosesWhileTheReviewerWorks(t *testing.T) {
