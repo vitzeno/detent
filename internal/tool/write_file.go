@@ -16,7 +16,7 @@ type WriteFile struct{}
 
 var _ Native = WriteFile{}
 
-func (WriteFile) Name() string { return event.ToolWriteFile }
+func (WriteFile) Name() event.ToolName { return event.ToolWriteFile }
 
 func (WriteFile) Describe() Spec {
 	return Spec{

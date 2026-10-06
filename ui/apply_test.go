@@ -621,7 +621,7 @@ func spawnAlso(m *Model, turn uuid.UUID, name string) spawn {
 func childCall(sp spawn, headline string) event.ToolCallProposed {
 	tool, arg, _ := strings.Cut(headline, " ")
 	k, v, _ := strings.Cut(arg, "=")
-	return event.ToolCallProposed{ToolCall: uuid.Must(uuid.NewV7()), Tool: tool, Args: map[string]any{k: v}, Agent: sp.agent}
+	return event.ToolCallProposed{ToolCall: uuid.Must(uuid.NewV7()), Tool: event.ToolName(tool), Args: map[string]any{k: v}, Agent: sp.agent}
 }
 
 // asked is an approval for a shell command.

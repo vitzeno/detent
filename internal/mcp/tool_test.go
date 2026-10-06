@@ -71,7 +71,7 @@ func TestRegister_ABuiltInAlwaysWins(t *testing.T) {
 
 	after, _ := reg.Lookup("bash")
 	assert.Equal(t, before, after, "a server replaced a built-in")
-	assert.NotContains(t, names(added), "bash")
+	assert.NotContains(t, names(added), event.ToolBash)
 }
 
 // Truncation makes collisions likelier than the namespace alone, and
@@ -87,7 +87,7 @@ func TestRegister_RenamesRatherThanReplaces(t *testing.T) {
 	require.Len(t, first, 1)
 	require.Len(t, second, 1)
 	assert.NotEqual(t, first[0].Name(), second[0].Name(), "the second registration replaced the first")
-	legal(t, second[0].Name())
+	legal(t, string(second[0].Name()))
 
 	for _, n := range append(names(first), names(second)...) {
 		_, ok := reg.Lookup(n)
@@ -121,7 +121,7 @@ func TestRegister_PassesTheSchemaThrough(t *testing.T) {
 
 	// And it reaches the model, not just the Spec: the two can
 	// differ, and only the second one is what gets sent.
-	assert.Equal(t, schema, parameters(t, reg, added[0].Name()))
+	assert.Equal(t, schema, parameters(t, reg, string(added[0].Name())))
 }
 
 // End to end against a real server: list, register, prepare.
@@ -133,7 +133,7 @@ func TestRegister_FromALiveServer(t *testing.T) {
 
 	reg := tool.Standard()
 	added := registerTools(reg, s, tools, true)
-	assert.ElementsMatch(t, []string{"fake__alpha", "fake__beta"}, names(added))
+	assert.ElementsMatch(t, []event.ToolName{"fake__alpha", "fake__beta"}, names(added))
 
 	call, err := reg.Prepare("fake__alpha", nil)
 	require.NoError(t, err)
@@ -156,7 +156,7 @@ func TestSchemas_ARawSchemaIsNotOfferedAsStrict(t *testing.T) {
 	for _, s := range reg.Schemas() {
 		fn := s["function"].(map[string]any)
 		switch fn["name"] {
-		case added[0].Name():
+		case string(added[0].Name()):
 			sawMCP = true
 			assert.Equal(t, false, fn["strict"])
 		case "bash":
@@ -263,8 +263,8 @@ func parameters(t *testing.T, reg *tool.Registry, name string) map[string]any {
 }
 
 // names is what Register registered, for asserting on.
-func names(tools []Tool) []string {
-	var out []string
+func names(tools []Tool) []event.ToolName {
+	var out []event.ToolName
 	for _, t := range tools {
 		out = append(out, t.Name())
 	}

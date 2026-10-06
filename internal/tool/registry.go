@@ -6,14 +6,16 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/vitzeno/detent/event"
 )
 
 // Registry is the vocabulary one session offers, from one Spec. Safe
 // for concurrent use: MCP tools register after the built-ins.
 type Registry struct {
 	mu    sync.RWMutex
-	tools map[string]Tool
-	order []string
+	tools map[event.ToolName]Tool
+	order []event.ToolName
 	// fixed is how many of order are built-ins, kept in their own order.
 	fixed int
 }
@@ -31,7 +33,7 @@ func Shell(pwsh bool) Tool {
 
 // StandardFor is Standard with shell in bash's place, such as PowerShell.
 func StandardFor(shell Tool, extra ...Tool) *Registry {
-	r := &Registry{tools: map[string]Tool{}}
+	r := &Registry{tools: map[event.ToolName]Tool{}}
 	builtins := append([]Tool{shell, ReadFile{}, WriteFile{}, EditFile{}, ListDir{}, Grep{}, FindFiles{}, WebSearch{}}, extra...)
 	for _, t := range builtins {
 		if _, dup := r.tools[t.Name()]; !dup {
@@ -45,19 +47,19 @@ func StandardFor(shell Tool, extra ...Tool) *Registry {
 
 // Without is a registry of every tool but the named ones, sharing them and
 // keeping their order, such as what a subagent may call.
-func (r *Registry) Without(names ...string) *Registry {
+func (r *Registry) Without(names ...event.ToolName) *Registry {
 	r.mu.RLock()
-	keep := slices.DeleteFunc(slices.Clone(r.order), func(n string) bool { return slices.Contains(names, n) })
+	keep := slices.DeleteFunc(slices.Clone(r.order), func(n event.ToolName) bool { return slices.Contains(names, n) })
 	r.mu.RUnlock()
 	return r.Only(keep...)
 }
 
 // Only is a registry of just the named tools, sharing them and keeping their
 // order, such as what a subagent may call. A name not registered is skipped.
-func (r *Registry) Only(names ...string) *Registry {
+func (r *Registry) Only(names ...event.ToolName) *Registry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := &Registry{tools: map[string]Tool{}}
+	out := &Registry{tools: map[event.ToolName]Tool{}}
 	for i, n := range r.order {
 		if t, ok := r.tools[n]; ok && slices.Contains(names, n) {
 			out.tools[n] = t
@@ -72,7 +74,7 @@ func (r *Registry) Only(names ...string) *Registry {
 
 // Call is one validated, lowered tool call.
 type Call struct {
-	Tool       string
+	Tool       event.ToolName
 	Command    string
 	Mutability string
 	Args       Args
@@ -85,10 +87,10 @@ type Call struct {
 
 // Prepare validates a call and lowers it. Every error here reaches the
 // model as a tool result, so each says what to do instead.
-func (r *Registry) Prepare(name string, args map[string]any) (Call, error) {
+func (r *Registry) Prepare(name event.ToolName, args map[string]any) (Call, error) {
 	t, ok := r.Lookup(name)
 	if !ok {
-		return Call{}, fmt.Errorf("no tool named %q; available: %s", name, strings.Join(r.Names(), ", "))
+		return Call{}, fmt.Errorf("no tool named %q; available: %s", name, joined(r.Names()))
 	}
 	spec := t.Describe()
 	// A raw schema is not ours to check. The server that published it
@@ -129,19 +131,19 @@ func (r *Registry) Register(t Tool) error {
 
 // Unregister removes tools other than built-ins, as when an MCP server is
 // dialled again and its old session's tools must not outlive it.
-func (r *Registry) Unregister(names ...string) {
+func (r *Registry) Unregister(names ...event.ToolName) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, n := range names {
 		if _, ok := r.tools[n]; ok && !r.builtin(n) {
 			delete(r.tools, n)
-			r.order = slices.DeleteFunc(r.order, func(o string) bool { return o == n })
+			r.order = slices.DeleteFunc(r.order, func(o event.ToolName) bool { return o == n })
 		}
 	}
 }
 
 // Lookup finds a tool by name.
-func (r *Registry) Lookup(name string) (Tool, bool) {
+func (r *Registry) Lookup(name event.ToolName) (Tool, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	t, ok := r.tools[name]
@@ -149,7 +151,7 @@ func (r *Registry) Lookup(name string) (Tool, bool) {
 }
 
 // Names are the built-ins, then the rest by name: the order the model sees.
-func (r *Registry) Names() []string {
+func (r *Registry) Names() []event.ToolName {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return slices.Clone(r.order)
@@ -165,7 +167,8 @@ func (r *Registry) Schemas() []map[string]any {
 		out = append(out, map[string]any{
 			"type": "function",
 			"function": map[string]any{
-				"name":        n,
+				// A string, since the wire and whatever reads a schema back expect one.
+				"name":        string(n),
 				"description": spec.Description,
 				"parameters":  schema(spec),
 				// Strict demands a shape an arbitrary schema will not
@@ -178,7 +181,7 @@ func (r *Registry) Schemas() []map[string]any {
 }
 
 // Native is the named tool when it can run in this process.
-func (r *Registry) Native(name string) (Native, bool) {
+func (r *Registry) Native(name event.ToolName) (Native, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	n, ok := r.tools[name].(Native)
@@ -186,8 +189,17 @@ func (r *Registry) Native(name string) (Native, bool) {
 }
 
 // builtin reports whether name is one of the tools Standard fixed in place.
-func (r *Registry) builtin(name string) bool {
+func (r *Registry) builtin(name event.ToolName) bool {
 	return slices.Contains(r.order[:r.fixed], name)
+}
+
+// joined lists names for a message.
+func joined(names []event.ToolName) string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = string(n)
+	}
+	return strings.Join(out, ", ")
 }
 
 // schema renders a Spec as JSON Schema. Strict mode wants every property

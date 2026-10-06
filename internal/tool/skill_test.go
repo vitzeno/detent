@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/event"
 )
 
 func TestSkill_ReadsTheBodyAndListsItsFiles(t *testing.T) {
@@ -59,7 +61,7 @@ func TestSkill_RegistersWithTheBuiltIns(t *testing.T) {
 	r := Standard(NewSkill(nil))
 	require.NoError(t, r.Register(fakeMCP{"aaa__first"}))
 	names := r.Names()
-	assert.Equal(t, "aaa__first", names[len(names)-1], "a skill is not sorted in among MCP tools")
+	assert.Equal(t, event.ToolName("aaa__first"), names[len(names)-1], "a skill is not sorted in among MCP tools")
 }
 
 func TestSkill_ShortensDescriptionsToFitTheCatalog(t *testing.T) {
@@ -72,7 +74,7 @@ func TestSkill_ShortensDescriptionsToFitTheCatalog(t *testing.T) {
 	assert.Equal(t, 40, strings.Count(got, "\n"), "every skill keeps its line")
 }
 
-func (f fakeMCP) Name() string               { return f.name }
+func (f fakeMCP) Name() event.ToolName       { return f.name }
 func (f fakeMCP) Describe() Spec             { return Spec{Description: "x", Executor: "mcp"} }
 func (f fakeMCP) Lower(Args) (string, error) { return "", nil }
 
@@ -91,4 +93,4 @@ func TestSkill_FailsWhenItsFileIsGone(t *testing.T) {
 	assert.Error(t, err)
 }
 
-type fakeMCP struct{ name string }
+type fakeMCP struct{ name event.ToolName }

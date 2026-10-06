@@ -19,7 +19,7 @@ func TestPrepare_BadToolCallsExplainThemselves(t *testing.T) {
 	r := Standard()
 	tests := []struct {
 		name  string
-		tool  string
+		tool  event.ToolName
 		args  map[string]any
 		wants []string // substrings the message must carry
 	}{
@@ -75,7 +75,7 @@ func TestPrepare_LowersToCommands(t *testing.T) {
 	r := Standard()
 	tests := []struct {
 		name string
-		tool string
+		tool event.ToolName
 		args map[string]any
 		want string
 		mut  string
@@ -103,7 +103,7 @@ func TestPrepare_QuotesHostilePaths(t *testing.T) {
 		"a b.go", "$(touch pwned)", "`touch pwned`", "a'; touch pwned; '", "--; touch pwned", "*", "year=2024/x", "!",
 	} {
 		for _, call := range []struct {
-			tool string
+			tool event.ToolName
 			args map[string]any
 		}{
 			{"read_file", map[string]any{"path": p}},
@@ -137,7 +137,7 @@ func TestSchemas_MatchTheSpecs(t *testing.T) {
 	for _, s := range schemas {
 		fn := s["function"].(map[string]any)
 		name := fn["name"].(string)
-		tl, ok := r.Lookup(name)
+		tl, ok := r.Lookup(event.ToolName(name))
 		require.True(t, ok)
 
 		assert.NotEmpty(t, fn["description"], "%s has no description", name)
@@ -168,7 +168,7 @@ func TestSchemas_MatchTheSpecs(t *testing.T) {
 func TestRegistry_OnlyKeepsTheNamedToolsInOrder(t *testing.T) {
 	reg := Standard(SpawnAgent{})
 	sub := reg.Only("grep", "read_file", "no_such_tool")
-	assert.Equal(t, []string{"read_file", "grep"}, sub.Names())
+	assert.Equal(t, []event.ToolName{"read_file", "grep"}, sub.Names())
 	_, ok := sub.Lookup(event.ToolSpawnAgent)
 	assert.False(t, ok, "a child must not be able to spawn")
 	assert.Error(t, sub.Register(ReadFile{}), "a kept built-in is still a built-in")
@@ -177,7 +177,7 @@ func TestRegistry_OnlyKeepsTheNamedToolsInOrder(t *testing.T) {
 func TestRegistry_WithoutDropsOnlyTheNamedTools(t *testing.T) {
 	reg := Standard(SpawnAgent{})
 	sub := reg.Without(event.ToolSpawnAgent)
-	assert.Equal(t, slices.DeleteFunc(reg.Names(), func(n string) bool { return n == event.ToolSpawnAgent }), sub.Names())
+	assert.Equal(t, slices.DeleteFunc(reg.Names(), func(n event.ToolName) bool { return n == event.ToolSpawnAgent }), sub.Names())
 }
 
 func TestPrepare_TreatsNullAsAbsent(t *testing.T) {
@@ -197,7 +197,7 @@ func TestRegistry_RegisterOverridesWithoutDuplicating(t *testing.T) {
 // Nothing a server publishes may shadow bash or any other built-in.
 func TestRegistry_ABuiltInWinsACollision(t *testing.T) {
 	r := Standard(NewSkill(nil))
-	for _, name := range []string{"bash", "read_file", "skill"} {
+	for _, name := range []event.ToolName{"bash", "read_file", "skill"} {
 		require.Error(t, r.Register(fakeMCP{name}), name)
 		got, ok := r.Lookup(name)
 		require.True(t, ok)
@@ -213,7 +213,7 @@ func TestRegistry_KeepsBuiltInsInTheirOwnOrder(t *testing.T) {
 	r := Standard(NewSkill(nil))
 	require.NoError(t, r.Register(fakeMCP{"zz__last"}))
 	require.NoError(t, r.Register(fakeMCP{"aa__first"}))
-	assert.Equal(t, []string{
+	assert.Equal(t, []event.ToolName{
 		"bash", "read_file", "write_file", "edit_file", "list_dir", "grep", "find_files", "web_search", "skill",
 		"aa__first", "zz__last",
 	}, r.Names())
@@ -224,7 +224,7 @@ func TestStandardFor_PutsTheShellInBashsPlace(t *testing.T) {
 	r := StandardFor(PowerShell{}, NewSkill(nil))
 	names := r.Names()
 	assert.Equal(t, event.ToolPowerShell, names[0])
-	assert.NotContains(t, names, "bash")
+	assert.NotContains(t, names, event.ToolBash)
 	assert.Len(t, names, len(Standard(NewSkill(nil)).Names()))
 
 	call, err := r.Prepare(event.ToolPowerShell, map[string]any{"command": "Get-ChildItem"})
@@ -249,10 +249,10 @@ func TestRegistry_UnregisterRemovesFromWhatTheModelSees(t *testing.T) {
 	_, ok := r.Lookup("srv__x")
 	assert.False(t, ok)
 	assert.Len(t, r.Names(), before-1)
-	assert.NotContains(t, r.Names(), "srv__x")
+	assert.NotContains(t, r.Names(), event.ToolName("srv__x"))
 }
 
 func TestShell_IsNamedForWhereCommandsRun(t *testing.T) {
-	assert.Equal(t, "bash", Shell(false).Name())
-	assert.Equal(t, "powershell", Shell(true).Name())
+	assert.Equal(t, event.ToolBash, Shell(false).Name())
+	assert.Equal(t, event.ToolPowerShell, Shell(true).Name())
 }

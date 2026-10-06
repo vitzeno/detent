@@ -27,7 +27,7 @@ func TestSpawn_AChildHasEveryToolButSpawn(t *testing.T) {
 		&fakeRunner{out: "ok\n"}, reg, WithChildModel(cm))
 	r.run("explore")
 
-	want := slices.DeleteFunc(reg.Names(), func(n string) bool { return n == event.ToolSpawnAgent })
+	want := slices.DeleteFunc(reg.Names(), func(n event.ToolName) bool { return n == event.ToolSpawnAgent })
 	require.NotEmpty(t, cm.offered())
 	for _, names := range cm.offered() {
 		assert.Equal(t, want, names)
@@ -317,8 +317,8 @@ func TestSpawn_AChildRunsTheSessionsShell(t *testing.T) {
 		&fakeRunner{out: "ok\n"}, tool.StandardFor(tool.PowerShell{}, tool.SpawnAgent{}), WithChildModel(cm))
 	r.run("go")
 	for _, names := range cm.offered() {
-		assert.Contains(t, names, "powershell")
-		assert.NotContains(t, names, "bash")
+		assert.Contains(t, names, event.ToolPowerShell)
+		assert.NotContains(t, names, event.ToolBash)
 	}
 }
 
@@ -456,7 +456,7 @@ type childModel struct {
 	hangOn       string
 	n, inFlight  int
 	peak         int
-	toolsOffered [][]string
+	toolsOffered [][]event.ToolName
 }
 
 func (m *childModel) Complete(ctx context.Context, msgs []event.Message, tools []map[string]any) (model.Reply, event.Usage, error) {
@@ -521,17 +521,17 @@ func (m *childModel) calls() int {
 	return m.n
 }
 
-func (m *childModel) offered() [][]string {
+func (m *childModel) offered() [][]event.ToolName {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return slices.Clone(m.toolsOffered)
 }
 
-func schemaNames(tools []map[string]any) []string {
-	var out []string
+func schemaNames(tools []map[string]any) []event.ToolName {
+	var out []event.ToolName
 	for _, s := range tools {
 		if fn, ok := s["function"].(map[string]any); ok {
-			out = append(out, fn["name"].(string))
+			out = append(out, event.ToolName(fn["name"].(string)))
 		}
 	}
 	return out

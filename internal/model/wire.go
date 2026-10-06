@@ -65,7 +65,7 @@ func encode(m event.Message) wireMessage {
 	w := wireMessage{Role: string(m.Role), Content: m.Content, ToolCallID: m.RequestID}
 	for _, c := range m.Requests {
 		wc := wireToolCall{ID: c.ID, Type: "function"}
-		wc.Function.Name = c.Name
+		wc.Function.Name = string(c.Name)
 		args, err := json.Marshal(c.Args)
 		if err != nil {
 			args = []byte("{}")
@@ -96,7 +96,7 @@ func decode(r wireResponse) (Reply, error) {
 // decodeRequest keeps a call whose arguments would not parse. Dropping it
 // would leave the assistant message naming an id nothing answers.
 func decodeRequest(wc wireToolCall, i int) event.ToolRequest {
-	c := event.ToolRequest{ID: wc.ID, Name: wc.Function.Name}
+	c := event.ToolRequest{ID: wc.ID, Name: event.ToolName(wc.Function.Name)}
 	if c.ID == "" {
 		c.ID = fmt.Sprintf("call_%d", i) // some endpoints omit it
 	}

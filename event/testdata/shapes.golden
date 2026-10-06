@@ -116,7 +116,7 @@ tool_call.approval Risk.FromJudge bool
 tool_call.approval Risk.Mutability string
 tool_call.approval Risk.Note string
 tool_call.approval Risk.ScopeRisk float64
-tool_call.approval Tool string
+tool_call.approval Tool event.ToolName
 tool_call.approval ToolCall uuid.UUID
 tool_call.assessed Risk.Dangerous bool
 tool_call.assessed Risk.FromJudge bool
@@ -143,7 +143,7 @@ tool_call.proposed Executor string
 tool_call.proposed Rationale string
 tool_call.proposed Renders event.RenderKind
 tool_call.proposed Step uuid.UUID
-tool_call.proposed Tool string
+tool_call.proposed Tool event.ToolName
 tool_call.proposed ToolCall uuid.UUID
 tool_call.started Runner string
 tool_call.started ToolCall uuid.UUID
@@ -153,7 +153,7 @@ transcript.appended Messages[].RequestID string
 transcript.appended Messages[].Requests[].Args{} interface {}
 transcript.appended Messages[].Requests[].Err string
 transcript.appended Messages[].Requests[].ID string
-transcript.appended Messages[].Requests[].Name string
+transcript.appended Messages[].Requests[].Name event.ToolName
 transcript.appended Messages[].Role event.Role
 transcript.appended Step uuid.UUID
 transcript.appended Turn uuid.UUID

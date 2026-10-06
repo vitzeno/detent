@@ -24,9 +24,10 @@ const (
 // Tool is one MCP tool, wearing the registry's interface. It lowers to
 // a description rather than a command: nothing about it runs in a shell.
 type Tool struct {
-	name, remote string
-	server       *Server
-	spec         tool.Spec
+	name   event.ToolName
+	remote string
+	server *Server
+	spec   tool.Spec
 }
 
 // registerTools adds a server's tools and returns them. A taken name is
@@ -38,7 +39,7 @@ func registerTools(reg *tool.Registry, s *Server, tools []*sdk.Tool, hints bool)
 		if !ok {
 			continue
 		}
-		tl := Tool{name: name, remote: t.Name, server: s, spec: specOf(s.Name, t, hints)}
+		tl := Tool{name: event.ToolName(name), remote: t.Name, server: s, spec: specOf(s.Name, t, hints)}
 		// free checked the name, so a refusal means a built-in got there first.
 		if reg.Register(tl) != nil {
 			continue
@@ -49,7 +50,7 @@ func registerTools(reg *tool.Registry, s *Server, tools []*sdk.Tool, hints bool)
 }
 
 // Name is the namespaced name the model calls it by.
-func (t Tool) Name() string { return t.name }
+func (t Tool) Name() event.ToolName { return t.name }
 
 // Describe is the server's description and schema, as it gave them.
 func (t Tool) Describe() tool.Spec { return t.spec }
@@ -94,7 +95,7 @@ func clean(s string) string {
 // free finds a name nothing has taken, so registering can only ever
 // add. Truncation makes collisions likelier than the namespace alone.
 func free(reg *tool.Registry, name string) (string, bool) {
-	if _, taken := reg.Lookup(name); !taken {
+	if _, taken := reg.Lookup(event.ToolName(name)); !taken {
 		return name, true
 	}
 	for n := 2; n < 1000; n++ {
@@ -103,7 +104,7 @@ func free(reg *tool.Registry, name string) (string, bool) {
 		if len(next)+len(suffix) > maxToolName {
 			next = next[:maxToolName-len(suffix)]
 		}
-		if _, taken := reg.Lookup(next + suffix); !taken {
+		if _, taken := reg.Lookup(event.ToolName(next + suffix)); !taken {
 			return next + suffix, true
 		}
 	}

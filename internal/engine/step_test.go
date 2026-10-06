@@ -176,7 +176,7 @@ func TestStep_ANativeToolPastItsLimitIsStoppedAndSaysSo(t *testing.T) {
 // slowNative is a native tool that runs until its context ends.
 type slowNative struct{}
 
-func (slowNative) Name() string { return "slow" }
+func (slowNative) Name() event.ToolName { return "slow" }
 
 func (slowNative) Describe() tool.Spec {
 	return tool.Spec{Description: "waits", Mutability: event.MutRead}

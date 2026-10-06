@@ -17,7 +17,7 @@ type EditFile struct{}
 
 var _ Native = EditFile{}
 
-func (EditFile) Name() string { return event.ToolEditFile }
+func (EditFile) Name() event.ToolName { return event.ToolEditFile }
 
 func (EditFile) Describe() Spec {
 	return Spec{

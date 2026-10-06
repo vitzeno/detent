@@ -44,7 +44,7 @@ type SkillEntry struct {
 	Hidden      bool
 }
 
-func (Skill) Name() string { return event.ToolSkill }
+func (Skill) Name() event.ToolName { return event.ToolSkill }
 
 func (s Skill) Describe() Spec {
 	names := make([]string, len(s.entries))

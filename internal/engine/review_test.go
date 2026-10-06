@@ -189,7 +189,7 @@ func reviewOf() event.ReviewChanges {
 			}}}}}}
 }
 
-func reviewCall(id, name string, args map[string]any) event.ToolRequest {
+func reviewCall(id string, name event.ToolName, args map[string]any) event.ToolRequest {
 	return event.ToolRequest{ID: id, Name: name, Args: args}
 }
 

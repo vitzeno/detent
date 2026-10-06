@@ -21,7 +21,7 @@ type ReadFile struct{}
 
 var _ Native = ReadFile{}
 
-func (ReadFile) Name() string { return event.ToolReadFile }
+func (ReadFile) Name() event.ToolName { return event.ToolReadFile }
 
 func (ReadFile) Describe() Spec {
 	return Spec{

@@ -6,7 +6,7 @@ import "github.com/vitzeno/detent/event"
 // since a model asked to call bash writes bash.
 type PowerShell struct{}
 
-func (PowerShell) Name() string { return event.ToolPowerShell }
+func (PowerShell) Name() event.ToolName { return event.ToolPowerShell }
 
 func (PowerShell) Describe() Spec {
 	return Spec{

@@ -57,10 +57,10 @@ func (m Model) confirmBox() string {
 // confirmTitle names what is asked: the tool in its history colour, and
 // where this question stands when more wait behind it.
 func (m Model) confirmTitle(a *event.ApprovalAsked) string {
-	tool := styleGoal.Render(termsafe.Printable(a.Tool))
+	tool := styleGoal.Render(termsafe.Printable(string(a.Tool)))
 	if r := m.row(a.ToolCall); r != nil {
 		if style, ok := toolStyle(r); ok {
-			tool = style.Render(termsafe.Printable(a.Tool))
+			tool = style.Render(termsafe.Printable(string(a.Tool)))
 		}
 	}
 	title := styleDanger.Render("approve") + styleFaint.Render(" · ") + tool

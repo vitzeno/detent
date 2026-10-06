@@ -23,7 +23,7 @@ type FindFiles struct{}
 
 var _ Native = FindFiles{}
 
-func (FindFiles) Name() string { return event.ToolFindFiles }
+func (FindFiles) Name() event.ToolName { return event.ToolFindFiles }
 
 func (FindFiles) Describe() Spec {
 	return Spec{

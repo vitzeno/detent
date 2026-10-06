@@ -57,7 +57,8 @@ func TestSession_PhasesRunOneRequestEndToEnd(t *testing.T) {
 func TestSession_HostShellPicksTheToolAndThePrompt(t *testing.T) {
 	t.Setenv("DETENT_HOST_SHELL", "")
 	for _, tt := range []struct {
-		shell, want, tool string
+		shell, want string
+		tool        event.ToolName
 	}{
 		{host.Sh, model.ShellSh, "bash"},
 		{host.GitBash, model.ShellGitBash, "bash"},

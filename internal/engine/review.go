@@ -97,7 +97,7 @@ func (e *Engine) answer(a *agent, p *toolCallPlan) {
 	start := time.Now()
 	var out event.Result
 	if a.review == nil {
-		out.Err = p.prepared.Tool + " only answers during a review"
+		out.Err = string(p.prepared.Tool) + " only answers during a review"
 	} else if text, err := a.review.answer(e, p.prepared); err != nil {
 		out.Err = err.Error()
 	} else {
@@ -121,8 +121,9 @@ func (r *reviewRun) answer(e *Engine, c tool.Call) (string, error) {
 		comment.ID, comment.Author = uuid.Must(uuid.NewV7()), reviewerName
 		e.bus.Publish(r.commented(comment))
 		return fmt.Sprintf("Commented on %s:%d.", comment.Path, comment.Start), nil
+	default:
+		return "", fmt.Errorf("%s is not a review tool", c.Tool)
 	}
-	return "", fmt.Errorf("%s is not a review tool", c.Tool)
 }
 
 func (r *reviewRun) commented(c event.ReviewComment) event.ReviewCommented {

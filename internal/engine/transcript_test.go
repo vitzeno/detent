@@ -371,7 +371,7 @@ func wellFormed(t *testing.T, msgs []event.Message) {
 	}
 }
 
-func call(id, name string) event.ToolRequest {
+func call(id string, name event.ToolName) event.ToolRequest {
 	return event.ToolRequest{ID: id, Name: name, Args: map[string]any{}}
 }
 

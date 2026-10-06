@@ -68,7 +68,8 @@ type historyRow struct {
 	prose   string
 	// tool is the tool's name, empty for a command the human ran, and
 	// headline its arguments as history leads with them.
-	tool, headline string
+	tool     event.ToolName
+	headline string
 	// wrote is what write_file was given, kept until its result says whether
 	// the file was new, when created becomes that content as a diff.
 	wrote   *written

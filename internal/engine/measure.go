@@ -107,7 +107,7 @@ func (e *Engine) fixedParts() []part {
 		fn, _ := schema["function"].(map[string]any)
 		name, _ := fn["name"].(string)
 		var spec tool.Spec
-		if t, ok := e.root.tools.Lookup(name); ok {
+		if t, ok := e.root.tools.Lookup(event.ToolName(name)); ok {
 			spec = t.Describe()
 		}
 		key := cmp.Or(spec.Group, "tools")

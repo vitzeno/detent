@@ -90,7 +90,7 @@ func TestConnectAll_RegistersInAStableOrder(t *testing.T) {
 	bin, err := fakeServer()
 	require.NoError(t, err)
 
-	var runs [][]string
+	var runs [][]event.ToolName
 	for range 3 {
 		reg := tool.Standard()
 		in := NewInvokers()
@@ -217,7 +217,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func indexOf(names []string, want string) int {
+func indexOf(names []event.ToolName, want event.ToolName) int {
 	for i, n := range names {
 		if n == want {
 			return i

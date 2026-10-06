@@ -10,7 +10,7 @@ import (
 // that cannot say what it wants routes around you.
 type Bash struct{}
 
-func (Bash) Name() string { return event.ToolBash }
+func (Bash) Name() event.ToolName { return event.ToolBash }
 
 func (Bash) Describe() Spec {
 	return Spec{

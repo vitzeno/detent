@@ -22,7 +22,7 @@ type Invokers struct {
 	registering sync.Mutex
 
 	mu    sync.RWMutex
-	tools map[string]Tool
+	tools map[event.ToolName]Tool
 	// servers is every connected session, including one offering no tools.
 	servers map[string]*Server
 	// status holds every configured server from the start, so /mcp lists unanswered ones.
@@ -40,7 +40,7 @@ func WithoutHints() InvokersOption { return func(i *Invokers) { i.hints = false 
 
 // NewInvokers returns an Invokers with no tools.
 func NewInvokers(opts ...InvokersOption) *Invokers {
-	i := &Invokers{tools: map[string]Tool{}, servers: map[string]*Server{}, hints: true}
+	i := &Invokers{tools: map[event.ToolName]Tool{}, servers: map[string]*Server{}, hints: true}
 	for _, o := range opts {
 		o(i)
 	}
@@ -118,12 +118,12 @@ func (i *Invokers) swap(reg *tool.Registry, s *Server, tools []*sdk.Tool) *Serve
 
 // drop removes a server's tools, handing back their names and the
 // session to close.
-func (i *Invokers) drop(server string) (*Server, []string) {
+func (i *Invokers) drop(server string) (*Server, []event.ToolName) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	old := i.servers[server]
 	delete(i.servers, server)
-	var names []string
+	var names []event.ToolName
 	for name, t := range i.tools {
 		if t.server.Name == server {
 			names = append(names, name)

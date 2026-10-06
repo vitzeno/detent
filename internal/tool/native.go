@@ -9,6 +9,7 @@ import (
 	"os"
 	"syscall"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/capture"
 )
 
@@ -21,12 +22,12 @@ func failed(code int, format string, a ...any) capture.Result {
 }
 
 // stopped is a native tool cut short by its context, keeping what it printed.
-func stopped(name, out string, err error) capture.Result {
+func stopped(name event.ToolName, out string, err error) capture.Result {
 	why := "stopped"
 	if err != nil {
 		why += ": " + err.Error()
 	}
-	return capture.Result{ExitCode: 1, Stdout: out, Stderr: name + ": " + why + "\n"}
+	return capture.Result{ExitCode: 1, Stdout: out, Stderr: string(name) + ": " + why + "\n"}
 }
 
 // openRegular opens p to read, refusing anything but a regular file before

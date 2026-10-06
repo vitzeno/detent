@@ -7,7 +7,7 @@ import "github.com/vitzeno/detent/event"
 // to nothing a shell could run, since running one is running the engine.
 type SpawnAgent struct{}
 
-func (SpawnAgent) Name() string { return event.ToolSpawnAgent }
+func (SpawnAgent) Name() event.ToolName { return event.ToolSpawnAgent }
 
 func (SpawnAgent) Describe() Spec {
 	return Spec{

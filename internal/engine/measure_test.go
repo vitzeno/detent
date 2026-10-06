@@ -152,7 +152,7 @@ func (*sizedModel) PromptParts() []model.PromptPart {
 
 type groupedTool struct{}
 
-func (groupedTool) Name() string { return "update_plan" }
+func (groupedTool) Name() event.ToolName { return "update_plan" }
 func (groupedTool) Describe() tool.Spec {
 	return tool.Spec{Description: "keep a plan", Group: "plan", GroupDetail: "a checklist"}
 }
@@ -160,7 +160,7 @@ func (groupedTool) Lower(tool.Args) (string, error) { return "", nil }
 
 type mcpTool struct{}
 
-func (mcpTool) Name() string { return "notion__search" }
+func (mcpTool) Name() event.ToolName { return "notion__search" }
 func (mcpTool) Describe() tool.Spec {
 	return tool.Spec{Description: "search notion", Executor: "notion", Group: "mcp · notion"}
 }

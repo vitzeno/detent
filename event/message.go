@@ -28,7 +28,7 @@ type Message struct {
 // message must carry back.
 type ToolRequest struct {
 	ID   string         `json:"ID"`
-	Name string         `json:"Name"`
+	Name ToolName       `json:"Name"`
 	Args map[string]any `json:"Args"`
 	// Err is set when the model's arguments were not valid JSON. The
 	// call still needs a result, or the next Step is malformed.
@@ -61,13 +61,13 @@ func RequestIDs(calls []ToolRequest) []string {
 
 // Command renders a call as a human is shown it: a shell tool as its command,
 // anything else as tool k=v, quoting any value that could run into the next pair.
-func Command(tool string, args map[string]any) string {
+func Command(tool ToolName, args map[string]any) string {
 	if tool == ToolBash || tool == ToolPowerShell {
 		if c, ok := args["command"].(string); ok {
 			return c
 		}
 	}
-	parts := []string{tool}
+	parts := []string{string(tool)}
 	for _, k := range slices.Sorted(maps.Keys(args)) {
 		if args[k] == nil {
 			continue

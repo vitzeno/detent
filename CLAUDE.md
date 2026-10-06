@@ -327,10 +327,11 @@ import only the standard library.** `viewspec` and `google/uuid` both
 qualify. `event/event_test.go` walks the imports and checks it, so
 adding a fat dependency fails with the transitive import named.
 
-- **`event`**: the shared vocabulary and the `Bus`. The built-in tools'
-  names are constants here (`event.ToolBash`, `event.ToolSpawnAgent`), since
-  `tool`, the engine and `ui` all match on them and `ui` cannot import `tool`.
-  MCP adds names at run time, so a call's `Tool` stays a string. `Publish` never
+- **`event`**: the shared vocabulary and the `Bus`. A tool's name is an
+  `event.ToolName`, and the built-ins are constants here (`event.ToolBash`,
+  `event.ToolSpawnAgent`), since `tool`, the engine and `ui` all match on them
+  and `ui` cannot import `tool`. MCP adds names at run time, so the type is not
+  closed: a switch on it ends in `default`. `Publish` never
   blocks, whoever is listening and however slowly, so publishing from
   inside a handler is safe and cannot deadlock. Each subscriber has
   its own queue: a lagging one grows it and drops only events that say
@@ -822,7 +823,9 @@ type fails `TestShapes_StoredFactsKeepTheirShape`, and the fix is two
 things in one commit: a store migration that rewrites the old records
 (see `internal/store/migrate_0003.go`), then
 `go test ./event -run TestShapes -update`. Adding a field needs only the
-update, since an old record decodes it as zero.
+update, since an old record decodes it as zero, and so does giving a field a
+named type over the same kind (`string` to `event.ToolName`), which stores
+the same bytes.
 
 ### Adding or changing a widget
 

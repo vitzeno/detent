@@ -20,7 +20,7 @@ const (
 // Tool is a typed front end onto a shell command. Lower does no I/O, so
 // only whatever runs the command touches anything.
 type Tool interface {
-	Name() string
+	Name() event.ToolName
 	Describe() Spec
 	// Lower turns validated args into a command. An error here becomes
 	// a tool result, never a failed Turn.

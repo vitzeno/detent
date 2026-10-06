@@ -135,7 +135,7 @@ func TestRegexHook_KeepsPowerShellsTableToPowerShell(t *testing.T) {
 // pattern that matched it would flag every edit, as rm -f once did.
 func TestRegexHook_LeavesTheFileToolsAlone(t *testing.T) {
 	reg := tool.Standard()
-	for name, args := range map[string]map[string]any{
+	for name, args := range map[event.ToolName]map[string]any{
 		"edit_file":  {"path": "a.go", "old_string": "a", "new_string": "b"},
 		"write_file": {"path": "a.go", "content": "x"},
 	} {

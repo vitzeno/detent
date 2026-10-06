@@ -24,7 +24,7 @@ type ListDir struct{}
 
 var _ Native = ListDir{}
 
-func (ListDir) Name() string { return event.ToolListDir }
+func (ListDir) Name() event.ToolName { return event.ToolListDir }
 
 func (ListDir) Describe() Spec {
 	return Spec{

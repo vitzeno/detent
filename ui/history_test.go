@@ -230,7 +230,7 @@ func markedLine(m Model) int {
 // a search stands out from the commands around it.
 func TestHistory_AToolCallLeadsWithItsName(t *testing.T) {
 	for _, tt := range []struct {
-		tool string
+		tool event.ToolName
 		args map[string]any
 		want string
 	}{
@@ -249,7 +249,7 @@ func TestHistory_AToolCallLeadsWithItsName(t *testing.T) {
 
 // Each kind of tool has its own colour, and the human's own command none.
 func TestToolStyle_ColoursByWhatAToolDoes(t *testing.T) {
-	kind := func(tool, executor string) string {
+	kind := func(tool event.ToolName, executor string) string {
 		s, ok := toolStyle(&historyRow{tool: tool, executor: executor})
 		require.True(t, ok)
 		return s.Render("x")
@@ -257,7 +257,7 @@ func TestToolStyle_ColoursByWhatAToolDoes(t *testing.T) {
 	seen := map[string]string{}
 	for _, tt := range [][2]string{{"bash", ""}, {"read_file", ""}, {"edit_file", ""}, {"web_search", ""},
 		{"linear__x", "mcp"}, {"skill", ""}} {
-		got := kind(tt[0], tt[1])
+		got := kind(event.ToolName(tt[0]), tt[1])
 		for other, was := range seen {
 			assert.NotEqual(t, was, got, "%s and %s look the same", tt[0], other)
 		}
@@ -273,7 +273,7 @@ func TestHistory_ToolRowsFitThePane(t *testing.T) {
 	for _, width := range []int{120, 90, 70, 56} {
 		turn := uuid.Must(uuid.NewV7())
 		evs := []event.Event{event.TurnStarted{Turn: turn, N: 1, Prompt: "go"}}
-		for _, tool := range []string{"read_file", "linear__create_a_very_long_issue_name", "web_search"} {
+		for _, tool := range []event.ToolName{"read_file", "linear__create_a_very_long_issue_name", "web_search"} {
 			call := uuid.Must(uuid.NewV7())
 			evs = append(evs, event.ToolCallProposed{ToolCall: call, Tool: tool,
 				Args: map[string]any{"path": strings.Repeat("deep/", 20), "query": "x"}},

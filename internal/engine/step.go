@@ -151,7 +151,7 @@ func (e *Engine) plan(ctx context.Context, a *agent, step uuid.UUID, reply model
 
 // renders asks the tool how its output should be read. Advisory: a
 // front-end may ignore it.
-func renders(a *agent, name string) event.RenderKind {
+func renders(a *agent, name event.ToolName) event.RenderKind {
 	t, ok := a.tools.Lookup(name)
 	if !ok {
 		return ""
@@ -161,7 +161,7 @@ func renders(a *agent, name string) event.RenderKind {
 
 // executor names what runs a tool, empty for a shell command. A
 // front-end needs it to say what a rollback cannot take back.
-func executor(a *agent, name string) string {
+func executor(a *agent, name event.ToolName) string {
 	t, ok := a.tools.Lookup(name)
 	if !ok {
 		return ""

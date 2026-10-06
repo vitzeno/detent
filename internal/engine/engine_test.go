@@ -452,7 +452,7 @@ func TestTurn_AReadOnlyTurnIsNotAskedToCheck(t *testing.T) {
 // since none of the shipped tools claims a shape today.
 type markdownTool struct{}
 
-func (markdownTool) Name() string { return "declares_markdown" }
+func (markdownTool) Name() event.ToolName { return "declares_markdown" }
 
 func (markdownTool) Describe() tool.Spec {
 	return tool.Spec{Description: "x", Mutability: event.MutRead, Renders: event.RendersMarkdown}

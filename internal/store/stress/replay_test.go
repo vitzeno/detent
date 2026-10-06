@@ -48,7 +48,7 @@ func TestGenerated_ReplaysAsARealSessionWould(t *testing.T) {
 func TestGenerated_EveryToolCallIsAnswered(t *testing.T) {
 	records, _ := generate(t, 40)
 
-	asked, answered := map[string]string{}, map[string]bool{}
+	asked, answered := map[string]event.ToolName{}, map[string]bool{}
 	for _, r := range records {
 		app, ok := r.Event.(event.Appended)
 		if !ok {

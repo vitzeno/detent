@@ -14,7 +14,7 @@ import (
 
 // ReviewReads is every other tool a reviewer may call: reads of the files, and
 // nothing that writes or reaches the network, where an injected line could send them.
-var ReviewReads = []string{event.ToolReadFile, event.ToolGrep, event.ToolFindFiles, event.ToolListDir}
+var ReviewReads = []event.ToolName{event.ToolReadFile, event.ToolGrep, event.ToolFindFiles, event.ToolListDir}
 
 // ReviewDiff shows one changed file's hunks, each line numbered.
 type ReviewDiff struct{ files []event.FileDiff }
@@ -22,7 +22,7 @@ type ReviewDiff struct{ files []event.FileDiff }
 // NewReviewDiff answers from files, the diff under review.
 func NewReviewDiff(files []event.FileDiff) ReviewDiff { return ReviewDiff{files: files} }
 
-func (ReviewDiff) Name() string { return event.ToolReviewDiff }
+func (ReviewDiff) Name() event.ToolName { return event.ToolReviewDiff }
 
 func (ReviewDiff) Describe() Spec {
 	return Spec{
@@ -69,7 +69,7 @@ type ReviewComment struct{ files []event.FileDiff }
 // NewReviewComment checks against files, the diff under review.
 func NewReviewComment(files []event.FileDiff) ReviewComment { return ReviewComment{files: files} }
 
-func (ReviewComment) Name() string { return event.ToolReviewComment }
+func (ReviewComment) Name() event.ToolName { return event.ToolReviewComment }
 
 func (ReviewComment) Describe() Spec {
 	return Spec{

@@ -118,7 +118,7 @@ func TestExecute_DecliningARemoteToolCallLeavesItsSiblings(t *testing.T) {
 // A server's read-only tools run unasked, and together, like any other reads.
 func TestStep_HintedRemoteReadsRunTogetherUnasked(t *testing.T) {
 	reg := tool.Standard()
-	for _, name := range []string{"srv__list", "srv__get"} {
+	for _, name := range []event.ToolName{"srv__list", "srv__get"} {
 		require.NoError(t, reg.Register(remoteTool{name: name, mut: event.MutRead}))
 	}
 	in := &pairInvoker{}
@@ -176,9 +176,12 @@ func (f *fakeInvoker) calls() []tool.Call {
 
 // remoteTool is one an Invoker answers, not a Runner. mut is what its
 // server claims it does.
-type remoteTool struct{ name, mut string }
+type remoteTool struct {
+	name event.ToolName
+	mut  string
+}
 
-func (r remoteTool) Name() string { return r.name }
+func (r remoteTool) Name() event.ToolName { return r.name }
 func (r remoteTool) Describe() tool.Spec {
 	return tool.Spec{Description: "a remote thing", Executor: "srv",
 		Raw: map[string]any{"type": "object"}, Mutability: r.mut}

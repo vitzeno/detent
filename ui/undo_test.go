@@ -113,8 +113,9 @@ func undoTurn(t *testing.T) Model {
 	m := feed(t, event.SessionStarted{Model: "m"},
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "do several things"})
 	for _, c := range []struct {
-		tool, exec string
-		args       map[string]any
+		tool event.ToolName
+		exec string
+		args map[string]any
 	}{
 		{"bash", "", map[string]any{"command": "go test ./..."}},
 		{"github__create_issue", "github", map[string]any{"repo": "detent"}},

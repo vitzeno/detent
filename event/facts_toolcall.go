@@ -15,7 +15,7 @@ type ToolCallProposed struct {
 	fact
 	Step      uuid.UUID      `json:"Step"`
 	ToolCall  uuid.UUID      `json:"ToolCall"`
-	Tool      string         `json:"Tool"`
+	Tool      ToolName       `json:"Tool"`
 	Args      map[string]any `json:"Args"`
 	Rationale string         `json:"Rationale"`
 	// Renders is how the tool says its output should be read, which beats
@@ -43,7 +43,7 @@ func (ToolCallAssessed) Kind() Kind { return ToolCallAssessedKind }
 type ApprovalAsked struct {
 	fact
 	ToolCall  uuid.UUID      `json:"ToolCall"`
-	Tool      string         `json:"Tool"`
+	Tool      ToolName       `json:"Tool"`
 	Args      map[string]any `json:"Args"`
 	Rationale string         `json:"Rationale"`
 	Risk      Risk           `json:"Risk"`

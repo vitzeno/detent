@@ -13,7 +13,7 @@ import (
 func TestCommand(t *testing.T) {
 	cases := []struct {
 		name string
-		tool string
+		tool event.ToolName
 		args map[string]any
 		want string
 	}{

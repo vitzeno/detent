@@ -335,7 +335,7 @@ func commandCell(r *historyRow, width int) string {
 	if !ok {
 		return boldProgram(layout.Truncate(r.command, width))
 	}
-	tag := style.Render(r.tool)
+	tag := style.Render(string(r.tool))
 	room := width - lipgloss.Width(tag) - 1
 	if room < layout.MinTruncate {
 		if lipgloss.Width(tag) > width {
@@ -357,18 +357,18 @@ func commandCell(r *historyRow, width int) string {
 var leadArgs = []string{"pattern", "query", "path", "name", "url"}
 
 // headline is a tool's arguments as a history row shows them.
-func headline(tool string, args map[string]any) string {
+func headline(tool event.ToolName, args map[string]any) string {
 	rest := maps.Clone(args)
 	var lead string
 	for _, k := range leadArgs {
 		if v, ok := rest[k]; ok && v != nil {
 			// Rendered by event.Command, so it is quoted as an approval quotes it.
-			lead = strings.TrimPrefix(event.Command(tool, map[string]any{k: v}), tool+" "+k+"=")
+			lead = strings.TrimPrefix(event.Command(tool, map[string]any{k: v}), string(tool)+" "+k+"=")
 			delete(rest, k)
 			break
 		}
 	}
-	others := strings.TrimSpace(strings.TrimPrefix(event.Command(tool, rest), tool))
+	others := strings.TrimSpace(strings.TrimPrefix(event.Command(tool, rest), string(tool)))
 	return strings.TrimSpace(lead + " " + others)
 }
 
@@ -392,8 +392,10 @@ func toolStyle(r *historyRow) (lipgloss.Style, bool) {
 		return toolName.web, true
 	case event.ToolSpawnAgent:
 		return toolName.agent, true
+	default:
+		// A skill, a review tool, or a tool of no known kind.
+		return toolName.other, true
 	}
-	return toolName.other, true
 }
 
 // argKey finds each key=value key, which reads quieter than its value.

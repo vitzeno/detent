@@ -105,7 +105,7 @@ func liveConfig(t *testing.T) map[string]string {
 func joinNames(calls []event.ToolRequest) string {
 	var b strings.Builder
 	for _, c := range calls {
-		b.WriteString(c.Name)
+		b.WriteString(string(c.Name))
 	}
 	return b.String()
 }

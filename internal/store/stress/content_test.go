@@ -12,7 +12,7 @@ import (
 // kind is one tool as the generator uses it. What a tool says about
 // itself comes from the registry, so only its content is made up here.
 type kind struct {
-	name     string
+	name     event.ToolName
 	runner   string
 	executor string // what ran a tool call that is not a shell command
 	render   event.RenderKind
@@ -83,7 +83,7 @@ func riskFor(mutability string) func(*rand.Rand) event.Risk {
 	return shellRisk
 }
 
-var gens = map[string]gen{
+var gens = map[event.ToolName]gen{
 	"bash": {
 		runner: "sandbox", render: event.RendersText,
 		args: func(r *rand.Rand) map[string]any {
