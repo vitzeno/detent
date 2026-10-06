@@ -265,6 +265,19 @@ func TestReview_ALongDraftStaysInTheEditor(t *testing.T) {
 	assert.Contains(t, ansi.Strip(rows[len(rows)-1]), "last", "the end of what was typed is on screen")
 }
 
+// A paste lands in the comment being written, where a snippet is most often wanted.
+func TestReview_APasteGoesIntoTheComment(t *testing.T) {
+	k := loadedReview(t)
+	k.press(t, "down")
+	k.press(t, "c")
+	k.typeText(t, "see ")
+	k.update(t, tea.PasteMsg{Content: "if err != nil {\n  return err\n}"})
+	k.press(t, "enter")
+	got := k.intentOf(t, event.CommentReviewKind).(event.CommentReview).Comment
+	assert.Equal(t, "see if err != nil {\n  return err\n}", got.Body)
+	assert.Empty(t, k.m.prompt.Value(), "not the prompt behind the modal")
+}
+
 // A deleted comment takes its replies with it.
 func TestReview_DeletingACommentDropsItsReplies(t *testing.T) {
 	k := loadedReview(t)

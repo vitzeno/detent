@@ -97,6 +97,10 @@ func (m Model) handlePaste(text string) (Model, tea.Cmd) {
 		m.refreshFinder()
 		return m, nil
 	}
+	if e := m.review.edit; m.mode == modeReview && e != nil {
+		e.input.InsertString(text)
+		return m, nil
+	}
 	if m.mode != modeInput {
 		return m, nil
 	}
