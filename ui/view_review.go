@@ -23,6 +23,20 @@ import (
 // commentEditorLines is how tall the comment being written is drawn.
 const commentEditorLines = 3
 
+// maxVerdictLines is as much of a verdict as the card shows. The rest is sent with the review.
+const maxVerdictLines = 3
+
+// splitMin is the narrowest diff pane the split view draws in, each side then
+// keeping room for its numbers and a readable stretch of code.
+const splitMin = 90
+
+// splitRow is one line of the split view: a line on each side, or a header or
+// comment across both. Each is an index into reviewRows, -1 for none.
+type splitRow struct{ left, right, across int }
+
+// hunkKey names one hunk of one file of the diff shown.
+type hunkKey struct{ file, hunk int }
+
 func (m Model) reviewBox() string {
 	left, right := m.reviewPaneWidths()
 	h := m.modalPaneHeight()
@@ -120,69 +134,6 @@ func (m Model) scopeLabel() string {
 	return label
 }
 
-// readMark says where a reviewer is in the diff: the file it is reading pulses,
-// those it has read are dotted, and the rest are blank.
-func (m Model) readMark(a *agentState, path string) string {
-	switch {
-	case a.reading == path && m.pulse/4%2 == 0:
-		return toolName.review.Render("◉") + " "
-	case a.reading == path:
-		return toolName.review.Render("○") + " "
-	case a.read[path]:
-		return styleFaint.Render("·") + " "
-	}
-	return "  "
-}
-
-// reviewVerdict is the reviewer's summary of the open review, its newest
-// comment on no line, nil until it has finished.
-func (m Model) reviewVerdict() *event.ReviewComment {
-	rec := m.reviewByID(m.review.id)
-	if rec == nil {
-		return nil
-	}
-	for i := len(rec.comments) - 1; i >= 0; i-- {
-		if c := &rec.comments[i]; c.Path == "" && c.Author != "" && c.ReplyTo == uuid.Nil {
-			return c
-		}
-	}
-	return nil
-}
-
-// verdictCard is the reviewer's summary above the diff: what it concluded, in
-// a few lines, lit for a moment when it lands.
-func (m Model) verdictCard(c *event.ReviewComment, width int) []string {
-	head := toolName.review
-	if m.freshness(c.ID) < 0.35 {
-		head = head.Reverse(true)
-	}
-	out := []string{head.Render("◆ "+c.Author+"'s verdict") + styleFaint.Render(" · "+countOf(m.reviewLineComments(), "comment on lines"))}
-	lines := wrapPlain(c.Body, max(8, width-2))
-	if len(lines) > maxVerdictLines {
-		lines = append(lines[:maxVerdictLines-1], layout.Truncate(lines[maxVerdictLines-1], width-3)+"…")
-	}
-	for _, l := range lines {
-		out = append(out, "  "+styleGoal.Render(l))
-	}
-	return append(out, styleFaint.Render(strings.Repeat("─", width)))
-}
-
-// maxVerdictLines is as much of a verdict as the card shows. The rest is sent with the review.
-const maxVerdictLines = 3
-
-// reviewLineComments counts the comments on lines, not the verdict or replies.
-func (m Model) reviewLineComments() int {
-	n := 0
-	if rec := m.reviewByID(m.review.id); rec != nil {
-		for _, c := range rec.comments {
-			if c.Path != "" && c.ReplyTo == uuid.Nil {
-				n++
-			}
-		}
-	}
-	return n
-}
-
 // reviewKeys offers what the cursor is on, leading with what esc will close: it
 // closes a layer at a time, and the line is cut to the box, which hid "esc back".
 func (m Model) reviewKeys() string {
@@ -251,6 +202,20 @@ func (m Model) reviewFileLines(width, height int) []string {
 			style.Render(fmt.Sprintf("%-*s", room, path))+" "+styleFaint.Render(stat))
 	}
 	return out
+}
+
+// readMark says where a reviewer is in the diff: the file it is reading pulses,
+// those it has read are dotted, and the rest are blank.
+func (m Model) readMark(a *agentState, path string) string {
+	switch {
+	case a.reading == path && m.pulse/4%2 == 0:
+		return toolName.review.Render("◉") + " "
+	case a.reading == path:
+		return toolName.review.Render("○") + " "
+	case a.read[path]:
+		return styleFaint.Render("·") + " "
+	}
+	return "  "
 }
 
 // reviewDiffLines is the selected file's diff around the cursor, numbered on
@@ -329,15 +294,7 @@ func (m Model) reviewDiffLines(height int) []string {
 	return append(out, editor...)
 }
 
-// splitMin is the narrowest diff pane the split view draws in, each side then
-// keeping room for its numbers and a readable stretch of code.
-const splitMin = 90
-
 func (m Model) splitFits() bool { return m.reviewTextWidth() >= splitMin }
-
-// splitRow is one line of the split view: a line on each side, or a header or
-// comment across both. Each is an index into reviewRows, -1 for none.
-type splitRow struct{ left, right, across int }
 
 // pairRows lays rows side by side: each run of removed lines against the added
 // lines that replaced it, a pair to a line, with any comment on them after the run.
@@ -421,12 +378,51 @@ func (m Model) splitLines(f event.FileDiff, rows []diffRow, height, width, nw in
 	return out
 }
 
-// lineNo is a line number, blank on the side a line is not on.
-func lineNo(n int) string {
-	if n == 0 {
-		return ""
+// codeLine is a line of the selected file coloured by language, an added or removed
+// one tinted the width of it. A file no lexer knows is drawn as before.
+func (m Model) codeLine(hunk, line, width int) string {
+	f := m.review.selected()
+	l := f.Hunks[hunk].Lines[line]
+	code := m.codeOf(hunk)
+	if code == nil {
+		return lineStyle(l.Op).Render(layout.Truncate(string(rune(l.Op))+l.Text, width))
 	}
-	return strconv.Itoa(n)
+	marker, tint := " ", color.Color(nil)
+	switch l.Op {
+	case event.LineAdded:
+		marker, tint = sgr(38, palette.Safe)+"+"+"\x1b[39m", palette.DiffAdded
+	case event.LineRemoved:
+		marker, tint = sgr(38, palette.Danger)+"-"+"\x1b[39m", palette.DiffRemoved
+	case event.LineContext:
+	}
+	// Not layout.Truncate, which defuses: the text was defused as the diff arrived,
+	// and all the colouring added is its own colour, which must reach the terminal.
+	body := marker + ansi.Truncate(code[line], max(1, width-1), "…") + "\x1b[22m\x1b[39m"
+	if tint == nil {
+		return body
+	}
+	pad := strings.Repeat(" ", max(0, width-ansi.StringWidth(body)))
+	return sgr(48, tint) + body + pad + "\x1b[49m"
+}
+
+// codeOf is a hunk of the selected file coloured by language, made once and
+// kept, nil when no lexer knows the file.
+func (m Model) codeOf(hunk int) []string {
+	r := m.review
+	key := hunkKey{file: r.file, hunk: hunk}
+	if code, ok := r.code[key]; ok {
+		return code
+	}
+	f := r.selected()
+	texts := make([]string, len(f.Hunks[hunk].Lines))
+	for i, l := range f.Hunks[hunk].Lines {
+		texts[i] = l.Text
+	}
+	code := syntax.Hunk(f.Path, texts, palette.Syntax)
+	if r.code != nil {
+		r.code[key] = code
+	}
+	return code
 }
 
 // commentLine is one line of a comment: who wrote it, or a line of its words.
@@ -473,6 +469,136 @@ func (m Model) commentEditor(width int) []string {
 	ta.SetWidth(max(8, width-2))
 	rule := styleBrand.Render(what) + styleFaint.Render(" "+strings.Repeat("─", max(0, width-len(what)-1)))
 	return append([]string{rule}, strings.Split(ta.View(), "\n")...)
+}
+
+// reviewVerdict is the reviewer's summary of the open review, its newest
+// comment on no line, nil until it has finished.
+func (m Model) reviewVerdict() *event.ReviewComment {
+	rec := m.reviewByID(m.review.id)
+	if rec == nil {
+		return nil
+	}
+	for i := len(rec.comments) - 1; i >= 0; i-- {
+		if c := &rec.comments[i]; c.Path == "" && c.Author != "" && c.ReplyTo == uuid.Nil {
+			return c
+		}
+	}
+	return nil
+}
+
+// verdictCard is the reviewer's summary above the diff: what it concluded, in
+// a few lines, lit for a moment when it lands.
+func (m Model) verdictCard(c *event.ReviewComment, width int) []string {
+	head := toolName.review
+	if m.freshness(c.ID) < 0.35 {
+		head = head.Reverse(true)
+	}
+	out := []string{head.Render("◆ "+c.Author+"'s verdict") + styleFaint.Render(" · "+countOf(m.reviewLineComments(), "comment")+" on lines")}
+	lines := wrapPlain(c.Body, max(8, width-2))
+	if len(lines) > maxVerdictLines {
+		lines = append(lines[:maxVerdictLines-1], layout.Truncate(lines[maxVerdictLines-1], width-3)+"…")
+	}
+	for _, l := range lines {
+		out = append(out, "  "+styleGoal.Render(l))
+	}
+	return append(out, styleFaint.Render(strings.Repeat("─", width)))
+}
+
+// reviewLineComments counts the comments on lines, not the verdict or replies.
+func (m Model) reviewLineComments() int {
+	n := 0
+	if rec := m.reviewByID(m.review.id); rec != nil {
+		for _, c := range rec.comments {
+			if c.Path != "" && c.ReplyTo == uuid.Nil {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// reviewRowLine is a review in history: what it reviewed, how many comments it
+// has, and a spinner while its reviewer works.
+func (m Model) reviewRowLine(mark string, r *historyRow) string {
+	b := m.blockByID(r.id)
+	label := "review"
+	if b != nil {
+		label = b.prompt
+	}
+	icon, state := styleBrand.Render("◆"), ""
+	switch {
+	case r.running:
+		// The spinner says it is still reading, which leaves room for what it reviews.
+		icon = m.spinner.View()
+	case b != nil && b.end == event.EndAborted:
+		state = " · stopped"
+	case b != nil && b.end == event.EndError:
+		state = " · failed"
+	}
+	tail := " · " + countOf(r.comments, "comment") + state
+	room := max(layout.MinTruncate, m.blockWidth()-lipgloss.Width(mark+icon+" ")-lipgloss.Width(tail))
+	return mark + icon + " " + styleGoal.Render(layout.Truncate(label, room)) + styleFaint.Render(tail)
+}
+
+// reviewSummary is a review as the output pane shows it: what it reviews, how
+// its reviewer stands, its verdict and every comment by where it is.
+func (m Model) reviewSummary(id uuid.UUID) []string {
+	width := paneInner(m.layout.outputColW)
+	rec := m.reviewByID(id)
+	label := "review"
+	for _, b := range m.blocks {
+		if b.review == id {
+			label = b.prompt
+		}
+	}
+	out := []string{toolName.review.Render("◆ ") + styleGoal.Render(layout.Truncate(label, width-2))}
+	var reviewer *agentState
+	for _, a := range m.agentOrder {
+		if rv := reviewerOf(a); rv != nil && rv.review == id {
+			reviewer = a
+		}
+	}
+	switch {
+	case reviewer != nil && !reviewer.ended:
+		// No spinner: this pane redraws on facts, not ticks, so one would sit still.
+		state := fmt.Sprintf("the reviewer is reading · %d/%d files", len(reviewer.read), reviewerOf(reviewer).files)
+		if reviewer.reading != "" {
+			state += " · now " + reviewer.reading
+		}
+		out = append(out, toolName.review.Render("◇")+" "+styleMuted.Render(layout.Truncate(state, width-3)))
+	case reviewer != nil:
+		out = append(out, m.agentGlyph(reviewer)+" "+styleMuted.Render("reviewer: "+m.endedDetail(reviewer)))
+	}
+	if rec == nil {
+		return append(out, "", styleFaint.Render("no comments yet"))
+	}
+	var lines []event.ReviewComment
+	for _, c := range rec.comments {
+		switch {
+		case c.Path == "" && c.Author != "" && c.ReplyTo == uuid.Nil:
+			out = append(out, "", styleBrand.Render("verdict"))
+			for _, l := range wrapPlain(c.Body, max(8, width-2)) {
+				out = append(out, "  "+styleGoal.Render(l))
+			}
+		case c.Path != "" && c.ReplyTo == uuid.Nil:
+			lines = append(lines, c)
+		}
+	}
+	out = append(out, "", styleBrand.Render(countOf(len(lines), "comment")+" on lines"))
+	for _, c := range lines {
+		who := "you"
+		if c.Author != "" {
+			who = c.Author
+		}
+		at := fmt.Sprintf("%s:%d", c.Path, c.Start)
+		first, _, _ := strings.Cut(c.Body, "\n")
+		out = append(out, "  "+styleMuted.Render(at)+" "+styleFaint.Render(who)+" "+
+			styleGoal.Render(layout.Truncate(first, max(8, width-lipgloss.Width(at+who)-5))))
+	}
+	if rec.submitted {
+		out = append(out, "", styleFaint.Render("sent to the agent"))
+	}
+	return append(out, "", styleFaint.Render("enter or /review opens it"))
 }
 
 // changeGlyph marks a file added, deleted or modified, as git status does.
@@ -541,142 +667,16 @@ func lineStyle(op event.LineOp) lipgloss.Style {
 	return styleGoal
 }
 
-// reviewRowLine is a review in history: what it reviewed, how many comments it
-// has, and a spinner while its reviewer works.
-func (m Model) reviewRowLine(mark string, r *historyRow) string {
-	b := m.blockByID(r.id)
-	label := "review"
-	if b != nil {
-		label = b.prompt
+// lineNo is a line number, blank on the side a line is not on.
+func lineNo(n int) string {
+	if n == 0 {
+		return ""
 	}
-	icon, state := styleBrand.Render("◆"), ""
-	switch {
-	case r.running:
-		// The spinner says it is still reading, which leaves room for what it reviews.
-		icon = m.spinner.View()
-	case b != nil && b.end == event.EndAborted:
-		state = " · stopped"
-	case b != nil && b.end == event.EndError:
-		state = " · failed"
-	}
-	tail := " · " + countOf(r.comments, "comment") + state
-	room := max(layout.MinTruncate, m.blockWidth()-lipgloss.Width(mark+icon+" ")-lipgloss.Width(tail))
-	return mark + icon + " " + styleGoal.Render(layout.Truncate(label, room)) + styleFaint.Render(tail)
-}
-
-// hunkKey names one hunk of one file of the diff shown.
-type hunkKey struct{ file, hunk int }
-
-// codeLine is a line of the selected file coloured by language, an added or removed
-// one tinted the width of it. A file no lexer knows is drawn as before.
-func (m Model) codeLine(hunk, line, width int) string {
-	f := m.review.selected()
-	l := f.Hunks[hunk].Lines[line]
-	code := m.codeOf(hunk)
-	if code == nil {
-		return lineStyle(l.Op).Render(layout.Truncate(string(rune(l.Op))+l.Text, width))
-	}
-	marker, tint := " ", color.Color(nil)
-	switch l.Op {
-	case event.LineAdded:
-		marker, tint = sgr(38, palette.Safe)+"+"+"\x1b[39m", palette.DiffAdded
-	case event.LineRemoved:
-		marker, tint = sgr(38, palette.Danger)+"-"+"\x1b[39m", palette.DiffRemoved
-	case event.LineContext:
-	}
-	// Not layout.Truncate, which defuses: the text was defused as the diff arrived,
-	// and all the colouring added is its own colour, which must reach the terminal.
-	body := marker + ansi.Truncate(code[line], max(1, width-1), "…") + "\x1b[22m\x1b[39m"
-	if tint == nil {
-		return body
-	}
-	pad := strings.Repeat(" ", max(0, width-ansi.StringWidth(body)))
-	return sgr(48, tint) + body + pad + "\x1b[49m"
-}
-
-// codeOf is a hunk of the selected file coloured by language, made once and
-// kept, nil when no lexer knows the file.
-func (m Model) codeOf(hunk int) []string {
-	r := m.review
-	key := hunkKey{file: r.file, hunk: hunk}
-	if code, ok := r.code[key]; ok {
-		return code
-	}
-	f := r.selected()
-	texts := make([]string, len(f.Hunks[hunk].Lines))
-	for i, l := range f.Hunks[hunk].Lines {
-		texts[i] = l.Text
-	}
-	code := syntax.Hunk(f.Path, texts, palette.Syntax)
-	if r.code != nil {
-		r.code[key] = code
-	}
-	return code
+	return strconv.Itoa(n)
 }
 
 // sgr is the escape setting a foreground (38) or background (48) to c.
 func sgr(code int, c color.Color) string {
 	r, g, b, _ := c.RGBA()
 	return fmt.Sprintf("\x1b[%d;2;%d;%d;%dm", code, r>>8, g>>8, b>>8)
-}
-
-// reviewSummary is a review as the output pane shows it: what it reviews, how
-// its reviewer stands, its verdict and every comment by where it is.
-func (m Model) reviewSummary(id uuid.UUID) []string {
-	width := paneInner(m.layout.outputColW)
-	rec := m.reviewByID(id)
-	label := "review"
-	for _, b := range m.blocks {
-		if b.review == id {
-			label = b.prompt
-		}
-	}
-	out := []string{toolName.review.Render("◆ ") + styleGoal.Render(layout.Truncate(label, width-2))}
-	var reviewer *agentState
-	for _, a := range m.agentOrder {
-		if rv := reviewerOf(a); rv != nil && rv.review == id {
-			reviewer = a
-		}
-	}
-	switch {
-	case reviewer != nil && !reviewer.ended:
-		// No spinner: this pane redraws on facts, not ticks, so one would sit still.
-		state := fmt.Sprintf("the reviewer is reading · %d/%d files", len(reviewer.read), reviewerOf(reviewer).files)
-		if reviewer.reading != "" {
-			state += " · now " + reviewer.reading
-		}
-		out = append(out, toolName.review.Render("◇")+" "+styleMuted.Render(layout.Truncate(state, width-3)))
-	case reviewer != nil:
-		out = append(out, m.agentGlyph(reviewer)+" "+styleMuted.Render("reviewer: "+m.endedDetail(reviewer)))
-	}
-	if rec == nil {
-		return append(out, "", styleFaint.Render("no comments yet"))
-	}
-	var lines []event.ReviewComment
-	for _, c := range rec.comments {
-		switch {
-		case c.Path == "" && c.Author != "" && c.ReplyTo == uuid.Nil:
-			out = append(out, "", styleBrand.Render("verdict"))
-			for _, l := range wrapPlain(c.Body, max(8, width-2)) {
-				out = append(out, "  "+styleGoal.Render(l))
-			}
-		case c.Path != "" && c.ReplyTo == uuid.Nil:
-			lines = append(lines, c)
-		}
-	}
-	out = append(out, "", styleBrand.Render(countOf(len(lines), "comment")+" on lines"))
-	for _, c := range lines {
-		who := "you"
-		if c.Author != "" {
-			who = c.Author
-		}
-		at := fmt.Sprintf("%s:%d", c.Path, c.Start)
-		first, _, _ := strings.Cut(c.Body, "\n")
-		out = append(out, "  "+styleMuted.Render(at)+" "+styleFaint.Render(who)+" "+
-			styleGoal.Render(layout.Truncate(first, max(8, width-lipgloss.Width(at+who)-5))))
-	}
-	if rec.submitted {
-		out = append(out, "", styleFaint.Render("sent to the agent"))
-	}
-	return append(out, "", styleFaint.Render("enter or /review opens it"))
 }

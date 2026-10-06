@@ -12,9 +12,8 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 )
 
-// Hunk colours a hunk's lines of the file at path in the chroma style named,
-// as one run so a comment or string spanning lines is coloured right. It is
-// nil when no lexer knows the file, and otherwise one line out for each in.
+// Hunk colours a hunk's lines of the file at path as one run, so a comment spanning
+// lines is coloured right: one line out for each in, nil when no lexer knows the file.
 func Hunk(path string, lines []string, style string) []string {
 	lexer := lexers.Match(filepath.Base(path))
 	if lexer == nil || len(lines) == 0 {

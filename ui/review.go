@@ -53,6 +53,20 @@ type commentEdit struct {
 	input    textarea.Model
 }
 
+// triageState is a walk through the reviewer's comments: those left to go,
+// where it is, and what was kept and dropped.
+type triageState struct {
+	queue         []uuid.UUID
+	at            int
+	kept, dropped int
+}
+
+// fadeFor is how long a comment that just came in stands out.
+const fadeFor = 900 * time.Millisecond
+
+// fadeMsg redraws a comment still fading.
+type fadeMsg struct{}
+
 // showReview is /review: the last request that checkpointed the files, request
 // N, the session, your edits since, or the branch against main or a ref.
 func (m Model) showReview(input string) (Model, tea.Cmd) {
@@ -107,29 +121,87 @@ func (m Model) reviewTarget(arg string) (*turnBlock, string) {
 	return nil, fmt.Sprintf("there is no request %d", n)
 }
 
-// reviewHead is where the request left the files: its own end, else for one
-// stored before that was recorded the next request's start, else the files now.
-func (m Model) reviewHead(b *turnBlock) string {
-	if b.tree != "" || !b.ended {
-		return b.tree
+// openReview shows a recorded review: its own scope and trees, and its id
+// kept whatever a branch's base has become.
+func (m Model) openReview(rec *reviewRecord) (Model, tea.Cmd) {
+	back := m.review.back
+	if m.mode != modeReview {
+		back = m.nav.focus
 	}
-	for _, next := range m.blocks[slices.Index(m.blocks, b)+1:] {
-		if next.base != "" {
-			return next.base
-		}
+	blk := m.blockByID(rec.reviewed)
+	m.review = reviewState{block: blk, request: blk, scope: rec.scope, base: rec.base, head: rec.head,
+		against: rec.against, id: rec.id, pinned: true, loading: true, back: back}
+	m.mode = modeReview
+	if rec.scope == event.ScopeBranch {
+		return m, m.send(event.LoadDiff{Branch: true, Against: rec.against})
 	}
-	return ""
+	return m, m.send(event.LoadDiff{Base: rec.base, Head: rec.head})
 }
 
-// lastReviewable is the newest request with its files checkpointed, or with
-// ended the newest whose end is known too.
-func (m Model) lastReviewable(ended bool) *turnBlock {
-	for _, b := range slices.Backward(m.blocks) {
-		if b.base != "" && (!ended || m.reviewHead(b) != "") {
-			return b
+// openReviewRow opens the review a history row stands for.
+func (m Model) openReviewRow(r *historyRow) (Model, tea.Cmd) {
+	if rec := m.reviewByID(r.review); rec != nil {
+		return m.openReview(rec)
+	}
+	m.noteOK("the reviewer has not commented yet")
+	return m, nil
+}
+
+// stepReview opens the review d away, oldest first, as the inspector steps
+// between agents. A review not yet recorded is past the newest.
+func (m Model) stepReview(d int) (Model, tea.Cmd) {
+	i := slices.IndexFunc(m.reviews, func(rec *reviewRecord) bool { return rec.id == m.review.id })
+	if i < 0 {
+		i = len(m.reviews)
+	}
+	i += d
+	if i < 0 || i >= len(m.reviews) {
+		return m, nil
+	}
+	return m.openReview(m.reviews[i])
+}
+
+// loadScope switches the review to scope and asks for its changes. A branch's
+// base is only known once they come, so its review is found then.
+func (m *Model) loadScope(scope event.ReviewScope) tea.Cmd {
+	r := &m.review
+	if r.request == nil {
+		r.request = r.block
+	}
+	base, head, _ := m.scopeTrees(scope)
+	r.scope, r.base, r.head, r.loading = scope, base, head, true
+	r.files, r.err, r.cut, r.file, r.line, r.ranging, r.edit, r.triage = nil, "", false, 0, 0, false, nil, nil
+	r.block = r.request
+	if scope != event.ScopeRequest {
+		r.block = m.lastReviewable(scope != event.ScopeBranch)
+	}
+	if scope == event.ScopeBranch {
+		r.id = uuid.Nil
+		return m.send(event.LoadDiff{Branch: true, Against: r.against})
+	}
+	r.id = m.openReviewOf(m.reviewed(), base, head)
+	return m.send(event.LoadDiff{Base: base, Head: head})
+}
+
+// nextScope cycles to the next scope with something to show.
+func (m Model) nextScope() (Model, tea.Cmd) {
+	i := slices.Index(reviewScopes, m.review.scope)
+	for range len(reviewScopes) - 1 {
+		i = (i + 1) % len(reviewScopes)
+		if m.scopeOpen(reviewScopes[i]) {
+			return m, m.loadScope(reviewScopes[i])
 		}
 	}
-	return nil
+	return m, nil
+}
+
+// reloadReview asks again for a review diffLoaded moved, since a fact cannot send.
+func (m *Model) reloadReview() tea.Cmd {
+	if m.mode != modeReview || !m.review.reload {
+		return nil
+	}
+	m.review.reload = false
+	return m.loadScope(m.review.scope)
 }
 
 // scopeTrees is what a scope compares, the session ending where since begins,
@@ -159,6 +231,36 @@ func (m Model) scopeTrees(scope event.ReviewScope) (base, head string, ok bool) 
 	return r.request.base, m.reviewHead(r.request), true
 }
 
+func (m Model) scopeOpen(scope event.ReviewScope) bool {
+	_, _, ok := m.scopeTrees(scope)
+	return ok
+}
+
+// reviewHead is where the request left the files: its own end, else for one
+// stored before that was recorded the next request's start, else the files now.
+func (m Model) reviewHead(b *turnBlock) string {
+	if b.tree != "" || !b.ended {
+		return b.tree
+	}
+	for _, next := range m.blocks[slices.Index(m.blocks, b)+1:] {
+		if next.base != "" {
+			return next.base
+		}
+	}
+	return ""
+}
+
+// lastReviewable is the newest request with its files checkpointed, or with
+// ended the newest whose end is known too.
+func (m Model) lastReviewable(ended bool) *turnBlock {
+	for _, b := range slices.Backward(m.blocks) {
+		if b.base != "" && (!ended || m.reviewHead(b) != "") {
+			return b
+		}
+	}
+	return nil
+}
+
 // reviewableBefore is the newest request before b with its files checkpointed.
 func (m Model) reviewableBefore(b *turnBlock) *turnBlock {
 	i := slices.Index(m.blocks, b)
@@ -179,77 +281,6 @@ func (m Model) firstReviewable() *turnBlock {
 	return nil
 }
 
-func (m Model) scopeOpen(scope event.ReviewScope) bool {
-	_, _, ok := m.scopeTrees(scope)
-	return ok
-}
-
-// loadScope switches the review to scope and asks for its changes. A branch's
-// base is only known once they come, so its review is found then.
-func (m *Model) loadScope(scope event.ReviewScope) tea.Cmd {
-	r := &m.review
-	if r.request == nil {
-		r.request = r.block
-	}
-	base, head, _ := m.scopeTrees(scope)
-	r.scope, r.base, r.head, r.loading = scope, base, head, true
-	r.files, r.err, r.cut, r.file, r.line, r.ranging, r.edit, r.triage = nil, "", false, 0, 0, false, nil, nil
-	r.block = r.request
-	if scope != event.ScopeRequest {
-		r.block = m.lastReviewable(scope != event.ScopeBranch)
-	}
-	if scope == event.ScopeBranch {
-		r.id = uuid.Nil
-		return m.send(event.LoadDiff{Branch: true, Against: r.against})
-	}
-	r.id = m.openReviewOf(m.reviewed(), base, head)
-	return m.send(event.LoadDiff{Base: base, Head: head})
-}
-
-// reloadReview asks again for a review diffLoaded moved, since a fact cannot send.
-func (m *Model) reloadReview() tea.Cmd {
-	if m.mode != modeReview || !m.review.reload {
-		return nil
-	}
-	m.review.reload = false
-	return m.loadScope(m.review.scope)
-}
-
-// nextScope cycles to the next scope with something to show.
-func (m Model) nextScope() (Model, tea.Cmd) {
-	i := slices.Index(reviewScopes, m.review.scope)
-	for range len(reviewScopes) - 1 {
-		i = (i + 1) % len(reviewScopes)
-		if m.scopeOpen(reviewScopes[i]) {
-			return m, m.loadScope(reviewScopes[i])
-		}
-	}
-	return m, nil
-}
-
-// reviewed is the request a review belongs to, which undoing it drops, and
-// none for a branch, which no request owns.
-func (m Model) reviewed() uuid.UUID {
-	if m.review.scope == event.ScopeBranch || m.review.block == nil {
-		return uuid.Nil
-	}
-	return m.review.block.id
-}
-
-// scopeNoun is what a scope is called in a sentence.
-func scopeNoun(s event.ReviewScope) string {
-	switch s {
-	case event.ScopeSession:
-		return "session of more than one request"
-	case event.ScopeSince:
-		return "edits since the last request"
-	case event.ScopeBranch:
-		return "branch"
-	case event.ScopeRequest:
-	}
-	return "request"
-}
-
 // openReviewOf is the open review of these changes, or a new id when none is.
 // Minted here, so a second comment sent before the first is recorded joins it.
 func (m Model) openReviewOf(reviewed uuid.UUID, base, head string) uuid.UUID {
@@ -259,6 +290,15 @@ func (m Model) openReviewOf(reviewed uuid.UUID, base, head string) uuid.UUID {
 		}
 	}
 	return uuid.Must(uuid.NewV7())
+}
+
+// reviewed is the request a review belongs to, which undoing it drops, and
+// none for a branch, which no request owns.
+func (m Model) reviewed() uuid.UUID {
+	if m.review.scope == event.ScopeBranch || m.review.block == nil {
+		return uuid.Nil
+	}
+	return m.review.block.id
 }
 
 // diffLoaded fills the review it answers, defusing what the files say once, here.
@@ -286,18 +326,6 @@ func (m *Model) diffLoaded(v event.DiffLoaded) {
 			r.id = m.openReviewOf(uuid.Nil, v.Base, "")
 		}
 	}
-}
-
-// scopeOf is a comment's scope. One stored before comments said is a branch's
-// when no request owns it, since only a branch's never has one, else a request's.
-func scopeOf(v event.ReviewCommented) event.ReviewScope {
-	switch {
-	case v.Scope != "":
-		return v.Scope
-	case v.Reviewed == uuid.Nil:
-		return event.ScopeBranch
-	}
-	return event.ScopeRequest
 }
 
 // reviewStarted records a review as its reviewer begins, so /review, s and the
@@ -361,13 +389,31 @@ func (m *Model) reviewSubmitted(v event.ReviewSubmitted) {
 	}
 }
 
-func (m Model) reviewByID(id uuid.UUID) *reviewRecord {
-	for _, r := range m.reviews {
-		if r.id == id {
-			return r
-		}
+// startReviewBlock is a review's Turn: one row, which enter opens, and no
+// prompt, since nobody asked a request of the model.
+func (m *Model) startReviewBlock(v event.TurnStarted) {
+	row := &historyRow{id: v.Turn, review: v.Review, running: true}
+	if rec := m.reviewByID(v.Review); rec != nil {
+		row.comments = len(rec.comments)
 	}
-	return nil
+	b := &turnBlock{id: v.Turn, prompt: v.Prompt, review: v.Review, rows: []*historyRow{row}}
+	m.blocks = append(m.blocks, b)
+	m.setCur(b)
+	m.followNewest()
+}
+
+// countComments keeps a review's history row in step with its comments, as a
+// block draws from its own state alone.
+func (m *Model) countComments(rec *reviewRecord) {
+	for _, b := range m.blocks {
+		if b.review != rec.id {
+			continue
+		}
+		for _, r := range b.rows {
+			r.comments = len(rec.comments)
+		}
+		b.rev++
+	}
 }
 
 // closeReview returns to the pane the review was opened from.
@@ -478,94 +524,6 @@ func (r *reviewState) pickFile(i int) {
 	r.file, r.line, r.ranging = min(max(i, 0), max(0, len(r.files)-1)), 0, false
 }
 
-// selected is the file under the cursor, nil while there is none.
-func (r *reviewState) selected() *event.FileDiff {
-	if r.file >= len(r.files) {
-		return nil
-	}
-	return &r.files[r.file]
-}
-
-// reviewRows is the selected file as the diff pane lists it: each hunk's header,
-// its lines, and under the line a comment ends on, the comment and its replies.
-func (m Model) reviewRows() []diffRow {
-	f := m.review.selected()
-	if f == nil {
-		return nil
-	}
-	comments := m.fileComments(f.Path)
-	// What the gutter and a reply's indent leave of the pane.
-	width := max(8, m.reviewTextWidth()-reviewGutter(*f)-4)
-	var out []diffRow
-	for h, hunk := range f.Hunks {
-		out = append(out, diffRow{hunk: h, line: -1})
-		for l, line := range hunk.Lines {
-			out = append(out, diffRow{hunk: h, line: l})
-			for i := range comments {
-				c := &comments[i]
-				if c.ReplyTo == uuid.Nil && endsOn(*c, line) {
-					out = append(out, thread(c, comments, h, width)...)
-				}
-			}
-		}
-	}
-	return out
-}
-
-// thread is a comment's rows and then its replies', each wrapped to width.
-func thread(c *event.ReviewComment, all []event.ReviewComment, hunk, width int) []diffRow {
-	var out []diffRow
-	add := func(c *event.ReviewComment) {
-		out = append(out, diffRow{hunk: hunk, line: -1, comment: c, author: true})
-		for _, t := range wrapPlain(c.Body, width) {
-			out = append(out, diffRow{hunk: hunk, line: -1, comment: c, text: t})
-		}
-	}
-	add(c)
-	for i := range all {
-		if all[i].ReplyTo == c.ID {
-			add(&all[i])
-		}
-	}
-	return out
-}
-
-// endsOn is whether line is the last a comment covers, on the side it numbers.
-func endsOn(c event.ReviewComment, l event.DiffLine) bool {
-	if c.Side == "old" {
-		return l.Op == event.LineRemoved && l.Old == c.End
-	}
-	return l.New != 0 && l.New == c.End
-}
-
-// fileComments is the open review's comments on path.
-func (m Model) fileComments(path string) []event.ReviewComment {
-	rec := m.reviewByID(m.review.id)
-	if rec == nil {
-		return nil
-	}
-	var out []event.ReviewComment
-	for _, c := range rec.comments {
-		if c.Path == path {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
-// nextHunk is the row of the next hunk's header in direction d, or the line
-// unmoved when there is none that way.
-func (m Model) nextHunk(d int) int {
-	rows := m.reviewRows()
-	r := m.review
-	for i := r.line + d; i >= 0 && i < len(rows); i += d {
-		if rows[i].line < 0 && rows[i].comment == nil {
-			return i
-		}
-	}
-	return r.line
-}
-
 // toggleRange starts a range of lines at the cursor, or drops one.
 func (m *Model) toggleRange() {
 	r := &m.review
@@ -633,18 +591,6 @@ func (m Model) deleteComment() (Model, tea.Cmd) {
 	r.deleting = uuid.Nil
 	r.line = max(0, r.line-1)
 	return m, m.sendComment(event.CommentDeleted, event.ReviewComment{ID: c.ID})
-}
-
-func newCommentEdit(op event.CommentOp, target uuid.UUID, body string) *commentEdit {
-	ta := textarea.New()
-	ta.CharLimit = 0
-	ta.ShowLineNumbers = false
-	ta.KeyMap.InsertNewline.SetKeys("shift+enter", "alt+enter", "ctrl+j")
-	ta.SetHeight(commentEditorLines)
-	applyInputTheme(&ta)
-	ta.SetValue(body)
-	ta.Focus()
-	return &commentEdit{op: op, target: target, input: ta}
 }
 
 // editKey writes into the editor: enter saves, esc drops the draft.
@@ -731,19 +677,6 @@ func (m Model) anchor(c *event.ReviewComment, from, to int) {
 	c.Quote = strings.Join(quote, "\n")
 }
 
-func (m Model) commentByID(id uuid.UUID) *event.ReviewComment {
-	rec := m.reviewByID(m.review.id)
-	if rec == nil || id == uuid.Nil {
-		return nil
-	}
-	for i := range rec.comments {
-		if rec.comments[i].ID == id {
-			return &rec.comments[i]
-		}
-	}
-	return nil
-}
-
 func (m Model) sendComment(op event.CommentOp, c event.ReviewComment) tea.Cmd {
 	r := m.review
 	return m.send(event.CommentReview{Review: r.id, Reviewed: m.reviewed(), Base: r.base, Head: r.head,
@@ -763,63 +696,6 @@ func (m Model) submitReview() (Model, tea.Cmd) {
 	}
 	return m, m.send(event.SubmitReview{Review: rec.id, Scope: m.review.scope, Request: n,
 		Against: m.review.against, Comments: slices.Clone(rec.comments)})
-}
-
-// defused is files with every path and line made safe to print. A copy, since
-// an event is shared, and a CRLF line loses its \r rather than showing it.
-func defused(files []event.FileDiff) []event.FileDiff {
-	out := make([]event.FileDiff, len(files))
-	for i, f := range files {
-		f.Path = termsafe.Printable(f.Path)
-		f.Hunks = slices.Clone(f.Hunks)
-		for j, h := range f.Hunks {
-			h.Header = termsafe.Printable(h.Header)
-			h.Lines = slices.Clone(h.Lines)
-			for k, l := range h.Lines {
-				h.Lines[k].Text = termsafe.Printable(strings.TrimSuffix(l.Text, "\r"))
-			}
-			f.Hunks[j] = h
-		}
-		out[i] = f
-	}
-	return out
-}
-
-// defusedComment is c safe to print, since a reviewer's words are a model's.
-func defusedComment(c event.ReviewComment) event.ReviewComment {
-	c.Author = termsafe.Printable(c.Author)
-	c.Path = termsafe.Printable(c.Path)
-	c.Quote = termsafe.Printable(c.Quote)
-	c.Body = termsafe.Printable(c.Body)
-	c.Original = termsafe.Printable(c.Original)
-	return c
-}
-
-// startReviewBlock is a review's Turn: one row, which enter opens, and no
-// prompt, since nobody asked a request of the model.
-func (m *Model) startReviewBlock(v event.TurnStarted) {
-	row := &historyRow{id: v.Turn, review: v.Review, running: true}
-	if rec := m.reviewByID(v.Review); rec != nil {
-		row.comments = len(rec.comments)
-	}
-	b := &turnBlock{id: v.Turn, prompt: v.Prompt, review: v.Review, rows: []*historyRow{row}}
-	m.blocks = append(m.blocks, b)
-	m.setCur(b)
-	m.followNewest()
-}
-
-// countComments keeps a review's history row in step with its comments, as a
-// block draws from its own state alone.
-func (m *Model) countComments(rec *reviewRecord) {
-	for _, b := range m.blocks {
-		if b.review != rec.id {
-			continue
-		}
-		for _, r := range b.rows {
-			r.comments = len(rec.comments)
-		}
-		b.rev++
-	}
 }
 
 // startReviewer asks for a reviewer on what the modal shows, the scope chosen
@@ -866,122 +742,6 @@ func (m Model) reviewAsked() string {
 		}
 	}
 	return strings.TrimSpace(b.String())
-}
-
-// stepReview opens the review d away, oldest first, as the inspector steps
-// between agents. A review not yet recorded is past the newest.
-func (m Model) stepReview(d int) (Model, tea.Cmd) {
-	i := slices.IndexFunc(m.reviews, func(rec *reviewRecord) bool { return rec.id == m.review.id })
-	if i < 0 {
-		i = len(m.reviews)
-	}
-	i += d
-	if i < 0 || i >= len(m.reviews) {
-		return m, nil
-	}
-	return m.openReview(m.reviews[i])
-}
-
-// openReview shows a recorded review: its own scope and trees, and its id
-// kept whatever a branch's base has become.
-func (m Model) openReview(rec *reviewRecord) (Model, tea.Cmd) {
-	back := m.review.back
-	if m.mode != modeReview {
-		back = m.nav.focus
-	}
-	blk := m.blockByID(rec.reviewed)
-	m.review = reviewState{block: blk, request: blk, scope: rec.scope, base: rec.base, head: rec.head,
-		against: rec.against, id: rec.id, pinned: true, loading: true, back: back}
-	m.mode = modeReview
-	if rec.scope == event.ScopeBranch {
-		return m, m.send(event.LoadDiff{Branch: true, Against: rec.against})
-	}
-	return m, m.send(event.LoadDiff{Base: rec.base, Head: rec.head})
-}
-
-// openReviewRow opens the review a history row stands for.
-func (m Model) openReviewRow(r *historyRow) (Model, tea.Cmd) {
-	if rec := m.reviewByID(r.review); rec != nil {
-		return m.openReview(rec)
-	}
-	m.noteOK("the reviewer has not commented yet")
-	return m, nil
-}
-
-// reviewSent is whether the review shown was sent, which leaves it to read.
-func (m Model) reviewSent() bool {
-	rec := m.reviewByID(m.review.id)
-	return rec != nil && rec.submitted
-}
-
-// blockByID finds a block without marking it to redraw, as block does.
-func (m Model) blockByID(id uuid.UUID) *turnBlock {
-	for _, b := range m.blocks {
-		if id != uuid.Nil && b.id == id {
-			return b
-		}
-	}
-	return nil
-}
-
-// fadeFor is how long a comment that just came in stands out.
-const fadeFor = 900 * time.Millisecond
-
-// fadeMsg redraws a comment still fading.
-type fadeMsg struct{}
-
-// freshness is how far into its fade a comment is, 0 just in and 1 or more done.
-func (m Model) freshness(id uuid.UUID) float64 {
-	rec := m.reviewByID(m.review.id)
-	if rec == nil {
-		return 1
-	}
-	at, ok := rec.arrived[id]
-	if !ok {
-		return 1
-	}
-	return float64(time.Since(at)) / float64(fadeFor)
-}
-
-// fading is whether a comment of the open review still stands out.
-func (m Model) fading() bool {
-	rec := m.reviewByID(m.review.id)
-	if m.mode != modeReview || rec == nil {
-		return false
-	}
-	for _, at := range rec.arrived {
-		if time.Since(at) < fadeFor {
-			return true
-		}
-	}
-	return false
-}
-
-// fadeTick keeps one tick going while a comment fades, and none otherwise.
-func (m *Model) fadeTick() tea.Cmd {
-	if m.fadeTicking || !m.fading() {
-		return nil
-	}
-	m.fadeTicking = true
-	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return fadeMsg{} })
-}
-
-// reviewer is the reviewer working on the open review, nil when none is.
-func (m Model) reviewer() *agentState {
-	for _, a := range m.agentOrder {
-		if r := reviewerOf(a); r != nil && r.review == m.review.id && !a.ended {
-			return a
-		}
-	}
-	return nil
-}
-
-// triageState is a walk through the reviewer's comments: those left to go,
-// where it is, and what was kept and dropped.
-type triageState struct {
-	queue         []uuid.UUID
-	at            int
-	kept, dropped int
 }
 
 // startTriage goes through the reviewer's comments on lines one at a time, in
@@ -1059,28 +819,6 @@ func (m *Model) focusComment(id uuid.UUID) {
 	}
 }
 
-// lineComments is the open review's comments on lines, in file then line
-// order: what > and < step through. Replies ride with their comment.
-func (m Model) lineComments() []*event.ReviewComment {
-	rec := m.reviewByID(m.review.id)
-	if rec == nil {
-		return nil
-	}
-	var out []*event.ReviewComment
-	for i := range rec.comments {
-		if c := &rec.comments[i]; c.Path != "" && c.ReplyTo == uuid.Nil {
-			out = append(out, c)
-		}
-	}
-	order := func(path string) int {
-		return slices.IndexFunc(m.review.files, func(f event.FileDiff) bool { return f.Path == path })
-	}
-	slices.SortStableFunc(out, func(a, b *event.ReviewComment) int {
-		return cmp.Or(cmp.Compare(order(a.Path), order(b.Path)), cmp.Compare(a.End, b.End))
-	})
-	return out
-}
-
 // jumpComment moves to the next comment in direction d, across files: from a
 // comment to its neighbour, else to the nearest past the cursor.
 func (m *Model) jumpComment(d int) {
@@ -1156,4 +894,266 @@ func (m *Model) toggleViewed() {
 		}
 	}
 	m.noteOK(fmt.Sprintf("every file viewed, %d of %d", len(seen), len(r.files)))
+}
+
+// freshness is how far into its fade a comment is, 0 just in and 1 or more done.
+func (m Model) freshness(id uuid.UUID) float64 {
+	rec := m.reviewByID(m.review.id)
+	if rec == nil {
+		return 1
+	}
+	at, ok := rec.arrived[id]
+	if !ok {
+		return 1
+	}
+	return float64(time.Since(at)) / float64(fadeFor)
+}
+
+// fading is whether a comment of the open review still stands out.
+func (m Model) fading() bool {
+	rec := m.reviewByID(m.review.id)
+	if m.mode != modeReview || rec == nil {
+		return false
+	}
+	for _, at := range rec.arrived {
+		if time.Since(at) < fadeFor {
+			return true
+		}
+	}
+	return false
+}
+
+// fadeTick keeps one tick going while a comment fades, and none otherwise.
+func (m *Model) fadeTick() tea.Cmd {
+	if m.fadeTicking || !m.fading() {
+		return nil
+	}
+	m.fadeTicking = true
+	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return fadeMsg{} })
+}
+
+// reviewer is the reviewer working on the open review, nil when none is.
+func (m Model) reviewer() *agentState {
+	for _, a := range m.agentOrder {
+		if r := reviewerOf(a); r != nil && r.review == m.review.id && !a.ended {
+			return a
+		}
+	}
+	return nil
+}
+
+// reviewSent is whether the review shown was sent, which leaves it to read.
+func (m Model) reviewSent() bool {
+	rec := m.reviewByID(m.review.id)
+	return rec != nil && rec.submitted
+}
+
+func (m Model) reviewByID(id uuid.UUID) *reviewRecord {
+	for _, r := range m.reviews {
+		if r.id == id {
+			return r
+		}
+	}
+	return nil
+}
+
+func (m Model) commentByID(id uuid.UUID) *event.ReviewComment {
+	rec := m.reviewByID(m.review.id)
+	if rec == nil || id == uuid.Nil {
+		return nil
+	}
+	for i := range rec.comments {
+		if rec.comments[i].ID == id {
+			return &rec.comments[i]
+		}
+	}
+	return nil
+}
+
+// blockByID finds a block without marking it to redraw, as block does.
+func (m Model) blockByID(id uuid.UUID) *turnBlock {
+	for _, b := range m.blocks {
+		if id != uuid.Nil && b.id == id {
+			return b
+		}
+	}
+	return nil
+}
+
+// selected is the file under the cursor, nil while there is none.
+func (r *reviewState) selected() *event.FileDiff {
+	if r.file >= len(r.files) {
+		return nil
+	}
+	return &r.files[r.file]
+}
+
+// reviewRows is the selected file as the diff pane lists it: each hunk's header,
+// its lines, and under the line a comment ends on, the comment and its replies.
+func (m Model) reviewRows() []diffRow {
+	f := m.review.selected()
+	if f == nil {
+		return nil
+	}
+	comments := m.fileComments(f.Path)
+	// What the gutter and a reply's indent leave of the pane.
+	width := max(8, m.reviewTextWidth()-reviewGutter(*f)-4)
+	var out []diffRow
+	for h, hunk := range f.Hunks {
+		out = append(out, diffRow{hunk: h, line: -1})
+		for l, line := range hunk.Lines {
+			out = append(out, diffRow{hunk: h, line: l})
+			for i := range comments {
+				c := &comments[i]
+				if c.ReplyTo == uuid.Nil && endsOn(*c, line) {
+					out = append(out, thread(c, comments, h, width)...)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// thread is a comment's rows and then its replies', each wrapped to width.
+func thread(c *event.ReviewComment, all []event.ReviewComment, hunk, width int) []diffRow {
+	var out []diffRow
+	add := func(c *event.ReviewComment) {
+		out = append(out, diffRow{hunk: hunk, line: -1, comment: c, author: true})
+		for _, t := range wrapPlain(c.Body, width) {
+			out = append(out, diffRow{hunk: hunk, line: -1, comment: c, text: t})
+		}
+	}
+	add(c)
+	for i := range all {
+		if all[i].ReplyTo == c.ID {
+			add(&all[i])
+		}
+	}
+	return out
+}
+
+// fileComments is the open review's comments on path.
+func (m Model) fileComments(path string) []event.ReviewComment {
+	rec := m.reviewByID(m.review.id)
+	if rec == nil {
+		return nil
+	}
+	var out []event.ReviewComment
+	for _, c := range rec.comments {
+		if c.Path == path {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// lineComments is the open review's comments on lines, in file then line
+// order: what > and < step through. Replies ride with their comment.
+func (m Model) lineComments() []*event.ReviewComment {
+	rec := m.reviewByID(m.review.id)
+	if rec == nil {
+		return nil
+	}
+	var out []*event.ReviewComment
+	for i := range rec.comments {
+		if c := &rec.comments[i]; c.Path != "" && c.ReplyTo == uuid.Nil {
+			out = append(out, c)
+		}
+	}
+	order := func(path string) int {
+		return slices.IndexFunc(m.review.files, func(f event.FileDiff) bool { return f.Path == path })
+	}
+	slices.SortStableFunc(out, func(a, b *event.ReviewComment) int {
+		return cmp.Or(cmp.Compare(order(a.Path), order(b.Path)), cmp.Compare(a.End, b.End))
+	})
+	return out
+}
+
+// nextHunk is the row of the next hunk's header in direction d, or the line
+// unmoved when there is none that way.
+func (m Model) nextHunk(d int) int {
+	rows := m.reviewRows()
+	r := m.review
+	for i := r.line + d; i >= 0 && i < len(rows); i += d {
+		if rows[i].line < 0 && rows[i].comment == nil {
+			return i
+		}
+	}
+	return r.line
+}
+
+func newCommentEdit(op event.CommentOp, target uuid.UUID, body string) *commentEdit {
+	ta := textarea.New()
+	ta.CharLimit = 0
+	ta.ShowLineNumbers = false
+	ta.KeyMap.InsertNewline.SetKeys("shift+enter", "alt+enter", "ctrl+j")
+	ta.SetHeight(commentEditorLines)
+	applyInputTheme(&ta)
+	ta.SetValue(body)
+	ta.Focus()
+	return &commentEdit{op: op, target: target, input: ta}
+}
+
+// scopeOf is a comment's scope. One stored before comments said is a branch's
+// when no request owns it, since only a branch's never has one, else a request's.
+func scopeOf(v event.ReviewCommented) event.ReviewScope {
+	switch {
+	case v.Scope != "":
+		return v.Scope
+	case v.Reviewed == uuid.Nil:
+		return event.ScopeBranch
+	}
+	return event.ScopeRequest
+}
+
+// scopeNoun is what a scope is called in a sentence.
+func scopeNoun(s event.ReviewScope) string {
+	switch s {
+	case event.ScopeSession:
+		return "session of more than one request"
+	case event.ScopeSince:
+		return "edits since the last request"
+	case event.ScopeBranch:
+		return "branch"
+	case event.ScopeRequest:
+	}
+	return "request"
+}
+
+// endsOn is whether line is the last a comment covers, on the side it numbers.
+func endsOn(c event.ReviewComment, l event.DiffLine) bool {
+	if c.Side == "old" {
+		return l.Op == event.LineRemoved && l.Old == c.End
+	}
+	return l.New != 0 && l.New == c.End
+}
+
+// defused is files with every path and line made safe to print. A copy, since
+// an event is shared, and a CRLF line loses its \r rather than showing it.
+func defused(files []event.FileDiff) []event.FileDiff {
+	out := make([]event.FileDiff, len(files))
+	for i, f := range files {
+		f.Path = termsafe.Printable(f.Path)
+		f.Hunks = slices.Clone(f.Hunks)
+		for j, h := range f.Hunks {
+			h.Header = termsafe.Printable(h.Header)
+			h.Lines = slices.Clone(h.Lines)
+			for k, l := range h.Lines {
+				h.Lines[k].Text = termsafe.Printable(strings.TrimSuffix(l.Text, "\r"))
+			}
+			f.Hunks[j] = h
+		}
+		out[i] = f
+	}
+	return out
+}
+
+// defusedComment is c safe to print, since a reviewer's words are a model's.
+func defusedComment(c event.ReviewComment) event.ReviewComment {
+	c.Author = termsafe.Printable(c.Author)
+	c.Path = termsafe.Printable(c.Path)
+	c.Quote = termsafe.Printable(c.Quote)
+	c.Body = termsafe.Printable(c.Body)
+	c.Original = termsafe.Printable(c.Original)
+	return c
 }

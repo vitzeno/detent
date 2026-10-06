@@ -16,6 +16,10 @@ import (
 // nothing that writes or reaches the network, where an injected line could send them.
 var ReviewReads = []event.ToolName{event.ToolReadFile, event.ToolGrep, event.ToolFindFiles, event.ToolListDir}
 
+// maxDiffLines is the most of one file's diff a call returns, so a single huge
+// file cannot spend a reviewer's whole context.
+const maxDiffLines = 400
+
 // ReviewDiff shows one changed file's hunks, each line numbered.
 type ReviewDiff struct{ files []event.FileDiff }
 
@@ -75,10 +79,6 @@ func (r ReviewDiff) Answer(a Args) (string, error) {
 	}
 	return b.String(), nil
 }
-
-// maxDiffLines is the most of one file's diff a call returns, so a single huge
-// file cannot spend a reviewer's whole context.
-const maxDiffLines = 400
 
 // ReviewComment checks a comment against the diff, so every comment has the
 // lines it is about to sit under.

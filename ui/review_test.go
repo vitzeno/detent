@@ -693,7 +693,7 @@ func TestReview_TheVerdictSitsAboveTheDiff(t *testing.T) {
 	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: event.ReviewComment{
 		ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Body: strings.Repeat("a long verdict word ", 40)}})
 	lines := k.m.reviewDiffLines(30)
-	assert.Contains(t, ansi.Strip(lines[0]), "reviewer's verdict")
+	assert.Contains(t, ansi.Strip(lines[0]), "reviewer's verdict · 0 comments on lines", "comments plural, never liness")
 	assert.True(t, strings.HasSuffix(ansi.Strip(lines[maxVerdictLines]), "…"), "cut to a few lines")
 	assert.Contains(t, ansi.Strip(lines[maxVerdictLines+2]), "@@ -10,2 +10,2 @@", "then the diff")
 }
