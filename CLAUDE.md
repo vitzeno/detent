@@ -688,8 +688,11 @@ adding a fat dependency fails with the transitive import named.
   until that is closed or sent, so a key meant for it can never answer
   the question. Once up, a question ignores answers for 400ms
   (`questionSettle`), so the first key of the next message is not taken
-  as a yes. Likewise an `esc` soon after one closed a modal is dropped
-  (`escSettle`), since a double-press to close it aborted the request. A command's output is defused once, as `facts.go` folds it
+  as a yes. A single `esc` never stops anything: the first only asks, and a
+  second within `escTwice` stops the request or the human's command, any other
+  key in between dropping the ask. An `esc` that closes something never counts,
+  since a double-press meant to close a modal once aborted a request, and the
+  bar always leads with what `esc` will do (`escHint`, which mirrors `onEscape`). A command's output is defused once, as `facts.go` folds it
   (`termsafe.Styled`): its colour stays, and any other escape (a cursor
   move, a clipboard write, a link) is shown rather than sent, so no pane
   or preview has to remember to. A view that panics while drawing falls

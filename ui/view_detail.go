@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/vitzeno/detent/logging"
 	"github.com/vitzeno/detent/ui/welcome"
 	"github.com/vitzeno/detent/version"
@@ -85,6 +87,19 @@ func (m *Model) refreshViewport() {
 		return
 	}
 	r := m.focused()
+	// A review is its comments and how its reviewer stands, not output.
+	if r != nil && r.review != uuid.Nil {
+		m.setViewContent(strings.Join(m.reviewSummary(r.review), "\n"))
+		return
+	}
+	if r == nil {
+		for _, a := range m.pinned() {
+			if rv := reviewerOf(a); rv != nil {
+				m.setViewContent(strings.Join(m.reviewSummary(rv.review), "\n"))
+				return
+			}
+		}
+	}
 	if r == nil && len(m.pinned()) > 0 {
 		// The request's only rows are its subagents, drawn in the block.
 		m.setViewContent(styleFaint.Render("subagents are working · [a] looks into them"))

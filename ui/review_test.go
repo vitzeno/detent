@@ -852,9 +852,9 @@ func TestReview_ArrowsJumpBetweenComments(t *testing.T) {
 	assert.Equal(t, near, at(), "from a line, the nearest comment before it")
 }
 
-// An esc that closes the modal is often pressed twice. The second, soon after,
-// is dropped rather than aborting the request, and a later one still aborts.
-func TestEsc_ASecondEscAfterClosingAModalDoesNotAbort(t *testing.T) {
+// A single esc never stops a request: the one closing a modal does nothing to
+// it, the next only asks, and the one after that, soon enough, stops it.
+func TestEsc_OneNeverStopsARequestAndTwoDo(t *testing.T) {
 	k := loadedReview(t)
 	turn := uuid.Must(uuid.NewV7())
 	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: k.m.review.id})
@@ -862,138 +862,96 @@ func TestEsc_ASecondEscAfterClosingAModalDoesNotAbort(t *testing.T) {
 	require.Equal(t, modeInput, k.m.mode)
 	k.press(t, "esc")
 	k.noIntent(t)
+	assert.Contains(t, k.m.statusHint(), "[esc] again stops the request")
 
-	k.m.escClosed = time.Now().Add(-escSettle)
 	k.press(t, "esc")
 	assert.Equal(t, event.Abort{Turn: turn}, k.intentOf(t, event.AbortKind))
 }
 
-// The key line leads with what esc will close, layer by layer, so it is never
-// cut off the end of a narrow box.
-func TestReview_TheKeysSayWhatEscWillClose(t *testing.T) {
-	k := loadedReview(t)
-	assert.True(t, strings.HasPrefix(k.m.reviewKeys(), "esc closes"))
-	k.press(t, "down")
-	k.press(t, "v")
-	assert.True(t, strings.HasPrefix(k.m.reviewKeys(), "esc drops the range"))
-	k.press(t, "c")
-	assert.True(t, strings.HasPrefix(k.m.reviewKeys(), "esc drops the draft"))
+// The second esc must come soon and straight after: any other key, or waiting,
+// drops the ask, and the bar says which esc will do.
+func TestEsc_TheAskLapses(t *testing.T) {
+	k := newKeyed(t)
+	turn := uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, N: 1, Prompt: "build"})
+	assert.Contains(t, k.m.statusHint(), "[esc][esc] stops the request")
 	k.press(t, "esc")
-	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: event.ReviewComment{
-		ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "README.md", Side: "new", Start: 1, End: 1}})
-	k.press(t, "t")
-	assert.True(t, strings.HasPrefix(k.m.reviewKeys(), "esc stops triage"))
+	k.press(t, "x")
+	k.press(t, "esc")
+	k.noIntent(t)
+
+	k.m.escArmed = time.Now().Add(-escTwice)
+	k.press(t, "esc")
+	k.noIntent(t)
+	assert.Contains(t, k.m.statusHint(), "[esc] again stops")
 }
 
-// space marks a file viewed and moves on to the next not yet viewed, the
-// title counting them, and space again on a viewed file unmarks it.
-func TestReview_SpaceMarksAFileViewedAndMovesOn(t *testing.T) {
-	k := loadedReview(t)
-	k.press(t, "tab")
-	k.send(t, tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
-	assert.Equal(t, 1, k.m.review.file, "on to README.md")
-	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "1/2 viewed")
-	assert.Contains(t, ansi.Strip(k.m.reviewFileLines(40, 10)[0]), "✓")
-	k.send(t, tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
-	assert.Contains(t, k.m.notice.text, "every file viewed")
-	k.press(t, "p")
-	k.send(t, tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
-	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "1/2 viewed", "unmarked")
-}
+// Wherever esc does something, the bar starts by saying what, as onEscape does it.
+func TestEsc_TheBarLeadsWithWhatEscWillDo(t *testing.T) {
+	k := newKeyed(t)
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "build"})
+	k.m.apply(event.TurnEnded{Turn: k.m.blocks[0].id, Reason: event.EndDone})
+	assert.NotContains(t, k.m.statusHint(), "[esc]", "idle, esc does nothing")
 
-// Side by side, a run of removed lines faces the added lines that replaced it,
-// an unchanged line sits on both sides, and a comment follows the run it is on.
-func TestPairRows_FacesEachRemovedRunWithWhatReplacedIt(t *testing.T) {
-	f := event.FileDiff{Hunks: []event.Hunk{{Lines: []event.DiffLine{
-		{Op: event.LineContext}, {Op: event.LineRemoved}, {Op: event.LineRemoved}, {Op: event.LineAdded}, {Op: event.LineContext},
-	}}}}
-	c := &event.ReviewComment{}
-	rows := []diffRow{{hunk: 0, line: -1}, {line: 0}, {line: 1}, {line: 2}, {line: 3}, {line: -1, comment: c}, {line: 4}}
-	assert.Equal(t, []splitRow{
-		{left: -1, right: -1, across: 0},
-		{left: 1, right: 1, across: -1},
-		{left: 2, right: 4, across: -1},
-		{left: 3, right: -1, across: -1},
-		{left: -1, right: -1, across: 5},
-		{left: 6, right: 6, across: -1},
-	}, pairRows(rows, f))
-
-	// A comment on the first of two removed lines still waits for the run to end,
-	// and a removed line after added ones starts a run of its own.
-	f = event.FileDiff{Hunks: []event.Hunk{{Lines: []event.DiffLine{
-		{Op: event.LineRemoved}, {Op: event.LineRemoved}, {Op: event.LineAdded}, {Op: event.LineAdded}, {Op: event.LineRemoved},
-	}}}}
-	rows = []diffRow{{line: 0}, {line: -1, comment: c}, {line: 1}, {line: 2}, {line: 3}, {line: 4}}
-	assert.Equal(t, []splitRow{
-		{left: 0, right: 3, across: -1},
-		{left: 2, right: 4, across: -1},
-		{left: -1, right: -1, across: 1},
-		{left: 5, right: -1, across: -1},
-	}, pairRows(rows, f))
-}
-
-// w splits the diff when the pane is wide enough, the cursor's mark on the side
-// its line is on, and says so when it is too narrow.
-func TestReview_WSplitsTheDiffWhenThereIsRoom(t *testing.T) {
-	k := loadedReview(t)
-	k.press(t, "w")
-	assert.False(t, k.m.review.split)
-	assert.Contains(t, k.m.notice.text, "too narrow")
-
-	k.m.layout.width = 230
-	k.m.sizeViewport()
-	k.press(t, "w")
-	require.True(t, k.m.review.split)
-	k.press(t, "down")
-	k.press(t, "down")
-	lines := k.m.reviewDiffLines(20)
-	paired := ansi.Strip(lines[1])
-	left, right, ok := strings.Cut(paired, "│")
-	require.True(t, ok, "one line, two sides: %q", paired)
-	assert.Contains(t, left, "-old line")
-	assert.Contains(t, right, "▸")
-	assert.Contains(t, right, "+new line", "the added line faces the removed one")
-}
-
-// Code is coloured by language, a change tinted the width of it and context not,
-// a file no lexer knows drawn as before, and each hunk coloured once, then kept.
-func TestReview_CodeIsColouredByLanguageOnItsTint(t *testing.T) {
-	k := reviewable(t, "e1", "e2")
-	k.openReview("/review")
-	k.intentOf(t, event.LoadDiffKind)
-	lines := []event.DiffLine{
-		{Op: event.LineContext, Old: 1, New: 1, Text: "func f() {"},
-		{Op: event.LineAdded, New: 2, Text: `	return "x"`},
+	for _, c := range []struct {
+		name string
+		set  func(m *Model)
+		want string
+	}{
+		{"a page open", func(m *Model) { m.panel.open = panelStatus }, "[esc] closes the page"},
+		{"the output pane, idle", func(m *Model) { m.nav.focus = focusOutput }, "[esc] back to history"},
+		{"the finder", func(m *Model) { m.mode = modeFinder }, "[esc] closes"},
+		{"the resume picker", func(m *Model) { m.mode = modeResume }, "[esc] closes"},
+		{"a request running", func(m *Model) { m.cur = m.blocks[0] }, "[esc][esc] stops the request"},
+	} {
+		m := k.m
+		c.set(&m)
+		assert.True(t, strings.HasPrefix(m.statusHint(), c.want), "%s: %q", c.name, m.statusHint())
 	}
-	k.m.apply(event.DiffLoaded{Base: "b2", Head: "e2", Files: []event.FileDiff{
-		{Path: "a.go", Change: event.FileModified, Hunks: []event.Hunk{{Header: "@@", Lines: lines}}},
-		{Path: "notes.unknownext", Change: event.FileModified, Hunks: []event.Hunk{{Header: "@@", Lines: lines}}},
-	}})
-
-	added := k.m.codeLine(0, 1, 40)
-	assert.Contains(t, added, sgr(48, palette.DiffAdded))
-	assert.Equal(t, "+    return \"x\"", strings.TrimRight(ansi.Strip(added), " "))
-	assert.Equal(t, 40, ansi.StringWidth(added), "tinted the width of it")
-	assert.Contains(t, ansi.Strip(k.m.codeLine(0, 0, 40)), "func f() {")
-	assert.NotContains(t, k.m.codeLine(0, 0, 40), "\x1b[48;2;", "context is not tinted")
-	assert.Contains(t, k.m.review.code, hunkKey{file: 0, hunk: 0}, "kept for the next frame")
-
-	k.m.review.file = 1
-	assert.NotContains(t, k.m.codeLine(0, 1, 40), "\x1b[48;2;", "no lexer, drawn as before")
 }
 
-// Colouring adds escapes of its own, so it must never pass one from the file: a
-// line's text was defused as it arrived, and stays defused once coloured.
-func TestReview_ColouredCodeStillDefusesTheFile(t *testing.T) {
+// At the step bound, esc used to answer "stop here", a single esc ending the request.
+func TestBound_EscDoesNotStopTheRequest(t *testing.T) {
+	k := newKeyed(t)
+	turn := uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, N: 1, Prompt: "build"})
+	k.m.apply(event.BoundReached{Turn: turn, Steps: 100})
+	k.m.askedAt = time.Now().Add(-time.Hour)
+	k.press(t, "esc")
+	k.noIntent(t)
+	assert.Equal(t, modeBound, k.m.mode)
+}
+
+// A review fills the output pane, not "(no output)": how its reviewer stands,
+// its verdict and its comments by where they are, while it works and after.
+func TestReview_FillsTheOutputPane(t *testing.T) {
 	k := reviewable(t, "e1", "e2")
-	k.openReview("/review")
-	k.intentOf(t, event.LoadDiffKind)
-	k.m.apply(event.DiffLoaded{Base: "b2", Head: "e2", Files: []event.FileDiff{{Path: "a.go", Change: event.FileAdded,
-		Hunks: []event.Hunk{{Header: "@@", Lines: []event.DiffLine{
-			{Op: event.LineAdded, New: 1, Text: "x := 1 // \x1b]52;c;aGk=\x07"}}}}}}})
-	got := k.m.codeLine(0, 0, 60)
-	assert.NotContains(t, got, "\x1b]", "no clipboard write reaches the terminal")
-	assert.Contains(t, ansi.Strip(got), "^[]52", "it is shown instead")
+	review, turn, agent, step := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: review})
+	k.m.apply(event.ReviewStarted{Review: review, Scope: event.ScopeRequest, Files: 3})
+	k.m.apply(event.AgentStarted{Agent: agent, Turn: turn, Name: "reviewer"})
+	k.m.apply(event.StepStarted{Turn: turn, Step: step, N: 1, Agent: agent})
+	k.m.apply(event.ToolCallProposed{Step: step, ToolCall: uuid.Must(uuid.NewV7()), Tool: event.ToolReviewDiff,
+		Args: map[string]any{"path": "a.go"}, Agent: agent})
+	k.m.apply(event.ReviewCommented{Review: review, Op: event.CommentAdded, Comment: event.ReviewComment{
+		ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "a.go", Side: "new", Start: 7, End: 7, Body: "drops the resumed case"}})
+	k.m.sizeViewport()
+	running := ansi.Strip(k.m.output.View())
+	assert.Contains(t, running, "review of request 2")
+	assert.Contains(t, running, "1/3 files · now a.go")
+	assert.Contains(t, running, "a.go:7 reviewer drops the resumed case")
+
+	k.m.apply(event.ReviewCommented{Review: review, Op: event.CommentAdded, Comment: event.ReviewComment{
+		ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Body: "one real problem"}})
+	k.m.apply(event.AgentEnded{Agent: agent, Reason: event.AgentDone})
+	k.m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	k.m.nav.cursor, k.m.nav.focus = len(k.m.rows())-1, focusHistory
+	k.m.sizeViewport()
+	done := ansi.Strip(k.m.output.View())
+	assert.Contains(t, done, "verdict")
+	assert.Contains(t, done, "one real problem")
+	assert.Contains(t, done, "1 comment on lines")
+	assert.NotContains(t, done, "(no output)")
 }
 
 // Closing the modal leaves the reviewer working: its comments still land on

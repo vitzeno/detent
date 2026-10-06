@@ -98,11 +98,13 @@ func TestShell_EscapeStopsTheirCommandBeforeTheTurn(t *testing.T) {
 	k.m.apply(event.UserCommandStarted{UserCommand: shell, Command: "sleep 45", Runner: "host"})
 
 	k.press(t, "esc")
+	k.press(t, "esc")
 	got, ok := k.intent(t).(event.CancelCommand)
-	require.True(t, ok, "esc must cancel the command, not abort the Turn")
+	require.True(t, ok, "esc twice must cancel the command, not abort the Turn")
 	assert.Equal(t, uuid.Nil, got.UserCommand, "whichever is running, which is what esc knows")
 
 	k.m.apply(event.UserCommandEnded{UserCommand: shell, Result: event.Result{Err: "stopped by the human"}})
+	k.press(t, "esc")
 	k.press(t, "esc")
 	_, ok = k.intent(t).(event.Abort)
 	assert.True(t, ok, "and once it has gone, esc aborts the Turn again")

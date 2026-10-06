@@ -24,19 +24,13 @@ const (
 	ownerHistory
 )
 
-// pressed is handleKey with esc made safe to press twice: one closing a modal
-// notes when, and one soon after is dropped rather than aborting the request.
+// pressed is handleKey with any key but esc dropping a stop esc had asked for,
+// so only two esc in a row stop a request.
 func (m Model) pressed(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	esc := msg.String() == "esc"
-	if esc && !m.inModal() && time.Since(m.escClosed) < escSettle {
-		return m, nil
+	if msg.String() != "esc" {
+		m.escArmed = time.Time{}
 	}
-	wasModal := m.inModal()
-	next, cmd := m.handleKey(msg)
-	if esc && wasModal && !next.inModal() {
-		next.escClosed = time.Now()
-	}
-	return next, cmd
+	return m.handleKey(msg)
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
@@ -191,7 +185,8 @@ func (m Model) boundKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y", "enter":
 		return m.answerBound(true)
-	case "n", "N", "esc":
+	// Not esc: stopping a request takes a deliberate key, never a stray one.
+	case "n", "N":
 		return m.answerBound(false)
 	}
 	return m, nil
@@ -220,16 +215,25 @@ func (m Model) onEscape() (Model, tea.Cmd) {
 		m.nav.focus = focusHistory
 		return m, nil
 	}
+	if !m.userCommandRunning() && m.cur == nil {
+		return m, nil
+	}
+	// One esc only asks: a second soon after stops it.
+	if !m.escStops() {
+		m.escArmed = time.Now()
+		return m, nil
+	}
+	m.escArmed = time.Time{}
 	// A command the human ran stops before the Turn does: it is theirs,
 	// and they are watching it.
 	if m.userCommandRunning() {
 		return m, m.send(event.CancelCommand{})
 	}
-	if m.cur != nil {
-		return m.abortRunning()
-	}
-	return m, nil
+	return m.abortRunning()
 }
+
+// escStops is whether one esc has asked to stop what runs, and a second would.
+func (m Model) escStops() bool { return time.Since(m.escArmed) < escTwice }
 
 // onTab completes an open dropdown, otherwise cycles panes.
 func (m Model) onTab() (Model, tea.Cmd) {

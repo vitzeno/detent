@@ -622,14 +622,17 @@ func TestKeys_BoundIsAnswered(t *testing.T) {
 }
 
 // esc aborts a running request rather than only moving focus.
-func TestKeys_EscapeAbortsARunningRequest(t *testing.T) {
+// Two esc stop a running request, never one.
+func TestKeys_EscapeTwiceAbortsARunningRequest(t *testing.T) {
 	k := newKeyed(t)
 	turn := uuid.Must(uuid.NewV7())
 	k.m.apply(event.TurnStarted{Turn: turn, N: 1, Prompt: "slow"})
 
 	k.press(t, "esc")
+	k.noIntent(t)
+	k.press(t, "esc")
 	got, ok := k.intent(t).(event.Abort)
-	require.True(t, ok, "esc must abort while something runs")
+	require.True(t, ok, "a second esc must abort while something runs")
 	assert.Equal(t, turn, got.Turn)
 }
 

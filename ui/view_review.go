@@ -619,3 +619,64 @@ func sgr(code int, c color.Color) string {
 	r, g, b, _ := c.RGBA()
 	return fmt.Sprintf("\x1b[%d;2;%d;%d;%dm", code, r>>8, g>>8, b>>8)
 }
+
+// reviewSummary is a review as the output pane shows it: what it reviews, how
+// its reviewer stands, its verdict and every comment by where it is.
+func (m Model) reviewSummary(id uuid.UUID) []string {
+	width := paneInner(m.layout.outputColW)
+	rec := m.reviewByID(id)
+	label := "review"
+	for _, b := range m.blocks {
+		if b.review == id {
+			label = b.prompt
+		}
+	}
+	out := []string{toolName.review.Render("◆ ") + styleGoal.Render(layout.Truncate(label, width-2))}
+	var reviewer *agentState
+	for _, a := range m.agentOrder {
+		if rv := reviewerOf(a); rv != nil && rv.review == id {
+			reviewer = a
+		}
+	}
+	switch {
+	case reviewer != nil && !reviewer.ended:
+		// No spinner: this pane redraws on facts, not ticks, so one would sit still.
+		state := fmt.Sprintf("the reviewer is reading · %d/%d files", len(reviewer.read), reviewerOf(reviewer).files)
+		if reviewer.reading != "" {
+			state += " · now " + reviewer.reading
+		}
+		out = append(out, toolName.review.Render("◇")+" "+styleMuted.Render(layout.Truncate(state, width-3)))
+	case reviewer != nil:
+		out = append(out, m.agentGlyph(reviewer)+" "+styleMuted.Render("reviewer: "+m.endedDetail(reviewer)))
+	}
+	if rec == nil {
+		return append(out, "", styleFaint.Render("no comments yet"))
+	}
+	var lines []event.ReviewComment
+	for _, c := range rec.comments {
+		switch {
+		case c.Path == "" && c.Author != "" && c.ReplyTo == uuid.Nil:
+			out = append(out, "", styleBrand.Render("verdict"))
+			for _, l := range wrapPlain(c.Body, max(8, width-2)) {
+				out = append(out, "  "+styleGoal.Render(l))
+			}
+		case c.Path != "" && c.ReplyTo == uuid.Nil:
+			lines = append(lines, c)
+		}
+	}
+	out = append(out, "", styleBrand.Render(countOf(len(lines), "comment")+" on lines"))
+	for _, c := range lines {
+		who := "you"
+		if c.Author != "" {
+			who = c.Author
+		}
+		at := fmt.Sprintf("%s:%d", c.Path, c.Start)
+		first, _, _ := strings.Cut(c.Body, "\n")
+		out = append(out, "  "+styleMuted.Render(at)+" "+styleFaint.Render(who)+" "+
+			styleGoal.Render(layout.Truncate(first, max(8, width-lipgloss.Width(at+who)-5))))
+	}
+	if rec.submitted {
+		out = append(out, "", styleFaint.Render("sent to the agent"))
+	}
+	return append(out, "", styleFaint.Render("enter or /review opens it"))
+}

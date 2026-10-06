@@ -26,9 +26,9 @@ const maxFactBatch = 256
 // questionSettle is how long a question is on screen before a key answers it.
 var questionSettle = 400 * time.Millisecond
 
-// escSettle is how long after esc closes a modal a second esc is let through, a
-// var a test shortens. A double-press meant to close one otherwise aborted the request.
-var escSettle = 600 * time.Millisecond
+// escTwice is how soon a second esc must follow the first to stop what runs. One
+// alone never stops anything: an esc meant to close a modal once aborted a request.
+const escTwice = 2 * time.Second
 
 // coalesceWindow is how long a batch gathers. The bus hands over one
 // record at a time, so a burst needs a window to collect in.
@@ -48,8 +48,8 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	pulse int
 	// fadeTicking is a fadeMsg on its way, so a fade runs one tick, not one per fact.
 	fadeTicking bool
-	// escClosed is when esc last closed a modal, which the next esc settles against.
-	escClosed time.Time
+	// escArmed is when an esc asked to stop what runs, which a second soon after does.
+	escArmed time.Time
 
 	blocks []*turnBlock
 	// agents are the subagents history's spawn rows draw, by id, and

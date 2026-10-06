@@ -213,34 +213,64 @@ func (m Model) agentCounts() (running, blocked int) {
 	return running, blocked
 }
 
-// statusHint mirrors handleKey: the three questions it intercepts
-// first, then owner(), so the hint names what the key will do.
+// statusHint mirrors handleKey: the three questions it intercepts first, then
+// owner(), so the hint names what each key will do, esc's first wherever it does anything.
 func (m Model) statusHint() string {
 	// Held behind what was typed, so say it is there and how to reach it.
 	if m.mode == modeInput && (m.asking() != nil || m.bound != nil) {
 		return "a question is waiting · send or clear what you typed to see it"
 	}
-	if m.mode == modeFinder {
-		return "[enter] jump · [ctrl+f] kind · [↑/↓] move · [esc] back"
-	}
-	if m.mode == modeInspector {
-		return "the agent's keys are in the box · [esc] back"
-	}
-	if m.mode == modeResume {
-		return "[enter] resume · [↑/↓] move · [esc] back"
-	}
-	if m.mode == modeReview {
-		return "the review's keys are in the box · [esc] back"
-	}
-	if m.mode == modeUndo {
+	switch m.mode {
+	case modeFinder:
+		return "[esc] closes · [enter] jump · [ctrl+f] kind · [↑/↓] move"
+	case modeInspector:
+		return "[esc] back · the agent's keys are in the box"
+	case modeResume:
+		return "[esc] closes · [enter] resume · [↑/↓] move"
+	case modeReview:
+		// The box's key line leads with what esc closes, which the bar repeats.
+		esc, ok := strings.CutPrefix(strings.SplitN(m.reviewKeys(), " · ", 2)[0], "esc")
+		if !ok {
+			return "the review's keys are in the box"
+		}
+		return "[esc]" + esc + " · the review's keys are in the box"
+	case modeUndo:
 		return m.undoKeys(" · ")
-	}
-	if m.mode == modeBound {
+	case modeBound:
 		return "[y/enter] keep going · [n] stop here"
-	}
-	if m.mode == modeForget {
+	case modeForget:
 		return "[y] delete · [↑/↓] read · any other key cancels"
+	case modeInput, modeConfirm:
 	}
+	return hints(m.escHint(), m.ownerHint())
+}
+
+// escHint is what esc does now, as onEscape decides it, "" where it does nothing.
+func (m Model) escHint() string {
+	switch {
+	case m.mode == modeConfirm:
+		return "[esc] skips this tool call"
+	case m.prompt.Open():
+		return "[esc] closes the menu"
+	case m.panel.open != panelNone:
+		return "[esc] closes the page"
+	case m.nav.focus == focusOutput && m.cur == nil:
+		return "[esc] back to history"
+	case !m.userCommandRunning() && m.cur == nil:
+		return ""
+	}
+	what := "the request"
+	if m.userCommandRunning() {
+		what = "your command"
+	}
+	if m.escStops() {
+		return "[esc] again stops " + what
+	}
+	return "[esc][esc] stops " + what
+}
+
+// ownerHint is the keys of whatever owns them, esc's left to escHint.
+func (m Model) ownerHint() string {
 	switch m.owner() {
 	case ownerConfirm:
 		if !m.confirmReady() {
@@ -248,20 +278,10 @@ func (m Model) statusHint() string {
 		}
 		return "[y/enter] run · [n] skip this tool call"
 	case ownerOutput:
-		// Must match onEscape's actual behavior (keys.go): it aborts a
-		// running command here instead of stepping back to history.
-		esc := "[esc] history"
-		if m.cur != nil {
-			esc = "[esc] abort"
-		}
-		return "[tab] input · [↑/↓] inside · " + esc
+		return "[tab] input · [↑/↓] inside"
 	case ownerHistory:
 		if len(m.pinned()) > 0 {
-			return "[a] agents · [esc] abort · [↑/↓] move · [enter] open"
-		}
-		// esc aborts from here too, and a human needs to know they can stop a run.
-		if m.cur != nil {
-			return "[esc] abort · [tab] output · [↑/↓] move · [space] expand"
+			return "[a] agents · [↑/↓] move · [enter] open"
 		}
 		return "[tab] output · [↑/↓] move · [space] expand · [enter] expand"
 	case ownerBusy:
@@ -269,28 +289,33 @@ func (m Model) statusHint() string {
 			return m.shellHint()
 		}
 		if m.prompt.Open() {
-			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
+			return "[↑/↓] pick · [tab] complete · [enter] run"
 		}
 		// A waiting subagent takes no keys, so say how to reach it.
 		if _, blocked := m.agentCounts(); blocked > 0 {
-			return "an agent is waiting on you · [tab], then [a] · [esc] abort"
+			return "an agent is waiting on you · [tab], then [a]"
 		}
-		return "[esc] abort · [enter] steers · [tab] history"
-	default: // ownerInput
-		if m.prompt.shell {
-			return m.shellHint()
-		}
-		if m.prompt.Open() {
-			return "[↑/↓] pick · [tab] complete · [enter] run · [esc] close"
-		}
-		return "[tab] history · [enter] run · [" + m.prompt.NewlineKey() + "] newline · type / for cmds"
+		return "[enter] steers · [tab] history"
+	case ownerInput:
 	}
+	if m.prompt.shell {
+		return m.shellHint()
+	}
+	if m.prompt.Open() {
+		return "[↑/↓] pick · [tab] complete · [enter] run"
+	}
+	return "[tab] history · [enter] run · [" + m.prompt.NewlineKey() + "] newline · type / for cmds"
+}
+
+// hints joins what is set of parts.
+func hints(parts ...string) string {
+	return strings.Join(slices.DeleteFunc(parts, func(s string) bool { return s == "" }), " · ")
 }
 
 // shellHint is the bar in shell mode, where / is a path.
 func (m Model) shellHint() string {
 	if m.userCommandRunning() {
-		return "[esc] stop · [shift+tab] back to a request"
+		return "[shift+tab] back to a request"
 	}
 	return "[shift+tab] request · [enter] run · [tab] history"
 }
