@@ -321,6 +321,25 @@ func TestReview_DefusesAComment(t *testing.T) {
 	assert.NotContains(t, c.Author+c.Body, "\x1b")
 }
 
+// /review alone passes over a last request that changed nothing, such as one
+// that only answered a review, to the newest that did.
+func TestReview_StepsBackPastARequestThatChangedNothing(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	k.openReview("/review")
+	k.intentOf(t, event.LoadDiffKind)
+	k.update(t, factMsg{events: []event.Event{event.DiffLoaded{Base: "b2", Head: "e2"}}})
+	assert.Equal(t, event.LoadDiff{Base: "b1", Head: "e1"}, k.intentOf(t, event.LoadDiffKind))
+	k.update(t, factMsg{events: []event.Event{event.DiffLoaded{Base: "b1", Head: "e1"}}})
+	k.noIntent(t)
+	assert.Equal(t, 1, k.m.review.block.n)
+
+	k.press(t, "esc")
+	k.openReview("/review 2")
+	k.intentOf(t, event.LoadDiffKind)
+	k.update(t, factMsg{events: []event.Event{event.DiffLoaded{Base: "b2", Head: "e2"}}})
+	k.noIntent(t)
+}
+
 // s steps through request, session, since and branch, each asking for its own
 // pair of trees, the session ending where since begins.
 func TestReview_SCyclesThroughTheScopes(t *testing.T) {
@@ -492,4 +511,11 @@ func (k *keyed) typeText(t *testing.T, s string) {
 	for _, r := range s {
 		k.m, _ = k.m.update(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
+}
+
+func (k *keyed) update(t *testing.T, msg tea.Msg) {
+	t.Helper()
+	var cmd tea.Cmd
+	k.m, cmd = k.m.update(msg)
+	runCmd(cmd)
 }

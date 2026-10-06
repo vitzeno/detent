@@ -63,7 +63,7 @@ func (m Model) showReview(input string) (Model, tea.Cmd) {
 		m.noteErr(why)
 		return m, nil
 	}
-	m.review = reviewState{block: b, back: m.nav.focus, against: strings.TrimSpace(ref)}
+	m.review = reviewState{block: b, back: m.nav.focus, against: strings.TrimSpace(ref), stepBack: arg == "" && word == ""}
 	m.mode = modeReview
 	if !m.scopeOpen(scope) {
 		m.noteErr(fmt.Sprintf("no %s to review yet", scopeNoun(scope)))
@@ -148,6 +148,17 @@ func (m Model) scopeTrees(scope event.ReviewScope) (base, head string, ok bool) 
 	return r.request.base, m.reviewHead(r.request), true
 }
 
+// reviewableBefore is the newest request before b with its files checkpointed.
+func (m Model) reviewableBefore(b *turnBlock) *turnBlock {
+	i := slices.Index(m.blocks, b)
+	for j := i - 1; j >= 0; j-- {
+		if m.blocks[j].base != "" {
+			return m.blocks[j]
+		}
+	}
+	return nil
+}
+
 func (m Model) firstReviewable() *turnBlock {
 	for _, b := range m.blocks {
 		if b.base != "" {
@@ -182,6 +193,15 @@ func (m *Model) loadScope(scope event.ReviewScope) tea.Cmd {
 	}
 	r.id = m.openReviewOf(m.reviewed(), base, head)
 	return m.send(event.LoadDiff{Base: base, Head: head})
+}
+
+// reloadReview asks again for a review diffLoaded moved, since a fact cannot send.
+func (m *Model) reloadReview() tea.Cmd {
+	if m.mode != modeReview || !m.review.reload {
+		return nil
+	}
+	m.review.reload = false
+	return m.loadScope(m.review.scope)
 }
 
 // nextScope cycles to the next scope with something to show.
@@ -240,6 +260,14 @@ func (m *Model) diffLoaded(v event.DiffLoaded) {
 	}
 	r.loading, r.cut, r.err = false, v.Cut, v.Err
 	r.files = defused(v.Files)
+	if r.stepBack && r.scope == event.ScopeRequest && len(r.files) == 0 && r.err == "" {
+		// The last request may only have answered a question, so the one before is meant.
+		if prev := m.reviewableBefore(r.request); prev != nil {
+			r.request, r.reload = prev, true
+			return
+		}
+	}
+	r.stepBack = false
 	if branch {
 		r.base, r.against = v.Base, v.Against
 		r.id = m.openReviewOf(uuid.Nil, v.Base, "")

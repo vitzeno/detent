@@ -213,7 +213,7 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 			m.apply(e)
 		}
 		// A listing may have put another session under the picker's cursor.
-		load := m.loadSelected()
+		load := tea.Batch(m.loadSelected(), m.reloadReview())
 		var cmd tea.Cmd
 		// Edge only: Tick carries the live tag, so re-arming restarts
 		// the chain and costs a frame.

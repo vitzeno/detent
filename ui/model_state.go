@@ -122,8 +122,11 @@ type reviewState struct {
 	block, request *turnBlock
 	scope          event.ReviewScope
 	// against is the ref a branch is compared with, "" until named or known.
-	against    string
-	base, head string
+	against string
+	// stepBack is set while /review with no number looks for a request that
+	// changed something, and reload when it has moved to an earlier one.
+	stepBack, reload bool
+	base, head       string
 	// id is the review comments go to, open or about to be.
 	id         uuid.UUID
 	loading    bool
