@@ -19,11 +19,11 @@ func TestFinder_JumpsToTheHitAndStopsFollowing(t *testing.T) {
 	require.True(t, k.m.nav.follow)
 
 	k.ctrl(t, 'f')
-	require.Equal(t, modeFinder, k.m.mode)
+	require.NotNil(t, k.finder())
 	k.finderType(t, "redis tls")
-	require.Equal(t, "redis tls", k.m.finder.query, "a typed space is kept")
-	require.NotEmpty(t, k.m.finder.hits)
-	assert.Same(t, k.m.row(calls[0]), k.m.finder.hits[0].row, "the request and its command both land on that row")
+	require.Equal(t, "redis tls", k.finder().query, "a typed space is kept")
+	require.NotEmpty(t, k.finder().hits)
+	assert.Same(t, k.m.row(calls[0]), k.finder().hits[0].row, "the request and its command both land on that row")
 
 	k.press(t, "enter")
 	assert.Equal(t, modeInput, k.m.mode)
@@ -55,11 +55,11 @@ func TestFinder_OutputHitsAreOneLinePerRow(t *testing.T) {
 	k.ctrl(t, 'f') // prompts
 	k.ctrl(t, 'f') // commands
 	k.ctrl(t, 'f') // output
-	require.Equal(t, finderOutput, k.m.finder.kind)
+	require.Equal(t, finderOutput, k.finder().kind)
 	k.finderType(t, "6380")
 
-	require.Len(t, k.m.finder.hits, 1)
-	h := k.m.finder.hits[0]
+	require.Len(t, k.finder().hits, 1)
+	h := k.finder().hits[0]
 	assert.Equal(t, "tls-port:6380", h.label)
 	assert.Equal(t, []int{9, 10, 11, 12}, h.pos)
 
@@ -74,11 +74,11 @@ func TestFinder_AQuestionWaitsUntilItCloses(t *testing.T) {
 	k.ctrl(t, 'f')
 	k.m.apply(event.ApprovalAsked{ToolCall: uuid.Must(uuid.NewV7()), Tool: "bash",
 		Args: map[string]any{"command": "rm -rf build"}})
-	require.Equal(t, modeFinder, k.m.mode)
-	assert.Contains(t, stripANSI(k.m.finderTitle()), "a question is waiting")
+	require.NotNil(t, k.finder())
+	assert.Contains(t, stripANSI(k.finder().title(k.m)), "a question is waiting")
 
 	k.finderType(t, "y")
-	assert.Equal(t, "y", k.m.finder.query)
+	assert.Equal(t, "y", k.finder().query)
 	select {
 	case rec := <-k.seen:
 		t.Fatalf("typing in the finder published %s", rec.Event.Kind())
@@ -95,22 +95,22 @@ func TestFinder_NewRowsDoNotMoveTheList(t *testing.T) {
 	k.ctrl(t, 'f')
 	k.finderType(t, "go")
 	k.press(t, "down")
-	hits, cursor := len(k.m.finder.hits), k.m.finder.cursor
+	hits, cursor := len(k.finder().hits), k.finder().cursor
 
 	_, evs := oneTurn("go again", "go vet ./...", "ok\n")
 	for _, e := range evs {
 		k.m.apply(e)
 	}
-	assert.Len(t, k.m.finder.hits, hits)
-	assert.Equal(t, cursor, k.m.finder.cursor)
+	assert.Len(t, k.finder().hits, hits)
+	assert.Equal(t, cursor, k.finder().cursor)
 }
 
 func TestFinder_SaysWhenAHitWasUndone(t *testing.T) {
 	k, _ := finderSession(t)
 	k.ctrl(t, 'f')
 	k.finderType(t, "go test")
-	require.NotEmpty(t, k.m.finder.hits)
-	k.m.apply(event.RolledBack{Turn: k.m.finder.hits[0].block.id})
+	require.NotEmpty(t, k.finder().hits)
+	k.m.apply(event.RolledBack{Turn: k.finder().hits[0].block.id})
 
 	k.press(t, "enter")
 	assert.Equal(t, modeInput, k.m.mode)
@@ -121,8 +121,8 @@ func TestFinder_SlashSearchOpensWithTheQuery(t *testing.T) {
 	k, _ := finderSession(t)
 	k.finderType(t, "/search tls")
 	k.press(t, "enter")
-	require.Equal(t, modeFinder, k.m.mode)
-	assert.Equal(t, "tls", k.m.finder.query)
+	require.NotNil(t, k.finder())
+	assert.Equal(t, "tls", k.finder().query)
 }
 
 // The box floats over the panes with room round it, so the screen keeps its
@@ -187,6 +187,9 @@ func finderSession(t *testing.T) (*keyed, []uuid.UUID) {
 	k.m.sizeViewport()
 	return k, calls
 }
+
+// finder is the open finder, nil when it is not.
+func (k *keyed) finder() *finderModal { return modalAs[*finderModal](k.m) }
 
 // finderType types text a rune at a time.
 func (k *keyed) finderType(t *testing.T, text string) {

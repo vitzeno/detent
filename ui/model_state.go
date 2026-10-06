@@ -18,7 +18,6 @@ const (
 	modeBound        // the engine hit its step bound and is asking
 	modeUndo         // asks before reverting the human's own files
 	modeForget       // asks before deleting a stored session
-	modeFinder       // the finder holds every key until it jumps or closes
 	modeReview       // a request's changes to the human's files, over the panes, until esc
 	modeModal        // the modal holds every key until it closes
 )
@@ -69,18 +68,6 @@ const (
 	panelMCP
 	panelSkills
 )
-
-// finderState is the finder: what is typed, what it matched, and where the
-// human was so esc can put them back.
-type finderState struct {
-	query  string
-	kind   finderKind
-	hits   []finderHit
-	cursor int
-	// scroll moves the preview from where it centres on the match.
-	scroll int
-	saved  navState
-}
 
 // reviewState is the review modal: one request's changes, the file selected
 // and the line in it, and which pane the arrows move.

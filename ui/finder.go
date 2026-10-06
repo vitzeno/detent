@@ -43,6 +43,18 @@ type finderHit struct {
 	order int
 }
 
+// finderModal is the finder: what is typed, what it matched, and where the
+// human was so esc can put them back.
+type finderModal struct {
+	query  string
+	kind   finderKind
+	hits   []finderHit
+	cursor int
+	// scroll moves the preview from where it centres on the match.
+	scroll int
+	saved  navState
+}
+
 // openFinder opens only from the input state, so a key meant for a
 // question can never open it.
 func (m Model) openFinder(query string) (Model, tea.Cmd) {
@@ -50,61 +62,73 @@ func (m Model) openFinder(query string) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.closePanel()
-	m.finder = finderState{query: oneLine(strings.TrimSpace(query)), saved: m.nav}
-	m.mode = modeFinder
-	m.prompt.Blur()
-	m.refreshFinder()
+	f := &finderModal{query: oneLine(strings.TrimSpace(query)), saved: m.nav}
+	m.openModal(f)
+	f.refresh(m)
 	return m, nil
 }
 
-// finderKey owns every key while the finder is up.
-func (m Model) finderKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+func (f *finderModal) key(m *Model, msg tea.KeyPressMsg) tea.Cmd {
 	k := keymap.finder
 	switch {
 	case key.Matches(msg, k.close):
-		return m.closeFinder(true), nil
+		f.close(m, true)
 	case key.Matches(msg, k.jump):
-		return m.jump(), nil
+		f.jump(m)
 	case key.Matches(msg, k.kind):
-		m.finder.kind = (m.finder.kind + 1) % finderKind(len(finderKindNames))
-		m.refreshFinder()
+		f.kind = (f.kind + 1) % finderKind(len(finderKindNames))
+		f.refresh(*m)
 	case key.Matches(msg, k.move.up, k.move.down, k.move.top, k.move.bottom):
 		d, _ := k.move.delta(msg, 0)
-		m.moveFinder(d)
+		f.move(d)
 	case key.Matches(msg, k.move.pageUp, k.move.pageDown):
 		d, _ := k.move.delta(msg, m.finderBodyHeight()/2)
-		m.scrollFinder(d)
+		f.scrollBy(*m, d)
 	case key.Matches(msg, k.erase):
-		if _, n := utf8.DecodeLastRuneInString(m.finder.query); n > 0 {
-			m.finder.query = m.finder.query[:len(m.finder.query)-n]
-			m.refreshFinder()
+		if _, n := utf8.DecodeLastRuneInString(f.query); n > 0 {
+			f.query = f.query[:len(f.query)-n]
+			f.refresh(*m)
 		}
 	case key.Matches(msg, k.eraseWord):
-		q := strings.TrimRight(m.finder.query, " ")
-		m.finder.query = q[:strings.LastIndex(q, " ")+1]
-		m.refreshFinder()
+		q := strings.TrimRight(f.query, " ")
+		f.query = q[:strings.LastIndex(q, " ")+1]
+		f.refresh(*m)
 	default:
 		if msg.Text != "" {
-			m.finder.query += oneLine(msg.Text)
-			m.refreshFinder()
+			f.add(*m, msg.Text)
 		}
 	}
-	return m, nil
+	return nil
+}
+
+// sync does nothing: the list holds still while the agent works, as history does.
+func (f *finderModal) sync(*Model) {}
+
+func (f *finderModal) hint(Model) string {
+	k := keymap.finder
+	return barLine(does("closes", k.close), does("jump", k.jump), does("kind", k.kind),
+		does("move", k.move.up, k.move.down))
+}
+
+// add adds text to the query, typed or pasted, on one line.
+func (f *finderModal) add(m Model, text string) {
+	f.query += oneLine(text)
+	f.refresh(m)
 }
 
 // jump closes on the hit's row with following off, so nothing new pulls
 // the cursor away from what was found.
-func (m Model) jump() Model {
-	h, ok := m.finderSelected()
+func (f *finderModal) jump(m *Model) {
+	h, ok := f.selected()
 	if !ok {
-		return m.closeFinder(true)
+		f.close(m, true)
+		return
 	}
-	query := m.finder.query
-	m = m.closeFinder(false)
+	f.close(m, false)
 	i := slices.Index(m.rows(), h.row)
 	if i < 0 {
 		m.noteErr("that is no longer in history")
-		return m
+		return
 	}
 	m.nav.cursor, m.nav.follow = i, false
 	_, at := m.historyAll()
@@ -115,30 +139,23 @@ func (m Model) jump() Model {
 	}
 	if h.kind == finderOutput {
 		m.sizeViewport()
-		m.scrollOutputTo(query)
+		m.scrollOutputTo(f.query)
 	}
-	return m
 }
 
-// closeFinder puts the bar back, and with restore the cursor too. Any
-// question that waited is raised by backToInput.
-func (m Model) closeFinder(restore bool) Model {
-	saved := m.finder.saved
-	m.finder = finderState{}
-	m.backToInput()
+// close puts the bar back, and with restore the cursor and the pane too. Any
+// question that waited is raised by closeModal.
+func (f *finderModal) close(m *Model, restore bool) {
 	if !restore {
-		return m
+		m.closeModal(focusInput)
+		return
 	}
-	m.nav.cursor = min(saved.cursor, max(0, len(m.rows())-1))
-	m.nav.follow, m.nav.histOffset = saved.follow, saved.histOffset
-	if saved.follow {
+	m.closeModal(f.saved.focus)
+	m.nav.cursor = min(f.saved.cursor, max(0, len(m.rows())-1))
+	m.nav.follow, m.nav.histOffset = f.saved.follow, f.saved.histOffset
+	if f.saved.follow {
 		m.trackNewest()
 	}
-	if m.mode == modeInput && saved.focus != focusInput {
-		m.nav.focus = saved.focus
-		m.prompt.Blur()
-	}
-	return m
 }
 
 // finderHits is every match, best first. Prompts and commands are short,
@@ -212,34 +229,35 @@ func (r *historyRow) searchable() search.Text {
 	return *r.found
 }
 
-func (m *Model) refreshFinder() {
-	m.finder.hits = m.finderHits(m.finder.query, m.finder.kind)
-	m.finder.cursor, m.finder.scroll = 0, 0
+// refresh matches the query afresh, from the best hit.
+func (f *finderModal) refresh(m Model) {
+	f.hits = m.finderHits(f.query, f.kind)
+	f.cursor, f.scroll = 0, 0
 }
 
-func (m *Model) moveFinder(d int) {
-	m.finder.cursor = min(max(m.finder.cursor+d, 0), max(0, len(m.finder.hits)-1))
-	m.finder.scroll = 0
+func (f *finderModal) move(d int) {
+	f.cursor = min(max(f.cursor+d, 0), max(0, len(f.hits)-1))
+	f.scroll = 0
 }
 
-// scrollFinder moves the preview, held within what it has to show.
-func (m *Model) scrollFinder(d int) {
-	h, ok := m.finderSelected()
+// scrollBy moves the preview, held within what it has to show.
+func (f *finderModal) scrollBy(m Model, d int) {
+	h, ok := f.selected()
 	if !ok {
 		return
 	}
-	lines, match := m.finderPreview(h, m.finderPreviewWidth())
+	lines, match := f.preview(m, h, m.finderPreviewWidth())
 	height := m.finderBodyHeight()
 	auto := previewStart(len(lines), match, height, 0)
-	top := min(max(auto+m.finder.scroll+d, 0), max(0, len(lines)-height))
-	m.finder.scroll = top - auto
+	top := min(max(auto+f.scroll+d, 0), max(0, len(lines)-height))
+	f.scroll = top - auto
 }
 
-func (m Model) finderSelected() (finderHit, bool) {
-	if m.finder.cursor >= len(m.finder.hits) {
+func (f *finderModal) selected() (finderHit, bool) {
+	if f.cursor >= len(f.hits) {
 		return finderHit{}, false
 	}
-	return m.finder.hits[m.finder.cursor], true
+	return f.hits[f.cursor], true
 }
 
 // scrollOutputTo shows the first drawn line holding query. Drawn, since a

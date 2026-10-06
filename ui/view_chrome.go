@@ -222,10 +222,6 @@ func (m Model) statusHint() string {
 	}
 	ask := keymap.ask
 	switch m.mode {
-	case modeFinder:
-		k := keymap.finder
-		return barLine(does("closes", k.close), does("jump", k.jump), does("kind", k.kind),
-			does("move", k.move.up, k.move.down))
 	case modeModal:
 		return m.modal.hint(m)
 	case modeReview:

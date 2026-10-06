@@ -70,13 +70,13 @@ func TestTopAndEnd_Finder(t *testing.T) {
 	k, _ := finderSession(t)
 	k.m, _ = k.m.openFinder("")
 	k.finderType(t, "e")
-	require.Greater(t, len(k.m.finder.hits), 1)
+	require.Greater(t, len(k.finder().hits), 1)
 	k.press(t, "end")
-	assert.Equal(t, len(k.m.finder.hits)-1, k.m.finder.cursor)
+	assert.Equal(t, len(k.finder().hits)-1, k.finder().cursor)
 	k.press(t, "home")
-	assert.Zero(t, k.m.finder.cursor)
+	assert.Zero(t, k.finder().cursor)
 	k.press(t, "G")
-	assert.Equal(t, "eG", k.m.finder.query)
+	assert.Equal(t, "eG", k.finder().query)
 }
 
 func TestTopAndEnd_Inspector(t *testing.T) {

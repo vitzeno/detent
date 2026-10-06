@@ -18,22 +18,22 @@ import (
 // rules and the key line.
 const finderChrome = 5
 
-func (m Model) finderBox() string {
+func (f *finderModal) box(m Model) string {
 	inner := island.Inner(m.modalWidth())
 	rule := styleFaint.Render(strings.Repeat("─", inner))
-	next := finderKindNames[(m.finder.kind+1)%finderKind(len(finderKindNames))]
+	next := finderKindNames[(f.kind+1)%finderKind(len(finderKindNames))]
 	k := keymap.finder
 	keys := boxLine(does("jump", k.jump), does(next, k.kind), does("move", k.move.up, k.move.down),
 		does("scroll", k.move.pageUp, k.move.pageDown), does("back", k.close),
 		does("first/last", k.move.top, k.move.bottom))
 
-	lines := []string{m.finderQueryLine(inner), rule}
-	lines = append(lines, m.finderBodyLines()...)
-	return m.modalBox(m.finderTitle(), append(lines, rule), keys)
+	lines := []string{f.queryLine(inner), rule}
+	lines = append(lines, f.bodyLines(m)...)
+	return m.modalBox(f.title(m), append(lines, rule), keys)
 }
 
-func (m Model) finderTitle() string {
-	title := styleBrand.Render("finder") + styleFaint.Render(" · "+finderKindNames[m.finder.kind])
+func (f *finderModal) title(m Model) string {
+	title := styleBrand.Render("finder") + styleFaint.Render(" · "+finderKindNames[f.kind])
 	// A question waits for the finder to close, so say one is there.
 	if m.asking() != nil || m.bound != nil {
 		title += styleCaution.Render(" · a question is waiting, esc to see it")
@@ -41,9 +41,9 @@ func (m Model) finderTitle() string {
 	return title
 }
 
-func (m Model) finderQueryLine(width int) string {
-	count := styleFaint.Render(fmt.Sprintf("%d found", len(m.finder.hits)))
-	left := styleBrand.Render("> ") + styleGoal.Render(m.finder.query) + styleBrand.Render("▏")
+func (f *finderModal) queryLine(width int) string {
+	count := styleFaint.Render(fmt.Sprintf("%d found", len(f.hits)))
+	left := styleBrand.Render("> ") + styleGoal.Render(f.query) + styleBrand.Render("▏")
 	gap := width - lipgloss.Width(left) - lipgloss.Width(count)
 	if gap < 1 {
 		return ansi.Truncate(left, width, "")
@@ -51,14 +51,14 @@ func (m Model) finderQueryLine(width int) string {
 	return left + strings.Repeat(" ", gap) + count
 }
 
-// finderBodyLines sets the list and the preview side by side.
-func (m Model) finderBodyLines() []string {
+// bodyLines sets the list and the preview side by side.
+func (f *finderModal) bodyLines(m Model) []string {
 	height, listW, prevW := m.finderBodyHeight(), m.finderListWidth(), m.finderPreviewWidth()
-	list := m.finderListLines(listW, height)
+	list := f.listLines(m, listW, height)
 	var preview []string
-	if h, ok := m.finderSelected(); ok {
-		lines, match := m.finderPreview(h, prevW-1)
-		top := previewStart(len(lines), match, height, m.finder.scroll)
+	if h, ok := f.selected(); ok {
+		lines, match := f.preview(m, h, prevW-1)
+		top := previewStart(len(lines), match, height, f.scroll)
 		for i := top; i < min(top+height, len(lines)); i++ {
 			gutter := " "
 			if i == match {
@@ -82,21 +82,21 @@ func (m Model) finderBodyLines() []string {
 	return out
 }
 
-// finderListLines is the window of hits that keeps the cursor in view.
-func (m Model) finderListLines(width, height int) []string {
-	if len(m.finder.hits) == 0 {
+// listLines is the window of hits that keeps the cursor in view.
+func (f *finderModal) listLines(m Model, width, height int) []string {
+	if len(f.hits) == 0 {
 		msg := "nothing matches"
 		if len(m.rows()) == 0 {
 			msg = "nothing in history yet"
 		}
 		return []string{styleFaint.Render("  " + msg)}
 	}
-	top, end := listWindow(len(m.finder.hits), m.finder.cursor, height)
+	top, end := listWindow(len(f.hits), f.cursor, height)
 	var out []string
 	for i := top; i < end; i++ {
-		h := m.finder.hits[i]
+		h := f.hits[i]
 		mark := "  "
-		if i == m.finder.cursor {
+		if i == f.cursor {
 			mark = styleRowCursor.Render("▸ ")
 		}
 		glyph := m.finderGlyph(h)
@@ -122,9 +122,9 @@ func (m Model) finderGlyph(h finderHit) string {
 	return styleFaint.Render("›")
 }
 
-// finderPreview is the selected hit drawn as the output pane would, and
+// preview is the selected hit drawn as the output pane would, and
 // the line to centre on.
-func (m Model) finderPreview(h finderHit, width int) (lines []string, match int) {
+func (f *finderModal) preview(m Model, h finderHit, width int) (lines []string, match int) {
 	if h.kind == finderPrompts {
 		return m.requestPreview(h.block, width), 0
 	}
@@ -140,7 +140,7 @@ func (m Model) finderPreview(h finderHit, width int) (lines []string, match int)
 		}
 		lines = rendered.Lines
 	}
-	if line, _, ok := search.Lines(m.finder.query, ansi.Strip(strings.Join(lines, "\n"))); ok {
+	if line, _, ok := search.Lines(f.query, ansi.Strip(strings.Join(lines, "\n"))); ok {
 		return lines, line
 	}
 	return lines, 0

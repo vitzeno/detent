@@ -928,7 +928,7 @@ func TestEsc_TheBarLeadsWithWhatEscWillDo(t *testing.T) {
 	}{
 		{"a page open", func(m *Model) { m.panel.open = panelStatus }, "[esc] closes the page"},
 		{"the output pane, idle", func(m *Model) { m.nav.focus = focusOutput }, "[esc] back to history"},
-		{"the finder", func(m *Model) { m.mode = modeFinder }, "[esc] closes"},
+		{"the finder", func(m *Model) { m.openModal(&finderModal{}) }, "[esc] closes"},
 		{"the resume picker", func(m *Model) { m.openModal(&resumeModal{}) }, "[esc] closes"},
 		{"a request running", func(m *Model) { m.cur = m.blocks[0] }, "[esc][esc] stops the request"},
 	} {

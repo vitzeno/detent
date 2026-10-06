@@ -53,9 +53,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.mode == modeBound {
 		return m.boundKey(msg)
 	}
-	if m.mode == modeFinder {
-		return m.finderKey(msg)
-	}
 	if m.modal != nil {
 		cmd := m.modal.key(&m, msg)
 		return m, cmd
@@ -91,9 +88,8 @@ func (m Model) handlePaste(text string) (Model, tea.Cmd) {
 	if text == "" {
 		return m, nil
 	}
-	if m.mode == modeFinder {
-		m.finder.query += oneLine(text)
-		m.refreshFinder()
+	if f := modalAs[*finderModal](m); f != nil {
+		f.add(m, text)
 		return m, nil
 	}
 	if e := m.review.edit; m.mode == modeReview && e != nil {

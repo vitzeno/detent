@@ -96,7 +96,6 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	stopArmed uuid.UUID
 	undo      undoState
 	forget    forgetState
-	finder    finderState
 	review    reviewState
 	// modal is the box over the panes holding every key, nil when none is open.
 	modal   modal
