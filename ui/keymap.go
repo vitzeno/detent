@@ -14,71 +14,6 @@ import (
 // farAway is a scroll long enough to reach either end, since every scroll clamps.
 const farAway = 1 << 30
 
-// moveKeys move through a list or scroll a pane, the same everywhere.
-type moveKeys struct {
-	up, down, pageUp, pageDown, top, bottom key.Binding
-}
-
-// appKeys work wherever no question or modal holds the keys.
-type appKeys struct {
-	quit, find, esc, tab, entry key.Binding
-}
-
-// inputKeys are the prompt's, beside what it types.
-type inputKeys struct {
-	run, pageUp, pageDown key.Binding
-	pick                  moveKeys
-	complete              key.Binding
-}
-
-// historyKeys are the history pane's.
-type historyKeys struct {
-	move                   moveKeys
-	open, expand, agents   key.Binding
-	stop, signIn, copyLink key.Binding
-}
-
-// outputKeys are the output pane's.
-type outputKeys struct {
-	move   moveKeys
-	expand key.Binding
-}
-
-// askKeys answer a question: an approval, the step bound, undo or delete.
-type askKeys struct {
-	yes, no, enter, esc key.Binding
-	read                moveKeys
-}
-
-// finderKeys are the finder's, whose letters are its query.
-type finderKeys struct {
-	close, jump, kind, erase, eraseWord key.Binding
-	move                                moveKeys
-}
-
-// inspectorKeys are the inspector's.
-type inspectorKeys struct {
-	close, pane, prevAgent, nextAgent, stop, yes, no key.Binding
-	move                                             moveKeys
-}
-
-// resumeKeys are the resume picker's.
-type resumeKeys struct {
-	close, resume, pane key.Binding
-	move                moveKeys
-}
-
-// reviewKeys are the review's, then its editor's and its triage's.
-type reviewKeys struct {
-	close, pane, diff, file, prevFile, hunk, prevHunk, rng key.Binding
-	comment, edit, remove, send, scope, reviewer           key.Binding
-	prevReview, nextReview, prevComment, nextComment       key.Binding
-	triage, viewed, split                                  key.Binding
-	move                                                   moveKeys
-	save, drop, keep, discard                              key.Binding
-}
-
-// keymap is every binding detent has.
 var keymap = struct {
 	app       appKeys
 	input     inputKeys
@@ -195,6 +130,92 @@ var keymap = struct {
 	},
 }
 
+// moveKeys move through a list or scroll a pane, the same everywhere.
+type moveKeys struct {
+	up, down, pageUp, pageDown, top, bottom key.Binding
+}
+
+// delta is how far msg moves under k, page lines to a page, and false for a key
+// that does not move.
+func (k moveKeys) delta(msg tea.KeyPressMsg, page int) (int, bool) {
+	switch {
+	case key.Matches(msg, k.up):
+		return -1, true
+	case key.Matches(msg, k.down):
+		return 1, true
+	case key.Matches(msg, k.pageUp):
+		return -page, true
+	case key.Matches(msg, k.pageDown):
+		return page, true
+	case key.Matches(msg, k.top):
+		return -farAway, true
+	case key.Matches(msg, k.bottom):
+		return farAway, true
+	}
+	return 0, false
+}
+
+// bindings is k's bindings that have keys, for /help.
+func (k moveKeys) bindings() []key.Binding {
+	all := []key.Binding{k.up, k.down, k.pageUp, k.pageDown, k.top, k.bottom}
+	return slices.DeleteFunc(all, func(b key.Binding) bool { return len(b.Keys()) == 0 })
+}
+
+// appKeys work wherever no question or modal holds the keys.
+type appKeys struct {
+	quit, find, esc, tab, entry key.Binding
+}
+
+// inputKeys are the prompt's, beside what it types.
+type inputKeys struct {
+	run, pageUp, pageDown key.Binding
+	pick                  moveKeys
+	complete              key.Binding
+}
+
+type historyKeys struct {
+	move                   moveKeys
+	open, expand, agents   key.Binding
+	stop, signIn, copyLink key.Binding
+}
+
+type outputKeys struct {
+	move   moveKeys
+	expand key.Binding
+}
+
+// askKeys answer a question: an approval, the step bound, undo or delete.
+type askKeys struct {
+	yes, no, enter, esc key.Binding
+	read                moveKeys
+}
+
+// finderKeys are the finder's, whose letters are its query.
+type finderKeys struct {
+	close, jump, kind, erase, eraseWord key.Binding
+	move                                moveKeys
+}
+
+type inspectorKeys struct {
+	close, pane, prevAgent, nextAgent, stop, yes, no key.Binding
+	move                                             moveKeys
+}
+
+type resumeKeys struct {
+	close, resume, pane key.Binding
+	move                moveKeys
+}
+
+// reviewKeys are the review's, then its editor's and its triage's.
+type reviewKeys struct {
+	close, pane, diff, file, prevFile, hunk, prevHunk, rng key.Binding
+	comment, edit, remove, send, scope, reviewer           key.Binding
+	prevReview, nextReview, prevComment, nextComment       key.Binding
+	triage, viewed, split                                  key.Binding
+	move                                                   moveKeys
+	save, drop, keep, discard                              key.Binding
+}
+
 // keyGroup is one place's keys, as /help lists them.
 type keyGroup struct {
 	place string
@@ -227,54 +248,10 @@ func keyGroups() []keyGroup {
 	}
 }
 
-// bindings is k's keys, those it has, for /help.
-func (k moveKeys) bindings() []key.Binding {
-	all := []key.Binding{k.up, k.down, k.pageUp, k.pageDown, k.top, k.bottom}
-	return slices.DeleteFunc(all, func(b key.Binding) bool { return len(b.Keys()) == 0 })
-}
-
-// bind is a binding labelled label in a hint, doing desc.
-func bind(label, desc string, keys ...string) key.Binding {
-	return key.NewBinding(key.WithKeys(keys...), key.WithHelp(label, desc))
-}
-
-// lettered is the arrows, pages and both ends, with g and G for the ends since
-// a laptop may have no home or end, which is safe only where nothing is typed.
-func lettered(step, page, top, end string) moveKeys {
-	return moveKeys{
-		up:       bind("↑", step, "up"),
-		down:     bind("↓", step, "down"),
-		pageUp:   bind("pgup", page, "pgup"),
-		pageDown: bind("pgdn", page, "pgdown"),
-		top:      bind("g", top, "home", "g"),
-		bottom:   bind("G", end, "end", "G"),
-	}
-}
-
-// delta is how far msg moves under k, page lines to a page, and false for a key
-// that does not move.
-func (k moveKeys) delta(msg tea.KeyPressMsg, page int) (int, bool) {
-	switch {
-	case key.Matches(msg, k.up):
-		return -1, true
-	case key.Matches(msg, k.down):
-		return 1, true
-	case key.Matches(msg, k.pageUp):
-		return -page, true
-	case key.Matches(msg, k.pageDown):
-		return page, true
-	case key.Matches(msg, k.top):
-		return -farAway, true
-	case key.Matches(msg, k.bottom):
-		return farAway, true
-	}
-	return 0, false
-}
-
 // hint is one item of a key line: keys and what they do, or words alone.
 type hint struct{ keys, desc string }
 
-// does says the keys of bs, those enabled, do desc here.
+// does is the hint that bs, those enabled, do desc.
 func does(desc string, bs ...key.Binding) hint {
 	var labels []string
 	for _, b := range bs {
@@ -322,4 +299,22 @@ func hintParts(hs []hint, keys func(string) string) []string {
 		}
 	}
 	return parts
+}
+
+// bind is a binding labelled label in a hint, doing desc.
+func bind(label, desc string, keys ...string) key.Binding {
+	return key.NewBinding(key.WithKeys(keys...), key.WithHelp(label, desc))
+}
+
+// lettered is the arrows, pages and both ends, with g and G for the ends since
+// a laptop may have no home or end, which is safe only where nothing is typed.
+func lettered(step, page, top, end string) moveKeys {
+	return moveKeys{
+		up:       bind("↑", step, "up"),
+		down:     bind("↓", step, "down"),
+		pageUp:   bind("pgup", page, "pgup"),
+		pageDown: bind("pgdn", page, "pgdown"),
+		top:      bind("g", top, "home", "g"),
+		bottom:   bind("G", end, "end", "G"),
+	}
 }

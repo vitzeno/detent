@@ -20,6 +20,12 @@ import (
 // The review modal: what one request changed in the human's files, read
 // between the checkpoints taken as it began and as it ended, and commented on.
 
+// reviewScopes is the order s cycles through them.
+var reviewScopes = []event.ReviewScope{event.ScopeRequest, event.ScopeSession, event.ScopeSince, event.ScopeBranch}
+
+// fadeFor is how long a comment that just came in stands out.
+const fadeFor = 900 * time.Millisecond
+
 // reviewRecord is one review's comments, folded from ReviewCommented. Open
 // until submitted, then read-only, and the next comment starts another.
 type reviewRecord struct {
@@ -75,9 +81,6 @@ type reviewModal struct {
 	back focusPane
 }
 
-// reviewScopes is the order s cycles through them.
-var reviewScopes = []event.ReviewScope{event.ScopeRequest, event.ScopeSession, event.ScopeSince, event.ScopeBranch}
-
 // diffRow is one line the diff pane draws: a hunk's header when line is -1,
 // and when comment is set, its author's line or one line of its words.
 type diffRow struct {
@@ -103,9 +106,6 @@ type triageState struct {
 	at            int
 	kept, dropped int
 }
-
-// fadeFor is how long a comment that just came in stands out.
-const fadeFor = 900 * time.Millisecond
 
 // fadeMsg redraws a comment still fading.
 type fadeMsg struct{}
@@ -196,6 +196,95 @@ func (m Model) openReviewRow(r *historyRow) (Model, tea.Cmd) {
 	return m, nil
 }
 
+// key takes every key while the review is open, the editor's first.
+func (r *reviewModal) key(m *Model, msg tea.KeyPressMsg) tea.Cmd {
+	if r.edit != nil {
+		return r.editKey(m, msg)
+	}
+	k := keymap.review
+	if r.triage != nil && r.triageKey(m, msg) {
+		return nil
+	}
+	if !key.Matches(msg, k.remove) {
+		r.deleting = uuid.Nil
+	}
+	if key.Matches(msg, k.comment, k.edit, k.remove, k.send, k.reviewer, k.triage) && r.sent(*m) {
+		m.noteErr("this review was sent: s or /review starts another")
+		return nil
+	}
+	switch {
+	case key.Matches(msg, k.close):
+		if r.ranging {
+			r.ranging = false
+			return nil
+		}
+		r.close(m)
+	case key.Matches(msg, k.pane):
+		r.diffFocused = !r.diffFocused
+	case key.Matches(msg, k.diff):
+		r.diffFocused = true
+	case key.Matches(msg, k.file):
+		r.pickFile(r.file + 1)
+	case key.Matches(msg, k.prevFile):
+		r.pickFile(r.file - 1)
+	case key.Matches(msg, k.hunk):
+		r.line = r.nextHunk(*m, 1)
+	case key.Matches(msg, k.prevHunk):
+		r.line = r.nextHunk(*m, -1)
+	case key.Matches(msg, k.rng):
+		r.toggleRange(*m)
+	case key.Matches(msg, k.comment):
+		r.startComment(m)
+	case key.Matches(msg, k.edit):
+		r.startEdit(*m)
+	case key.Matches(msg, k.remove):
+		r.deleteComment(*m)
+	case key.Matches(msg, k.send):
+		r.submit(m)
+	case key.Matches(msg, k.scope):
+		r.nextScope(m)
+	case key.Matches(msg, k.reviewer):
+		r.startReviewer(m)
+	case key.Matches(msg, k.prevReview):
+		r.step(m, -1)
+	case key.Matches(msg, k.nextReview):
+		r.step(m, 1)
+	case key.Matches(msg, k.triage):
+		r.startTriage(m)
+	case key.Matches(msg, k.prevComment):
+		r.jumpComment(m, -1)
+	case key.Matches(msg, k.nextComment):
+		r.jumpComment(m, 1)
+	case key.Matches(msg, k.viewed):
+		r.toggleViewed(m)
+	case key.Matches(msg, k.split):
+		if !m.splitFits() {
+			m.noteErr(fmt.Sprintf("too narrow to split: the diff needs %d columns", splitMin))
+			break
+		}
+		r.split = !r.split
+	default:
+		if d, ok := k.move.delta(msg, m.modalPaneHeight()); ok {
+			r.move(m, d)
+		}
+	}
+	return nil
+}
+
+// sync sizes the editor where it is laid out, so typing wraps at the width shown.
+func (r *reviewModal) sync(m *Model) {
+	if e := r.edit; e != nil {
+		e.input.SetWidth(max(8, m.reviewTextWidth()-2))
+	}
+}
+
+// hint leads with what esc will do in the review, its other keys being in the box.
+func (r *reviewModal) hint(m Model) string {
+	return barLine(r.esc(m), note("the review's keys are in the box"))
+}
+
+func (r *reviewModal) close(m *Model) { m.closeModal(r.back) }
+
 // step opens the review d away, oldest first, as the inspector steps
 // between agents. A review not yet recorded is past the newest.
 func (r *reviewModal) step(m *Model, d int) {
@@ -242,18 +331,6 @@ func (r *reviewModal) nextScope(m *Model) {
 			return
 		}
 	}
-}
-
-// sync sizes the editor where it is laid out, so typing wraps at the width shown.
-func (r *reviewModal) sync(m *Model) {
-	if e := r.edit; e != nil {
-		e.input.SetWidth(max(8, m.reviewTextWidth()-2))
-	}
-}
-
-// hint leads with what esc will do in the review, its other keys being in the box.
-func (r *reviewModal) hint(m Model) string {
-	return barLine(r.esc(m), note("the review's keys are in the box"))
 }
 
 // trees is what a scope compares, the session ending where since begins,
@@ -469,84 +546,6 @@ func (m *Model) countComments(rec *reviewRecord) {
 		}
 		b.rev++
 	}
-}
-
-// close returns to the pane the review was opened from.
-func (r *reviewModal) close(m *Model) { m.closeModal(r.back) }
-
-// key takes every key while the review is open, the editor's first.
-func (r *reviewModal) key(m *Model, msg tea.KeyPressMsg) tea.Cmd {
-	if r.edit != nil {
-		return r.editKey(m, msg)
-	}
-	k := keymap.review
-	if r.triage != nil && r.triageKey(m, msg) {
-		return nil
-	}
-	if !key.Matches(msg, k.remove) {
-		r.deleting = uuid.Nil
-	}
-	if key.Matches(msg, k.comment, k.edit, k.remove, k.send, k.reviewer, k.triage) && r.sent(*m) {
-		m.noteErr("this review was sent: s or /review starts another")
-		return nil
-	}
-	switch {
-	case key.Matches(msg, k.close):
-		if r.ranging {
-			r.ranging = false
-			return nil
-		}
-		r.close(m)
-	case key.Matches(msg, k.pane):
-		r.diffFocused = !r.diffFocused
-	case key.Matches(msg, k.diff):
-		r.diffFocused = true
-	case key.Matches(msg, k.file):
-		r.pickFile(r.file + 1)
-	case key.Matches(msg, k.prevFile):
-		r.pickFile(r.file - 1)
-	case key.Matches(msg, k.hunk):
-		r.line = r.nextHunk(*m, 1)
-	case key.Matches(msg, k.prevHunk):
-		r.line = r.nextHunk(*m, -1)
-	case key.Matches(msg, k.rng):
-		r.toggleRange(*m)
-	case key.Matches(msg, k.comment):
-		r.startComment(m)
-	case key.Matches(msg, k.edit):
-		r.startEdit(*m)
-	case key.Matches(msg, k.remove):
-		r.deleteComment(*m)
-	case key.Matches(msg, k.send):
-		r.submit(m)
-	case key.Matches(msg, k.scope):
-		r.nextScope(m)
-	case key.Matches(msg, k.reviewer):
-		r.startReviewer(m)
-	case key.Matches(msg, k.prevReview):
-		r.step(m, -1)
-	case key.Matches(msg, k.nextReview):
-		r.step(m, 1)
-	case key.Matches(msg, k.triage):
-		r.startTriage(m)
-	case key.Matches(msg, k.prevComment):
-		r.jumpComment(m, -1)
-	case key.Matches(msg, k.nextComment):
-		r.jumpComment(m, 1)
-	case key.Matches(msg, k.viewed):
-		r.toggleViewed(m)
-	case key.Matches(msg, k.split):
-		if !m.splitFits() {
-			m.noteErr(fmt.Sprintf("too narrow to split: the diff needs %d columns", splitMin))
-			break
-		}
-		r.split = !r.split
-	default:
-		if d, ok := k.move.delta(msg, m.modalPaneHeight()); ok {
-			r.move(m, d)
-		}
-	}
-	return nil
 }
 
 // move steps the line in the diff pane, or the file in the list.

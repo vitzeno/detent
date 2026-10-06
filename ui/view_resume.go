@@ -11,6 +11,9 @@ import (
 
 // The resume picker's box: stored sessions beside the selected one's history.
 
+// ageWidth fits every age the picker writes, "59m ago" to "Aug 2026".
+const ageWidth = 9
+
 func (p *resumeModal) box(m Model) string {
 	left, right := m.resumePaneWidths()
 	h := m.modalPaneHeight()
@@ -23,6 +26,14 @@ func (p *resumeModal) box(m Model) string {
 		does("top/end", k.move.top, k.move.bottom)))
 }
 
+// resumePaneWidths gives the history the wider pane, since it is what is read,
+// less the two dates.
+func (m Model) resumePaneWidths() (left, right int) {
+	inner := island.Inner(m.modalWidth())
+	left = inner * 9 / 20
+	return left, inner - left
+}
+
 func (m Model) resumeTitle() string {
 	title := styleBrand.Render("resume") + styleFaint.Render(" · "+countOf(len(m.sessions), "session"))
 	if m.cur != nil {
@@ -30,9 +41,6 @@ func (m Model) resumeTitle() string {
 	}
 	return title
 }
-
-// ageWidth fits every age the picker writes, "59m ago" to "Aug 2026".
-const ageWidth = 9
 
 // listLines is each session by name, or id until named, with how long ago
 // it was last used and created: ages, so a narrow pane still has room for names.
@@ -59,6 +67,41 @@ func (p *resumeModal) listLines(m Model, width, height int) []string {
 			styleFaint.Render(cell(m.usedAgo(s), ageWidth)+" "+ago(s.Started)))
 	}
 	return out
+}
+
+// previewLines is the selected session's history as the history pane
+// draws it, from its newest line up by the scroll.
+func (p *resumeModal) previewLines(m Model, paneWidth, height int) []string {
+	s := p.selected(m)
+	if s == nil {
+		return nil
+	}
+	pv := p.loaded[s.ID]
+	switch {
+	case pv == nil || pv.model == nil && pv.err == "":
+		return []string{styleFaint.Render("loading…")}
+	case pv.err != "":
+		return []string{styleDanger.Render(layout.Truncate(pv.err, paneWidth-4))}
+	}
+	lines := p.history(m, paneWidth)
+	end := max(0, len(lines)-min(p.scroll, max(0, len(lines)-height)))
+	return lines[max(0, end-height):end]
+}
+
+// history is every line of the selected session's history, nil until loaded.
+func (p *resumeModal) history(m Model, paneWidth int) []string {
+	s := p.selected(m)
+	if s == nil {
+		return nil
+	}
+	pv := p.loaded[s.ID]
+	if pv == nil || pv.model == nil {
+		return nil
+	}
+	// blockWidth fits rows to the history pane, so it is handed this one's width.
+	pv.model.layout.histColW = paneWidth + railWidth
+	lines, _ := pv.model.historyAll()
+	return lines
 }
 
 // usedAgo is how long ago s was last used, or now for this session, which still is.
@@ -101,47 +144,4 @@ func ago(t time.Time) string {
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
 	return t.Local().Format("Jan 2006")
-}
-
-// resumePaneWidths gives the history the wider pane, since it is what is read,
-// less the two dates.
-func (m Model) resumePaneWidths() (left, right int) {
-	inner := island.Inner(m.modalWidth())
-	left = inner * 9 / 20
-	return left, inner - left
-}
-
-// previewLines is the selected session's history as the history pane
-// draws it, from its newest line up by the scroll.
-func (p *resumeModal) previewLines(m Model, paneWidth, height int) []string {
-	s := p.selected(m)
-	if s == nil {
-		return nil
-	}
-	pv := p.loaded[s.ID]
-	switch {
-	case pv == nil || pv.model == nil && pv.err == "":
-		return []string{styleFaint.Render("loading…")}
-	case pv.err != "":
-		return []string{styleDanger.Render(layout.Truncate(pv.err, paneWidth-4))}
-	}
-	lines := p.history(m, paneWidth)
-	end := max(0, len(lines)-min(p.scroll, max(0, len(lines)-height)))
-	return lines[max(0, end-height):end]
-}
-
-// history is every line of the selected session's history, nil until loaded.
-func (p *resumeModal) history(m Model, paneWidth int) []string {
-	s := p.selected(m)
-	if s == nil {
-		return nil
-	}
-	pv := p.loaded[s.ID]
-	if pv == nil || pv.model == nil {
-		return nil
-	}
-	// blockWidth fits rows to the history pane, so it is handed this one's width.
-	pv.model.layout.histColW = paneWidth + railWidth
-	lines, _ := pv.model.historyAll()
-	return lines
 }

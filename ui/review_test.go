@@ -998,6 +998,20 @@ func TestReview_TheModalClosesWhileTheReviewerWorks(t *testing.T) {
 	assert.Equal(t, 1, k.m.blockByID(turn).rows[0].comments)
 }
 
+// A comment that came in while the review was shut still fades once it opens,
+// which nothing started until the next fact did.
+func TestReview_OpeningStartsAFadeAlreadyUnderWay(t *testing.T) {
+	k := loadedReview(t)
+	id := k.rev().id
+	k.press(t, "esc")
+	c := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "ui/facts.go", Side: "new", Start: 10, End: 10, Body: "x"}
+	require.Nil(t, k.m.apply(event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: c}),
+		"nothing on screen to fade")
+	var cmd tea.Cmd
+	k.m, cmd = k.m.openReview(k.m.reviewByID(id))
+	assert.True(t, sends[fadeMsg](cmd))
+}
+
 // openReview runs a /review line and what it asks for.
 func (k *keyed) openReview(line string) {
 	var cmd tea.Cmd
@@ -1070,18 +1084,4 @@ func (k *keyed) update(t *testing.T, msg tea.Msg) {
 	var cmd tea.Cmd
 	k.m, cmd = k.m.update(msg)
 	runCmd(cmd)
-}
-
-// A comment that came in while the review was shut still fades once it opens,
-// which nothing started until the next fact did.
-func TestReview_OpeningStartsAFadeAlreadyUnderWay(t *testing.T) {
-	k := loadedReview(t)
-	id := k.rev().id
-	k.press(t, "esc")
-	c := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "ui/facts.go", Side: "new", Start: 10, End: 10, Body: "x"}
-	require.Nil(t, k.m.apply(event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: c}),
-		"nothing on screen to fade")
-	var cmd tea.Cmd
-	k.m, cmd = k.m.openReview(k.m.reviewByID(id))
-	assert.True(t, sends[fadeMsg](cmd))
 }

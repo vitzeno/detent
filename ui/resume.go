@@ -49,19 +49,6 @@ func (m Model) showResume(input string) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// resumeStart is where the cursor opens: the session named by id or name,
-// else the first that is not this one.
-func (m Model) resumeStart(want string) int {
-	if want != "" {
-		if i := slices.IndexFunc(m.sessions, func(s event.SessionSummary) bool {
-			return strings.EqualFold(s.Name, want) || strings.HasPrefix(s.ID.String(), strings.ToLower(want))
-		}); i >= 0 {
-			return i
-		}
-	}
-	return max(0, slices.IndexFunc(m.sessions, func(s event.SessionSummary) bool { return s.ID != m.run.Session }))
-}
-
 func (p *resumeModal) key(m *Model, msg tea.KeyPressMsg) tea.Cmd {
 	k := keymap.resume
 	switch {
@@ -142,6 +129,26 @@ func (p *resumeModal) loadSelected(m *Model) {
 	m.send(event.LoadSession{Session: s.ID})
 }
 
+// scrollBy moves the preview up from its newest line by d.
+func (p *resumeModal) scrollBy(m Model, d int) {
+	_, right := m.resumePaneWidths()
+	top := max(0, len(p.history(m, right))-m.modalPaneHeight())
+	p.scroll = min(max(p.scroll+d, 0), top)
+}
+
+// resumeStart is where the cursor opens: the session named by id or name,
+// else the first that is not this one.
+func (m Model) resumeStart(want string) int {
+	if want != "" {
+		if i := slices.IndexFunc(m.sessions, func(s event.SessionSummary) bool {
+			return strings.EqualFold(s.Name, want) || strings.HasPrefix(s.ID.String(), strings.ToLower(want))
+		}); i >= 0 {
+			return i
+		}
+	}
+	return max(0, slices.IndexFunc(m.sessions, func(s event.SessionSummary) bool { return s.ID != m.run.Session }))
+}
+
 // loaded fills in a preview the picker asked for.
 func (m *Model) loaded(v event.SessionLoaded) {
 	p := modalAs[*resumeModal](*m)
@@ -164,13 +171,6 @@ func (m Model) previewOf(records []event.Record) *Model {
 	}
 	p = p.Restore(records)
 	return &p
-}
-
-// scrollBy moves the preview up from its newest line by d.
-func (p *resumeModal) scrollBy(m Model, d int) {
-	_, right := m.resumePaneWidths()
-	top := max(0, len(p.history(m, right))-m.modalPaneHeight())
-	p.scroll = min(max(p.scroll+d, 0), top)
 }
 
 // resumed swaps history for the session the picker resumed, as its header

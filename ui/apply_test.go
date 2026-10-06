@@ -569,6 +569,62 @@ func TestRestore_DoesNotFlashHistoryAsNews(t *testing.T) {
 	assert.Equal(t, "this one is now", m.notice.text)
 }
 
+// A command's output reaches the screen with its colour and nothing else an
+// escape can do, settled or live, so no pane or preview can send one.
+func TestOutput_KeepsColourAndShowsOtherEscapes(t *testing.T) {
+	const out = "\x1b[31mFAIL\x1b[0m \x1b]52;c;aGk=\x07"
+	turn, call, live := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	m := feed(t,
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "test"},
+		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "go test"}},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: out}},
+		event.ToolCallProposed{ToolCall: live, Tool: "bash", Args: map[string]any{"command": "tail"}},
+		event.ToolCallStarted{ToolCall: live},
+		event.OutputChunk{ToolCall: live, Line: out},
+	)
+	for _, text := range []string{m.row(call).text(), m.row(live).live[0]} {
+		assert.Contains(t, text, "\x1b[31mFAIL\x1b[0m", "colour stays")
+		assert.Contains(t, text, "^[]52;c;aGk=^G", "the clipboard write is shown")
+		assert.NotContains(t, text, "\x1b]", "and never sent")
+	}
+}
+
+// write_file tells the model only that it created a file, which it has just
+// written. The human sees the new file as a diff that adds every line.
+func TestWriteFile_ANewFileIsShownAsADiff(t *testing.T) {
+	ended := func(stdout string, code int) Model {
+		turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+		return sized(t, 120, 40, event.TurnStarted{Turn: turn, N: 1, Prompt: "go"},
+			event.ToolCallProposed{ToolCall: call, Tool: "write_file", Renders: event.RendersDiff,
+				Args: map[string]any{"path": "notes.md", "content": "one\ntwo\x1b]52;c;x\x07\n"}},
+			event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: stdout, ExitCode: code}})
+	}
+
+	m := ended("created notes.md, 2 lines\n", 0)
+	r := m.rows()[0]
+	assert.Equal(t, "--- notes.md\n+++ notes.md\n@@ -0,0 +1,2 @@\n+one\n+two^[]52;c;x^G\n", r.text(),
+		"every line added, and what the model wrote is defused")
+	assert.Nil(t, r.wrote, "the content is not kept twice")
+	assert.Contains(t, stripANSI(m.viewContent), "+one", "the output pane draws it")
+	assert.Equal(t, "created notes.md, 2 lines\n", r.result.Stdout, "the result itself is untouched")
+
+	edit := "--- notes.md\n+++ notes.md\n@@ -1 +1 @@\n-old\n+new\n"
+	assert.Equal(t, edit, ended(edit, 0).rows()[0].text(), "an edit already is a diff")
+	assert.Equal(t, "created notes.md, 2 lines\n", ended("created notes.md, 2 lines\n", 1).rows()[0].text(),
+		"a failure is shown as it came")
+}
+
+// Restore starts from nothing, so a replay never keeps what was on screen, even
+// when the session it replays is the one already there.
+func TestRestore_StartsFromNothing(t *testing.T) {
+	_, turn := oneTurn("go", "go vet ./...", "ok\n")
+	records := asRecords(append([]event.Event{event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Model: "m"}}, turn...))
+	once := New(t.Context(), event.New(), SessionInfo{}).Restore(records)
+	require.Len(t, once.blocks, 1)
+	twice := once.Restore(records)
+	assert.Len(t, twice.blocks, 1, "the replay was added to what was there")
+}
+
 // feed drives the UI with events alone: no harness, no goroutines, no
 // channels, which is the whole point of the reducer.
 func feed(t *testing.T, evs ...event.Event) Model {
@@ -636,60 +692,4 @@ func asRecords(facts []event.Event) []event.Record {
 		out[i] = event.Record{Ordinal: uint64(i + 1), Event: e}
 	}
 	return out
-}
-
-// A command's output reaches the screen with its colour and nothing else an
-// escape can do, settled or live, so no pane or preview can send one.
-func TestOutput_KeepsColourAndShowsOtherEscapes(t *testing.T) {
-	const out = "\x1b[31mFAIL\x1b[0m \x1b]52;c;aGk=\x07"
-	turn, call, live := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	m := feed(t,
-		event.TurnStarted{Turn: turn, N: 1, Prompt: "test"},
-		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "go test"}},
-		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: out}},
-		event.ToolCallProposed{ToolCall: live, Tool: "bash", Args: map[string]any{"command": "tail"}},
-		event.ToolCallStarted{ToolCall: live},
-		event.OutputChunk{ToolCall: live, Line: out},
-	)
-	for _, text := range []string{m.row(call).text(), m.row(live).live[0]} {
-		assert.Contains(t, text, "\x1b[31mFAIL\x1b[0m", "colour stays")
-		assert.Contains(t, text, "^[]52;c;aGk=^G", "the clipboard write is shown")
-		assert.NotContains(t, text, "\x1b]", "and never sent")
-	}
-}
-
-// write_file tells the model only that it created a file, which it has just
-// written. The human sees the new file as a diff that adds every line.
-func TestWriteFile_ANewFileIsShownAsADiff(t *testing.T) {
-	ended := func(stdout string, code int) Model {
-		turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-		return sized(t, 120, 40, event.TurnStarted{Turn: turn, N: 1, Prompt: "go"},
-			event.ToolCallProposed{ToolCall: call, Tool: "write_file", Renders: event.RendersDiff,
-				Args: map[string]any{"path": "notes.md", "content": "one\ntwo\x1b]52;c;x\x07\n"}},
-			event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: stdout, ExitCode: code}})
-	}
-
-	m := ended("created notes.md, 2 lines\n", 0)
-	r := m.rows()[0]
-	assert.Equal(t, "--- notes.md\n+++ notes.md\n@@ -0,0 +1,2 @@\n+one\n+two^[]52;c;x^G\n", r.text(),
-		"every line added, and what the model wrote is defused")
-	assert.Nil(t, r.wrote, "the content is not kept twice")
-	assert.Contains(t, stripANSI(m.viewContent), "+one", "the output pane draws it")
-	assert.Equal(t, "created notes.md, 2 lines\n", r.result.Stdout, "the result itself is untouched")
-
-	edit := "--- notes.md\n+++ notes.md\n@@ -1 +1 @@\n-old\n+new\n"
-	assert.Equal(t, edit, ended(edit, 0).rows()[0].text(), "an edit already is a diff")
-	assert.Equal(t, "created notes.md, 2 lines\n", ended("created notes.md, 2 lines\n", 1).rows()[0].text(),
-		"a failure is shown as it came")
-}
-
-// Restore starts from nothing, so a replay never keeps what was on screen, even
-// when the session it replays is the one already there.
-func TestRestore_StartsFromNothing(t *testing.T) {
-	_, turn := oneTurn("go", "go vet ./...", "ok\n")
-	records := asRecords(append([]event.Event{event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Model: "m"}}, turn...))
-	once := New(t.Context(), event.New(), SessionInfo{}).Restore(records)
-	require.Len(t, once.blocks, 1)
-	twice := once.Restore(records)
-	assert.Len(t, twice.blocks, 1, "the replay was added to what was there")
 }

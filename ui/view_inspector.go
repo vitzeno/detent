@@ -53,15 +53,6 @@ func (in *inspectorModal) status(m Model) string {
 	return m.spinner.View() + styleMuted.Render(fmt.Sprintf(" %d steps · %d calls", a.steps, a.calls))
 }
 
-// since is how long ago t was, in whole seconds, as a person counts a wait.
-func since(t time.Time) string {
-	d := time.Since(t).Truncate(time.Second)
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	return status.Dur(d)
-}
-
 // hints offers the answer only while the selected call waits on one.
 func (in *inspectorModal) hints(m Model) []hint {
 	k := keymap.inspector
@@ -112,4 +103,13 @@ func (in *inspectorModal) historyLines(m Model, paneWidth, height int) []string 
 		out = append(out, m.rowLines(r, focused)...)
 	}
 	return out
+}
+
+// since is how long ago t was, in whole seconds, as a person counts a wait.
+func since(t time.Time) string {
+	d := time.Since(t).Truncate(time.Second)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	return status.Dur(d)
 }

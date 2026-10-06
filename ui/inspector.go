@@ -119,6 +119,23 @@ func (in *inspectorModal) key(m *Model, msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
+// sync notices a question coming on screen, which starts its settle and its
+// reading afresh, and whether all of it already fits.
+func (in *inspectorModal) sync(m *Model) {
+	q := m.askOf(in.row(*m))
+	if q == nil {
+		in.shown = uuid.Nil
+		return
+	}
+	if q.ToolCall != in.shown {
+		in.shown, in.shownAt, in.seenEnd = q.ToolCall, time.Now(), false
+		in.output = 0
+	}
+	if len(in.outputLines(*m)) <= m.modalPaneHeight() {
+		in.seenEnd = true
+	}
+}
+
 func (in *inspectorModal) hint(Model) string {
 	return barLine(does("back", keymap.inspector.close), note("the agent's keys are in the box"))
 }
@@ -147,6 +164,24 @@ func (in *inspectorModal) answer(m *Model, yes bool) {
 	m.unask(call)
 	in.sync(m)
 	m.send(event.ResolveApproval{ToolCall: call, Approved: yes})
+}
+
+func (in *inspectorModal) row(m Model) *historyRow {
+	rows := m.inspectorRows(in.agent)
+	if len(rows) == 0 {
+		return nil
+	}
+	return rows[min(max(in.cursor, 0), len(rows)-1)]
+}
+
+// scrollBy moves the output pane, marking a question read once its last line
+// has been on screen.
+func (in *inspectorModal) scrollBy(m Model, d int) {
+	lines, h := len(in.outputLines(m)), m.modalPaneHeight()
+	in.output = min(max(in.output+d, 0), max(0, lines-h))
+	if in.output+h >= lines {
+		in.seenEnd = true
+	}
 }
 
 // stopAgent stops a subagent, asked twice so a stray key keeps its work.
@@ -178,15 +213,6 @@ func (m Model) inspectorRows(a *agentState) []*historyRow {
 	return rows
 }
 
-// row is the selected row.
-func (in *inspectorModal) row(m Model) *historyRow {
-	rows := m.inspectorRows(in.agent)
-	if len(rows) == 0 {
-		return nil
-	}
-	return rows[min(max(in.cursor, 0), len(rows)-1)]
-}
-
 // askOf is the question a row's call is waiting on, nil for none.
 func (m Model) askOf(r *historyRow) *event.ApprovalAsked {
 	if r == nil || r.id == uuid.Nil {
@@ -197,33 +223,6 @@ func (m Model) askOf(r *historyRow) *event.ApprovalAsked {
 		return nil
 	}
 	return &m.childAsks[i]
-}
-
-// sync notices a question coming on screen, which starts its settle and its
-// reading afresh, and whether all of it already fits.
-func (in *inspectorModal) sync(m *Model) {
-	q := m.askOf(in.row(*m))
-	if q == nil {
-		in.shown = uuid.Nil
-		return
-	}
-	if q.ToolCall != in.shown {
-		in.shown, in.shownAt, in.seenEnd = q.ToolCall, time.Now(), false
-		in.output = 0
-	}
-	if len(in.outputLines(*m)) <= m.modalPaneHeight() {
-		in.seenEnd = true
-	}
-}
-
-// scrollBy moves the output pane, marking a question read once its last line
-// has been on screen.
-func (in *inspectorModal) scrollBy(m Model, d int) {
-	lines, h := len(in.outputLines(m)), m.modalPaneHeight()
-	in.output = min(max(in.output+d, 0), max(0, lines-h))
-	if in.output+h >= lines {
-		in.seenEnd = true
-	}
 }
 
 // inspectorCommand is a waiting call as it will run, defused.

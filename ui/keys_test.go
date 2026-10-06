@@ -721,6 +721,155 @@ func TestKeys_ShiftTabIsSpeltTheWayTheTerminalSendsIt(t *testing.T) {
 	assert.Equal(t, "shift+tab", msg.String())
 }
 
+// Why a call was flagged is shown whole up to a few lines, and the box counts
+// those lines, so the frame still fits and the read-to-the-end gate holds.
+func TestKeys_ALongRationaleWrapsAndTheBoxStillFits(t *testing.T) {
+	k := newKeyed(t)
+	// Short, so the panes have no rows left to give the box.
+	k.m.layout.height = 20
+	why := strings.TrimSpace(strings.Repeat("it deletes files outside the working directory ", 8))
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "clean"})
+	var script strings.Builder
+	for i := range 60 {
+		fmt.Fprintf(&script, "echo step %d\n", i)
+	}
+	script.WriteString("rm -rf ../build")
+	k.m.apply(event.ApprovalAsked{ToolCall: uuid.Must(uuid.NewV7()), Tool: "bash",
+		Args: map[string]any{"command": script.String()}, Rationale: why})
+	k.m.sizeViewport()
+
+	lines := k.m.rationaleLines()
+	assert.Greater(t, len(lines), 1, "it wraps")
+	assert.LessOrEqual(t, len(lines), maxRationale, "and is capped")
+	for range 100 {
+		k.press(t, "pgdown")
+	}
+	screen := ansi.Strip(k.m.baseView())
+	assert.LessOrEqual(t, strings.Count(screen, "\n")+1, k.m.layout.height, "the frame fits the screen")
+	require.True(t, k.m.confirmReady())
+	assert.Contains(t, screen, "rm -rf ../build", "ready only once the last line is really on screen")
+}
+
+// Nothing routes a blink to a textarea, so a blinking cursor froze mid-blink.
+// A steady one is drawn the same and asks for no redraws.
+func TestInput_TheCursorIsSteady(t *testing.T) {
+	p := newPrompt(false)
+	assert.Nil(t, p.input.Focus(), "the prompt's cursor asks to blink")
+	e := newCommentEdit(event.CommentAdded, uuid.Nil, "")
+	assert.Nil(t, e.input.Focus(), "the comment editor's cursor asks to blink")
+}
+
+// A key history does not use is dropped, not passed to the output pane, which
+// scrolled under the human while they looked at the rows.
+func TestHistory_KeysItDoesNotUseLeaveTheOutputAlone(t *testing.T) {
+	k := newKeyed(t)
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	long := strings.Repeat("line\n", 200)
+	for _, ev := range []event.Event{
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "p"},
+		event.ToolCallProposed{ToolCall: call, Tool: event.ToolBash, Args: map[string]any{"command": "seq 200"}},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: long}},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone},
+	} {
+		k.m.apply(ev)
+	}
+	k.press(t, "tab")
+	require.Equal(t, ownerHistory, k.m.owner())
+	require.Greater(t, k.m.output.TotalLineCount(), k.m.output.Height(), "the test needs output to scroll")
+	for _, key := range []string{"j", "f", "d", "l"} {
+		k.press(t, key)
+		assert.Zero(t, k.m.output.YOffset(), "%s scrolled the output pane", key)
+	}
+
+	k.press(t, "tab")
+	require.Equal(t, ownerOutput, k.m.owner())
+	k.press(t, "j")
+	assert.Equal(t, 1, k.m.output.YOffset(), "in the output pane, j still scrolls")
+}
+
+// Live output follows only while the pane is at its end, so scrolling up to
+// read an earlier line is not undone by the next one arriving.
+func TestOutput_LiveOutputFollowsOnlyFromTheEnd(t *testing.T) {
+	k := newKeyed(t)
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	line := func(n int) {
+		k.m, _ = k.m.update(factMsg{[]event.Event{event.OutputChunk{ToolCall: call, Line: fmt.Sprint("line ", n)}}})
+	}
+	k.m, _ = k.m.update(factMsg{[]event.Event{
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "p"},
+		event.ToolCallProposed{ToolCall: call, Tool: event.ToolBash, Args: map[string]any{"command": "seq 200"}},
+		event.ToolCallStarted{ToolCall: call},
+	}})
+	for n := range 100 {
+		line(n)
+	}
+	require.Greater(t, k.m.output.TotalLineCount(), k.m.output.Height(), "the test needs output to scroll")
+	require.True(t, k.m.output.AtBottom(), "a running command is followed")
+
+	k.press(t, "tab")
+	k.press(t, "tab")
+	require.Equal(t, ownerOutput, k.m.owner())
+	k.press(t, "pgup")
+	above := k.m.output.YOffset()
+	line(100)
+	assert.Equal(t, above, k.m.output.YOffset(), "a new line pulled the pane back down")
+
+	for !k.m.output.AtBottom() {
+		k.press(t, "pgdown")
+	}
+	line(101)
+	assert.True(t, k.m.output.AtBottom(), "back at the end, it follows again")
+
+	k.press(t, "pgup")
+	k.press(t, "tab")
+	require.False(t, k.m.output.AtBottom())
+	next := uuid.Must(uuid.NewV7())
+	evs := []event.Event{event.ToolCallEnded{ToolCall: call},
+		event.ToolCallProposed{ToolCall: next, Tool: event.ToolBash, Args: map[string]any{"command": "seq 9"}},
+		event.ToolCallStarted{ToolCall: next}}
+	for n := range 100 {
+		evs = append(evs, event.OutputChunk{ToolCall: next, Line: fmt.Sprint("next ", n)})
+	}
+	k.m, _ = k.m.update(factMsg{evs})
+	require.Equal(t, next, k.m.focused().id, "the newest row is the one shown")
+	assert.True(t, k.m.output.AtBottom(), "another command is followed from its end")
+}
+
+// /new brings the welcome back, and its animation with it, though the tick
+// that drew it stopped once a request hid it.
+func TestWelcome_AnimatesAgainAfterNew(t *testing.T) {
+	k := newKeyed(t)
+	k.m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7())})
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "p"})
+	var cmd tea.Cmd
+	k.m, cmd = k.m.update(welcomeTickMsg{})
+	require.False(t, sends[welcomeTickMsg](cmd), "hidden, the welcome stops ticking")
+
+	k.m, cmd = k.m.update(factMsg{[]event.Event{event.SessionStarted{Session: uuid.Must(uuid.NewV7())}}})
+	require.True(t, k.m.showWelcome())
+	assert.True(t, sends[welcomeTickMsg](cmd), "nothing restarted the animation")
+	_, cmd = k.m.update(factMsg{[]event.Event{event.SessionsListed{}}})
+	assert.False(t, sends[welcomeTickMsg](cmd), "a second tick would run it at twice the speed")
+}
+
+// An intent is published as the key is handled, not from a command run on a
+// goroutine of its own, so a comment and the review it belongs to arrive in order.
+func TestSend_IntentsArriveInTheOrderAsked(t *testing.T) {
+	k := loadedReview(t)
+	only := func(key string) {
+		k.m, _ = k.m.update(tea.KeyPressMsg{Code: keyCode(key), Text: keyText(key), Mod: keyMod(key)})
+	}
+	only("down")
+	only("c")
+	k.typeText(t, "why")
+	only("enter")
+	comment := k.intentOf(t, event.CommentReviewKind).(event.CommentReview)
+	k.m.apply(commented(comment))
+	k.m, _ = k.m.update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	sent := k.intent(t).(event.SubmitReview)
+	assert.Equal(t, comment.Comment.ID, sent.Comments[0].ID)
+}
+
 // keyed is a Model on a real bus, collecting the intents it publishes:
 // publishing is the only way a key reaches the engine.
 type keyed struct {
@@ -918,137 +1067,6 @@ func keyText(key string) string {
 	return ""
 }
 
-// Why a call was flagged is shown whole up to a few lines, and the box counts
-// those lines, so the frame still fits and the read-to-the-end gate holds.
-func TestKeys_ALongRationaleWrapsAndTheBoxStillFits(t *testing.T) {
-	k := newKeyed(t)
-	// Short, so the panes have no rows left to give the box.
-	k.m.layout.height = 20
-	why := strings.TrimSpace(strings.Repeat("it deletes files outside the working directory ", 8))
-	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "clean"})
-	var script strings.Builder
-	for i := range 60 {
-		fmt.Fprintf(&script, "echo step %d\n", i)
-	}
-	script.WriteString("rm -rf ../build")
-	k.m.apply(event.ApprovalAsked{ToolCall: uuid.Must(uuid.NewV7()), Tool: "bash",
-		Args: map[string]any{"command": script.String()}, Rationale: why})
-	k.m.sizeViewport()
-
-	lines := k.m.rationaleLines()
-	assert.Greater(t, len(lines), 1, "it wraps")
-	assert.LessOrEqual(t, len(lines), maxRationale, "and is capped")
-	for range 100 {
-		k.press(t, "pgdown")
-	}
-	screen := ansi.Strip(k.m.baseView())
-	assert.LessOrEqual(t, strings.Count(screen, "\n")+1, k.m.layout.height, "the frame fits the screen")
-	require.True(t, k.m.confirmReady())
-	assert.Contains(t, screen, "rm -rf ../build", "ready only once the last line is really on screen")
-}
-
-// Nothing routes a blink to a textarea, so a blinking cursor froze mid-blink.
-// A steady one is drawn the same and asks for no redraws.
-func TestInput_TheCursorIsSteady(t *testing.T) {
-	p := newPrompt(false)
-	assert.Nil(t, p.input.Focus(), "the prompt's cursor asks to blink")
-	e := newCommentEdit(event.CommentAdded, uuid.Nil, "")
-	assert.Nil(t, e.input.Focus(), "the comment editor's cursor asks to blink")
-}
-
-// A key history does not use is dropped, not passed to the output pane, which
-// scrolled under the human while they looked at the rows.
-func TestHistory_KeysItDoesNotUseLeaveTheOutputAlone(t *testing.T) {
-	k := newKeyed(t)
-	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	long := strings.Repeat("line\n", 200)
-	for _, ev := range []event.Event{
-		event.TurnStarted{Turn: turn, N: 1, Prompt: "p"},
-		event.ToolCallProposed{ToolCall: call, Tool: event.ToolBash, Args: map[string]any{"command": "seq 200"}},
-		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: long}},
-		event.TurnEnded{Turn: turn, Reason: event.EndDone},
-	} {
-		k.m.apply(ev)
-	}
-	k.press(t, "tab")
-	require.Equal(t, ownerHistory, k.m.owner())
-	require.Greater(t, k.m.output.TotalLineCount(), k.m.output.Height(), "the test needs output to scroll")
-	for _, key := range []string{"j", "f", "d", "l"} {
-		k.press(t, key)
-		assert.Zero(t, k.m.output.YOffset(), "%s scrolled the output pane", key)
-	}
-
-	k.press(t, "tab")
-	require.Equal(t, ownerOutput, k.m.owner())
-	k.press(t, "j")
-	assert.Equal(t, 1, k.m.output.YOffset(), "in the output pane, j still scrolls")
-}
-
-// Live output follows only while the pane is at its end, so scrolling up to
-// read an earlier line is not undone by the next one arriving.
-func TestOutput_LiveOutputFollowsOnlyFromTheEnd(t *testing.T) {
-	k := newKeyed(t)
-	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	line := func(n int) {
-		k.m, _ = k.m.update(factMsg{[]event.Event{event.OutputChunk{ToolCall: call, Line: fmt.Sprint("line ", n)}}})
-	}
-	k.m, _ = k.m.update(factMsg{[]event.Event{
-		event.TurnStarted{Turn: turn, N: 1, Prompt: "p"},
-		event.ToolCallProposed{ToolCall: call, Tool: event.ToolBash, Args: map[string]any{"command": "seq 200"}},
-		event.ToolCallStarted{ToolCall: call},
-	}})
-	for n := range 100 {
-		line(n)
-	}
-	require.Greater(t, k.m.output.TotalLineCount(), k.m.output.Height(), "the test needs output to scroll")
-	require.True(t, k.m.output.AtBottom(), "a running command is followed")
-
-	k.press(t, "tab")
-	k.press(t, "tab")
-	require.Equal(t, ownerOutput, k.m.owner())
-	k.press(t, "pgup")
-	above := k.m.output.YOffset()
-	line(100)
-	assert.Equal(t, above, k.m.output.YOffset(), "a new line pulled the pane back down")
-
-	for !k.m.output.AtBottom() {
-		k.press(t, "pgdown")
-	}
-	line(101)
-	assert.True(t, k.m.output.AtBottom(), "back at the end, it follows again")
-
-	k.press(t, "pgup")
-	k.press(t, "tab")
-	require.False(t, k.m.output.AtBottom())
-	next := uuid.Must(uuid.NewV7())
-	evs := []event.Event{event.ToolCallEnded{ToolCall: call},
-		event.ToolCallProposed{ToolCall: next, Tool: event.ToolBash, Args: map[string]any{"command": "seq 9"}},
-		event.ToolCallStarted{ToolCall: next}}
-	for n := range 100 {
-		evs = append(evs, event.OutputChunk{ToolCall: next, Line: fmt.Sprint("next ", n)})
-	}
-	k.m, _ = k.m.update(factMsg{evs})
-	require.Equal(t, next, k.m.focused().id, "the newest row is the one shown")
-	assert.True(t, k.m.output.AtBottom(), "another command is followed from its end")
-}
-
-// /new brings the welcome back, and its animation with it, though the tick
-// that drew it stopped once a request hid it.
-func TestWelcome_AnimatesAgainAfterNew(t *testing.T) {
-	k := newKeyed(t)
-	k.m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7())})
-	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "p"})
-	var cmd tea.Cmd
-	k.m, cmd = k.m.update(welcomeTickMsg{})
-	require.False(t, sends[welcomeTickMsg](cmd), "hidden, the welcome stops ticking")
-
-	k.m, cmd = k.m.update(factMsg{[]event.Event{event.SessionStarted{Session: uuid.Must(uuid.NewV7())}}})
-	require.True(t, k.m.showWelcome())
-	assert.True(t, sends[welcomeTickMsg](cmd), "nothing restarted the animation")
-	_, cmd = k.m.update(factMsg{[]event.Event{event.SessionsListed{}}})
-	assert.False(t, sends[welcomeTickMsg](cmd), "a second tick would run it at twice the speed")
-}
-
 // sends reports whether cmd, or any command it batches, produces a T. One
 // still waiting after a moment, such as the fact pump, is taken as not.
 func sends[T tea.Msg](cmd tea.Cmd) bool {
@@ -1067,22 +1085,4 @@ func sends[T tea.Msg](cmd tea.Cmd) bool {
 	case <-time.After(300 * time.Millisecond):
 		return false
 	}
-}
-
-// An intent is published as the key is handled, not from a command run on a
-// goroutine of its own, so a comment and the review it belongs to arrive in order.
-func TestSend_IntentsArriveInTheOrderAsked(t *testing.T) {
-	k := loadedReview(t)
-	only := func(key string) {
-		k.m, _ = k.m.update(tea.KeyPressMsg{Code: keyCode(key), Text: keyText(key), Mod: keyMod(key)})
-	}
-	only("down")
-	only("c")
-	k.typeText(t, "why")
-	only("enter")
-	comment := k.intentOf(t, event.CommentReviewKind).(event.CommentReview)
-	k.m.apply(commented(comment))
-	k.m, _ = k.m.update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
-	sent := k.intent(t).(event.SubmitReview)
-	assert.Equal(t, comment.Comment.ID, sent.Comments[0].ID)
 }

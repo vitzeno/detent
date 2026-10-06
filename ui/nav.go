@@ -42,12 +42,6 @@ func (m Model) navUp() (Model, tea.Cmd) {
 	return m, nil
 }
 
-// navTop puts the cursor on the first row, which stops following the newest.
-func (m Model) navTop() (Model, tea.Cmd) {
-	m.nav.cursor, m.nav.follow, m.nav.histOffset = 0, false, 0
-	return m, nil
-}
-
 func (m Model) navDown() (Model, tea.Cmd) {
 	rows := m.rows()
 	if m.nav.cursor < len(rows)-1 {
@@ -56,6 +50,12 @@ func (m Model) navDown() (Model, tea.Cmd) {
 			m.nav.follow = true
 		}
 	}
+	return m, nil
+}
+
+// navTop puts the cursor on the first row, which stops following the newest.
+func (m Model) navTop() (Model, tea.Cmd) {
+	m.nav.cursor, m.nav.follow, m.nav.histOffset = 0, false, 0
 	return m, nil
 }
 

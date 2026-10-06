@@ -2,9 +2,8 @@ package ui
 
 import tea "charm.land/bubbletea/v2"
 
-// modal is a box over the panes that holds every key until it closes: the
-// finder, the inspector, the resume picker or the review. Its state is its own
-// and goes when it closes. m is the session it is open over.
+// modal is a box over the panes holding every key until it closes. Its state is
+// its own and goes with it, and the m each method takes is the session beneath.
 type modal interface {
 	// key handles a keystroke, closing the modal with m.closeModal when it is done.
 	key(m *Model, msg tea.KeyPressMsg) tea.Cmd

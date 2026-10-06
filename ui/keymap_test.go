@@ -140,24 +140,6 @@ func TestTopAndEnd_Review(t *testing.T) {
 	assert.Zero(t, k.rev().file)
 }
 
-// longOutput is a finished command whose output is taller than its pane.
-func longOutput(t *testing.T) *keyed {
-	t.Helper()
-	k := newKeyed(t)
-	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	for _, ev := range []event.Event{
-		event.TurnStarted{Turn: turn, N: 1, Prompt: "p"},
-		event.ToolCallProposed{ToolCall: call, Tool: event.ToolBash, Args: map[string]any{"command": "seq 200"}},
-		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: strings.Repeat("line\n", 200)}},
-		event.TurnEnded{Turn: turn, Reason: event.EndDone},
-	} {
-		k.m.apply(ev)
-	}
-	k.m.sizeViewport()
-	require.Greater(t, k.m.output.TotalLineCount(), k.m.output.Height(), "the test needs output to scroll")
-	return k
-}
-
 // /help is drawn from keyGroups, so a binding added to keymap but not there
 // would work and be listed nowhere.
 func TestHelp_ListsEveryBinding(t *testing.T) {
@@ -174,6 +156,24 @@ func TestHelp_ListsEveryBinding(t *testing.T) {
 	page := ansi.Strip(strings.Join(newKeyed(t).m.helpLines(), "\n"))
 	assert.Contains(t, page, "home g")
 	assert.Contains(t, page, "the comment after, across files")
+}
+
+// longOutput is a finished command whose output is taller than its pane.
+func longOutput(t *testing.T) *keyed {
+	t.Helper()
+	k := newKeyed(t)
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	for _, ev := range []event.Event{
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "p"},
+		event.ToolCallProposed{ToolCall: call, Tool: event.ToolBash, Args: map[string]any{"command": "seq 200"}},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: strings.Repeat("line\n", 200)}},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone},
+	} {
+		k.m.apply(ev)
+	}
+	k.m.sizeViewport()
+	require.Greater(t, k.m.output.TotalLineCount(), k.m.output.Height(), "the test needs output to scroll")
+	return k
 }
 
 // bindingsIn counts the bindings with keys in v, a keymap or a part of one.

@@ -158,6 +158,37 @@ func (f *finderModal) close(m *Model, restore bool) {
 	}
 }
 
+// refresh matches the query afresh, from the best hit.
+func (f *finderModal) refresh(m Model) {
+	f.hits = m.finderHits(f.query, f.kind)
+	f.cursor, f.scroll = 0, 0
+}
+
+func (f *finderModal) move(d int) {
+	f.cursor = min(max(f.cursor+d, 0), max(0, len(f.hits)-1))
+	f.scroll = 0
+}
+
+// scrollBy moves the preview, held within what it has to show.
+func (f *finderModal) scrollBy(m Model, d int) {
+	h, ok := f.selected()
+	if !ok {
+		return
+	}
+	lines, match := f.preview(m, h, m.finderPreviewWidth())
+	height := m.finderBodyHeight()
+	auto := previewStart(len(lines), match, height, 0)
+	top := min(max(auto+f.scroll+d, 0), max(0, len(lines)-height))
+	f.scroll = top - auto
+}
+
+func (f *finderModal) selected() (finderHit, bool) {
+	if f.cursor >= len(f.hits) {
+		return finderHit{}, false
+	}
+	return f.hits[f.cursor], true
+}
+
 // finderHits is every match, best first. Prompts and commands are short,
 // so fuzzy. Output is long, so a literal line.
 func (m Model) finderHits(query string, kind finderKind) []finderHit {
@@ -227,37 +258,6 @@ func (r *historyRow) searchable() search.Text {
 		r.found, r.foundOf = &t, r.result
 	}
 	return *r.found
-}
-
-// refresh matches the query afresh, from the best hit.
-func (f *finderModal) refresh(m Model) {
-	f.hits = m.finderHits(f.query, f.kind)
-	f.cursor, f.scroll = 0, 0
-}
-
-func (f *finderModal) move(d int) {
-	f.cursor = min(max(f.cursor+d, 0), max(0, len(f.hits)-1))
-	f.scroll = 0
-}
-
-// scrollBy moves the preview, held within what it has to show.
-func (f *finderModal) scrollBy(m Model, d int) {
-	h, ok := f.selected()
-	if !ok {
-		return
-	}
-	lines, match := f.preview(m, h, m.finderPreviewWidth())
-	height := m.finderBodyHeight()
-	auto := previewStart(len(lines), match, height, 0)
-	top := min(max(auto+f.scroll+d, 0), max(0, len(lines)-height))
-	f.scroll = top - auto
-}
-
-func (f *finderModal) selected() (finderHit, bool) {
-	if f.cursor >= len(f.hits) {
-		return finderHit{}, false
-	}
-	return f.hits[f.cursor], true
 }
 
 // scrollOutputTo shows the first drawn line holding query. Drawn, since a

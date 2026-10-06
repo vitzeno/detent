@@ -159,20 +159,6 @@ func (m Model) forgetKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	return m.cancelForget()
 }
 
-// scrollOutput scrolls the output pane if msg is one of k, half a pane to a
-// page, and reports whether it was.
-func (m *Model) scrollOutput(k moveKeys, msg tea.KeyPressMsg) bool {
-	d, ok := k.delta(msg, max(1, m.output.Height()/2))
-	switch {
-	case !ok:
-	case d < 0:
-		m.output.ScrollUp(-d)
-	default:
-		m.output.ScrollDown(d)
-	}
-	return ok
-}
-
 // boundKey answers the step bound. The engine is paused, waiting.
 func (m Model) boundKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.settling() {
@@ -410,4 +396,18 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// scrollOutput scrolls the output pane if msg is one of k, half a pane to a
+// page, and reports whether it was.
+func (m *Model) scrollOutput(k moveKeys, msg tea.KeyPressMsg) bool {
+	d, ok := k.delta(msg, max(1, m.output.Height()/2))
+	switch {
+	case !ok:
+	case d < 0:
+		m.output.ScrollUp(-d)
+	default:
+		m.output.ScrollDown(d)
+	}
+	return ok
 }

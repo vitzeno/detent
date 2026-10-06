@@ -102,6 +102,13 @@ func TestResume_EscLeavesWithoutResuming(t *testing.T) {
 	k.noIntent(t)
 }
 
+// A listing stored before sessions said when they were used reads as never
+// used, so it falls back to when the session began rather than year zero.
+func TestResume_AListingWithNoLastUseReadsAsItsStart(t *testing.T) {
+	started := time.Now().Add(-2 * time.Hour)
+	assert.Equal(t, "2h ago", ago(used(event.SessionSummary{Started: started})))
+}
+
 // picker is the open resume picker, nil when it is not.
 func (k *keyed) picker() *resumeModal { return modalAs[*resumeModal](k.m) }
 
@@ -144,11 +151,4 @@ func storedSession(id uuid.UUID, prompt string) event.SessionLoaded {
 		event.TurnEnded{Turn: turn, Reason: event.EndDone},
 		event.SessionsListed{},
 	})}
-}
-
-// A listing stored before sessions said when they were used reads as never
-// used, so it falls back to when the session began rather than year zero.
-func TestResume_AListingWithNoLastUseReadsAsItsStart(t *testing.T) {
-	started := time.Now().Add(-2 * time.Hour)
-	assert.Equal(t, "2h ago", ago(used(event.SessionSummary{Started: started})))
 }
