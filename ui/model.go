@@ -26,6 +26,10 @@ const maxFactBatch = 256
 // questionSettle is how long a question is on screen before a key answers it.
 var questionSettle = 400 * time.Millisecond
 
+// escSettle is how long after esc closes a modal a second esc is let through, a
+// var a test shortens. A double-press meant to close one otherwise aborted the request.
+var escSettle = 600 * time.Millisecond
+
 // coalesceWindow is how long a batch gathers. The bus hands over one
 // record at a time, so a burst needs a window to collect in.
 var coalesceWindow = 2 * time.Millisecond
@@ -44,6 +48,8 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	pulse int
 	// fadeTicking is a fadeMsg on its way, so a fade runs one tick, not one per fact.
 	fadeTicking bool
+	// escClosed is when esc last closed a modal, which the next esc settles against.
+	escClosed time.Time
 
 	blocks []*turnBlock
 	// agents are the subagents history's spawn rows draw, by id, and
@@ -193,7 +199,7 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
-		return m.handleKey(msg)
+		return m.pressed(msg)
 
 	case tea.PasteMsg:
 		return m.handlePaste(msg.Content)

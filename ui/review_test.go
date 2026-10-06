@@ -852,6 +852,22 @@ func TestReview_ArrowsJumpBetweenComments(t *testing.T) {
 	assert.Equal(t, near, at(), "from a line, the nearest comment before it")
 }
 
+// An esc that closes the modal is often pressed twice. The second, soon after,
+// is dropped rather than aborting the request, and a later one still aborts.
+func TestEsc_ASecondEscAfterClosingAModalDoesNotAbort(t *testing.T) {
+	k := loadedReview(t)
+	turn := uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: k.m.review.id})
+	k.press(t, "esc")
+	require.Equal(t, modeInput, k.m.mode)
+	k.press(t, "esc")
+	k.noIntent(t)
+
+	k.m.escClosed = time.Now().Add(-escSettle)
+	k.press(t, "esc")
+	assert.Equal(t, event.Abort{Turn: turn}, k.intentOf(t, event.AbortKind))
+}
+
 // Closing the modal leaves the reviewer working: its comments still land on
 // the review, and its row counts them.
 func TestReview_TheModalClosesWhileTheReviewerWorks(t *testing.T) {

@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
@@ -21,6 +23,21 @@ const (
 	ownerOutput
 	ownerHistory
 )
+
+// pressed is handleKey with esc made safe to press twice: one closing a modal
+// notes when, and one soon after is dropped rather than aborting the request.
+func (m Model) pressed(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	esc := msg.String() == "esc"
+	if esc && !m.inModal() && time.Since(m.escClosed) < escSettle {
+		return m, nil
+	}
+	wasModal := m.inModal()
+	next, cmd := m.handleKey(msg)
+	if esc && wasModal && !next.inModal() {
+		next.escClosed = time.Now()
+	}
+	return next, cmd
+}
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
