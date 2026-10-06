@@ -19,12 +19,21 @@ type Patcher interface {
 	Patch(ctx context.Context, base, head worktree.Checkpoint, limit int) (string, bool, error)
 }
 
-// Watch answers LoadDiff from files, the same Dir the engine checkpoints
-// with, since two over one directory would fight over its index.
+// Watch answers LoadDiff from files, the same Dir the engine checkpoints with,
+// since two over one directory would fight over its index, and records comments.
 func Watch(ctx context.Context, bus *event.Bus, files Patcher) func() {
-	return bus.Handle(event.Only(event.LoadDiffKind), func(rec event.Record) {
-		if v, ok := rec.Event.(event.LoadDiff); ok {
+	kinds := event.Only(event.LoadDiffKind, event.CommentReviewKind, event.SubmitReviewKind)
+	return bus.Handle(kinds, func(rec event.Record) {
+		switch v := rec.Event.(type) {
+		case event.LoadDiff:
 			bus.Publish(load(ctx, files, v))
+		case event.CommentReview:
+			bus.Publish(event.ReviewCommented{Review: v.Review, Reviewed: v.Reviewed,
+				Base: v.Base, Head: v.Head, Op: v.Op, Comment: v.Comment})
+		case event.SubmitReview:
+			// Closed before the prompt, so the review cannot be sent twice from what it starts.
+			bus.Publish(event.ReviewSubmitted{Review: v.Review, Comments: len(v.Comments)})
+			bus.Publish(event.SubmitPrompt{Text: prompt(v)})
 		}
 	})
 }

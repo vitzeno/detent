@@ -239,7 +239,7 @@ undo refuses before touching the sandbox or the files.
 
 ## Architecture
 
-**Everything is an event.** 34 facts and 21 intents are the entire
+**Everything is an event.** 36 facts and 23 intents are the entire
 interface between components. Facts are past tense, intents are
 imperative, and either may come from anyone: the engine publishes most
 facts, but a subscriber answering a question publishes one too. An extension
@@ -260,7 +260,7 @@ subscribers:
 | `internal/mcp` | answers `ListServers`, signs in on `AuthorizeServer` | `/mcp` draws nothing, no server signs in |
 | `internal/forget` | answers `DeleteSession` | `/delete` does nothing |
 | `internal/usercommand` | runs `RunCommand`, the human's own | shift+tab stops working |
-| `internal/review` | answers `LoadDiff` with the changes between two checkpoints | `/review` has nothing to show |
+| `internal/review` | answers `LoadDiff` with the changes between two checkpoints, records comments, sends a submitted review | `/review` has nothing to show |
 
 Each is a `Watch(...)` returning a stop that waits for whatever it
 started. One doing network or process work also takes the session's
@@ -694,7 +694,11 @@ adding a fat dependency fails with the transitive import named.
   the engine has moved onto that session. `/review` lists the files a request
   changed beside the selected one's diff, read between the trees its
   `CheckpointTaken` and `TurnEnded` name, so a resumed session's requests can be
-  reviewed too, though never undone.
+  reviewed too, though never undone. A comment covers a line or a `v` range in
+  one hunk and quotes it, and is stored as `ReviewCommented`, so a resumed
+  session reopens its reviews. `ctrl+s` sends the review as the next prompt,
+  which `internal/review` writes so a reviewer's words are always framed as
+  opinions to weigh and the human's as instructions, then closes it.
 
   **A thing leaves `ui` when it stops needing Model.** That is why
   `island`, `layout`, `markdown`, `search`, `status`, `theme` and `welcome` are

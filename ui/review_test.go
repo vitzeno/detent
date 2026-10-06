@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -123,6 +124,203 @@ func TestRestore_KeepsTheTreesToReviewButNotUndo(t *testing.T) {
 	assert.False(t, b.files || b.container)
 }
 
+// c on a line opens the editor, enter sends the comment over that line, and
+// once recorded it is drawn under the line it is about.
+func TestReview_CommentsOnALineAndShowsItUnderIt(t *testing.T) {
+	k := loadedReview(t)
+	k.press(t, "down")
+	k.press(t, "c")
+	k.typeText(t, "why")
+	k.press(t, "enter")
+	got := k.intentOf(t, event.CommentReviewKind).(event.CommentReview)
+	assert.Equal(t, k.m.review.id, got.Review)
+	assert.Equal(t, k.m.blocks[1].id, got.Reviewed)
+	assert.Equal(t, event.CommentAdded, got.Op)
+	want := got.Comment
+	want.ID = uuid.Nil
+	assert.Equal(t, event.ReviewComment{Path: "ui/facts.go", Side: "old", Start: 10, End: 10,
+		Quote: "-old line", Body: "why"}, want, "every line removed, so numbered as before")
+
+	k.m.apply(commented(got))
+	rows := k.m.reviewRows()
+	require.NotNil(t, rows[2].comment, "under the line it is about")
+	screen := ansi.Strip(k.m.withOverlay(k.m.baseView()))
+	assert.Regexp(t, `-old line\s*│[^\n]*\n[^┃]*┃ you\s[^\n]*\n[^┃]*┃ why\s`, screen, "its author, then its words")
+	assert.Contains(t, screen, "✎1", "and counted beside its file")
+}
+
+// v starts a range, and a comment over it covers every line between, numbered
+// on the new side once any line is not a removed one.
+func TestReview_ARangeCoversTheLinesBetween(t *testing.T) {
+	k := loadedReview(t)
+	k.press(t, "down")
+	k.press(t, "v")
+	k.press(t, "down")
+	k.press(t, "c")
+	k.typeText(t, "both")
+	k.press(t, "enter")
+	c := k.intentOf(t, event.CommentReviewKind).(event.CommentReview).Comment
+	assert.Equal(t, "new", c.Side)
+	assert.Equal(t, [2]int{10, 10}, [2]int{c.Start, c.End})
+	assert.Equal(t, "-old line\n+new line", c.Quote)
+}
+
+func TestReview_ARangeStaysInOneHunk(t *testing.T) {
+	k := loadedReview(t)
+	k.press(t, "down")
+	k.press(t, "v")
+	k.press(t, "]")
+	k.press(t, "down")
+	k.press(t, "c")
+	assert.Nil(t, k.m.review.edit)
+	assert.Contains(t, k.m.notice.text, "one hunk")
+}
+
+// An empty comment, or one dropped with esc, sends nothing.
+func TestReview_AnEmptyOrDroppedCommentSendsNothing(t *testing.T) {
+	k := loadedReview(t)
+	k.press(t, "down")
+	k.press(t, "c")
+	k.press(t, "enter")
+	k.press(t, "c")
+	k.typeText(t, "no")
+	k.press(t, "esc")
+	k.noIntent(t)
+	assert.Equal(t, modeReview, k.m.mode, "esc dropped the draft, not the review")
+}
+
+// On a reviewer's comment: c replies to it, e rewrites it, which makes it the
+// human's with the reviewer's words kept, and x deletes it on the second press.
+func TestReview_RepliesEditsAndDeletesAComment(t *testing.T) {
+	k := loadedReview(t)
+	theirs := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "ui/facts.go",
+		Side: "new", Start: 10, End: 10, Quote: "+new line", Body: "unclear"}
+	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Reviewed: k.m.blocks[1].id, Base: "b2", Head: "e2",
+		Op: event.CommentAdded, Comment: theirs})
+	k.press(t, "down")
+	k.press(t, "down")
+	k.press(t, "down")
+	require.NotNil(t, k.m.reviewRows()[k.m.review.line].comment, "on the comment")
+
+	k.press(t, "c")
+	k.typeText(t, "agreed")
+	k.press(t, "enter")
+	reply := k.intentOf(t, event.CommentReviewKind).(event.CommentReview).Comment
+	assert.Equal(t, theirs.ID, reply.ReplyTo)
+	assert.Equal(t, "agreed", reply.Body)
+
+	k.press(t, "e")
+	for range len("unclear") {
+		k.m, _ = k.m.update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	}
+	k.typeText(t, "rename it")
+	k.press(t, "enter")
+	edit := k.intentOf(t, event.CommentReviewKind).(event.CommentReview)
+	assert.Equal(t, event.CommentEdited, edit.Op)
+	assert.Empty(t, edit.Comment.Author, "rewritten, it is the human's")
+	assert.Equal(t, "unclear", edit.Comment.Original)
+	assert.Equal(t, "rename it", edit.Comment.Body)
+
+	k.press(t, "x")
+	k.noIntent(t)
+	k.press(t, "x")
+	del := k.intentOf(t, event.CommentReviewKind).(event.CommentReview)
+	assert.Equal(t, event.CommentDeleted, del.Op)
+	assert.Equal(t, theirs.ID, del.Comment.ID)
+}
+
+// A long comment wraps inside the pane, past the gutter, and never loses words.
+func TestReview_ALongCommentWrapsWhole(t *testing.T) {
+	k := loadedReview(t)
+	body := "this renames the field but the store still reads the old key, so a resumed session loses it"
+	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: event.ReviewComment{
+		ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "ui/facts.go", Side: "new", Start: 10, End: 10,
+		Body: body}})
+	var words []string
+	for _, l := range k.m.reviewDiffLines(30) {
+		l = ansi.Strip(l)
+		if _, text, ok := strings.Cut(l, "┃ "); ok && !strings.HasPrefix(text, "reviewer") {
+			assert.NotContains(t, text, "…", "a comment is wrapped, never cut")
+			assert.LessOrEqual(t, ansi.StringWidth(l), k.m.reviewTextWidth())
+			words = append(words, strings.Fields(text)...)
+		}
+	}
+	assert.Equal(t, strings.Fields(body), words)
+}
+
+// A deleted comment takes its replies with it.
+func TestReview_DeletingACommentDropsItsReplies(t *testing.T) {
+	k := loadedReview(t)
+	parent := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Path: "ui/facts.go", Side: "new", Start: 10, End: 10}
+	for _, c := range []event.ReviewComment{parent, {ID: uuid.Must(uuid.NewV7()), ReplyTo: parent.ID}} {
+		k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: c})
+	}
+	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentDeleted, Comment: event.ReviewComment{ID: parent.ID}})
+	assert.Empty(t, k.m.reviewByID(k.m.review.id).comments)
+}
+
+// ctrl+s sends every comment, and once the review is recorded as sent the
+// modal closes and says so.
+func TestReview_SubmitSendsTheCommentsAndCloses(t *testing.T) {
+	k := loadedReview(t)
+	k.ctrl(t, 's')
+	k.noIntent(t)
+	assert.Contains(t, k.m.notice.text, "nothing to send")
+
+	c := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Path: "ui/facts.go", Side: "new", Start: 10, End: 10, Body: "x"}
+	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: c})
+	k.ctrl(t, 's')
+	sub := k.intentOf(t, event.SubmitReviewKind).(event.SubmitReview)
+	assert.Equal(t, 2, sub.Request)
+	assert.Equal(t, []event.ReviewComment{c}, sub.Comments)
+
+	k.m.apply(event.ReviewSubmitted{Review: sub.Review, Comments: 1})
+	assert.Equal(t, modeInput, k.m.mode)
+	assert.Contains(t, k.m.notice.text, "sent 1 comment")
+}
+
+// /review again finds the open review, and once that is sent starts another.
+func TestReview_ReopensTheOpenReviewAndStartsAnotherOnceSent(t *testing.T) {
+	k := loadedReview(t)
+	first := k.m.review.id
+	k.m.apply(event.ReviewCommented{Review: first, Reviewed: k.m.blocks[1].id, Base: "b2", Head: "e2",
+		Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7())}})
+	k.press(t, "esc")
+	k.press(t, "esc")
+	k.openReview("/review")
+	assert.Equal(t, first, k.m.review.id)
+
+	k.m.apply(event.ReviewSubmitted{Review: first, Comments: 1})
+	k.openReview("/review")
+	assert.NotEqual(t, first, k.m.review.id)
+}
+
+// Undoing a request drops its reviews, and a replay brings them back otherwise.
+func TestReview_UndoDropsTheUndoneRequestsReviews(t *testing.T) {
+	k := loadedReview(t)
+	turn := k.m.blocks[1].id
+	added := event.ReviewCommented{Review: k.m.review.id, Reviewed: turn, Base: "b2", Head: "e2",
+		Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Body: "kept"}}
+	k.m.apply(added)
+
+	replayed := New(t.Context(), event.New(), SessionInfo{}).Restore(asRecords([]event.Event{
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "edit"}, added}))
+	require.Len(t, replayed.reviews, 1)
+	assert.Equal(t, "kept", replayed.reviews[0].comments[0].Body)
+
+	k.m.apply(event.RolledBack{Turn: turn})
+	assert.Empty(t, k.m.reviews)
+}
+
+// A reviewer's words are a model's, shown rather than sent to the terminal.
+func TestReview_DefusesAComment(t *testing.T) {
+	k := loadedReview(t)
+	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded,
+		Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Author: "r\x1b[2J", Body: "b\x1b]52;c;x\x07"}})
+	c := k.m.reviewByID(k.m.review.id).comments[0]
+	assert.NotContains(t, c.Author+c.Body, "\x1b")
+}
+
 // openReview runs a /review line and what it asks for.
 func (k *keyed) openReview(line string) {
 	var cmd tea.Cmd
@@ -160,4 +358,30 @@ func loadedDiff(base, head string) event.DiffLoaded {
 			{Header: "@@ -0,0 +1 @@", Lines: []event.DiffLine{{Op: event.LineAdded, New: 1, Text: "# hi"}}},
 		}},
 	}}
+}
+
+// loadedReview is the review of request 2 with its diff loaded and the diff pane focused.
+func loadedReview(t *testing.T) *keyed {
+	t.Helper()
+	k := reviewable(t, "e1", "e2")
+	k.openReview("/review")
+	k.intentOf(t, event.LoadDiffKind)
+	k.m.apply(loadedDiff("b2", "e2"))
+	k.press(t, "tab")
+	return k
+}
+
+// commented is the fact internal/review records for a comment.
+func commented(v event.CommentReview) event.ReviewCommented {
+	return event.ReviewCommented{Review: v.Review, Reviewed: v.Reviewed, Base: v.Base, Head: v.Head,
+		Op: v.Op, Comment: v.Comment}
+}
+
+// typeText types into the editor. Its commands only blink the cursor, so
+// they are not run, which would wait on each.
+func (k *keyed) typeText(t *testing.T, s string) {
+	t.Helper()
+	for _, r := range s {
+		k.m, _ = k.m.update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
 }

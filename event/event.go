@@ -62,7 +62,9 @@ const (
 	UserCommandStartedKind Kind = "user_command.started"
 	UserCommandEndedKind   Kind = "user_command.ended"
 
-	DiffLoadedKind Kind = "review.diff"
+	DiffLoadedKind      Kind = "review.diff"
+	ReviewCommentedKind Kind = "review.commented"
+	ReviewSubmittedKind Kind = "review.submitted"
 
 	ServersListedKind        Kind = "servers.listed"
 	AuthorizationWaitingKind Kind = "auth.waiting"
@@ -98,7 +100,9 @@ const (
 	StopAgentKind     Kind = "do.stop_agent"
 
 	// review's.
-	LoadDiffKind Kind = "do.load_diff"
+	LoadDiffKind      Kind = "do.load_diff"
+	CommentReviewKind Kind = "do.comment_review"
+	SubmitReviewKind  Kind = "do.submit_review"
 
 	// mcp's.
 	ListServersKind     Kind = "do.list_servers"
@@ -118,7 +122,7 @@ var intents = map[Kind]bool{
 	ListSessionsKind:  true, RenameSessionKind: true, LoadSessionKind: true, DeleteSessionKind: true,
 	RunCommandKind: true, CancelCommandKind: true, StopAgentKind: true,
 	ListServersKind: true, AuthorizeServerKind: true, OpenAuthKind: true,
-	LoadDiffKind: true,
+	LoadDiffKind: true, CommentReviewKind: true, SubmitReviewKind: true,
 }
 
 // fact marks an event as never dropped. Every event but OutputChunk

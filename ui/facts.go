@@ -59,6 +59,12 @@ func (m *Model) apply(ev event.Event) {
 	case event.DiffLoaded:
 		m.diffLoaded(v)
 
+	case event.ReviewCommented:
+		m.reviewCommented(v)
+
+	case event.ReviewSubmitted:
+		m.reviewSubmitted(v)
+
 	case event.ServersListed:
 		m.servers = v.Servers
 
@@ -379,12 +385,16 @@ func (m *Model) rolledBack(id uuid.UUID) {
 	maps.DeleteFunc(m.agents, func(_ uuid.UUID, a *agentState) bool { return gone(a) })
 	m.agentOrder = slices.DeleteFunc(m.agentOrder, gone)
 	m.nav.cursor = min(m.nav.cursor, max(0, len(m.rows())-1))
+	// A review of an undone request is about changes that are gone.
+	m.reviews = slices.DeleteFunc(m.reviews, func(r *reviewRecord) bool {
+		return !slices.ContainsFunc(m.blocks, func(b *turnBlock) bool { return b.id == r.reviewed })
+	})
 	m.noteOK("undone")
 }
 
 // clearHistory forgets every block, as the engine forgot the transcript.
 func (m *Model) clearHistory() {
-	m.blocks, m.cur = nil, nil
+	m.blocks, m.cur, m.reviews = nil, nil, nil
 	clear(m.agents)
 	m.agentOrder = nil
 	m.nav = navState{follow: true}

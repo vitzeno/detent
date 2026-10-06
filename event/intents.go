@@ -119,6 +119,31 @@ type LoadDiff struct {
 
 func (LoadDiff) Kind() Kind { return LoadDiffKind }
 
+// CommentReview adds, edits or deletes one comment. internal/review answers with
+// ReviewCommented, which is what is stored and what the modal draws.
+type CommentReview struct {
+	fact
+	Review   uuid.UUID     `json:"Review"`
+	Reviewed uuid.UUID     `json:"Reviewed"`
+	Base     string        `json:"Base"`
+	Head     string        `json:"Head"`
+	Op       CommentOp     `json:"Op"`
+	Comment  ReviewComment `json:"Comment"`
+}
+
+func (CommentReview) Kind() Kind { return CommentReviewKind }
+
+// SubmitReview sends a review's comments to the agent as its next prompt, the
+// human's as instructions and a reviewer's as opinions. Request is its number.
+type SubmitReview struct {
+	fact
+	Review   uuid.UUID       `json:"Review"`
+	Request  int             `json:"Request"`
+	Comments []ReviewComment `json:"Comments"`
+}
+
+func (SubmitReview) Kind() Kind { return SubmitReviewKind }
+
 // RenameSession gives a session a name a human will recognise. Not in the
 // log: the name is the header's own, and its holder answers with a listing.
 type RenameSession struct {

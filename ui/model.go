@@ -91,6 +91,7 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	finder    finderState
 	resume    resumeState
 	review    reviewState
+	reviews   []*reviewRecord
 	// resuming is the session the picker asked for, replayed once it starts.
 	resuming *sessionPreview
 

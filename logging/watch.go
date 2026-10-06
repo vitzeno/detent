@@ -160,6 +160,11 @@ func describe(e event.Event) (slog.Level, []any) {
 	case event.DiffLoaded:
 		// Counts only: a patch is the human's code.
 		return slog.LevelDebug, []any{"files", len(v.Files), "cut", v.Cut, KeyReason, Snippet(v.Err)}
+	case event.ReviewCommented:
+		// Never the comment's words, which are the human's or a model's prose.
+		return slog.LevelInfo, []any{"review", v.Review, "op", v.Op, "by_agent", v.Comment.Author != ""}
+	case event.ReviewSubmitted:
+		return slog.LevelInfo, []any{"review", v.Review, "comments", v.Comments}
 	case event.ServersListed:
 		return slog.LevelDebug, []any{"servers", len(v.Servers)}
 	case event.AuthorizationWaiting:

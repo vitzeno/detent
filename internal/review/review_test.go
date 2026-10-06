@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -64,6 +65,66 @@ func TestWatch_SaysWhenTheFilesArePruned(t *testing.T) {
 	got := ask(t, d, event.LoadDiff{Base: "0123456789abcdef0123456789abcdef01234567"})
 	assert.Contains(t, got.Err, "pruned")
 	assert.Empty(t, got.Files)
+}
+
+// A comment is recorded as a fact, which is what the store keeps and the modal draws.
+func TestWatch_RecordsACommentAsAFact(t *testing.T) {
+	bus, seen := watching(t)
+	c := event.CommentReview{Review: uuid.Must(uuid.NewV7()), Reviewed: uuid.Must(uuid.NewV7()),
+		Base: "b", Head: "h", Op: event.CommentAdded,
+		Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Path: "a.go", Side: "new", Start: 2, End: 2, Body: "x"}}
+	bus.Publish(c)
+	assert.Equal(t, event.ReviewCommented{Review: c.Review, Reviewed: c.Reviewed, Base: "b", Head: "h",
+		Op: event.CommentAdded, Comment: c.Comment}, next(t, seen))
+}
+
+// Submitting closes the review before it becomes the next prompt.
+func TestWatch_SubmittingClosesTheReviewThenSendsIt(t *testing.T) {
+	bus, seen := watching(t)
+	id := uuid.Must(uuid.NewV7())
+	bus.Publish(event.SubmitReview{Review: id, Request: 2, Comments: []event.ReviewComment{
+		{ID: uuid.Must(uuid.NewV7()), Path: "a.go", Side: "new", Start: 1, End: 1, Quote: "+x", Body: "no"}}})
+	assert.Equal(t, event.ReviewSubmitted{Review: id, Comments: 1}, next(t, seen))
+	p, ok := next(t, seen).(event.SubmitPrompt)
+	require.True(t, ok)
+	assert.Contains(t, p.Text, "a.go:1")
+}
+
+// The human's comments are instructions and a reviewer's are opinions, each
+// under what it quotes, and a reply sits under the comment it answers.
+func TestPrompt_KeepsTheHumansCommentsApartFromAReviewers(t *testing.T) {
+	mine, theirs, edited := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	got := prompt(event.SubmitReview{Request: 3, Comments: []event.ReviewComment{
+		{ID: mine, Path: "ui/facts.go", Side: "old", Start: 118, End: 118, Quote: "-m.resumed(v)",
+			Body: "why was this deleted?"},
+		{ID: theirs, Author: "reviewer", Path: "tool/registry.go", Side: "new", Start: 88, End: 90,
+			Quote: "+a\n+b\n+c", Body: "Only copies\nevery spec"},
+		{ID: uuid.Must(uuid.NewV7()), ReplyTo: theirs, Body: "share them, as Without does"},
+		{ID: edited, Path: "a.go", Side: "new", Start: 4, End: 4, Quote: "+x", Body: "rename it",
+			Original: "this name is unclear"},
+	}})
+	assert.Equal(t, `Review of your changes in request 3.
+
+From the human. Act on these:
+
+ui/facts.go:118 (removed lines, numbered as before the change)
+    -m.resumed(v)
+  why was this deleted?
+
+a.go:4
+    +x
+  rename it
+  (the human rewrote a reviewer's comment, which said: this name is unclear)
+
+From a reviewer agent, kept by the human. Weigh each, and say where you disagree:
+
+tool/registry.go:88-90
+    +a
+    +b
+    +c
+  Only copies
+  every spec
+  > the human: share them, as Without does`, got)
 }
 
 func TestParse(t *testing.T) {
@@ -170,6 +231,28 @@ func ask(t *testing.T, files Patcher, v event.LoadDiff) event.DiffLoaded {
 	case <-time.After(5 * time.Second):
 		t.Fatal("LoadDiff was never answered")
 		return event.DiffLoaded{}
+	}
+}
+
+// watching is a bus with Watch on it and a feed of the facts it publishes.
+func watching(t *testing.T) (*event.Bus, <-chan event.Record) {
+	t.Helper()
+	bus := event.New()
+	seen, unsub := bus.Subscribe(event.Only(event.ReviewCommentedKind, event.ReviewSubmittedKind,
+		event.SubmitPromptKind))
+	stop := Watch(context.Background(), bus, nil)
+	t.Cleanup(func() { stop(); unsub(); bus.Close() })
+	return bus, seen
+}
+
+func next(t *testing.T, seen <-chan event.Record) event.Event {
+	t.Helper()
+	select {
+	case rec := <-seen:
+		return rec.Event
+	case <-time.After(5 * time.Second):
+		t.Fatal("nothing was published")
+		return nil
 	}
 }
 

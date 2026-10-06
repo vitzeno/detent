@@ -119,6 +119,8 @@ type resumeState struct {
 type reviewState struct {
 	block      *turnBlock
 	base, head string
+	// id is the review comments go to, open or about to be.
+	id         uuid.UUID
 	loading    bool
 	files      []event.FileDiff
 	cut        bool
@@ -126,6 +128,12 @@ type reviewState struct {
 	file, line int
 	// diffFocused is whether the arrows move the line rather than the file.
 	diffFocused bool
+	// ranging is a v range running from anchor to the line.
+	ranging bool
+	anchor  int
+	edit    *commentEdit
+	// deleting is the comment x was pressed on once, deleted on the second.
+	deleting uuid.UUID
 	// back is the pane it was opened from, which esc returns to.
 	back focusPane
 }

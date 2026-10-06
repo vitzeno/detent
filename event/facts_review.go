@@ -1,5 +1,7 @@
 package event
 
+import "github.com/google/uuid"
+
 // DiffLoaded answers LoadDiff with the changes from Base to Head, or why there
 // are none. Never stored: the trees are the record, and a patch can be large.
 type DiffLoaded struct {
@@ -53,4 +55,52 @@ const (
 	LineContext LineOp = ' '
 	LineAdded   LineOp = '+'
 	LineRemoved LineOp = '-'
+)
+
+// ReviewCommented is one change to a review's comments. Every one is stored, so
+// a resumed session reopens its reviews as they were left.
+type ReviewCommented struct {
+	fact
+	Review   uuid.UUID     `json:"Review"`
+	Reviewed uuid.UUID     `json:"Reviewed"` // the request whose changes are under review
+	Base     string        `json:"Base"`
+	Head     string        `json:"Head"`
+	Op       CommentOp     `json:"Op"`
+	Comment  ReviewComment `json:"Comment"`
+}
+
+func (ReviewCommented) Kind() Kind { return ReviewCommentedKind }
+
+// ReviewSubmitted says a review was sent to the agent, which closes it.
+type ReviewSubmitted struct {
+	fact
+	Review   uuid.UUID `json:"Review"`
+	Comments int       `json:"Comments"`
+}
+
+func (ReviewSubmitted) Kind() Kind { return ReviewSubmittedKind }
+
+// ReviewComment is one comment on a diff. It quotes the lines it is about, so
+// it still reads once git has pruned the trees they came from.
+type ReviewComment struct {
+	ID      uuid.UUID `json:"ID"`
+	ReplyTo uuid.UUID `json:"ReplyTo"`
+	Author  string    `json:"Author"` // the agent that wrote it, "" for the human
+	Path    string    `json:"Path"`
+	Side    string    `json:"Side"` // "old" when every line is a removed one, else "new"
+	Start   int       `json:"Start"`
+	End     int       `json:"End"`
+	Quote   string    `json:"Quote"` // the lines commented on, with their markers
+	Body    string    `json:"Body"`
+	// Original is a reviewer's words the human rewrote, which made it theirs.
+	Original string `json:"Original"`
+}
+
+// CommentOp is what a ReviewCommented does to its comment.
+type CommentOp string
+
+const (
+	CommentAdded   CommentOp = "add"
+	CommentEdited  CommentOp = "edit"
+	CommentDeleted CommentOp = "delete"
 )
