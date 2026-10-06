@@ -139,7 +139,8 @@ func (m Model) answerInInspector(yes bool) (Model, tea.Cmd) {
 	call := q.ToolCall
 	m.unask(call)
 	m.syncInspector()
-	return m, m.send(event.ResolveApproval{ToolCall: call, Approved: yes})
+	m.send(event.ResolveApproval{ToolCall: call, Approved: yes})
+	return m, nil
 }
 
 // stopAgent stops a subagent, asked twice so a stray key keeps its work.
@@ -155,7 +156,8 @@ func (m Model) stopAgent(a *agentState) (Model, tea.Cmd) {
 	m.stopArmed = uuid.Nil
 	a.stopping = true
 	m.touch(a)
-	return m, m.send(event.StopAgent{Agent: a.id})
+	m.send(event.StopAgent{Agent: a.id})
+	return m, nil
 }
 
 // inspectorRows is the agent's task, its own rows, and its report once done.

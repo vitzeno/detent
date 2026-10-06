@@ -30,7 +30,9 @@ func (m Model) showResume(input string) (Model, tea.Cmd) {
 	m.mode = modeResume
 	m.resume.cursor = m.resumeStart(strings.TrimSpace(strings.TrimPrefix(input, "/resume")))
 	// Listed afresh, since this session has grown since the last listing.
-	return m, tea.Batch(m.send(event.ListSessions{}), m.loadSelected())
+	m.send(event.ListSessions{})
+	m.loadSelected()
+	return m, nil
 }
 
 // resumeStart is where the cursor opens: the session named by id or name,
@@ -78,7 +80,8 @@ func (m Model) resumeKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		}
 		m.resume.cursor = min(max(m.resume.cursor+d, 0), max(0, len(m.sessions)-1))
 		m.resume.scroll = 0
-		return m, m.loadSelected()
+		m.loadSelected()
+		return m, nil
 	case "pgup":
 		m.scrollResume(m.modalPaneHeight())
 	case "pgdown":
@@ -109,7 +112,8 @@ func (m Model) pickSession() (Model, tea.Cmd) {
 	}
 	m.resuming = p
 	next, _ := m.closeResume()
-	return next, next.send(event.ResumeSession{Session: s.ID})
+	next.send(event.ResumeSession{Session: s.ID})
+	return next, nil
 }
 
 // selectedSession is the session under the cursor, nil when none is stored.
@@ -121,13 +125,13 @@ func (m Model) selectedSession() *event.SessionSummary {
 }
 
 // loadSelected asks for the selected session's records, once.
-func (m *Model) loadSelected() tea.Cmd {
+func (m *Model) loadSelected() {
 	s := m.selectedSession()
 	if m.mode != modeResume || s == nil || m.resume.loaded[s.ID] != nil {
-		return nil
+		return
 	}
 	m.resume.loaded[s.ID] = &sessionPreview{id: s.ID}
-	return m.send(event.LoadSession{Session: s.ID})
+	m.send(event.LoadSession{Session: s.ID})
 }
 
 // loaded fills in a preview the picker asked for.

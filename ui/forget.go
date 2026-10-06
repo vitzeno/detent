@@ -55,7 +55,8 @@ func (m Model) confirmForget() (Model, tea.Cmd) {
 	if s == nil {
 		return m, nil
 	}
-	return m, m.send(event.DeleteSession{Session: s.ID})
+	m.send(event.DeleteSession{Session: s.ID})
+	return m, nil
 }
 
 func (m Model) cancelForget() (Model, tea.Cmd) {

@@ -93,9 +93,7 @@ func TestForgetPage_YPublishesTheIntent(t *testing.T) {
 	}})
 
 	next, _ := m.runForget("/delete doomed")
-	_, cmd := next.forgetKey(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	require.NotNil(t, cmd)
-	cmd()
+	next.forgetKey(tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	select {
 	case rec := <-seen:

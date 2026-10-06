@@ -94,7 +94,8 @@ func (m Model) showReview(input string) (Model, tea.Cmd) {
 		m.noteErr(fmt.Sprintf("no %s to review yet", scopeNoun(scope)))
 		scope = event.ScopeRequest
 	}
-	return m, m.loadScope(scope)
+	m.loadScope(scope)
+	return m, nil
 }
 
 // reviewTarget is the request /review means, or why there is none.
@@ -133,9 +134,11 @@ func (m Model) openReview(rec *reviewRecord) (Model, tea.Cmd) {
 		against: rec.against, id: rec.id, pinned: true, loading: true, back: back}
 	m.mode = modeReview
 	if rec.scope == event.ScopeBranch {
-		return m, m.send(event.LoadDiff{Branch: true, Against: rec.against})
+		m.send(event.LoadDiff{Branch: true, Against: rec.against})
+		return m, nil
 	}
-	return m, m.send(event.LoadDiff{Base: rec.base, Head: rec.head})
+	m.send(event.LoadDiff{Base: rec.base, Head: rec.head})
+	return m, nil
 }
 
 // openReviewRow opens the review a history row stands for.
@@ -163,7 +166,7 @@ func (m Model) stepReview(d int) (Model, tea.Cmd) {
 
 // loadScope switches the review to scope and asks for its changes. A branch's
 // base is only known once they come, so its review is found then.
-func (m *Model) loadScope(scope event.ReviewScope) tea.Cmd {
+func (m *Model) loadScope(scope event.ReviewScope) {
 	r := &m.review
 	if r.request == nil {
 		r.request = r.block
@@ -177,10 +180,11 @@ func (m *Model) loadScope(scope event.ReviewScope) tea.Cmd {
 	}
 	if scope == event.ScopeBranch {
 		r.id = uuid.Nil
-		return m.send(event.LoadDiff{Branch: true, Against: r.against})
+		m.send(event.LoadDiff{Branch: true, Against: r.against})
+		return
 	}
 	r.id = m.openReviewOf(m.reviewed(), base, head)
-	return m.send(event.LoadDiff{Base: base, Head: head})
+	m.send(event.LoadDiff{Base: base, Head: head})
 }
 
 // nextScope cycles to the next scope with something to show.
@@ -189,19 +193,20 @@ func (m Model) nextScope() (Model, tea.Cmd) {
 	for range len(reviewScopes) - 1 {
 		i = (i + 1) % len(reviewScopes)
 		if m.scopeOpen(reviewScopes[i]) {
-			return m, m.loadScope(reviewScopes[i])
+			m.loadScope(reviewScopes[i])
+			return m, nil
 		}
 	}
 	return m, nil
 }
 
 // reloadReview asks again for a review diffLoaded moved, since a fact cannot send.
-func (m *Model) reloadReview() tea.Cmd {
+func (m *Model) reloadReview() {
 	if m.mode != modeReview || !m.review.reload {
-		return nil
+		return
 	}
 	m.review.reload = false
-	return m.loadScope(m.review.scope)
+	m.loadScope(m.review.scope)
 }
 
 // scopeTrees is what a scope compares, the session ending where since begins,
@@ -590,7 +595,8 @@ func (m Model) deleteComment() (Model, tea.Cmd) {
 	}
 	r.deleting = uuid.Nil
 	r.line = max(0, r.line-1)
-	return m, m.sendComment(event.CommentDeleted, event.ReviewComment{ID: c.ID})
+	m.sendComment(event.CommentDeleted, event.ReviewComment{ID: c.ID})
+	return m, nil
 }
 
 // editKey writes into the editor: enter saves, esc drops the draft.
@@ -607,13 +613,13 @@ func (m Model) editKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		if body == "" {
 			return m, nil
 		}
-		save := m.saveComment(e, body)
+		m.saveComment(e, body)
 		// An edit made in triage counts as kept, and moves on.
 		if r.triage != nil && e.op == event.CommentEdited {
 			r.triage.kept++
 			m.nextTriage()
 		}
-		return m, save
+		return m, nil
 	}
 	var cmd tea.Cmd
 	r.edit.input, cmd = r.edit.input.Update(msg)
@@ -621,11 +627,11 @@ func (m Model) editKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 }
 
 // saveComment sends what the editor holds as the comment it was opened for.
-func (m Model) saveComment(e *commentEdit, body string) tea.Cmd {
+func (m Model) saveComment(e *commentEdit, body string) {
 	if e.op == event.CommentEdited {
 		c := m.commentByID(e.target)
 		if c == nil {
-			return nil
+			return
 		}
 		// A reviewer's comment the human rewrites is theirs, its first words kept.
 		edited := *c
@@ -633,15 +639,17 @@ func (m Model) saveComment(e *commentEdit, body string) tea.Cmd {
 			edited.Original, edited.Author = edited.Body, ""
 		}
 		edited.Body = body
-		return m.sendComment(event.CommentEdited, edited)
+		m.sendComment(event.CommentEdited, edited)
+		return
 	}
 	c := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Body: body, ReplyTo: e.target}
 	if parent := m.commentByID(e.target); parent != nil {
 		c.Path, c.Side, c.Start, c.End = parent.Path, parent.Side, parent.Start, parent.End
-		return m.sendComment(event.CommentAdded, c)
+		m.sendComment(event.CommentAdded, c)
+		return
 	}
 	m.anchor(&c, e.from, e.to)
-	return m.sendComment(event.CommentAdded, c)
+	m.sendComment(event.CommentAdded, c)
 }
 
 // anchor places c on rows from to to: the new side's numbers, unless every
@@ -677,9 +685,9 @@ func (m Model) anchor(c *event.ReviewComment, from, to int) {
 	c.Quote = strings.Join(quote, "\n")
 }
 
-func (m Model) sendComment(op event.CommentOp, c event.ReviewComment) tea.Cmd {
+func (m Model) sendComment(op event.CommentOp, c event.ReviewComment) {
 	r := m.review
-	return m.send(event.CommentReview{Review: r.id, Reviewed: m.reviewed(), Base: r.base, Head: r.head,
+	m.send(event.CommentReview{Review: r.id, Reviewed: m.reviewed(), Base: r.base, Head: r.head,
 		Scope: r.scope, Op: op, Comment: c})
 }
 
@@ -694,8 +702,9 @@ func (m Model) submitReview() (Model, tea.Cmd) {
 	if m.review.block != nil {
 		n = m.review.block.n
 	}
-	return m, m.send(event.SubmitReview{Review: rec.id, Scope: m.review.scope, Request: n,
+	m.send(event.SubmitReview{Review: rec.id, Scope: m.review.scope, Request: n,
 		Against: m.review.against, Comments: slices.Clone(rec.comments)})
+	return m, nil
 }
 
 // startReviewer asks for a reviewer on what the modal shows, the scope chosen
@@ -717,8 +726,9 @@ func (m Model) startReviewer() (Model, tea.Cmd) {
 	if r.block != nil {
 		n = r.block.n
 	}
-	return m, m.send(event.ReviewChanges{Review: r.id, Reviewed: m.reviewed(), Scope: r.scope,
+	m.send(event.ReviewChanges{Review: r.id, Reviewed: m.reviewed(), Scope: r.scope,
 		Base: r.base, Head: r.head, Against: r.against, Request: n, Asked: m.reviewAsked(), Files: r.raw})
+	return m, nil
 }
 
 // reviewAsked is what the changes were made for: one request's prompt, every
@@ -773,9 +783,9 @@ func (m Model) triageKey(key string) (Model, tea.Cmd, bool) {
 		return m, nil, true
 	case "n":
 		t.dropped++
-		drop := m.sendComment(event.CommentDeleted, event.ReviewComment{ID: t.queue[t.at]})
+		m.sendComment(event.CommentDeleted, event.ReviewComment{ID: t.queue[t.at]})
 		m.nextTriage()
-		return m, drop, true
+		return m, nil, true
 	case "e":
 		m.focusComment(t.queue[t.at])
 		next, cmd := m.startEdit()

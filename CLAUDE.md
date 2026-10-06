@@ -654,8 +654,10 @@ adding a fat dependency fails with the transitive import named.
   how much it resumed from. `ui.SessionInfo` carries only what no
   fact does, so the panes and the log cannot disagree about what ran. `facts.go` folds facts in and is the one place it learns
   anything. `Model.send` is the one place it asks for anything, and
-  `intents.go` holds most of its callers. Seven `tea.Cmd` constructors and eight message types
-  collapsed to one of each, so a test drives it with a sequence of
+  `intents.go` holds most of its callers. It publishes as the key is
+  handled rather than from a `tea.Cmd`, which Bubble Tea runs on a
+  goroutine of its own, so intents arrive in the order asked. Eight
+  message types collapsed to one, so a test drives it with a sequence of
   events and no harness at all. `ui/doc.go` is the file map and the
   naming rules. Read it before adding a file.
 

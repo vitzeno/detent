@@ -173,8 +173,8 @@ func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 func (m Model) Init() tea.Cmd {
 	// Asked at startup so the welcome pane can say what is resumable,
 	// and /sessions has an answer before it is opened.
-	return tea.Batch(tickWelcome(), nextFact(m.facts),
-		m.send(event.ListSessions{}))
+	m.send(event.ListSessions{})
+	return tea.Batch(tickWelcome(), nextFact(m.facts))
 }
 
 // Update routes the message, then re-syncs the panes once, so no
@@ -230,7 +230,9 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		// A listing may have put another session under the picker's cursor.
 		// And /new may have brought the welcome back.
-		load := tea.Batch(m.loadSelected(), m.reloadReview(), m.fadeTick(), m.welcomeTick())
+		m.loadSelected()
+		m.reloadReview()
+		load := tea.Batch(m.fadeTick(), m.welcomeTick())
 		var cmd tea.Cmd
 		// Edge only: Tick carries the live tag, so re-arming restarts
 		// the chain and costs a frame.
@@ -256,14 +258,9 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 	return m, cmd
 }
 
-// send publishes an intent. Every key that changes what the engine is
-// doing goes through here, and nothing else reaches it.
-func (m Model) send(ev event.Event) tea.Cmd {
-	return func() tea.Msg {
-		m.bus.Publish(ev)
-		return nil
-	}
-}
+// send publishes an intent at once, safe since Publish never blocks, so intents
+// arrive in the order asked. Every key that asks anything of the engine comes here.
+func (m Model) send(ev event.Event) { m.bus.Publish(ev) }
 
 // factMsg carries every fact that was ready, in order.
 type factMsg struct{ events []event.Event }

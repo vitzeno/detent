@@ -71,7 +71,8 @@ func (m Model) confirmUndo(revertFiles bool) (Model, tea.Cmd) {
 	if b == nil {
 		return m, nil
 	}
-	return m, m.send(event.RequestRollback{Turn: b.id, RevertFiles: revertFiles})
+	m.send(event.RequestRollback{Turn: b.id, RevertFiles: revertFiles})
+	return m, nil
 }
 
 func (m Model) cancelUndo() (Model, tea.Cmd) {

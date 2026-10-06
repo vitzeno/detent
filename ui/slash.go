@@ -42,7 +42,8 @@ func slashCommands() []slashCmd {
 		{name: "/context", desc: "show what fills the model's context, and what to trim", run: func(m Model, _ string) (Model, tea.Cmd) {
 			next, cmd := m.openPanel(panelContext)
 			// Measured afresh, since a server may have connected since the last Step.
-			return next, tea.Batch(cmd, m.send(event.MeasureContext{}))
+			m.send(event.MeasureContext{})
+			return next, cmd
 		}},
 		{name: "/status", desc: "show what detent is and what it has done", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.openPanel(panelStatus)

@@ -1060,3 +1060,21 @@ func sends[T tea.Msg](cmd tea.Cmd) bool {
 		return false
 	}
 }
+
+// An intent is published as the key is handled, not from a command run on a
+// goroutine of its own, so a comment and the review it belongs to arrive in order.
+func TestSend_IntentsArriveInTheOrderAsked(t *testing.T) {
+	k := loadedReview(t)
+	only := func(key string) {
+		k.m, _ = k.m.update(tea.KeyPressMsg{Code: keyCode(key), Text: keyText(key), Mod: keyMod(key)})
+	}
+	only("down")
+	only("c")
+	k.typeText(t, "why")
+	only("enter")
+	comment := k.intentOf(t, event.CommentReviewKind).(event.CommentReview)
+	k.m.apply(commented(comment))
+	k.m, _ = k.m.update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	sent := k.intent(t).(event.SubmitReview)
+	assert.Equal(t, comment.Comment.ID, sent.Comments[0].ID)
+}

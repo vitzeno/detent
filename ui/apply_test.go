@@ -417,9 +417,7 @@ func TestSessions_AreAskedForAndFolded(t *testing.T) {
 
 	m := New(t.Context(), bus, SessionInfo{})
 	m.layout.width, m.layout.height = 120, 40
-	m, cmd := m.listSessions("/sessions")
-	require.NotNil(t, cmd)
-	cmd()
+	m, _ = m.listSessions("/sessions")
 
 	assert.Equal(t, panelSessions, m.panel.open)
 	select {
@@ -503,9 +501,7 @@ func TestRename_PublishesTheIntent(t *testing.T) {
 	m.layout.width, m.layout.height = 120, 40
 	m.apply(event.SessionStarted{Session: mine, Recorded: true})
 
-	_, cmd := m.renameSession("/rename the sandbox bug")
-	require.NotNil(t, cmd)
-	cmd()
+	m.renameSession("/rename the sandbox bug")
 
 	select {
 	case rec := <-asked:

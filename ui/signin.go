@@ -131,14 +131,16 @@ func (m Model) signInKey(s *signInState, key string) (Model, tea.Cmd, bool) {
 	case "enter", "o":
 		switch s.stage {
 		case stageWaiting:
-			return m, m.send(event.OpenAuthorization{Server: s.server}), true
+			m.send(event.OpenAuthorization{Server: s.server})
+			return m, nil, true
 		case stageSignedIn:
 			// Asking again would throw a working token away.
 			m.noteOK(s.server + " is already signed in · /mcp auth " + s.server + " signs in again")
 			return m, nil, true
 		case stageFailed, stageStale:
 			m.noteOK("asking " + s.server + " for a new link")
-			return m, m.send(event.AuthorizeServer{Server: s.server}), true
+			m.send(event.AuthorizeServer{Server: s.server})
+			return m, nil, true
 		}
 	case "c":
 		if s.stage != stageWaiting {

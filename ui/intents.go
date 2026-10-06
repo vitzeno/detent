@@ -40,7 +40,8 @@ func (m Model) sendPrompt(text string) (Model, tea.Cmd) {
 	} else {
 		m.noteOK("steering the current request")
 	}
-	return m, tea.Batch(m.spinner.Tick, m.send(event.SubmitPrompt{Text: text}))
+	m.send(event.SubmitPrompt{Text: text})
+	return m, m.spinner.Tick
 }
 
 // runShell sends what was typed to the shell. No Turn opens, and the
@@ -52,7 +53,8 @@ func (m Model) runShell() (Model, tea.Cmd) {
 	}
 	m.prompt.Clear()
 	m.clearNotice()
-	return m, m.send(event.RunCommand{Text: text})
+	m.send(event.RunCommand{Text: text})
+	return m, nil
 }
 
 func (m Model) approve() (Model, tea.Cmd) { return m.answerApproval(true) }
@@ -69,7 +71,8 @@ func (m Model) answerApproval(yes bool) (Model, tea.Cmd) {
 	m.backToInput()
 	// Still asking if another question was queued behind this one.
 	m.waiting = m.asking() == nil
-	return m, tea.Batch(m.spinner.Tick, m.send(event.ResolveApproval{ToolCall: call, Approved: yes}))
+	m.send(event.ResolveApproval{ToolCall: call, Approved: yes})
+	return m, m.spinner.Tick
 }
 
 func (m Model) answerBound(keepGoing bool) (Model, tea.Cmd) {
@@ -81,14 +84,16 @@ func (m Model) answerBound(keepGoing bool) (Model, tea.Cmd) {
 	m.bound = nil
 	m.backToInput()
 	m.waiting = keepGoing
-	return m, tea.Batch(m.spinner.Tick, m.send(event.Continue{Turn: turn, Approved: keepGoing}))
+	m.send(event.Continue{Turn: turn, Approved: keepGoing})
+	return m, m.spinner.Tick
 }
 
 // listSessions opens the panel and asks for a fresh listing, since
 // another detent may have recorded one since this started.
 func (m Model) listSessions(string) (Model, tea.Cmd) {
 	next, _ := m.openPanel(panelSessions)
-	return next, m.send(event.ListSessions{})
+	m.send(event.ListSessions{})
+	return next, nil
 }
 
 // listServers asks for the page afresh each time, since a stale one is
@@ -97,7 +102,8 @@ func (m Model) listServers(input string) (Model, tea.Cmd) {
 	args := strings.Fields(strings.TrimPrefix(input, "/mcp"))
 	if len(args) == 0 {
 		next, _ := m.openPanel(panelMCP)
-		return next, m.send(event.ListServers{})
+		m.send(event.ListServers{})
+		return next, nil
 	}
 	if len(args) != 2 || args[0] != "auth" {
 		m.noteErr("usage: /mcp, or /mcp auth <server>")
@@ -108,7 +114,8 @@ func (m Model) listServers(input string) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.noteOK("asking " + args[1] + " for a new link")
-	return m, m.send(event.AuthorizeServer{Server: args[1]})
+	m.send(event.AuthorizeServer{Server: args[1]})
+	return m, nil
 }
 
 // knowsServer reports whether the last listing named server. Whether it
@@ -131,7 +138,8 @@ func (m Model) renameSession(input string) (Model, tea.Cmd) {
 	}
 	// No claim of success: only the store knows whether the name took,
 	// and it says so either way.
-	return m, m.send(event.RenameSession{Session: m.run.Session, Name: name})
+	m.send(event.RenameSession{Session: m.run.Session, Name: name})
+	return m, nil
 }
 
 // onQuit asks first when a request is running, because one keystroke
@@ -152,12 +160,14 @@ func (m Model) abortRunning() (Model, tea.Cmd) {
 		m.noteErr("nothing is running")
 		return m, nil
 	}
-	return m, m.send(event.Abort{Turn: m.cur.id})
+	m.send(event.Abort{Turn: m.cur.id})
+	return m, nil
 }
 
 // startOver asks for a new session. History clears when it starts, and the
 // container keeps running: the conversation and the environment differ.
 func (m Model) startOver() (Model, tea.Cmd) {
 	m.backToInput()
-	return m, m.send(event.ResetSession{})
+	m.send(event.ResetSession{})
+	return m, nil
 }

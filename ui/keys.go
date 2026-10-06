@@ -231,7 +231,8 @@ func (m Model) onEscape() (Model, tea.Cmd) {
 	// A command the human ran stops before the Turn does: it is theirs,
 	// and they are watching it.
 	if m.userCommandRunning() {
-		return m, m.send(event.CancelCommand{})
+		m.send(event.CancelCommand{})
+		return m, nil
 	}
 	return m.abortRunning()
 }

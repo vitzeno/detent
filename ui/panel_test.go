@@ -95,11 +95,9 @@ func TestSlashMCP_OpensThePageAndAsks(t *testing.T) {
 	defer stop()
 
 	m := New(t.Context(), bus, SessionInfo{})
-	got, cmd := m.listServers("/mcp")
+	got, _ := m.listServers("/mcp")
 	assert.Equal(t, panelMCP, got.panel.open)
 
-	require.NotNil(t, cmd)
-	cmd()
 	select {
 	case rec := <-seen:
 		assert.Equal(t, event.ListServersKind, rec.Event.Kind())
