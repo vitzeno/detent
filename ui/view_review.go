@@ -465,10 +465,8 @@ func (m Model) commentEditor(width int) []string {
 	case e.target != uuid.Nil:
 		what = "reply"
 	}
-	ta := e.input
-	ta.SetWidth(max(8, width-2))
 	rule := styleBrand.Render(what) + styleFaint.Render(" "+strings.Repeat("─", max(0, width-len(what)-1)))
-	return append([]string{rule}, strings.Split(ta.View(), "\n")...)
+	return append([]string{rule}, strings.Split(e.input.View(), "\n")...)
 }
 
 // reviewVerdict is the reviewer's summary of the open review, its newest

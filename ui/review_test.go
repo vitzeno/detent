@@ -250,6 +250,21 @@ func TestReview_ALongCommentWrapsWhole(t *testing.T) {
 	assert.Equal(t, strings.Fields(body), words)
 }
 
+// The editor wraps at the width it is drawn, or a comment longer than its rows
+// scrolls as if narrower and the editor shows blank lines.
+func TestReview_ALongDraftStaysInTheEditor(t *testing.T) {
+	k := loadedReview(t)
+	k.press(t, "down")
+	k.press(t, "c")
+	k.typeText(t, strings.Repeat("word ", 60)+"last")
+	rows := k.m.commentEditor(k.m.reviewTextWidth())[1:]
+	require.Len(t, rows, commentEditorLines)
+	for _, r := range rows {
+		assert.NotEmpty(t, strings.Trim(ansi.Strip(r), "┃ "), "a row of the editor is blank")
+	}
+	assert.Contains(t, ansi.Strip(rows[len(rows)-1]), "last", "the end of what was typed is on screen")
+}
+
 // A deleted comment takes its replies with it.
 func TestReview_DeletingACommentDropsItsReplies(t *testing.T) {
 	k := loadedReview(t)

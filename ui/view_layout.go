@@ -50,6 +50,10 @@ func (m *Model) sizeViewport() {
 	widths := layout.Split(m.layout.width, bodyWeights, minPaneWidth)
 	m.layout.outputColW, m.layout.histColW = widths[0], widths[1]
 	m.output.SetWidth(paneInner(m.layout.outputColW))
+	if e := m.review.edit; e != nil {
+		// Sized here, not as it is drawn, so typing wraps and scrolls at the width shown.
+		e.input.SetWidth(max(8, m.reviewTextWidth()-2))
+	}
 	m.refreshViewport()
 	m.syncInspector()
 }
