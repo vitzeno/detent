@@ -270,7 +270,7 @@ func (m *Model) diffLoaded(v event.DiffLoaded) {
 		return
 	}
 	r.loading, r.cut, r.err = false, v.Cut, v.Err
-	r.files, r.raw = defused(v.Files), v.Files
+	r.files, r.raw, r.code = defused(v.Files), v.Files, map[hunkKey][]string{}
 	if r.stepBack && r.scope == event.ScopeRequest && len(r.files) == 0 && r.err == "" {
 		// The last request may only have answered a question, so the one before is meant.
 		if prev := m.reviewableBefore(r.request); prev != nil {

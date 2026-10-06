@@ -955,6 +955,47 @@ func TestReview_WSplitsTheDiffWhenThereIsRoom(t *testing.T) {
 	assert.Contains(t, right, "+new line", "the added line faces the removed one")
 }
 
+// Code is coloured by language, a change tinted the width of it and context not,
+// a file no lexer knows drawn as before, and each hunk coloured once, then kept.
+func TestReview_CodeIsColouredByLanguageOnItsTint(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	k.openReview("/review")
+	k.intentOf(t, event.LoadDiffKind)
+	lines := []event.DiffLine{
+		{Op: event.LineContext, Old: 1, New: 1, Text: "func f() {"},
+		{Op: event.LineAdded, New: 2, Text: `	return "x"`},
+	}
+	k.m.apply(event.DiffLoaded{Base: "b2", Head: "e2", Files: []event.FileDiff{
+		{Path: "a.go", Change: event.FileModified, Hunks: []event.Hunk{{Header: "@@", Lines: lines}}},
+		{Path: "notes.unknownext", Change: event.FileModified, Hunks: []event.Hunk{{Header: "@@", Lines: lines}}},
+	}})
+
+	added := k.m.codeLine(0, 1, 40)
+	assert.Contains(t, added, sgr(48, palette.DiffAdded))
+	assert.Equal(t, "+    return \"x\"", strings.TrimRight(ansi.Strip(added), " "))
+	assert.Equal(t, 40, ansi.StringWidth(added), "tinted the width of it")
+	assert.Contains(t, ansi.Strip(k.m.codeLine(0, 0, 40)), "func f() {")
+	assert.NotContains(t, k.m.codeLine(0, 0, 40), "\x1b[48;2;", "context is not tinted")
+	assert.Contains(t, k.m.review.code, hunkKey{file: 0, hunk: 0}, "kept for the next frame")
+
+	k.m.review.file = 1
+	assert.NotContains(t, k.m.codeLine(0, 1, 40), "\x1b[48;2;", "no lexer, drawn as before")
+}
+
+// Colouring adds escapes of its own, so it must never pass one from the file: a
+// line's text was defused as it arrived, and stays defused once coloured.
+func TestReview_ColouredCodeStillDefusesTheFile(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	k.openReview("/review")
+	k.intentOf(t, event.LoadDiffKind)
+	k.m.apply(event.DiffLoaded{Base: "b2", Head: "e2", Files: []event.FileDiff{{Path: "a.go", Change: event.FileAdded,
+		Hunks: []event.Hunk{{Header: "@@", Lines: []event.DiffLine{
+			{Op: event.LineAdded, New: 1, Text: "x := 1 // \x1b]52;c;aGk=\x07"}}}}}}})
+	got := k.m.codeLine(0, 0, 60)
+	assert.NotContains(t, got, "\x1b]", "no clipboard write reaches the terminal")
+	assert.Contains(t, ansi.Strip(got), "^[]52", "it is shown instead")
+}
+
 // Closing the modal leaves the reviewer working: its comments still land on
 // the review, and its row counts them.
 func TestReview_TheModalClosesWhileTheReviewerWorks(t *testing.T) {

@@ -36,6 +36,11 @@ type Theme struct {
 	// Markdown names the closest glamour style, since glamour cannot take ours.
 	Markdown string
 
+	// Syntax names the chroma style a diff's code is coloured in, and DiffAdded
+	// and DiffRemoved tint the lines a change added and removed beneath it.
+	Syntax                 string
+	DiffAdded, DiffRemoved color.Color
+
 	// Tools colour a tool's name in history by what it does, so each is a hue
 	// far from the others rather than a shade of the text.
 	Tools ToolColors
@@ -70,6 +75,9 @@ var dark = Theme{
 	Border:      lipgloss.Color("#333A4D"),
 	Background:  lipgloss.Color("#11131A"),
 	Markdown:    "dark",
+	Syntax:      "github-dark",
+	DiffAdded:   lipgloss.Color("#14261C"),
+	DiffRemoved: lipgloss.Color("#2C1517"),
 	Tools: ToolColors{
 		Shell: lipgloss.Color("#C792EA"), Read: lipgloss.Color("#4FA8FF"), Write: lipgloss.Color("#F2C14E"),
 		Web: lipgloss.Color("#3DDC84"), Server: lipgloss.Color("#FF5C5C"),
@@ -88,6 +96,9 @@ var light = Theme{
 	Border:      lipgloss.Color("#D6D9E0"),
 	Background:  lipgloss.Color("#FAFAFA"),
 	Markdown:    "light",
+	Syntax:      "github",
+	DiffAdded:   lipgloss.Color("#E6FFEC"),
+	DiffRemoved: lipgloss.Color("#FFEBE9"),
 	Tools: ToolColors{
 		Shell: lipgloss.Color("#8250DF"), Read: lipgloss.Color("#0B6BD3"), Write: lipgloss.Color("#A87000"),
 		Web: lipgloss.Color("#15803D"), Server: lipgloss.Color("#CF222E"),
@@ -106,6 +117,9 @@ var solarized = Theme{
 	Border:      lipgloss.Color("#0B3A45"),
 	Background:  lipgloss.Color("#002B36"),
 	Markdown:    "dark",
+	Syntax:      "solarized-dark256",
+	DiffAdded:   lipgloss.Color("#0B3A2C"),
+	DiffRemoved: lipgloss.Color("#3A1B20"),
 	Tools: ToolColors{
 		Shell: lipgloss.Color("#C792EA"), Read: lipgloss.Color("#4FA8FF"), Write: lipgloss.Color("#F2C14E"),
 		Web: lipgloss.Color("#3DDC84"), Server: lipgloss.Color("#FF5C5C"),
@@ -124,6 +138,9 @@ var dracula = Theme{
 	Border:      lipgloss.Color("#44475A"),
 	Background:  lipgloss.Color("#282A36"),
 	Markdown:    "dracula",
+	Syntax:      "dracula",
+	DiffAdded:   lipgloss.Color("#1F3A2B"),
+	DiffRemoved: lipgloss.Color("#3A1F2A"),
 	Tools: ToolColors{
 		Shell: lipgloss.Color("#BD93F9"), Read: lipgloss.Color("#8BE9FD"), Write: lipgloss.Color("#F1FA8C"),
 		Web: lipgloss.Color("#50FA7B"), Server: lipgloss.Color("#FF5555"),

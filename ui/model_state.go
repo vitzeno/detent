@@ -150,6 +150,9 @@ type reviewState struct {
 	triage *triageState
 	// split draws the diff side by side, when the pane is wide enough.
 	split bool
+	// code is each hunk's lines coloured by language, filled as hunks are drawn
+	// and kept for the diff it was made from: a map, so a copy of Model shares it.
+	code map[hunkKey][]string
 	// back is the pane it was opened from, which esc returns to.
 	back focusPane
 }

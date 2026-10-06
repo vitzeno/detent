@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/island"
 	"github.com/vitzeno/detent/ui/layout"
+	"github.com/vitzeno/detent/ui/syntax"
 )
 
 // The review's box: the changed files on the left, the selected one's diff on
@@ -313,8 +315,7 @@ func (m Model) reviewDiffLines(height int) []string {
 			return gutter.Render(mark) + " " + styleFaint.Render(layout.Truncate(h.Header, width-2))
 		}
 		l := h.Lines[row.line]
-		return gutter.Render(mark+num(l.Old)+" "+num(l.New)) + " " +
-			lineStyle(l.Op).Render(layout.Truncate(string(rune(l.Op))+l.Text, max(1, width-2*nw-3)))
+		return gutter.Render(mark+num(l.Old)+" "+num(l.New)) + " " + m.codeLine(row.hunk, row.line, max(1, width-2*nw-3))
 	}
 	out := card
 	if r.split && m.splitFits() {
@@ -405,8 +406,7 @@ func (m Model) splitLines(f event.FileDiff, rows []diffRow, height, width, nw in
 			n = l.Old
 		}
 		mark, gutter := marked(i)
-		s := gutter.Render(mark+fmt.Sprintf("%*s", nw, lineNo(n))) + " " +
-			lineStyle(l.Op).Render(layout.Truncate(string(rune(l.Op))+l.Text, max(1, half-nw-2)))
+		s := gutter.Render(mark+fmt.Sprintf("%*s", nw, lineNo(n))) + " " + m.codeLine(rows[i].hunk, rows[i].line, max(1, half-nw-2))
 		return s + strings.Repeat(" ", max(0, half-lipgloss.Width(s)))
 	}
 	var out []string
@@ -562,4 +562,60 @@ func (m Model) reviewRowLine(mark string, r *historyRow) string {
 	tail := " · " + countOf(r.comments, "comment") + state
 	room := max(layout.MinTruncate, m.blockWidth()-lipgloss.Width(mark+icon+" ")-lipgloss.Width(tail))
 	return mark + icon + " " + styleGoal.Render(layout.Truncate(label, room)) + styleFaint.Render(tail)
+}
+
+// hunkKey names one hunk of one file of the diff shown.
+type hunkKey struct{ file, hunk int }
+
+// codeLine is a line of the selected file coloured by language, an added or removed
+// one tinted the width of it. A file no lexer knows is drawn as before.
+func (m Model) codeLine(hunk, line, width int) string {
+	f := m.review.selected()
+	l := f.Hunks[hunk].Lines[line]
+	code := m.codeOf(hunk)
+	if code == nil {
+		return lineStyle(l.Op).Render(layout.Truncate(string(rune(l.Op))+l.Text, width))
+	}
+	marker, tint := " ", color.Color(nil)
+	switch l.Op {
+	case event.LineAdded:
+		marker, tint = sgr(38, palette.Safe)+"+"+"\x1b[39m", palette.DiffAdded
+	case event.LineRemoved:
+		marker, tint = sgr(38, palette.Danger)+"-"+"\x1b[39m", palette.DiffRemoved
+	case event.LineContext:
+	}
+	// Not layout.Truncate, which defuses: the text was defused as the diff arrived,
+	// and all the colouring added is its own colour, which must reach the terminal.
+	body := marker + ansi.Truncate(code[line], max(1, width-1), "…") + "\x1b[22m\x1b[39m"
+	if tint == nil {
+		return body
+	}
+	pad := strings.Repeat(" ", max(0, width-ansi.StringWidth(body)))
+	return sgr(48, tint) + body + pad + "\x1b[49m"
+}
+
+// codeOf is a hunk of the selected file coloured by language, made once and
+// kept, nil when no lexer knows the file.
+func (m Model) codeOf(hunk int) []string {
+	r := m.review
+	key := hunkKey{file: r.file, hunk: hunk}
+	if code, ok := r.code[key]; ok {
+		return code
+	}
+	f := r.selected()
+	texts := make([]string, len(f.Hunks[hunk].Lines))
+	for i, l := range f.Hunks[hunk].Lines {
+		texts[i] = l.Text
+	}
+	code := syntax.Hunk(f.Path, texts, palette.Syntax)
+	if r.code != nil {
+		r.code[key] = code
+	}
+	return code
+}
+
+// sgr is the escape setting a foreground (38) or background (48) to c.
+func sgr(code int, c color.Color) string {
+	r, g, b, _ := c.RGBA()
+	return fmt.Sprintf("\x1b[%d;2;%d;%d;%dm", code, r>>8, g>>8, b>>8)
 }

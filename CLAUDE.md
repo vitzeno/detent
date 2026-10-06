@@ -741,13 +741,19 @@ adding a fat dependency fails with the transitive import named.
   reads pulses, a comment lights as it lands (`fadeTick`, one tick only while
   one fades) and its verdict sits above the diff. `t` walks its comments one at
   a time: `y` keeps, `n` drops, `e` rewrites. `>`/`<` jump between comments
-  across files, in the same order.
+  across files, in the same order. Code is coloured by language (`ui/syntax`,
+  chroma, a hunk at a time and kept per hunk) on a tint for what was added or
+  removed. Colouring sets the foreground alone, so the tint survives it, and
+  the text was defused as it arrived, so its own escapes never reach the
+  terminal. `w` splits the diff side by side, each removed run facing what
+  replaced it, and `space` marks a file viewed. The key line leads with what
+  `esc` will close.
   `ctrl+s` sends the review as the next prompt,
   which `internal/review` writes so a reviewer's words are always framed as
   opinions to weigh and the human's as instructions, then closes it.
 
   **A thing leaves `ui` when it stops needing Model.** That is why
-  `island`, `layout`, `markdown`, `search`, `status`, `theme` and `welcome` are
+  `island`, `layout`, `markdown`, `search`, `status`, `syntax`, `theme` and `welcome` are
   subpackages and nothing else is: they take values and return
   strings. The compiler enforces it, since a subpackage importing
   `ui` would be an import cycle. Rendering could go the same way once

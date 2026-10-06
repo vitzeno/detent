@@ -49,8 +49,8 @@
 // # What leaves this package
 //
 // A thing moves to a subpackage when it stops needing Model. That is
-// the whole rule, and it is why island, layout, markdown, search,
-// status, theme and welcome are subpackages while everything above is not:
+// the whole rule, and it is why island, layout, markdown, search, status,
+// syntax, theme and welcome are subpackages while everything above is not:
 // they take values and return strings. The compiler enforces it,
 // since a subpackage importing ui would be an import cycle.
 //
