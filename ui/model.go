@@ -121,7 +121,9 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	servers  []event.ServerSummary
 
 	welcomeFrame int
-	viewContent  string
+	// welcomeTicking is a welcomeTickMsg on its way, true from New since Init starts one.
+	welcomeTicking bool
+	viewContent    string
 	// workDir is where this process runs, read once for the welcome pane.
 	workDir string
 
@@ -162,6 +164,8 @@ func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 		facts:   facts,
 		hist:    &histCache{},
 		agents:  map[uuid.UUID]*agentState{},
+
+		welcomeTicking: true,
 	}
 }
 
@@ -169,7 +173,7 @@ func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 func (m Model) Init() tea.Cmd {
 	// Asked at startup so the welcome pane can say what is resumable,
 	// and /sessions has an answer before it is opened.
-	return tea.Batch(welcomeTick(), nextFact(m.facts),
+	return tea.Batch(tickWelcome(), nextFact(m.facts),
 		m.send(event.ListSessions{}))
 }
 
@@ -225,7 +229,8 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 			m.apply(e)
 		}
 		// A listing may have put another session under the picker's cursor.
-		load := tea.Batch(m.loadSelected(), m.reloadReview(), m.fadeTick())
+		// And /new may have brought the welcome back.
+		load := tea.Batch(m.loadSelected(), m.reloadReview(), m.fadeTick(), m.welcomeTick())
 		var cmd tea.Cmd
 		// Edge only: Tick carries the live tag, so re-arming restarts
 		// the chain and costs a frame.
@@ -239,11 +244,11 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.fadeTick()
 
 	case welcomeTickMsg:
-		if !m.showWelcome() {
-			return m, nil
+		m.welcomeTicking = false
+		if m.showWelcome() {
+			m.welcomeFrame++
 		}
-		m.welcomeFrame++
-		return m, welcomeTick()
+		return m, m.welcomeTick()
 	}
 
 	var cmd tea.Cmd
@@ -291,9 +296,17 @@ func nextFact(facts <-chan event.Record) tea.Cmd {
 
 type welcomeTickMsg struct{}
 
-// welcomeTick advances the boot pane's animation, and only while that
-// pane is what is on screen.
-func welcomeTick() tea.Cmd {
+// welcomeTick keeps one tick going while the boot pane is on screen, and none otherwise.
+func (m *Model) welcomeTick() tea.Cmd {
+	if m.welcomeTicking || !m.showWelcome() {
+		return nil
+	}
+	m.welcomeTicking = true
+	return tickWelcome()
+}
+
+// tickWelcome advances the boot pane's animation one frame from now.
+func tickWelcome() tea.Cmd {
 	return tea.Tick(welcomeFrameEvery, func(time.Time) tea.Msg { return welcomeTickMsg{} })
 }
 

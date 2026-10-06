@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1021,4 +1022,41 @@ func TestOutput_LiveOutputFollowsOnlyFromTheEnd(t *testing.T) {
 	k.m, _ = k.m.update(factMsg{evs})
 	require.Equal(t, next, k.m.focused().id, "the newest row is the one shown")
 	assert.True(t, k.m.output.AtBottom(), "another command is followed from its end")
+}
+
+// /new brings the welcome back, and its animation with it, though the tick
+// that drew it stopped once a request hid it.
+func TestWelcome_AnimatesAgainAfterNew(t *testing.T) {
+	k := newKeyed(t)
+	k.m.apply(event.SessionStarted{Session: uuid.Must(uuid.NewV7())})
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 1, Prompt: "p"})
+	var cmd tea.Cmd
+	k.m, cmd = k.m.update(welcomeTickMsg{})
+	require.False(t, sends[welcomeTickMsg](cmd), "hidden, the welcome stops ticking")
+
+	k.m, cmd = k.m.update(factMsg{[]event.Event{event.SessionStarted{Session: uuid.Must(uuid.NewV7())}}})
+	require.True(t, k.m.showWelcome())
+	assert.True(t, sends[welcomeTickMsg](cmd), "nothing restarted the animation")
+	_, cmd = k.m.update(factMsg{[]event.Event{event.SessionsListed{}}})
+	assert.False(t, sends[welcomeTickMsg](cmd), "a second tick would run it at twice the speed")
+}
+
+// sends reports whether cmd, or any command it batches, produces a T. One
+// still waiting after a moment, such as the fact pump, is taken as not.
+func sends[T tea.Msg](cmd tea.Cmd) bool {
+	if cmd == nil {
+		return false
+	}
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+	select {
+	case msg := <-done:
+		if batch, ok := msg.(tea.BatchMsg); ok {
+			return slices.ContainsFunc(batch, sends[T])
+		}
+		_, ok := msg.(T)
+		return ok
+	case <-time.After(300 * time.Millisecond):
+		return false
+	}
 }
