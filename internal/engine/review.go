@@ -75,6 +75,13 @@ func (e *Engine) runReview(ctx context.Context, t *turnState, v event.ReviewChan
 	end := e.runChild(cctx, t, reviewer, reviewTask(v))
 	reason, why, report := e.report(ctx, cctx, t, reviewer, &end)
 	e.bus.Publish(event.AgentEnded{Agent: reviewer.id, Reason: reason, Why: why, Usage: end.used})
+	// Its report is read by the human, not a parent model, so a stop is said plainly.
+	switch {
+	case report == stoppedUnstarted:
+		report = "Stopped before it started."
+	case reason == event.AgentStopped:
+		report = "Stopped before it finished. " + strings.TrimPrefix(report, stoppedPrefix)
+	}
 	if reason != event.AgentAborted && strings.TrimSpace(report) != "" {
 		e.bus.Publish(run.commented(event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Author: reviewerName,
 			Body: strings.TrimSpace(report)}))

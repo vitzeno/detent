@@ -373,11 +373,12 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	case "pgup", "pgdown":
 		return m.scrollViewport(msg.String())
 	case "enter":
-		if r := m.focused(); r != nil && r.agent != nil {
-			return m.openInspector(r.agent)
-		}
+		// A review's row has its reviewer too, but what it stands for is the review.
 		if r := m.focused(); r != nil && r.review != uuid.Nil {
 			return m.openReviewRow(r)
+		}
+		if r := m.focused(); r != nil && r.agent != nil {
+			return m.openInspector(r.agent)
 		}
 		if r := m.focused(); r != nil && !r.running {
 			m.toggleExpand(r)

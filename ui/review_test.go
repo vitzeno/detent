@@ -579,6 +579,55 @@ func TestReview_ABranchReviewOpenedByNameKeepsItsID(t *testing.T) {
 	assert.Equal(t, id, k.m.review.id)
 }
 
+// The reviewer is a subagent: in the agents block while it works, a opening it in
+// the inspector, and once it ends the review's line, enter on which opens the review.
+func TestReview_TheReviewerIsASubagentWhileItWorks(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	review, turn, agent := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	k.m.apply(event.ReviewCommented{Review: review, Reviewed: k.m.blocks[1].id, Base: "b2", Head: "e2",
+		Scope: event.ScopeRequest, Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7())}})
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: review})
+	k.m.apply(event.AgentStarted{Agent: agent, Turn: turn, Name: "reviewer", Task: "review of request 2"})
+	k.m.sizeViewport()
+
+	pinned := k.m.pinned()
+	require.Len(t, pinned, 1)
+	assert.Equal(t, "reviewer", pinned[0].name)
+	lines, _ := k.m.historyAll()
+	assert.NotContains(t, ansi.Strip(strings.Join(lines, "\n")), "review of request 2", "drawn in the agents block instead")
+	k.m.nav.focus = focusHistory
+	k.m.prompt.Blur()
+	k.press(t, "a")
+	require.Equal(t, modeInspector, k.m.mode)
+	assert.Equal(t, agent, k.m.insp.agent.id)
+	k.press(t, "esc")
+
+	k.m.apply(event.AgentEnded{Agent: agent, Reason: event.AgentDone})
+	k.m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	k.m.sizeViewport()
+	assert.Empty(t, k.m.pinned())
+	lines, _ = k.m.historyAll()
+	assert.Contains(t, ansi.Strip(strings.Join(lines, "\n")), "review of request 2 · 1 comment")
+	k.m.nav.cursor, k.m.nav.focus = len(k.m.rows())-1, focusHistory
+	k.press(t, "enter")
+	assert.Equal(t, modeReview, k.m.mode, "the review, not the inspector")
+}
+
+// Closing the modal leaves the reviewer working: its comments still land on
+// the review, and its row counts them.
+func TestReview_TheModalClosesWhileTheReviewerWorks(t *testing.T) {
+	k := loadedReview(t)
+	id := k.m.review.id
+	turn := uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: id})
+	k.press(t, "esc")
+	k.press(t, "esc")
+	require.Equal(t, modeInput, k.m.mode)
+	k.m.apply(event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7())}})
+	assert.Len(t, k.m.reviewByID(id).comments, 1)
+	assert.Equal(t, 1, k.m.blockByID(turn).rows[0].comments)
+}
+
 // openReview runs a /review line and what it asks for.
 func (k *keyed) openReview(line string) {
 	var cmd tea.Cmd

@@ -38,6 +38,13 @@ const (
 	reportTimeout = 2 * time.Minute
 )
 
+// stoppedPrefix and stoppedUnstarted tell a parent model not to start again what
+// the human stopped.
+const (
+	stoppedPrefix    = "[the human stopped this subagent] Do not start it again with the same task.\n"
+	stoppedUnstarted = "[the human stopped this subagent before it started] Do not start it again with the same task."
+)
+
 // What cut a child short, read back off its ctx.
 var (
 	errStopped  = errors.New("the human stopped this subagent")
@@ -120,8 +127,7 @@ func (e *Engine) report(ctx, cctx context.Context, t *turnState, child *agent, e
 		return event.AgentAborted, "the request was aborted", "This subagent was not finished: the request was aborted."
 	}
 	if end.steps == 0 && errors.Is(context.Cause(cctx), errStopped) {
-		return event.AgentStopped, "the human stopped this subagent before it started",
-			"[the human stopped this subagent before it started] Do not start it again with the same task."
+		return event.AgentStopped, "the human stopped this subagent before it started", stoppedUnstarted
 	}
 	reason, why = event.AgentPartial, end.cut
 	switch {
@@ -132,7 +138,7 @@ func (e *Engine) report(ctx, cctx context.Context, t *turnState, child *agent, e
 	}
 	prefix := "[partial: " + why + "]\n"
 	if reason == event.AgentStopped {
-		prefix = "[the human stopped this subagent] Do not start it again with the same task.\n"
+		prefix = stoppedPrefix
 	}
 	return reason, why, prefix + e.lastWords(ctx, t, child, why, end)
 }

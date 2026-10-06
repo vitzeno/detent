@@ -304,10 +304,15 @@ func newCallRow(v event.ToolCallProposed) *historyRow {
 	}
 }
 
-// addAgent ties a subagent to the spawn row that started it, which draws it.
+// addAgent ties a subagent to the row that started it, which draws it: its
+// spawn call's, or for a reviewer, which no call started, its review's.
 func (m *Model) addAgent(v event.AgentStarted) {
 	a := &agentState{id: v.Agent, name: termsafe.Printable(v.Name), task: termsafe.Printable(v.Task)}
-	if r := m.row(v.ToolCall); r != nil {
+	r := m.row(v.ToolCall)
+	if v.ToolCall == uuid.Nil {
+		r = m.row(v.Turn)
+	}
+	if r != nil {
 		r.agent, a.spawn = a, r
 	}
 	m.agents[v.Agent] = a

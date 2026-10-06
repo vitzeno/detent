@@ -722,7 +722,11 @@ adding a fat dependency fails with the transitive import named.
   the branch against main or a ref, uncommitted work included. Each scope has
   its own review, and only a branch's belongs to no request, so undo leaves it.
   `r` starts a reviewer on the scope shown, its diff already on screen, and
-  only there: the reviewer reads exactly what the human does. A review is one
+  only there: the reviewer reads exactly what the human does. The modal may
+  close while it works. The reviewer is a subagent drawn as one: its
+  `AgentStarted` names the review's Turn, which ties it to the review's row as
+  a spawn call ties a child to its row, so it is in the agents block and the
+  inspector while it runs. A review is one
   line in history, its comments counted on the row since a block draws from
   its own state, and enter on it reopens it. `←`/`→` step between reviews,
   oldest first, and a review once sent is read, never edited.

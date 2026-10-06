@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -128,6 +129,44 @@ func TestReview_APromptSentDuringItRunsAfterIt(t *testing.T) {
 	first := r.eng.messages()[0]
 	assert.Equal(t, event.RoleUser, first.Role)
 	assert.Contains(t, first.Content, "next thing")
+}
+
+// A stopped reviewer's summary is for the human: it says it was stopped, not
+// the parent's rule against starting it again.
+func TestReview_AStoppedReviewSaysSoPlainly(t *testing.T) {
+	stall := make(chan struct{})
+	rm := &fakeModel{stall: stall, replies: []model.Reply{
+		{Requests: []event.ToolRequest{reviewCall("d", event.ToolReviewDiff, map[string]any{"path": "a.go"})}},
+		{Text: "found one thing"},
+	}}
+	r := rigWith(t, event.New(), &fakeModel{}, &fakeRunner{}, WithReviewer(rm))
+	r.bus.Publish(reviewOf())
+	started := r.await(event.AgentStartedKind).(event.AgentStarted)
+	r.await(event.StepStartedKind)
+	r.bus.Publish(event.StopAgent{Agent: started.Agent})
+	r.dispatched()
+	close(stall)
+	r.await(event.TurnEndedKind)
+	got := r.of(event.ReviewCommentedKind)
+	require.NotEmpty(t, got)
+	summary := got[len(got)-1].(event.ReviewCommented).Comment.Body
+	assert.True(t, strings.HasPrefix(summary, "Stopped before it finished."), summary)
+	assert.NotContains(t, summary, "Do not start it again")
+}
+
+// One stopped while still queued for a slot never read a thing, and says that.
+func TestReview_AReviewStoppedBeforeItStartsSaysSo(t *testing.T) {
+	r := rigWith(t, event.New(), &fakeModel{}, &fakeRunner{}, WithReviewer(&fakeModel{}))
+	for range childSlots {
+		r.eng.slots <- struct{}{}
+	}
+	r.bus.Publish(reviewOf())
+	started := r.await(event.AgentStartedKind).(event.AgentStarted)
+	r.bus.Publish(event.StopAgent{Agent: started.Agent})
+	r.await(event.TurnEndedKind)
+	got := r.of(event.ReviewCommentedKind)
+	require.Len(t, got, 1)
+	assert.Equal(t, "Stopped before it started.", got[0].(event.ReviewCommented).Comment.Body)
 }
 
 // A replayed review is no request: it neither numbers the next request nor
