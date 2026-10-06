@@ -411,6 +411,10 @@ adding a fat dependency fails with the transitive import named.
   `review_comment`, and nothing that writes or reaches the network, since the
   code it reads may carry an injected instruction. A comment that passes its
   check is a `ReviewCommented` at once, and the report a comment on no line.
+  Limits belong to the agent (`childLimits`): a child has 30 Steps and its
+  share of the window, a reviewer 100 Steps and the whole window, since it
+  reads a diff whole. It is told to comment on each file as it reads it, the
+  most changed first, and `review_diff` returns 400 lines a call with an offset.
   The review ends without settling or taking notes, so a prompt sent during it
   waits in the inbox and runs as the next request. A crash's cut-off note is
   for requests only.

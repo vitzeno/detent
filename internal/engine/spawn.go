@@ -66,6 +66,7 @@ func (e *Engine) spawn(ctx context.Context, t *turnState, parent *agent, p *tool
 	name := cmp.Or(strings.TrimSpace(p.prepared.Args.String("name")), fmt.Sprintf("agent-%d", n))
 	// Every tool the parent has, MCP's included, but spawn_agent: one level deep.
 	child := newAgent(uuid.Must(uuid.NewV7()), name, e.childModel, parent.tools.Without(event.ToolSpawnAgent), e.extra...)
+	child.limits = childLimits{steps: childSteps, context: e.childContext, timeout: e.childTimeout}
 
 	// Stoppable before it is announced, so no stop is lost.
 	cctx, stop := context.WithCancelCause(ctx)
@@ -105,13 +106,13 @@ func (e *Engine) runChild(ctx context.Context, t *turnState, child *agent, task 
 	case <-ctx.Done():
 		return agentEnd{reason: event.EndAborted}
 	}
-	ctx, cancel := context.WithTimeoutCause(ctx, e.childTimeout, errTimedOut)
+	ctx, cancel := context.WithTimeoutCause(ctx, child.limits.timeout, errTimedOut)
 	defer cancel()
 	e.appended(child, t.id, uuid.Nil, func() []event.Message { return child.tr.user(1, task) })
 	end := e.runAgent(ctx, t, child)
 	// Read here: the time limit is this ctx's, and the spawn's never sees it.
 	if errors.Is(context.Cause(ctx), errTimedOut) {
-		end.cut = "ran for " + model.Brief(e.childTimeout)
+		end.cut = "ran for " + model.Brief(child.limits.timeout)
 	}
 	return end
 }

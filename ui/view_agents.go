@@ -160,12 +160,17 @@ func (m Model) endedDetail(a *agentState) string {
 	return string(a.reason)
 }
 
-// agentContext is how full an agent's context is, as a percentage of its budget.
+// agentContext is how full an agent's context is, as a percentage of its budget:
+// a child's share of the window, or for a reviewer, which reads a whole diff, all of it.
 func (m Model) agentContext(a *agentState) int {
-	if m.run.ChildContextTokens <= 0 {
+	budget := m.run.ChildContextTokens
+	if reviewerOf(a) != nil {
+		budget = m.run.ContextTokens
+	}
+	if budget <= 0 {
 		return 0
 	}
-	return min(100, a.ctx*100/m.run.ChildContextTokens)
+	return min(100, a.ctx*100/budget)
 }
 
 // contextBar fills pct of width, in caution while the agent waits on the human.

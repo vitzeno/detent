@@ -136,11 +136,11 @@ func (e *Engine) runAgent(ctx context.Context, t *turnState, a *agent) (end agen
 		}
 		// A child has hard limits instead: questions from a fan-out arriving
 		// together are worse than a partial report.
-		if !a.root() && step > childSteps {
-			end.reason, end.cut = event.EndBound, fmt.Sprintf("stopped at %d steps", childSteps)
+		if !a.root() && step > a.limits.steps {
+			end.reason, end.cut = event.EndBound, fmt.Sprintf("stopped at %d steps", a.limits.steps)
 			return end
 		}
-		if !a.root() && a.over(e.childContext) {
+		if !a.root() && a.over(a.limits.context) {
 			end.reason, end.cut = event.EndBound, "ran out of context"
 			return end
 		}

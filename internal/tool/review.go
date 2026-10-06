@@ -27,8 +27,12 @@ func (ReviewDiff) Name() event.ToolName { return event.ToolReviewDiff }
 func (ReviewDiff) Describe() Spec {
 	return Spec{
 		Description: "Show the changes under review to one file. Each line is numbered on the side it is on: " +
-			"the old number for a removed line, the new for an added one, and both for an unchanged one.",
-		Params:     []Param{{Name: "path", Type: TypeString, Required: true, Desc: "a file from the list of changed files"}},
+			"the old number for a removed line, the new for an added one, and both for an unchanged one. " +
+			"A long diff comes in parts: the reply says where the next one starts.",
+		Params: []Param{
+			{Name: "path", Type: TypeString, Required: true, Desc: "a file from the list of changed files"},
+			{Name: "offset", Type: TypeInt, Desc: "the line of the diff to start from, counting from 1 (default 1)"},
+		},
 		Mutability: event.MutRead,
 		Internal:   true,
 		Group:      "review",
@@ -51,16 +55,30 @@ func (r ReviewDiff) Answer(a Args) (string, error) {
 	case len(f.Hunks) == 0:
 		return "Only its mode changed.", nil
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s (%s)\n", f.Path, f.Change)
+	var all []string
 	for _, h := range f.Hunks {
-		b.WriteString(h.Header + "\n")
+		all = append(all, h.Header)
 		for _, l := range h.Lines {
-			fmt.Fprintf(&b, "%5s %5s %c%s\n", lineNo(l.Old), lineNo(l.New), l.Op, l.Text)
+			all = append(all, fmt.Sprintf("%5s %5s %c%s", lineNo(l.Old), lineNo(l.New), l.Op, l.Text))
 		}
+	}
+	from := min(max(a.Int("offset", 1), 1), len(all))
+	to := min(from-1+maxDiffLines, len(all))
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s (%s)", f.Path, f.Change)
+	if from > 1 || to < len(all) {
+		fmt.Fprintf(&b, ", lines %d to %d of %d", from, to, len(all))
+	}
+	b.WriteString("\n" + strings.Join(all[from-1:to], "\n") + "\n")
+	if to < len(all) {
+		fmt.Fprintf(&b, "[more: call review_diff again with offset %d]\n", to+1)
 	}
 	return b.String(), nil
 }
+
+// maxDiffLines is the most of one file's diff a call returns, so a single huge
+// file cannot spend a reviewer's whole context.
+const maxDiffLines = 400
 
 // ReviewComment checks a comment against the diff, so every comment has the
 // lines it is about to sit under.

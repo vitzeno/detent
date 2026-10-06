@@ -22,6 +22,25 @@ func TestReviewDiff_NumbersEachLineOnItsSide(t *testing.T) {
 		"   40    40  far\n", got)
 }
 
+// A long diff comes in parts, each saying where the next begins, so one file
+// cannot spend a reviewer's whole context.
+func TestReviewDiff_ALongDiffComesInParts(t *testing.T) {
+	h := event.Hunk{Header: "@@ -0,0 +1,900 @@"}
+	for i := range 900 {
+		h.Lines = append(h.Lines, event.DiffLine{Op: event.LineAdded, New: i + 1, Text: "x"})
+	}
+	d := NewReviewDiff([]event.FileDiff{{Path: "big.go", Change: event.FileAdded, Hunks: []event.Hunk{h}}})
+	first, err := d.Answer(Args{"path": "big.go"})
+	require.NoError(t, err)
+	assert.Contains(t, first, "lines 1 to 400 of 901")
+	assert.Contains(t, first, "offset 401")
+	last, err := d.Answer(Args{"path": "big.go", "offset": 801})
+	require.NoError(t, err)
+	assert.Contains(t, last, "lines 801 to 901 of 901")
+	assert.NotContains(t, last, "[more")
+	assert.Contains(t, last, "  900 +x")
+}
+
 func TestReviewDiff_NamesTheFilesWhenThePathIsNotOne(t *testing.T) {
 	_, err := NewReviewDiff(reviewFiles()).Answer(Args{"path": "nope.go"})
 	assert.ErrorContains(t, err, "a.go, img.png")

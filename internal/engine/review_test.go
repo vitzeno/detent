@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -170,6 +171,42 @@ func TestReview_AReviewStoppedBeforeItStartsSaysSo(t *testing.T) {
 	got := r.of(event.ReviewCommentedKind)
 	require.Len(t, got, 1)
 	assert.Equal(t, "Stopped before it started.", got[0].(event.ReviewCommented).Comment.Body)
+}
+
+// A reviewer reads a whole diff, so it has the window and far more Steps than a
+// child, whose limits cut one on a 119-file branch off before it commented.
+func TestReview_TheReviewerOutlastsAChildsLimits(t *testing.T) {
+	var replies []model.Reply
+	for i := range childSteps + 5 {
+		replies = append(replies, model.Reply{Requests: []event.ToolRequest{
+			reviewCall(strconv.Itoa(i), event.ToolReviewDiff, map[string]any{"path": "a.go"})}})
+	}
+	replies = append(replies, model.Reply{Text: "done"})
+	rm := &fakeModel{replies: replies}
+	r := rigWith(t, event.New(), &fakeModel{}, &fakeRunner{}, WithReviewer(rm), WithAgentLimits(0, 100, 0))
+	r.bus.Publish(reviewOf())
+	r.await(event.TurnEndedKind)
+	ended := r.await(event.AgentEndedKind).(event.AgentEnded)
+	assert.Equal(t, event.AgentDone, ended.Reason, ended.Why)
+}
+
+// The reviewer reads the most changed files first, and is told which are
+// generated, to skim.
+func TestReviewTask_PutsTheMostChangedFirstAndMarksGenerated(t *testing.T) {
+	line := func(op event.LineOp) event.DiffLine { return event.DiffLine{Op: op, Text: "x"} }
+	file := func(path string, n int) event.FileDiff {
+		h := event.Hunk{}
+		for range n {
+			h.Lines = append(h.Lines, line(event.LineAdded))
+		}
+		return event.FileDiff{Path: path, Change: event.FileModified, Hunks: []event.Hunk{h}}
+	}
+	task := reviewTask(event.ReviewChanges{Scope: event.ScopeRequest,
+		Files: []event.FileDiff{file("small.go", 1), file("go.sum", 50), file("big.go", 20)}})
+	assert.Less(t, strings.Index(task, "go.sum"), strings.Index(task, "big.go"))
+	assert.Less(t, strings.Index(task, "big.go"), strings.Index(task, "small.go"))
+	assert.Contains(t, task, "go.sum (modified, +50 -0, generated: skim it)")
+	assert.NotContains(t, task, "big.go (modified, +20 -0, generated")
 }
 
 // A replayed review is no request: it neither numbers the next request nor

@@ -799,6 +799,18 @@ func TestReview_AnOldOrOrphanedReviewOpensWithoutAPanic(t *testing.T) {
 	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "a request no longer here")
 }
 
+// A reviewer's context is measured against the whole window it is given, not a
+// child's share, or the inspector would call it full while it had room to spare.
+func TestReview_TheReviewersContextIsOfTheWholeWindow(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	k.m.run.ContextTokens, k.m.run.ChildContextTokens = 200_000, 50_000
+	review, turn, agent := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: review})
+	k.m.apply(event.AgentStarted{Agent: agent, Turn: turn, Name: "reviewer"})
+	k.m.agents[agent].ctx = 100_000
+	assert.Equal(t, 50, k.m.agentContext(k.m.agents[agent]))
+}
+
 // Closing the modal leaves the reviewer working: its comments still land on
 // the review, and its row counts them.
 func TestReview_TheModalClosesWhileTheReviewerWorks(t *testing.T) {

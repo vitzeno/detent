@@ -2,6 +2,7 @@ package engine
 
 import (
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -23,6 +24,8 @@ type agent struct {
 
 	// review is what a reviewer comments on, nil for every other agent.
 	review *reviewRun
+	// limits bound a child, zero for the root, which asks to pass its bound instead.
+	limits childLimits
 
 	// mu guards tr, which the agent's goroutine writes and a caller may read.
 	mu sync.Mutex
@@ -35,6 +38,13 @@ func newAgent(id uuid.UUID, name string, m Completer, tools *tool.Registry, extr
 	a := &agent{id: id, name: name, model: m, tools: tools, repeat: newRepeatHook(defaultRepeatLimit)}
 	a.assessors = append([]Assessor{toolFloor{}, mcpFloor{}, regexHook{}, a.repeat}, extra...)
 	return a
+}
+
+// childLimits are how far a child may go before it must report: its Steps,
+// its transcript in tokens, and its time once it has a slot.
+type childLimits struct {
+	steps, context int
+	timeout        time.Duration
 }
 
 // root is whether this agent answers the human. Only the root hears notes,

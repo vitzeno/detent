@@ -1,8 +1,11 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,8 +18,14 @@ import (
 // A review is a Turn the human starts and no request: a reviewer agent reads the
 // diff the human sees and comments on it, and nothing reaches the root's transcript.
 
-// reviewerName is the author the reviewer's comments carry.
-const reviewerName = "reviewer"
+const (
+	// reviewerName is the author the reviewer's comments carry.
+	reviewerName = "reviewer"
+	// reviewSteps and reviewTimeout bound a reviewer, which reads a diff a file
+	// at a time, so it is given far more room than a child doing one task.
+	reviewSteps   = 100
+	reviewTimeout = 30 * time.Minute
+)
 
 // reviewRun is the review a reviewer works for, and the diff it answers from.
 type reviewRun struct {
@@ -67,6 +76,9 @@ func (e *Engine) runReview(ctx context.Context, t *turnState, v event.ReviewChan
 	}
 	reviewer := newAgent(uuid.Must(uuid.NewV7()), reviewerName, e.reviewer, tools, e.extra...)
 	reviewer.review = run
+	// The whole window, not a child's share: a diff is read whole, and a reviewer
+	// cut off before it commented left nothing but its summary.
+	reviewer.limits = childLimits{steps: reviewSteps, context: e.contextTokens, timeout: reviewTimeout}
 
 	cctx, stop := context.WithCancelCause(ctx)
 	defer stop(nil)
@@ -172,9 +184,13 @@ func reviewTask(v event.ReviewChanges) string {
 	if strings.TrimSpace(v.Asked) != "" {
 		fmt.Fprintf(&b, "\nThey were made for this request:\n%s\n", strings.TrimSpace(v.Asked))
 	}
-	b.WriteString("\nThe changed files, with lines added and removed:\n")
-	for _, f := range v.Files {
-		fmt.Fprintf(&b, "  %s (%s%s)\n", f.Path, f.Change, fileSize(f))
+	b.WriteString("\nThe changed files, most changed first, with lines added and removed:\n")
+	for _, f := range byChange(v.Files) {
+		mark := ""
+		if generated(f.Path) {
+			mark = ", generated: skim it"
+		}
+		fmt.Fprintf(&b, "  %s (%s%s%s)\n", f.Path, f.Change, fileSize(f), mark)
 	}
 	b.WriteString("\nRead each that matters with review_diff, and comment with review_comment.")
 	return b.String()
@@ -200,4 +216,36 @@ func fileSize(f event.FileDiff) string {
 		}
 	}
 	return fmt.Sprintf(", +%d -%d", add, del)
+}
+
+// byChange is files most changed first, so a reviewer cut short has read what matters most.
+func byChange(files []event.FileDiff) []event.FileDiff {
+	out := slices.Clone(files)
+	slices.SortStableFunc(out, func(a, b event.FileDiff) int { return cmp.Compare(changedLines(b), changedLines(a)) })
+	return out
+}
+
+func changedLines(f event.FileDiff) int {
+	n := 0
+	for _, h := range f.Hunks {
+		for _, l := range h.Lines {
+			if l.Op != event.LineContext {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// generated is a file nobody reviews line by line: a lockfile, vendored code,
+// generated Go, or a golden file a test rewrites.
+func generated(path string) bool {
+	base := filepath.Base(path)
+	switch {
+	case slices.Contains([]string{"go.sum", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "Cargo.lock"}, base),
+		strings.HasSuffix(base, ".lock"), strings.HasSuffix(base, ".pb.go"), strings.HasSuffix(base, "_gen.go"),
+		strings.HasSuffix(base, ".golden"), strings.HasPrefix(path, "vendor/"), strings.Contains(path, "/vendor/"):
+		return true
+	}
+	return false
 }
