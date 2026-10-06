@@ -1053,8 +1053,7 @@ func commented(v event.CommentReview) event.ReviewCommented {
 		Op: v.Op, Comment: v.Comment}
 }
 
-// typeText types into the editor. Its commands only blink the cursor, so
-// they are not run, which would wait on each.
+// typeText types into whatever has the keys, one rune at a time.
 func (k *keyed) typeText(t *testing.T, s string) {
 	t.Helper()
 	for _, r := range s {

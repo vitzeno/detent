@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
-	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
@@ -170,7 +169,7 @@ func New(ctx context.Context, bus *event.Bus, info SessionInfo) Model {
 func (m Model) Init() tea.Cmd {
 	// Asked at startup so the welcome pane can say what is resumable,
 	// and /sessions has an answer before it is opened.
-	return tea.Batch(textarea.Blink, welcomeTick(), nextFact(m.facts),
+	return tea.Batch(welcomeTick(), nextFact(m.facts),
 		m.send(event.ListSessions{}))
 }
 

@@ -937,3 +937,12 @@ func TestKeys_ALongRationaleWrapsAndTheBoxStillFits(t *testing.T) {
 	require.True(t, k.m.confirmReady())
 	assert.Contains(t, screen, "rm -rf ../build", "ready only once the last line is really on screen")
 }
+
+// Nothing routes a blink to a textarea, so a blinking cursor froze mid-blink.
+// A steady one is drawn the same and asks for no redraws.
+func TestInput_TheCursorIsSteady(t *testing.T) {
+	p := newPrompt(false)
+	assert.Nil(t, p.input.Focus(), "the prompt's cursor asks to blink")
+	e := newCommentEdit(event.CommentAdded, uuid.Nil, "")
+	assert.Nil(t, e.input.Focus(), "the comment editor's cursor asks to blink")
+}

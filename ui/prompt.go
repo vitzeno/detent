@@ -244,6 +244,8 @@ func applyInputTheme(ta *textarea.Model) {
 	s.Focused.Prompt = styleRowCursor
 	s.Blurred.Prompt = styleFaint
 	s.Cursor.Color = palette.Accent
+	// Steady, since a blink would redraw every pane twice a second.
+	s.Cursor.Blink = false
 	ta.SetStyles(s)
 }
 
