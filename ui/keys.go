@@ -419,7 +419,5 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 			return m.stopAgent(r.agent)
 		}
 	}
-	var cmd tea.Cmd
-	m.output, cmd = m.output.Update(msg)
-	return m, cmd
+	return m, nil
 }

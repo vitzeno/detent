@@ -946,3 +946,31 @@ func TestInput_TheCursorIsSteady(t *testing.T) {
 	e := newCommentEdit(event.CommentAdded, uuid.Nil, "")
 	assert.Nil(t, e.input.Focus(), "the comment editor's cursor asks to blink")
 }
+
+// A key history does not use is dropped, not passed to the output pane, which
+// scrolled under the human while they looked at the rows.
+func TestHistory_KeysItDoesNotUseLeaveTheOutputAlone(t *testing.T) {
+	k := newKeyed(t)
+	turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	long := strings.Repeat("line\n", 200)
+	for _, ev := range []event.Event{
+		event.TurnStarted{Turn: turn, N: 1, Prompt: "p"},
+		event.ToolCallProposed{ToolCall: call, Tool: event.ToolBash, Args: map[string]any{"command": "seq 200"}},
+		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: long}},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone},
+	} {
+		k.m.apply(ev)
+	}
+	k.press(t, "tab")
+	require.Equal(t, ownerHistory, k.m.owner())
+	require.Greater(t, k.m.output.TotalLineCount(), k.m.output.Height(), "the test needs output to scroll")
+	for _, key := range []string{"j", "f", "d", "l"} {
+		k.press(t, key)
+		assert.Zero(t, k.m.output.YOffset(), "%s scrolled the output pane", key)
+	}
+
+	k.press(t, "tab")
+	require.Equal(t, ownerOutput, k.m.owner())
+	k.press(t, "j")
+	assert.Equal(t, 1, k.m.output.YOffset(), "in the output pane, j still scrolls")
+}
