@@ -3,6 +3,7 @@ package ui
 import (
 	"slices"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -21,9 +22,9 @@ func (m Model) outputNav(d int) (Model, tea.Cmd) {
 		}
 	}
 	if d < 0 {
-		m.output.ScrollUp(1)
+		m.output.ScrollUp(-d)
 	} else {
-		m.output.ScrollDown(1)
+		m.output.ScrollDown(d)
 	}
 	return m, nil
 }
@@ -41,6 +42,12 @@ func (m Model) navUp() (Model, tea.Cmd) {
 	return m, nil
 }
 
+// navTop puts the cursor on the first row, which stops following the newest.
+func (m Model) navTop() (Model, tea.Cmd) {
+	m.nav.cursor, m.nav.follow, m.nav.histOffset = 0, false, 0
+	return m, nil
+}
+
 func (m Model) navDown() (Model, tea.Cmd) {
 	rows := m.rows()
 	if m.nav.cursor < len(rows)-1 {
@@ -52,8 +59,8 @@ func (m Model) navDown() (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) scrollViewport(key string) (Model, tea.Cmd) {
-	if key == "pgup" {
+func (m Model) scrollViewport(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	if key.Matches(msg, keymap.input.pageUp) {
 		m.output.HalfPageUp()
 	} else {
 		m.output.HalfPageDown()

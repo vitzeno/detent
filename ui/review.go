@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
@@ -439,77 +440,74 @@ func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if r.edit != nil {
 		return m.editKey(msg)
 	}
-	key := msg.String()
+	k := keymap.review
 	if r.triage != nil {
-		if next, cmd, ok := m.triageKey(key); ok {
+		if next, cmd, ok := m.triageKey(msg); ok {
 			return next, cmd
 		}
 	}
-	if key != "x" {
+	if !key.Matches(msg, k.remove) {
 		r.deleting = uuid.Nil
 	}
-	switch key {
-	case "esc":
+	if key.Matches(msg, k.comment, k.edit, k.remove, k.send, k.reviewer, k.triage) && m.reviewSent() {
+		m.noteErr("this review was sent: s or /review starts another")
+		return m, nil
+	}
+	switch {
+	case key.Matches(msg, k.close):
 		if r.ranging {
 			r.ranging = false
 			return m, nil
 		}
 		return m.closeReview()
-	case "tab":
+	case key.Matches(msg, k.pane):
 		r.diffFocused = !r.diffFocused
-	case "enter":
+	case key.Matches(msg, k.diff):
 		r.diffFocused = true
-	case "up", "k":
-		m.reviewMove(-1)
-	case "down", "j":
-		m.reviewMove(1)
-	case "pgup":
-		m.reviewMove(-m.modalPaneHeight())
-	case "pgdown":
-		m.reviewMove(m.modalPaneHeight())
-	case "n":
+	case key.Matches(msg, k.file):
 		r.pickFile(r.file + 1)
-	case "p":
+	case key.Matches(msg, k.prevFile):
 		r.pickFile(r.file - 1)
-	case "]":
+	case key.Matches(msg, k.hunk):
 		r.line = m.nextHunk(1)
-	case "[":
+	case key.Matches(msg, k.prevHunk):
 		r.line = m.nextHunk(-1)
-	case "v":
+	case key.Matches(msg, k.rng):
 		m.toggleRange()
-	case "c", "e", "x", "ctrl+s", "r", "t":
-		if m.reviewSent() {
-			m.noteErr("this review was sent: s or /review starts another")
-			return m, nil
-		}
-	}
-	switch key {
-	case "c":
+	case key.Matches(msg, k.comment):
 		return m.startComment()
-	case "e":
+	case key.Matches(msg, k.edit):
 		return m.startEdit()
-	case "x":
+	case key.Matches(msg, k.remove):
 		return m.deleteComment()
-	case "ctrl+s":
+	case key.Matches(msg, k.send):
 		return m.submitReview()
-	case "s":
+	case key.Matches(msg, k.scope):
 		return m.nextScope()
-	case "r":
+	case key.Matches(msg, k.reviewer):
 		return m.startReviewer()
-	case "left", "right":
-		return m.stepReview(map[string]int{"left": -1, "right": 1}[key])
-	case "t":
+	case key.Matches(msg, k.prevReview):
+		return m.stepReview(-1)
+	case key.Matches(msg, k.nextReview):
+		return m.stepReview(1)
+	case key.Matches(msg, k.triage):
 		return m.startTriage()
-	case ">", "<":
-		m.jumpComment(map[string]int{">": 1, "<": -1}[key])
-	case "space":
+	case key.Matches(msg, k.prevComment):
+		m.jumpComment(-1)
+	case key.Matches(msg, k.nextComment):
+		m.jumpComment(1)
+	case key.Matches(msg, k.viewed):
 		m.toggleViewed()
-	case "w":
+	case key.Matches(msg, k.split):
 		if !m.splitFits() {
 			m.noteErr(fmt.Sprintf("too narrow to split: the diff needs %d columns", splitMin))
 			break
 		}
 		r.split = !r.split
+	default:
+		if d, ok := k.move.delta(msg, m.modalPaneHeight()); ok {
+			m.reviewMove(d)
+		}
 	}
 	return m, nil
 }
@@ -602,11 +600,11 @@ func (m Model) deleteComment() (Model, tea.Cmd) {
 // editKey writes into the editor: enter saves, esc drops the draft.
 func (m Model) editKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	r := &m.review
-	switch msg.String() {
-	case "esc":
+	switch {
+	case key.Matches(msg, keymap.review.drop):
 		r.edit = nil
 		return m, nil
-	case "enter":
+	case key.Matches(msg, keymap.review.save):
 		e := r.edit
 		r.edit, r.ranging = nil, false
 		body := strings.TrimSpace(e.input.Value())
@@ -774,23 +772,24 @@ func (m Model) startTriage() (Model, tea.Cmd) {
 
 // triageKey answers the comment under triage: y keeps it, n drops it, e
 // rewrites it, and esc stops. ok is false for any other key.
-func (m Model) triageKey(key string) (Model, tea.Cmd, bool) {
+func (m Model) triageKey(msg tea.KeyPressMsg) (Model, tea.Cmd, bool) {
 	t := m.review.triage
-	switch key {
-	case "y":
+	k := keymap.review
+	switch {
+	case key.Matches(msg, k.keep):
 		t.kept++
 		m.nextTriage()
 		return m, nil, true
-	case "n":
+	case key.Matches(msg, k.discard):
 		t.dropped++
 		m.sendComment(event.CommentDeleted, event.ReviewComment{ID: t.queue[t.at]})
 		m.nextTriage()
 		return m, nil, true
-	case "e":
+	case key.Matches(msg, k.edit):
 		m.focusComment(t.queue[t.at])
 		next, cmd := m.startEdit()
 		return next, cmd, true
-	case "esc":
+	case key.Matches(msg, k.close):
 		m.review.triage = nil
 		return m, nil, true
 	}

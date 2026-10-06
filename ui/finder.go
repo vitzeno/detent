@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -58,28 +59,27 @@ func (m Model) openFinder(query string) (Model, tea.Cmd) {
 
 // finderKey owns every key while the finder is up.
 func (m Model) finderKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
+	k := keymap.finder
+	switch {
+	case key.Matches(msg, k.close):
 		return m.closeFinder(true), nil
-	case "enter":
+	case key.Matches(msg, k.jump):
 		return m.jump(), nil
-	case "ctrl+f":
+	case key.Matches(msg, k.kind):
 		m.finder.kind = (m.finder.kind + 1) % finderKind(len(finderKindNames))
 		m.refreshFinder()
-	case "up", "ctrl+p":
-		m.moveFinder(-1)
-	case "down", "ctrl+n":
-		m.moveFinder(1)
-	case "pgup", "ctrl+u":
-		m.scrollFinder(-m.finderBodyHeight() / 2)
-	case "pgdown", "ctrl+d":
-		m.scrollFinder(m.finderBodyHeight() / 2)
-	case "backspace":
+	case key.Matches(msg, k.move.up, k.move.down, k.move.top, k.move.bottom):
+		d, _ := k.move.delta(msg, 0)
+		m.moveFinder(d)
+	case key.Matches(msg, k.move.pageUp, k.move.pageDown):
+		d, _ := k.move.delta(msg, m.finderBodyHeight()/2)
+		m.scrollFinder(d)
+	case key.Matches(msg, k.erase):
 		if _, n := utf8.DecodeLastRuneInString(m.finder.query); n > 0 {
 			m.finder.query = m.finder.query[:len(m.finder.query)-n]
 			m.refreshFinder()
 		}
-	case "ctrl+w":
+	case key.Matches(msg, k.eraseWord):
 		q := strings.TrimRight(m.finder.query, " ")
 		m.finder.query = q[:strings.LastIndex(q, " ")+1]
 		m.refreshFinder()

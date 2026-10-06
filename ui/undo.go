@@ -125,17 +125,18 @@ func (m *Model) undoLines() []string {
 		styleFaint.Render("  anything changed after the request ended stays."))
 }
 
-// undoKeys names the answers the target allows, joined by sep.
-func (m Model) undoKeys(sep string) string {
+// undoHints names the answers the target allows.
+func (m Model) undoHints() []hint {
+	k := keymap.ask
 	b := m.undo.target
-	keep := "[n/enter] container only"
+	keep := "container only"
 	switch {
 	case b == nil || !b.files:
-		return strings.Join([]string{"[y/enter] undo", "[n/esc] cancel"}, sep)
+		return []hint{does("undo", k.yes, k.enter), does("cancel", k.no, k.esc)}
 	case !b.container:
-		keep = "[n/enter] conversation only"
+		keep = "conversation only"
 	}
-	return strings.Join([]string{keep, "[y] revert your files too", "[esc] cancel"}, sep)
+	return []hint{does(keep, k.no, k.enter), does("revert your files too", k.yes), does("cancel", k.esc)}
 }
 
 // split separates what a checkpoint covers from what it does not.

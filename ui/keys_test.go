@@ -890,6 +890,10 @@ func keyCode(key string) rune {
 		return tea.KeyPgDown
 	case "pgup":
 		return tea.KeyPgUp
+	case "home":
+		return tea.KeyHome
+	case "end":
+		return tea.KeyEnd
 	}
 	return rune(key[0])
 }

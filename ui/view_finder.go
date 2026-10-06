@@ -22,7 +22,10 @@ func (m Model) finderBox() string {
 	inner := island.Inner(m.modalWidth())
 	rule := styleFaint.Render(strings.Repeat("─", inner))
 	next := finderKindNames[(m.finder.kind+1)%finderKind(len(finderKindNames))]
-	keys := "enter jump · ctrl+f " + next + " · ↑↓ move · ctrl+u/d scroll · esc back"
+	k := keymap.finder
+	keys := boxLine(does("jump", k.jump), does(next, k.kind), does("move", k.move.up, k.move.down),
+		does("scroll", k.move.pageUp, k.move.pageDown), does("back", k.close),
+		does("first/last", k.move.top, k.move.bottom))
 
 	lines := []string{m.finderQueryLine(inner), rule}
 	lines = append(lines, m.finderBodyLines()...)

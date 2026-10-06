@@ -50,7 +50,7 @@ func (m Model) reviewBox() string {
 			focused: !r.diffFocused},
 		modalPane{title: layout.Truncate(title, island.Inner(right)), lines: m.reviewDiffLines(h),
 			focused: r.diffFocused})
-	return m.modalBox(m.reviewTitle(), body, m.reviewKeys())
+	return m.modalBox(m.reviewTitle(), body, boxLine(m.reviewHints()...))
 }
 
 // reviewPaneWidths gives the list under a third, since the diff is what is read.
@@ -134,29 +134,49 @@ func (m Model) scopeLabel() string {
 	return label
 }
 
-// reviewKeys offers what the cursor is on, leading with what esc will close: it
+// reviewHints offers what the cursor is on, leading with what esc will close: it
 // closes a layer at a time, and the line is cut to the box, which hid "esc back".
-func (m Model) reviewKeys() string {
-	r := m.review
+func (m Model) reviewHints() []hint {
+	r, k := m.review, keymap.review
 	switch {
 	case r.edit != nil:
-		return "esc drops the draft · enter save · " + m.prompt.NewlineKey() + " newline"
+		return []hint{does("drops the draft", k.drop), does("save", k.save),
+			{keys: m.prompt.NewlineKey(), desc: "newline"}}
 	case r.triage != nil:
-		return fmt.Sprintf("esc stops triage · comment %d of %d · y keep · n drop · e edit",
-			r.triage.at+1, len(r.triage.queue))
+		return []hint{does("stops triage", k.close),
+			note(fmt.Sprintf("comment %d of %d", r.triage.at+1, len(r.triage.queue))),
+			does("keep", k.keep), does("drop", k.discard), does("edit", k.edit)}
 	case r.ranging:
-		return "esc drops the range · c comments on it · ↑↓ extend it"
+		return []hint{does("drops the range", k.close), does("comments on it", k.comment),
+			does("extend it", k.move.up, k.move.down)}
 	case !r.diffFocused:
-		return "esc closes · ↑↓ file · enter diff · space viewed · s scope · r reviewer · ←→ reviews · ctrl+s send"
+		return []hint{does("closes", k.close), does("file", k.move.up, k.move.down), does("diff", k.diff),
+			does("viewed", k.viewed), does("scope", k.scope), does("reviewer", k.reviewer),
+			does("reviews", k.prevReview, k.nextReview), does("send", k.send),
+			does("first/last", k.move.top, k.move.bottom)}
 	}
 	rows := m.reviewRows()
 	if r.line < len(rows) && rows[r.line].comment != nil {
 		if r.deleting == rows[r.line].comment.ID {
-			return "x again deletes it · any other key keeps it"
+			return []hint{does("again deletes it", k.remove), note("any other key keeps it")}
 		}
-		return "esc closes · c reply · e edit · x delete · </> comments · t triage · ctrl+s send"
+		return []hint{does("closes", k.close), does("reply", k.comment), does("edit", k.edit),
+			does("delete", k.remove), does("comments", k.prevComment, k.nextComment),
+			does("triage", k.triage), does("send", k.send)}
 	}
-	return "esc closes · c comment · v range · ]/[ hunk · </> comments · n/p file · space viewed · w split · r reviewer · t triage · ctrl+s send"
+	return []hint{does("closes", k.close), does("comment", k.comment), does("range", k.rng),
+		does("hunk", k.hunk, k.prevHunk), does("comments", k.prevComment, k.nextComment),
+		does("file", k.file, k.prevFile), does("viewed", k.viewed), does("split", k.split),
+		does("reviewer", k.reviewer), does("triage", k.triage), does("send", k.send),
+		does("first/last", k.move.top, k.move.bottom)}
+}
+
+// reviewEsc is what esc does in the review, for the bar, none when esc is not first.
+func (m Model) reviewEsc() hint {
+	if hs := m.reviewHints(); hs[0].keys == keymap.review.close.Help().Key {
+		return hs[0]
+	}
+	return hint{}
 }
 
 // reviewFileLines lists each changed file with what happened to it.

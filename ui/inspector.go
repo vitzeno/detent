@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
@@ -78,34 +79,35 @@ func (m Model) showAgents(input string) (Model, tea.Cmd) {
 // inspectorKey owns every key while the inspector is open.
 func (m Model) inspectorKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	rows := m.inspectorRows(m.insp.agent)
-	switch msg.String() {
-	case "esc":
+	k := keymap.inspector
+	switch {
+	case key.Matches(msg, k.close):
 		return m.closeInspector()
-	case "tab":
+	case key.Matches(msg, k.pane):
 		m.insp.outputFocused = !m.insp.outputFocused
-	case "up", "down":
-		d := 1
-		if msg.String() == "up" {
-			d = -1
-		}
-		if m.insp.outputFocused {
-			m.scrollInspector(d)
-			break
-		}
-		m.insp.cursor = min(max(m.insp.cursor+d, 0), len(rows)-1)
-		m.insp.output = 0
-	case "pgup":
-		m.scrollInspector(-m.modalPaneHeight())
-	case "pgdown":
-		m.scrollInspector(m.modalPaneHeight())
-	case "left", "right":
-		return m.nextAgent(msg.String() == "right")
-	case "x":
+	case key.Matches(msg, k.move.pageUp, k.move.pageDown):
+		d, _ := k.move.delta(msg, m.modalPaneHeight())
+		m.scrollInspector(d)
+	case key.Matches(msg, k.prevAgent):
+		return m.nextAgent(false)
+	case key.Matches(msg, k.nextAgent):
+		return m.nextAgent(true)
+	case key.Matches(msg, k.stop):
 		return m.stopAgent(m.insp.agent)
-	case "y", "Y", "enter":
+	case key.Matches(msg, k.yes):
 		return m.answerInInspector(true)
-	case "n", "N":
+	case key.Matches(msg, k.no):
 		return m.answerInInspector(false)
+	default:
+		d, ok := k.move.delta(msg, 0)
+		switch {
+		case !ok:
+		case m.insp.outputFocused:
+			m.scrollInspector(d)
+		default:
+			m.insp.cursor = min(max(m.insp.cursor+d, 0), len(rows)-1)
+			m.insp.output = 0
+		}
 	}
 	m.syncInspector()
 	return m, nil

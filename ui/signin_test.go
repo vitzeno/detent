@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -75,7 +76,7 @@ func TestSignIn_KeysOpenCopyAndRetry(t *testing.T) {
 	k.press(t, "o")
 	assert.Equal(t, event.OpenAuthorization{Server: "notion"}, k.intentOf(t, event.OpenAuthKind))
 
-	_, cmd, ok := k.m.signInKey(k.m.focused().signin, "c")
+	_, cmd, ok := k.m.signInKey(k.m.focused().signin, tea.KeyPressMsg{Code: 'c', Text: "c"})
 	assert.True(t, ok)
 	assert.NotNil(t, cmd, "c hands the link to the terminal's clipboard")
 

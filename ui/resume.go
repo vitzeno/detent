@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
@@ -62,30 +63,29 @@ func (m Model) closeResume() (Model, tea.Cmd) {
 
 // resumeKey owns every key while the picker is open.
 func (m Model) resumeKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
+	k := keymap.resume
+	switch {
+	case key.Matches(msg, k.close):
 		return m.closeResume()
-	case "enter":
+	case key.Matches(msg, k.resume):
 		return m.pickSession()
-	case "tab":
+	case key.Matches(msg, k.pane):
 		m.resume.previewFocused = !m.resume.previewFocused
-	case "up", "down":
-		d := 1
-		if msg.String() == "up" {
-			d = -1
-		}
-		if m.resume.previewFocused {
+	case key.Matches(msg, k.move.pageUp, k.move.pageDown):
+		// The preview's scroll counts up from its newest line.
+		d, _ := k.move.delta(msg, m.modalPaneHeight())
+		m.scrollResume(-d)
+	default:
+		d, ok := k.move.delta(msg, 0)
+		switch {
+		case !ok:
+		case m.resume.previewFocused:
 			m.scrollResume(-d)
-			break
+		default:
+			m.resume.cursor = min(max(m.resume.cursor+d, 0), max(0, len(m.sessions)-1))
+			m.resume.scroll = 0
+			m.loadSelected()
 		}
-		m.resume.cursor = min(max(m.resume.cursor+d, 0), max(0, len(m.sessions)-1))
-		m.resume.scroll = 0
-		m.loadSelected()
-		return m, nil
-	case "pgup":
-		m.scrollResume(m.modalPaneHeight())
-	case "pgdown":
-		m.scrollResume(-m.modalPaneHeight())
 	}
 	return m, nil
 }
@@ -159,7 +159,9 @@ func (m Model) previewOf(records []event.Record) *Model {
 
 // scrollResume moves the preview up from its newest line by d.
 func (m *Model) scrollResume(d int) {
-	m.resume.scroll = max(m.resume.scroll+d, 0)
+	_, right := m.resumePaneWidths()
+	top := max(0, len(m.resumeHistory(right))-m.modalPaneHeight())
+	m.resume.scroll = min(max(m.resume.scroll+d, 0), top)
 }
 
 // resumed swaps history for the session the picker resumed, as its header

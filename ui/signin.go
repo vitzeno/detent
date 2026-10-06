@@ -3,6 +3,7 @@ package ui
 import (
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -126,9 +127,9 @@ func signInPageLines(s *signInState, width int) []string {
 
 // signInKey is what enter, o and c do on a sign-in row. ok is false
 // for any other key, which the pane handles as usual.
-func (m Model) signInKey(s *signInState, key string) (Model, tea.Cmd, bool) {
-	switch key {
-	case "enter", "o":
+func (m Model) signInKey(s *signInState, msg tea.KeyPressMsg) (Model, tea.Cmd, bool) {
+	switch {
+	case key.Matches(msg, keymap.history.signIn):
 		switch s.stage {
 		case stageWaiting:
 			m.send(event.OpenAuthorization{Server: s.server})
@@ -142,7 +143,7 @@ func (m Model) signInKey(s *signInState, key string) (Model, tea.Cmd, bool) {
 			m.send(event.AuthorizeServer{Server: s.server})
 			return m, nil, true
 		}
-	case "c":
+	case key.Matches(msg, keymap.history.copyLink):
 		if s.stage != stageWaiting {
 			return m, nil, false
 		}

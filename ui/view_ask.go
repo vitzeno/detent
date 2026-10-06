@@ -135,7 +135,7 @@ func (m Model) questionBox() string {
 			styleFaint.Render("  [y/enter] keep going   [n] stop here")
 	case modeUndo:
 		return styleCaution.Render("⚠ undo") + "\n" +
-			styleFaint.Render("  "+m.undoKeys("   "))
+			styleFaint.Render("  "+strings.Join(barParts(m.undoHints()...), "   "))
 	case modeForget:
 		return styleDanger.Render("⚠ delete — this cannot be undone") + "\n" +
 			styleFaint.Render("  [y] delete   [n/enter/esc] cancel")

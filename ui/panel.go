@@ -165,7 +165,7 @@ func (m *Model) mcpLines() []string {
 			out = append(out, styleDanger.Render("     "+s.Err))
 		}
 	}
-	return append(out, "", styleFaint.Render("  [esc] close"))
+	return append(out, "", styleFaint.Render("  "+barLine(does("close", keymap.app.esc))))
 }
 
 // skillLines lists the skills found at startup, and who may ask for each.

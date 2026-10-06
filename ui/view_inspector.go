@@ -21,7 +21,7 @@ func (m Model) inspectorBox() string {
 	body := m.modalPanes(left, right,
 		modalPane{title: "output", lines: out[start:min(start+h, len(out))], focused: m.insp.outputFocused},
 		modalPane{title: "agent history", lines: m.inspectorHistory(right, h), focused: !m.insp.outputFocused})
-	return m.modalBox(m.inspectorTitle(island.Inner(m.modalWidth())), body, m.inspectorKeys())
+	return m.modalBox(m.inspectorTitle(island.Inner(m.modalWidth())), body, boxLine(m.inspectorHints()...))
 }
 
 // inspectorTitle names the agent and how it stands, its context on the right.
@@ -63,12 +63,16 @@ func since(t time.Time) string {
 	return status.Dur(d)
 }
 
-// inspectorKeys offers the answer only while the selected call waits on one.
-func (m Model) inspectorKeys() string {
+// inspectorHints offers the answer only while the selected call waits on one.
+func (m Model) inspectorHints() []hint {
+	k := keymap.inspector
+	hs := []hint{does("move", k.move.up, k.move.down), does("pane", k.pane),
+		does("agent", k.prevAgent, k.nextAgent), does("stop", k.stop), does("back", k.close),
+		does("top/end", k.move.top, k.move.bottom)}
 	if m.askOf(m.inspectorRow()) != nil {
-		return "y run · n decline · ↑↓ move · tab pane · ←→ agent · x stop · esc back"
+		hs = append([]hint{does("run", k.yes), does("decline", k.no)}, hs...)
 	}
-	return "↑↓ move · tab pane · ←→ agent · x stop · esc back"
+	return hs
 }
 
 // inspectorOutput is the selected row as the output pane draws it: a waiting

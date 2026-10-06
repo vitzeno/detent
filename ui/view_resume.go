@@ -12,15 +12,15 @@ import (
 // The resume picker's box: stored sessions beside the selected one's history.
 
 func (m Model) resumeBox() string {
-	// The history is what is read, so it takes the wider pane, less the two dates.
-	inner := island.Inner(m.modalWidth())
-	left := inner * 9 / 20
-	right := inner - left
+	left, right := m.resumePaneWidths()
 	h := m.modalPaneHeight()
 	body := m.modalPanes(left, right,
 		modalPane{title: "sessions", lines: m.resumeListLines(left-4, h), focused: !m.resume.previewFocused},
 		modalPane{title: "history", lines: m.resumePreviewLines(right, h), focused: m.resume.previewFocused})
-	return m.modalBox(m.resumeTitle(), body, "enter resume · ↑↓ move · tab pane · esc back")
+	k := keymap.resume
+	return m.modalBox(m.resumeTitle(), body, boxLine(does("resume", k.resume),
+		does("move", k.move.up, k.move.down), does("pane", k.pane), does("back", k.close),
+		does("top/end", k.move.top, k.move.bottom)))
 }
 
 func (m Model) resumeTitle() string {
@@ -103,6 +103,14 @@ func ago(t time.Time) string {
 	return t.Local().Format("Jan 2006")
 }
 
+// resumePaneWidths gives the history the wider pane, since it is what is read,
+// less the two dates.
+func (m Model) resumePaneWidths() (left, right int) {
+	inner := island.Inner(m.modalWidth())
+	left = inner * 9 / 20
+	return left, inner - left
+}
+
 // resumePreviewLines is the selected session's history as the history pane
 // draws it, from its newest line up by the scroll.
 func (m Model) resumePreviewLines(paneWidth, height int) []string {
@@ -117,9 +125,23 @@ func (m Model) resumePreviewLines(paneWidth, height int) []string {
 	case p.err != "":
 		return []string{styleDanger.Render(layout.Truncate(p.err, paneWidth-4))}
 	}
+	lines := m.resumeHistory(paneWidth)
+	end := max(0, len(lines)-min(m.resume.scroll, max(0, len(lines)-height)))
+	return lines[max(0, end-height):end]
+}
+
+// resumeHistory is every line of the selected session's history, nil until loaded.
+func (m Model) resumeHistory(paneWidth int) []string {
+	s := m.selectedSession()
+	if s == nil {
+		return nil
+	}
+	p := m.resume.loaded[s.ID]
+	if p == nil || p.model == nil {
+		return nil
+	}
 	// blockWidth fits rows to the history pane, so it is handed this one's width.
 	p.model.layout.histColW = paneWidth + railWidth
 	lines, _ := p.model.historyAll()
-	end := max(0, len(lines)-min(m.resume.scroll, max(0, len(lines)-height)))
-	return lines[max(0, end-height):end]
+	return lines
 }

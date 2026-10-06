@@ -3,6 +3,7 @@ package ui
 import (
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
@@ -27,20 +28,20 @@ const (
 // pressed is handleKey with any key but esc dropping a stop esc had asked for,
 // so only two esc in a row stop a request.
 func (m Model) pressed(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	if msg.String() != "esc" {
+	if !key.Matches(msg, keymap.app.esc) {
 		m.escArmed = time.Time{}
 	}
 	return m.handleKey(msg)
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	if msg.String() == "ctrl+c" {
+	if key.Matches(msg, keymap.app.quit) {
 		return m.onQuit("ctrl+c")
 	}
 	// Anything else means they are still working, so the quit they
 	// half-asked for is no longer the next thing they meant.
 	m.quitArmed = false
-	if msg.String() != "x" {
+	if !key.Matches(msg, keymap.history.stop) {
 		m.stopArmed = uuid.Nil
 	}
 	if m.mode == modeUndo {
@@ -64,14 +65,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.mode == modeReview {
 		return m.reviewKey(msg)
 	}
-	switch msg.String() {
-	case "ctrl+f":
+	switch {
+	case key.Matches(msg, keymap.app.find):
 		return m.openFinder("")
-	case "esc":
+	case key.Matches(msg, keymap.app.esc):
 		return m.onEscape()
-	case "tab":
+	case key.Matches(msg, keymap.app.tab):
 		return m.onTab()
-	case "shift+tab":
+	case key.Matches(msg, keymap.app.entry):
 		return m.toggleEntry()
 	}
 	switch m.owner() {
@@ -132,53 +133,53 @@ func (m Model) owner() keyOwner {
 // undoKey owns every key while the undo question is up: three
 // outcomes, none of them implicit.
 func (m Model) undoKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	k := keymap.ask
 	// With no files to revert there is one question, not two.
 	if b := m.undo.target; b != nil && !b.files {
-		switch msg.String() {
-		case "y", "Y", "enter":
+		switch {
+		case key.Matches(msg, k.yes, k.enter):
 			return m.confirmUndo(false)
-		case "n", "N":
+		case key.Matches(msg, k.no):
 			return m.cancelUndo()
 		}
 	}
-	switch msg.String() {
-	case "y", "Y":
+	switch {
+	case key.Matches(msg, k.yes):
 		return m.confirmUndo(true)
-	case "n", "N", "enter":
+	case key.Matches(msg, k.no, k.enter):
 		// enter takes the safe branch: the destructive answer has to
 		// be typed deliberately.
 		return m.confirmUndo(false)
-	case "esc":
+	case key.Matches(msg, k.esc):
 		return m.cancelUndo()
-	case "up":
-		m.output.ScrollUp(1)
-		return m, nil
-	case "down":
-		m.output.ScrollDown(1)
-		return m, nil
-	case "pgup":
-		m.output.HalfPageUp()
-		return m, nil
-	case "pgdown":
-		m.output.HalfPageDown()
-		return m, nil
 	}
+	m.scrollOutput(k.read, msg)
 	return m, nil
 }
 
 // forgetKey answers the delete question. Every key but y cancels.
 func (m Model) forgetKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "y", "Y":
+	if key.Matches(msg, keymap.ask.yes) {
 		return m.confirmForget()
-	case "up":
-		m.output.ScrollUp(1)
-		return m, nil
-	case "down":
-		m.output.ScrollDown(1)
+	}
+	if m.scrollOutput(keymap.ask.read, msg) {
 		return m, nil
 	}
 	return m.cancelForget()
+}
+
+// scrollOutput scrolls the output pane if msg is one of k, half a pane to a
+// page, and reports whether it was.
+func (m *Model) scrollOutput(k moveKeys, msg tea.KeyPressMsg) bool {
+	d, ok := k.delta(msg, max(1, m.output.Height()/2))
+	switch {
+	case !ok:
+	case d < 0:
+		m.output.ScrollUp(-d)
+	default:
+		m.output.ScrollDown(d)
+	}
+	return ok
 }
 
 // boundKey answers the step bound. The engine is paused, waiting.
@@ -186,11 +187,11 @@ func (m Model) boundKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.settling() {
 		return m, nil
 	}
-	switch msg.String() {
-	case "y", "Y", "enter":
+	switch {
+	case key.Matches(msg, keymap.ask.yes, keymap.ask.enter):
 		return m.answerBound(true)
 	// Not esc: stopping a request takes a deliberate key, never a stray one.
-	case "n", "N":
+	case key.Matches(msg, keymap.ask.no):
 		return m.answerBound(false)
 	}
 	return m, nil
@@ -266,31 +267,24 @@ func (m Model) toggleEntry() (Model, tea.Cmd) {
 // confirmKey answers an approval. y waits until the whole command has
 // been on screen, since approving a tail nobody saw is no approval.
 func (m Model) confirmKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	_, room := m.confirmLines()
-	switch msg.String() {
-	case "y", "Y", "enter", "n", "N":
-		// Too soon to be an answer: likely the next key of something typed.
-		if m.settling() {
-			return m, nil
-		}
+	k := keymap.ask
+	// Too soon to be an answer: likely the next key of something typed.
+	if key.Matches(msg, k.yes, k.enter, k.no) && m.settling() {
+		return m, nil
 	}
-	switch msg.String() {
-	case "y", "Y", "enter":
+	switch {
+	case key.Matches(msg, k.yes, k.enter):
 		if !m.confirmReady() {
 			m.noteErr("read to the end of the command first: ↓ scrolls it")
 			return m, nil
 		}
 		return m.approve()
-	case "n", "N":
+	case key.Matches(msg, k.no):
 		return m.decline()
-	case "down":
-		m.scrollConfirm(1)
-	case "up":
-		m.scrollConfirm(-1)
-	case "pgdown":
-		m.scrollConfirm(room)
-	case "pgup":
-		m.scrollConfirm(-room)
+	}
+	_, room := m.confirmLines()
+	if d, ok := k.read.delta(msg, room); ok {
+		m.scrollConfirm(d)
 	}
 	return m, nil
 }
@@ -301,14 +295,14 @@ func (m Model) inputKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if next, cmd, handled := m.slashKey(msg); handled {
 		return next, cmd
 	}
-	switch msg.String() {
-	case "enter":
+	switch {
+	case key.Matches(msg, keymap.input.run):
 		if m.prompt.shell {
 			return m.runShell()
 		}
 		return m.submit()
-	case "pgup", "pgdown":
-		return m.scrollViewport(msg.String())
+	case key.Matches(msg, keymap.input.pageUp, keymap.input.pageDown):
+		return m.scrollViewport(msg)
 	}
 	cmd := m.prompt.Key(msg)
 	m.clearNotice()
@@ -321,14 +315,14 @@ func (m Model) slashKey(msg tea.KeyPressMsg) (Model, tea.Cmd, bool) {
 	if !m.prompt.Open() {
 		return m, nil, false
 	}
-	switch msg.String() {
-	case "up":
+	switch {
+	case key.Matches(msg, keymap.input.pick.up):
 		m.prompt.Move(-1)
 		return m, nil, true
-	case "down":
+	case key.Matches(msg, keymap.input.pick.down):
 		m.prompt.Move(1)
 		return m, nil, true
-	case "enter":
+	case key.Matches(msg, keymap.input.run):
 		// Enter runs the highlighted entry, tab completes without running. In a
 		// sentence enter only completes, since the rest is still to be typed.
 		if m.prompt.MidSentence() {
@@ -344,28 +338,25 @@ func (m Model) slashKey(msg tea.KeyPressMsg) (Model, tea.Cmd, bool) {
 
 // outputKey acts inside the detail component instead of moving rows.
 func (m Model) outputKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	if msg.String() == "a" && len(m.agentOrder) > 0 {
+	if key.Matches(msg, keymap.history.agents) && len(m.agentOrder) > 0 {
 		return m.showAgents("")
 	}
 	if r := m.focused(); r != nil && r.signin != nil {
-		if next, cmd, ok := m.signInKey(r.signin, msg.String()); ok {
+		if next, cmd, ok := m.signInKey(r.signin, msg); ok {
 			return next, cmd
 		}
 	}
-	switch msg.String() {
-	case "up":
-		return m.outputNav(-1)
-	case "down":
-		return m.outputNav(1)
-	case "pgup":
+	k := keymap.output
+	switch {
+	case key.Matches(msg, k.move.pageUp):
 		m.output.HalfPageUp()
 		return m, nil
-	case "pgdown":
+	case key.Matches(msg, k.move.pageDown):
 		m.output.HalfPageDown()
 		return m, nil
-	case "enter", "v", "space":
+	case key.Matches(msg, k.expand):
 		if r := m.focused(); r != nil {
-			if msg.String() == "enter" {
+			if key.Matches(msg, keymap.input.run) {
 				if nm, ok := m.seedFromView(r); ok {
 					return nm, nil
 				}
@@ -374,31 +365,38 @@ func (m Model) outputKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if d, ok := k.move.delta(msg, 1); ok {
+		return m.outputNav(d)
+	}
+	// The viewport's own keys, j and k among them, scroll it too.
 	var cmd tea.Cmd
 	m.output, cmd = m.output.Update(msg)
 	return m, cmd
 }
 
 func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	if msg.String() == "a" && len(m.agentOrder) > 0 {
+	k := keymap.history
+	if key.Matches(msg, k.agents) && len(m.agentOrder) > 0 {
 		return m.showAgents("")
 	}
 	if r := m.focused(); r != nil && r.signin != nil {
-		if next, cmd, ok := m.signInKey(r.signin, msg.String()); ok {
+		if next, cmd, ok := m.signInKey(r.signin, msg); ok {
 			return next, cmd
 		}
 	}
-	switch msg.String() {
-	case "up":
+	switch {
+	case key.Matches(msg, k.move.up):
 		return m.navUp()
-	case "down":
+	case key.Matches(msg, k.move.down):
 		return m.navDown()
-	case "end":
+	case key.Matches(msg, k.move.top):
+		return m.navTop()
+	case key.Matches(msg, k.move.bottom):
 		m.followNewest()
 		return m, nil
-	case "pgup", "pgdown":
-		return m.scrollViewport(msg.String())
-	case "enter":
+	case key.Matches(msg, k.move.pageUp, k.move.pageDown):
+		return m.scrollViewport(msg)
+	case key.Matches(msg, k.open):
 		// A review's row has its reviewer too, but what it stands for is the review.
 		if r := m.focused(); r != nil && r.review != uuid.Nil {
 			return m.openReviewRow(r)
@@ -410,12 +408,12 @@ func (m Model) historyKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 			m.toggleExpand(r)
 		}
 		return m, nil
-	case "v", "space":
+	case key.Matches(msg, k.expand):
 		if r := m.focused(); r != nil {
 			m.toggleExpand(r)
 		}
 		return m, nil
-	case "x":
+	case key.Matches(msg, k.stop):
 		if r := m.focused(); r != nil {
 			return m.stopAgent(r.agent)
 		}
