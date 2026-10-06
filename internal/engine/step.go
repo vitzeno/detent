@@ -213,6 +213,11 @@ func (e *Engine) approve(ctx context.Context, t *turnState, a *agent, p *toolCal
 }
 
 func (e *Engine) execute(ctx context.Context, t *turnState, a *agent, p *toolCallPlan) {
+	// Answered from what the engine holds, so nothing runs.
+	if p.prepared.Internal {
+		e.answer(a, p)
+		return
+	}
 	// The one tool with a path the others lack: running it is running the engine.
 	if p.prepared.Delegates {
 		e.spawn(ctx, t, a, p)

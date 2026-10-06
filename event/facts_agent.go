@@ -11,8 +11,10 @@ type AgentStarted struct {
 	fact
 	Agent    uuid.UUID `json:"Agent"`
 	ToolCall uuid.UUID `json:"ToolCall"`
-	Name     string    `json:"Name"`
-	Task     string    `json:"Task"`
+	// Turn places an agent no call started, a reviewer, in the Turn it works for.
+	Turn uuid.UUID `json:"Turn"`
+	Name string    `json:"Name"`
+	Task string    `json:"Task"`
 }
 
 func (AgentStarted) Kind() Kind { return AgentStartedKind }

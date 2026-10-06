@@ -77,7 +77,7 @@ a config made from it does not pin today's defaults. Relevant env vars: `DETENT_
 `DETENT_API_KEY` (falls back to `OPENROUTER_API_KEY` then
 `OPENAI_API_KEY`), `TYPESAFE_API_KEY` (enables the Jev hook),
 `DETENT_CONTEXT_TOKENS`, `DETENT_THEME` (one of `ui/theme.Themes`'
-names), `DETENT_SUBAGENTS` (off by default, see `spawn_agent` below). The full list is `envKeys` in `internal/config/resolve.go`.
+names), `DETENT_SUBAGENTS` (off by default, see `spawn_agent` below), `DETENT_REVIEW_MODEL` (the reviewer's model, which needs subagents on). The full list is `envKeys` in `internal/config/resolve.go`.
 Boolean variables take 1/0, true/false, yes/no or on/off. A `.env` in
 the working directory is also loaded at startup, and real env vars
 always win over it. An unknown key in the config file is an error that
@@ -239,7 +239,7 @@ undo refuses before touching the sandbox or the files.
 
 ## Architecture
 
-**Everything is an event.** 36 facts and 23 intents are the entire
+**Everything is an event.** 36 facts and 24 intents are the entire
 interface between components. Facts are past tense, intents are
 imperative, and either may come from anyone: the engine publishes most
 facts, but a subscriber answering a question publishes one too. An extension
@@ -400,6 +400,16 @@ adding a fat dependency fails with the transitive import named.
   resumed session's `Run` ends whatever the old process left open (its
   Turn, tool calls and the human's command) with ordinary facts the store
   records, and tells the model its last request was cut off.
+  `ReviewChanges` starts a review (`review.go`, behind `subagents`): a Turn
+  that is no request, marked `TurnStarted.Review`, unnumbered, never in
+  `e.past` and skipped by `Restore`. Its reviewer agent has the file reads and
+  two tools answered from the diff the human sees, `review_diff` and
+  `review_comment`, and nothing that writes or reaches the network, since the
+  code it reads may carry an injected instruction. A comment that passes its
+  check is a `ReviewCommented` at once, and the report a comment on no line.
+  The review ends without settling or taking notes, so a prompt sent during it
+  waits in the inbox and runs as the next request. A crash's cut-off note is
+  for requests only.
 
 - **`internal/tool`**: the closed set a model may call, each lowered
   to one shell command so the sandbox stays the only executor of the
@@ -420,7 +430,9 @@ adding a fat dependency fails with the transitive import named.
   asked for PowerShell does not write bash, and it is shown literally
   like bash. The shell tool is not privileged: same registry, same schema, same
   hook chain. If it ever needs a code path the others don't have, the
-  registry is wrong. Every bad call comes back as a **tool result**,
+  registry is wrong. The exceptions are run by the engine: `spawn_agent`
+  (`Delegates`) and the review tools (`Internal`), which run nothing, so Jev
+  never sees them. Every bad call comes back as a **tool result**,
   never a Go error: an unregistered name, arguments failing the
   schema, a hallucinated parameter. The model reads it and corrects
   itself, which is the entire point of a loop. Under `strict: true`

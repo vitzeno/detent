@@ -86,6 +86,23 @@ type ResumeSession struct {
 
 func (ResumeSession) Kind() Kind { return ResumeSessionKind }
 
+// ReviewChanges asks a reviewer agent to comment on Files, the diff the human
+// sees, once no request is running. Asked is what the changes were made for.
+type ReviewChanges struct {
+	fact
+	Review   uuid.UUID   `json:"Review"`
+	Reviewed uuid.UUID   `json:"Reviewed"`
+	Scope    ReviewScope `json:"Scope"`
+	Base     string      `json:"Base"`
+	Head     string      `json:"Head"`
+	Against  string      `json:"Against"`
+	Request  int         `json:"Request"`
+	Asked    string      `json:"Asked"`
+	Files    []FileDiff  `json:"-"`
+}
+
+func (ReviewChanges) Kind() Kind { return ReviewChangesKind }
+
 // MeasureContext asks the engine for a ContextMeasured now, rather than
 // after the next Step.
 type MeasureContext struct{ fact }

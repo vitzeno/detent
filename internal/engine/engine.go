@@ -52,7 +52,9 @@ type Engine struct {
 
 	// childModel runs subagents, and without one spawn_agent answers that
 	// there are none. The limits below bound each child.
-	childModel   Completer
+	childModel Completer
+	// reviewer comments on a diff the human asked to have reviewed, nil without subagents.
+	reviewer     Completer
 	maxAgents    int
 	childContext int
 	childTimeout time.Duration
@@ -241,6 +243,12 @@ func (e *Engine) dispatch(ctx context.Context, ev event.Event, done chan struct{
 		return
 	}
 	switch v := ev.(type) {
+	case event.ReviewChanges:
+		if t != nil {
+			e.notice("warn", "a request is running: start the review once it ends")
+			return
+		}
+		e.startReview(ctx, v, done)
 	case event.SubmitPrompt:
 		if t != nil {
 			// Typed mid-Turn, a prompt is steering, not a new request.

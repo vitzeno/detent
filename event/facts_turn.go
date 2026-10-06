@@ -10,6 +10,9 @@ type TurnStarted struct {
 	Turn   uuid.UUID `json:"Turn"`
 	N      int       `json:"N"` // 1-based, what the human sees and /rollback takes
 	Prompt string    `json:"Prompt"`
+	// Review names the review a reviewer agent works for. Such a Turn is no
+	// request: it has no N, writes nothing to the root's transcript and is never undone.
+	Review uuid.UUID `json:"Review"`
 }
 
 func (TurnStarted) Kind() Kind { return TurnStartedKind }

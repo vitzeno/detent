@@ -87,6 +87,15 @@ func WithHeaders(h map[string]string) ClientOption { return func(c *Client) { c.
 // WithHTTPClient replaces the default, which bounds a Step at five minutes.
 func WithHTTPClient(hc *http.Client) ClientOption { return func(c *Client) { c.httpClient = hc } }
 
+// WithModel talks as name rather than the model NewClient was given, unless empty.
+func WithModel(name string) ClientOption {
+	return func(c *Client) {
+		if name != "" {
+			c.model = name
+		}
+	}
+}
+
 // WithSystemPrompt replaces the built-in prompt whole.
 func WithSystemPrompt(p string) ClientOption { return func(c *Client) { c.prompt = p } }
 
@@ -101,6 +110,8 @@ const (
 	RoleAgent Role = iota
 	// RoleChild works one task for another agent and replies with a report.
 	RoleChild
+	// RoleReviewer comments on a diff for the human, who reads it before anyone acts.
+	RoleReviewer
 )
 
 // WithRole picks the built-in prompt. The project's instructions follow either.
@@ -165,8 +176,12 @@ func (c *Client) PromptParts() []PromptPart {
 		return []PromptPart{{Name: "system prompt", Detail: "set by the caller", Bytes: len(c.prompt)}}
 	}
 	parts := []PromptPart{{Name: "detent", Detail: "environment and rules", Bytes: len(c.builtIn())}}
-	if c.role == RoleChild {
+	switch c.role {
+	case RoleChild:
 		parts = []PromptPart{{Name: "subagent", Detail: "environment and its task's rules", Bytes: len(c.builtIn())}}
+	case RoleReviewer:
+		parts = []PromptPart{{Name: "reviewer", Detail: "environment and how to review", Bytes: len(c.builtIn())}}
+	case RoleAgent:
 	}
 	if c.instructions != "" {
 		parts = append(parts, PromptPart{Name: "instructions", Detail: strings.Join(c.instructionFiles, ", "),
@@ -304,6 +319,8 @@ func (c *Client) builtIn() string {
 	switch {
 	case c.role == RoleChild:
 		return c.env.preamble() + childPrompt
+	case c.role == RoleReviewer:
+		return c.env.preamble() + reviewerPrompt
 	case c.subagents:
 		return systemPrompt(c.env) + subagentRule
 	}

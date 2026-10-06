@@ -32,6 +32,8 @@ type turnState struct {
 	id     uuid.UUID
 	n      int
 	prompt string
+	// review is set on a review's Turn, which is no request.
+	review uuid.UUID
 	// What a rollback restores, all taken before anything ran.
 	mark int
 	snap string

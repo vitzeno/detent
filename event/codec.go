@@ -112,6 +112,7 @@ var codecs = map[Kind]func([]byte) (Event, error){
 	ResetSessionKind:    codec[ResetSession],
 	MeasureContextKind:  codec[MeasureContext],
 	ResumeSessionKind:   codec[ResumeSession],
+	ReviewChangesKind:   codec[ReviewChanges],
 
 	ListSessionsKind:  codec[ListSessions],
 	RenameSessionKind: codec[RenameSession],

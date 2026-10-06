@@ -85,6 +85,7 @@ const (
 	ResetSessionKind    Kind = "do.reset"
 	MeasureContextKind  Kind = "do.measure_context"
 	ResumeSessionKind   Kind = "do.resume_session"
+	ReviewChangesKind   Kind = "do.review_changes"
 
 	// The store's.
 	ListSessionsKind  Kind = "do.list_sessions"
@@ -118,8 +119,8 @@ var intents = map[Kind]bool{
 	SubmitPromptKind: true, NoteContextKind: true, ResolveApprovalKind: true,
 	AbortKind: true, SuggestFinishKind: true, ContinueKind: true,
 	RequestRollbackKind: true, ResetSessionKind: true, MeasureContextKind: true,
-	ResumeSessionKind: true,
-	ListSessionsKind:  true, RenameSessionKind: true, LoadSessionKind: true, DeleteSessionKind: true,
+	ResumeSessionKind: true, ReviewChangesKind: true,
+	ListSessionsKind: true, RenameSessionKind: true, LoadSessionKind: true, DeleteSessionKind: true,
 	RunCommandKind: true, CancelCommandKind: true, StopAgentKind: true,
 	ListServersKind: true, AuthorizeServerKind: true, OpenAuthKind: true,
 	LoadDiffKind: true, CommentReviewKind: true, SubmitReviewKind: true,

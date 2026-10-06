@@ -29,6 +29,10 @@ func (e *Engine) Restore(records []event.Record) {
 					e.root.tr.msgs = append(e.root.tr.msgs, v.Messages...)
 				}
 			case event.TurnStarted:
+				// A review is no request, and wrote nothing to the root's transcript.
+				if v.Review != uuid.Nil {
+					continue
+				}
 				turns[v.Turn] = begun{n: v.N, mark: e.root.tr.mark()}
 				e.turns = v.N
 				e.root.tr.begin(v.N, v.Prompt)
@@ -105,6 +109,8 @@ type openWork struct {
 	calls    []uuid.UUID
 	commands []uuid.UUID
 	agents   []uuid.UUID
+	// reviews are the open Turns that were reviews, not requests.
+	reviews []uuid.UUID
 }
 
 // endLeftOpen ends what the old process left open, then tells the model.
@@ -126,7 +132,8 @@ func (e *Engine) endLeftOpen(o openWork) {
 		e.bus.Publish(event.TurnEnded{Turn: id, Reason: event.EndError,
 			Summary: "detent exited before this request finished"})
 	}
-	if len(o.turns) > 0 {
+	// A review cut off was no request of the model's, so it is told of none.
+	if len(o.turns) > len(o.reviews) {
 		e.appended(e.root, uuid.Nil, uuid.Nil, func() []event.Message { return e.root.tr.note(cutOffNote) })
 	}
 }
@@ -134,11 +141,13 @@ func (e *Engine) endLeftOpen(o openWork) {
 // leftOpenBy reads records for what never ended. A Turn undone or reset away
 // is gone, and so are its tool calls and the agents they spawned.
 func leftOpenBy(records []event.Record) openWork {
-	var turns, calls, commands, agents []uuid.UUID
+	var turns, calls, commands, agents, reviews []uuid.UUID
 	stepTurn := map[uuid.UUID]uuid.UUID{}
 	callTurn := map[uuid.UUID]uuid.UUID{}
 	// spawnedBy is each agent's spawn call, which places it in a Turn.
 	spawnedBy := map[uuid.UUID]uuid.UUID{}
+	// agentTurn places an agent no call started, a reviewer.
+	agentTurn := map[uuid.UUID]uuid.UUID{}
 	drop := func(list []uuid.UUID, id uuid.UUID) []uuid.UUID {
 		return slices.DeleteFunc(list, func(x uuid.UUID) bool { return x == id })
 	}
@@ -146,6 +155,9 @@ func leftOpenBy(records []event.Record) openWork {
 		switch v := r.Event.(type) {
 		case event.TurnStarted:
 			turns = append(turns, v.Turn)
+			if v.Review != uuid.Nil {
+				reviews = append(reviews, v.Turn)
+			}
 		case event.TurnEnded:
 			turns = drop(turns, v.Turn)
 		case event.StepStarted:
@@ -158,6 +170,9 @@ func leftOpenBy(records []event.Record) openWork {
 		case event.AgentStarted:
 			agents = append(agents, v.Agent)
 			spawnedBy[v.Agent] = v.ToolCall
+			if v.ToolCall == uuid.Nil {
+				agentTurn[v.Agent] = v.Turn
+			}
 		case event.AgentEnded:
 			agents = drop(agents, v.Agent)
 		case event.UserCommandStarted:
@@ -176,9 +191,14 @@ func leftOpenBy(records []event.Record) openWork {
 	// A call in a Turn no longer open was finished or taken back, and an agent with it.
 	calls = slices.DeleteFunc(calls, func(c uuid.UUID) bool { return !slices.Contains(turns, callTurn[c]) })
 	agents = slices.DeleteFunc(agents, func(a uuid.UUID) bool {
-		return !slices.Contains(turns, callTurn[spawnedBy[a]])
+		in, ok := agentTurn[a]
+		if !ok {
+			in = callTurn[spawnedBy[a]]
+		}
+		return !slices.Contains(turns, in)
 	})
-	return openWork{turns: turns, calls: calls, commands: commands, agents: agents}
+	reviews = slices.DeleteFunc(reviews, func(r uuid.UUID) bool { return !slices.Contains(turns, r) })
+	return openWork{turns: turns, calls: calls, commands: commands, agents: agents, reviews: reviews}
 }
 
 func (o openWork) empty() bool {

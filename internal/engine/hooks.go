@@ -192,7 +192,7 @@ func (jevHook) Name() string { return "jev" }
 func (h jevHook) Assess(ctx context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
 	// A delegating call has no effect to judge, so Jev adds nothing, as the
 	// regex hook does for a read. Its delegate's own calls are judged.
-	if h.judge == nil || c.Delegates {
+	if h.judge == nil || c.Delegates || c.Internal {
 		return event.UnknownRisk(), nil
 	}
 	return h.judge.Assess(ctx, c.Command, h.threshold)

@@ -93,6 +93,9 @@ type Config struct {
 	MaxAgents          int    `yaml:"max_agents"`
 	ChildContextTokens int    `yaml:"child_context_tokens"`
 	ChildTimeout       string `yaml:"child_timeout"`
+	// ReviewModel is the model /review's reviewer speaks as, on the same
+	// endpoint. Empty is the session's, and without subagents there is no reviewer.
+	ReviewModel string `yaml:"review_model"`
 	// MCPTrustHints takes a server's word that a tool only reads, so it runs
 	// unasked. A pointer so unset means on.
 	MCPTrustHints *bool `yaml:"mcp_trust_hints"`

@@ -150,6 +150,9 @@ func (s *session) buildEngine() error {
 	if err != nil {
 		return err
 	}
+	if !s.cfg.SpawnsSubagents() && s.cfg.ReviewModel != "" {
+		s.warnings = append(s.warnings, "review_model is set but subagents is off, so /review has no reviewer")
+	}
 	client := newClient(spawn.root...)
 
 	// Opened before the engine so it can say whether this session is

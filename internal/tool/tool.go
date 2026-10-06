@@ -49,6 +49,9 @@ type Spec struct {
 	// Delegates says the call has no effect of its own: each effect is
 	// assessed when the delegate makes it. The engine runs such a call itself.
 	Delegates bool
+	// Internal says the engine answers the call from what it already holds, as
+	// the review tools answer from the diff. Nothing runs, so nothing is judged.
+	Internal bool
 	// Raw is a schema detent did not build, handed to the model as
 	// given. Set when the parameters are not Param's small subset.
 	Raw map[string]any

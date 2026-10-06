@@ -80,6 +80,7 @@ type Call struct {
 	// runs it instead.
 	Executor  string
 	Delegates bool
+	Internal  bool
 }
 
 // Prepare validates a call and lowers it. Every error here reaches the
@@ -104,7 +105,7 @@ func (r *Registry) Prepare(name string, args map[string]any) (Call, error) {
 		return Call{}, fmt.Errorf("%s: %w", name, err)
 	}
 	return Call{Tool: name, Command: cmd, Mutability: spec.Mutability,
-		Args: clean, Executor: spec.Executor, Delegates: spec.Delegates}, nil
+		Args: clean, Executor: spec.Executor, Delegates: spec.Delegates, Internal: spec.Internal}, nil
 }
 
 // Register adds a tool, replacing any of the same name except a built-in,

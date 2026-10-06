@@ -8,7 +8,7 @@ import (
 )
 
 // spawning is what subagents add to a session when they are on: the tool,
-// the root's rule to use it, and the engine's child model and limits.
+// the root's rule to use it, the engine's child model and limits, and the reviewer.
 type spawning struct {
 	tools  []tool.Tool
 	root   []model.ClientOption
@@ -30,6 +30,7 @@ func subagents(cfg config.Config, child func(...model.ClientOption) *model.Clien
 		root:  []model.ClientOption{model.WithSubagents()},
 		engine: []engine.Option{
 			engine.WithChildModel(child(model.WithRole(model.RoleChild))),
+			engine.WithReviewer(child(model.WithRole(model.RoleReviewer), model.WithModel(cfg.ReviewModel))),
 			engine.WithAgentLimits(cfg.MaxAgents, cfg.ChildContextTokens, timeout),
 		},
 	}, nil

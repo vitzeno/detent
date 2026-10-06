@@ -30,6 +30,8 @@ func TestPromptParts_AddUpToTheWholePrompt(t *testing.T) {
 		"with subagents":    NewClient("", "", "", WithSubagents()),
 		"a subagent": NewClient("", "", "", WithRole(RoleChild),
 			WithInstructions("<instructions>x</instructions>", []string{"AGENTS.md"})),
+		"a reviewer": NewClient("", "", "", WithRole(RoleReviewer),
+			WithInstructions("<instructions>x</instructions>", []string{"AGENTS.md"})),
 	} {
 		n := 0
 		for _, p := range c.PromptParts() {
@@ -57,6 +59,25 @@ func TestSystemPrompt_AChildHasItsOwnRoleAndTheProjectsInstructions(t *testing.T
 	assert.NotContains(t, got, "Work the request")
 	assert.NotContains(t, got, "spawn_agent", "a child cannot spawn")
 	assert.Equal(t, "subagent", c.PromptParts()[0].Name)
+}
+
+// A reviewer is told how to review and given the project's instructions, which
+// say what the project counts as wrong, and never the root's rules.
+func TestSystemPrompt_AReviewerHasItsOwnRole(t *testing.T) {
+	c := NewClient("", "", "", WithRole(RoleReviewer), WithSubagents(),
+		WithInstructions("<instructions>use tabs</instructions>", []string{"AGENTS.md"}))
+	got := c.systemPrompt()
+	assert.Contains(t, got, "review_comment")
+	assert.Contains(t, got, "use tabs")
+	assert.NotContains(t, got, "Work the request")
+	assert.NotContains(t, got, "spawn_agent")
+	assert.Equal(t, "reviewer", c.PromptParts()[0].Name)
+}
+
+// review_model names another model on the same endpoint, and empty keeps the session's.
+func TestWithModel_ReplacesTheModelUnlessEmpty(t *testing.T) {
+	assert.Equal(t, "small", NewClient("", "big", "", WithModel("small")).model)
+	assert.Equal(t, "big", NewClient("", "big", "", WithModel("")).model)
 }
 
 func TestBrief_WritesADurationAsAPersonWould(t *testing.T) {

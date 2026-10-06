@@ -104,6 +104,9 @@ func WithAgentLimits(perTurn, contextTokens int, timeout time.Duration) Option {
 	}
 }
 
+// WithReviewer is the model a review's reviewer agent speaks through.
+func WithReviewer(m Completer) Option { return func(e *Engine) { e.reviewer = m } }
+
 // WithCommit names the commit the work tree was on, for SessionStarted.
 func WithCommit(sha string) Option { return func(e *Engine) { e.commit = sha } }
 

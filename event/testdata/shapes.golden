@@ -13,6 +13,7 @@ agent.started Agent uuid.UUID
 agent.started Name string
 agent.started Task string
 agent.started ToolCall uuid.UUID
+agent.started Turn uuid.UUID
 auth.done Server string
 auth.failed Reason string
 auth.failed Server string
@@ -199,6 +200,7 @@ turn.rolledback RevertFiles bool
 turn.rolledback Turn uuid.UUID
 turn.started N int
 turn.started Prompt string
+turn.started Review uuid.UUID
 turn.started Turn uuid.UUID
 user_command.ended Result.Err string
 user_command.ended Result.ExitCode int

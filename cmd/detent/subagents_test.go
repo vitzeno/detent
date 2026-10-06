@@ -14,10 +14,11 @@ import (
 // spawn_agent without a child model could only say there are none, and a
 // child model without the tool is never used, so they come together or not.
 func TestSubagents_TheToolAndTheChildModelComeTogether(t *testing.T) {
-	built := 0
+	var built []*model.Client
 	child := func(opts ...model.ClientOption) *model.Client {
-		built++
-		return model.NewClient("", "", "", opts...)
+		c := model.NewClient("", "", "", opts...)
+		built = append(built, c)
+		return c
 	}
 
 	off, err := subagents(config.Config{}, child)
@@ -25,16 +26,17 @@ func TestSubagents_TheToolAndTheChildModelComeTogether(t *testing.T) {
 	assert.Empty(t, off.tools)
 	assert.Empty(t, off.engine)
 	assert.Empty(t, off.root)
-	assert.Zero(t, built)
+	assert.Empty(t, built)
 
 	yes := true
 	on, err := subagents(config.Config{Subagents: &yes}, child)
 	require.NoError(t, err)
 	require.Len(t, on.tools, 1)
 	assert.Equal(t, tool.SpawnAgentName, on.tools[0].Name())
-	assert.Len(t, on.engine, 2, "the child model and its limits")
+	assert.Len(t, on.engine, 3, "the child model, its limits and the reviewer")
 	assert.Len(t, on.root, 1, "the root is told it may spawn")
-	assert.Equal(t, 1, built)
+	require.Len(t, built, 2)
+	assert.Equal(t, "reviewer", built[1].PromptParts()[0].Name, "the reviewer has its own prompt")
 }
 
 func TestSubagents_ABadTimeoutStopsStartup(t *testing.T) {

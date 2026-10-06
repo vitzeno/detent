@@ -21,6 +21,9 @@ type agent struct {
 	repeat    *repeatHook
 	assessors []Assessor
 
+	// review is what a reviewer comments on, nil for every other agent.
+	review *reviewRun
+
 	// mu guards tr, which the agent's goroutine writes and a caller may read.
 	mu sync.Mutex
 	tr transcript

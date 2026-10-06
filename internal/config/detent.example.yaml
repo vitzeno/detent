@@ -21,6 +21,7 @@ subagents:                 # let the model hand work to subagents (false)
 max_agents: 0              # per request (10)
 child_context_tokens: 0    # one subagent's budget (64000)
 child_timeout: ""          # how long one may run (10m)
+review_model: ""           # the model /review's reviewer speaks as (the session's)
 
 # --- Jev judge: empty key runs without one ---
 
