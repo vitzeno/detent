@@ -63,6 +63,7 @@ const (
 	UserCommandEndedKind   Kind = "user_command.ended"
 
 	DiffLoadedKind      Kind = "review.diff"
+	ReviewStartedKind   Kind = "review.started"
 	ReviewCommentedKind Kind = "review.commented"
 	ReviewSubmittedKind Kind = "review.submitted"
 

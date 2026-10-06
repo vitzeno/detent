@@ -239,7 +239,7 @@ undo refuses before touching the sandbox or the files.
 
 ## Architecture
 
-**Everything is an event.** 36 facts and 24 intents are the entire
+**Everything is an event.** 37 facts and 24 intents are the entire
 interface between components. Facts are past tense, intents are
 imperative, and either may come from anyone: the engine publishes most
 facts, but a subscriber answering a question publishes one too. An extension
@@ -723,7 +723,8 @@ adding a fat dependency fails with the transitive import named.
   its own review, and only a branch's belongs to no request, so undo leaves it.
   `r` starts a reviewer on the scope shown, its diff already on screen, and
   only there: the reviewer reads exactly what the human does. The modal may
-  close while it works. The reviewer is a subagent drawn as one: its
+  close while it works: `ReviewStarted` records the review before it has a
+  comment, so `/review` alone, its scope and the arrows all lead back to it. The reviewer is a subagent drawn as one: its
   `AgentStarted` names the review's Turn, which ties it to the review's row as
   a spawn call ties a child to its row, so it is in the agents block and the
   inspector while it runs. A review is one

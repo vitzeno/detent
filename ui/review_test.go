@@ -620,7 +620,8 @@ func TestReview_TheReviewerIsASubagentWhileItWorks(t *testing.T) {
 func TestReview_TheReviewerLooksLikeAReviewer(t *testing.T) {
 	k := reviewable(t, "e1", "e2")
 	review, turn, agent, step := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: review, Files: 3})
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: review})
+	k.m.apply(event.ReviewStarted{Review: review, Scope: event.ScopeRequest, Files: 3})
 	k.m.apply(event.AgentStarted{Agent: agent, Turn: turn, Name: "reviewer"})
 	k.m.apply(event.StepStarted{Turn: turn, Step: step, N: 1, Agent: agent})
 	for _, p := range []string{"a.go", "b.go", "a.go"} {
@@ -671,7 +672,8 @@ func TestReview_ANewCommentStandsOutThenSettles(t *testing.T) {
 func TestReview_TheFileListShowsWhereTheReviewerIs(t *testing.T) {
 	k := loadedReview(t)
 	turn, agent, step := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: k.m.review.id, Files: 2})
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: k.m.review.id})
+	k.m.apply(event.ReviewStarted{Review: k.m.review.id, Scope: event.ScopeRequest, Files: 2})
 	k.m.apply(event.AgentStarted{Agent: agent, Turn: turn, Name: "reviewer"})
 	k.m.apply(event.StepStarted{Turn: turn, Step: step, N: 1, Agent: agent})
 	for _, p := range []string{"README.md", "ui/facts.go"} {
@@ -751,6 +753,26 @@ func TestReview_TriageNeedsReviewerCommentsAndEscOnlyStopsIt(t *testing.T) {
 	assert.Nil(t, k.m.review.triage)
 	assert.Equal(t, modeReview, k.m.mode, "the walk stopped, not the review")
 	k.noIntent(t)
+}
+
+// A reviewer that has not commented yet can still be found again: /review alone
+// opens it, and the scope it reviews leads back to it rather than to a new review.
+func TestReview_ARunningReviewCanBeFoundAgain(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	review, turn := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of this branch against main", Review: review})
+	k.m.apply(event.ReviewStarted{Review: review, Scope: event.ScopeBranch, Base: "mb", Against: "main", Files: 9})
+
+	k.openReview("/review")
+	assert.Equal(t, review, k.m.review.id, "the running review, not the last request")
+	assert.Equal(t, event.LoadDiff{Branch: true, Against: "main"}, k.intentOf(t, event.LoadDiffKind))
+	k.press(t, "esc")
+
+	k.m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+	k.openReview("/review branch main")
+	k.intentOf(t, event.LoadDiffKind)
+	k.m.apply(event.DiffLoaded{Branch: true, Base: "mb", Against: "main"})
+	assert.Equal(t, review, k.m.review.id, "its scope leads back to it")
 }
 
 // Closing the modal leaves the reviewer working: its comments still land on

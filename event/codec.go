@@ -94,6 +94,7 @@ var codecs = map[Kind]func([]byte) (Event, error){
 	UserCommandEndedKind:   codec[UserCommandEnded],
 
 	DiffLoadedKind:      codec[DiffLoaded],
+	ReviewStartedKind:   codec[ReviewStarted],
 	ReviewCommentedKind: codec[ReviewCommented],
 	ReviewSubmittedKind: codec[ReviewSubmitted],
 

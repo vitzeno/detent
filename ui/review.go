@@ -63,6 +63,12 @@ func (m Model) showReview(input string) (Model, tea.Cmd) {
 	case "session", "since", "branch":
 		scope, arg = event.ReviewScope(word), ""
 	}
+	// A reviewer at work is what /review alone most likely means.
+	if arg == "" && m.cur != nil && m.cur.review != uuid.Nil {
+		if rec := m.reviewByID(m.cur.review); rec != nil {
+			return m.openReview(rec)
+		}
+	}
 	b, why := m.reviewTarget(arg)
 	if b == nil && (scope != event.ScopeBranch || m.run.Commit == "") {
 		m.noteErr(why)
@@ -278,6 +284,23 @@ func (m *Model) diffLoaded(v event.DiffLoaded) {
 		// A review opened by name keeps its id, though main may have moved since.
 		if !r.pinned {
 			r.id = m.openReviewOf(uuid.Nil, v.Base, "")
+		}
+	}
+}
+
+// reviewStarted records a review as its reviewer begins, so /review, s and the
+// arrows find it before it has commented on anything.
+func (m *Model) reviewStarted(v event.ReviewStarted) {
+	if m.reviewByID(v.Review) == nil {
+		m.reviews = append(m.reviews, &reviewRecord{id: v.Review, reviewed: v.Reviewed, scope: v.Scope,
+			against: v.Against, base: v.Base, head: v.Head})
+	}
+	for _, b := range m.blocks {
+		if b.review == v.Review {
+			for _, r := range b.rows {
+				r.files = v.Files
+			}
+			b.rev++
 		}
 	}
 }
@@ -753,7 +776,7 @@ func defusedComment(c event.ReviewComment) event.ReviewComment {
 // startReviewBlock is a review's Turn: one row, which enter opens, and no
 // prompt, since nobody asked a request of the model.
 func (m *Model) startReviewBlock(v event.TurnStarted) {
-	row := &historyRow{id: v.Turn, review: v.Review, running: true, files: v.Files}
+	row := &historyRow{id: v.Turn, review: v.Review, running: true}
 	if rec := m.reviewByID(v.Review); rec != nil {
 		row.comments = len(rec.comments)
 	}

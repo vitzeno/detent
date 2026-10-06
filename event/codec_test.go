@@ -112,6 +112,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 			Comment: ReviewComment{ID: call, ReplyTo: turn, Author: "reviewer", Path: "a.go", Side: "new",
 				Start: 3, End: 4, Quote: "+x", Body: "why?", Original: "was"}},
 		ReviewSubmitted{Review: turn, Comments: 2},
+		ReviewStarted{Review: turn, Reviewed: turn, Scope: ScopeBranch, Base: "a1", Head: "b2", Against: "main", Files: 3},
 		SessionsListed{Sessions: []SessionSummary{{ID: turn, Name: "named", Started: time.UnixMilli(1_700_000_000_000).UTC(), Model: "m", Events: 12}}},
 		ServersListed{Servers: []ServerSummary{
 			{Name: "github", Command: "docker", Tools: 12},

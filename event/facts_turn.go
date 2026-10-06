@@ -13,7 +13,6 @@ type TurnStarted struct {
 	// Review names the review a reviewer agent works for. Such a Turn is no
 	// request: it has no N, writes nothing to the root's transcript and is never undone.
 	Review uuid.UUID `json:"Review"`
-	Files  int       `json:"Files"` // how many files a review's diff holds
 }
 
 func (TurnStarted) Kind() Kind { return TurnStartedKind }

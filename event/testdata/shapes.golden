@@ -49,6 +49,13 @@ review.diff Branch bool
 review.diff Cut bool
 review.diff Err string
 review.diff Head string
+review.started Against string
+review.started Base string
+review.started Files int
+review.started Head string
+review.started Review uuid.UUID
+review.started Reviewed uuid.UUID
+review.started Scope event.ReviewScope
 review.submitted Comments int
 review.submitted Review uuid.UUID
 servers.listed Servers[].Auth string
@@ -199,7 +206,6 @@ turn.ended Usage.Model string
 turn.ended Usage.PromptTokens int
 turn.rolledback RevertFiles bool
 turn.rolledback Turn uuid.UUID
-turn.started Files int
 turn.started N int
 turn.started Prompt string
 turn.started Review uuid.UUID

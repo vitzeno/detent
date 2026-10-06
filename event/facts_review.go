@@ -120,3 +120,18 @@ const (
 	CommentEdited  CommentOp = "edit"
 	CommentDeleted CommentOp = "delete"
 )
+
+// ReviewStarted says a reviewer began on a review, with what it reviews, so
+// the review can be found again before it has made a single comment.
+type ReviewStarted struct {
+	fact
+	Review   uuid.UUID   `json:"Review"`
+	Reviewed uuid.UUID   `json:"Reviewed"`
+	Scope    ReviewScope `json:"Scope"`
+	Base     string      `json:"Base"`
+	Head     string      `json:"Head"`
+	Against  string      `json:"Against"`
+	Files    int         `json:"Files"` // how many files its diff holds
+}
+
+func (ReviewStarted) Kind() Kind { return ReviewStartedKind }

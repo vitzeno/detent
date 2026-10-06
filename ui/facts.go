@@ -59,6 +59,9 @@ func (m *Model) apply(ev event.Event) {
 	case event.DiffLoaded:
 		m.diffLoaded(v)
 
+	case event.ReviewStarted:
+		m.reviewStarted(v)
+
 	case event.ReviewCommented:
 		m.reviewCommented(v)
 

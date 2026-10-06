@@ -163,6 +163,8 @@ func describe(e event.Event) (slog.Level, []any) {
 	case event.ReviewCommented:
 		// Never the comment's words, which are the human's or a model's prose.
 		return slog.LevelInfo, []any{"review", v.Review, "op", v.Op, "by_agent", v.Comment.Author != ""}
+	case event.ReviewStarted:
+		return slog.LevelInfo, []any{"review", v.Review, "scope", v.Scope, "files", v.Files}
 	case event.ReviewSubmitted:
 		return slog.LevelInfo, []any{"review", v.Review, "comments", v.Comments}
 	case event.ServersListed:
