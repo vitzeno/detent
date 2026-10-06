@@ -717,9 +717,14 @@ adding a fat dependency fails with the transitive import named.
   `!`, and is answered in the inspector with the box's guards, the settle
   and the whole command read.
 
-  **The finder, the inspector, the resume picker and the review are modals**
-  (`view_modal.go`): a box over the dimmed panes sharing one frame, geometry
-  and two-pane body, each with its own `mode` and keys. `/resume` lists the
+  **The finder, the inspector, the resume picker and the review are modals**:
+  a box over the dimmed panes sharing one frame, geometry and two-pane body
+  (`view_modal.go`). Each is a type behind the `modal` interface (`modal.go`)
+  holding its own state, which goes when it closes, and `Model` holds the one
+  open in a single field, so a new modal touches no switch. Its keys, box, bar
+  hint and `sync` (run as the panes are sized) are its methods, reading the
+  session through the `Model` it is handed, and its keys are a keymap in
+  `keymap.go`, the same bindings its hints are drawn from. `/resume` lists the
   stored sessions beside the selected one's history, drawn by replaying its
   records into a Model of its own, and enter replays them into this one once
   the engine has moved onto that session. `/review` lists the files a request
