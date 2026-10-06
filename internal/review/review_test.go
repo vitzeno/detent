@@ -163,6 +163,15 @@ tool/registry.go:88-90
   > the human: share them, as Without does`, got)
 }
 
+// The reviewer's verdict is about no line: it reads as one on the whole, with
+// no empty quote under it.
+func TestPrompt_AVerdictIsOnTheChangesAsAWhole(t *testing.T) {
+	got := prompt(event.SubmitReview{Request: 1, Comments: []event.ReviewComment{
+		{ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Body: "sound"}}})
+	assert.Contains(t, got, "On the changes as a whole\n  sound")
+	assert.NotContains(t, got, ":0")
+}
+
 // The opening says whose changes these are, so the agent never takes the
 // human's work for its own.
 func TestPrompt_OpensWithWhoseChangesTheseAre(t *testing.T) {

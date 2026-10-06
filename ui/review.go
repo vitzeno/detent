@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
@@ -20,6 +21,8 @@ import (
 // reviewRecord is one review's comments, folded from ReviewCommented. Open
 // until submitted, then read-only, and the next comment starts another.
 type reviewRecord struct {
+	// arrived is when each comment came in live, which it is highlighted for a moment after.
+	arrived      map[uuid.UUID]time.Time
 	id, reviewed uuid.UUID
 	scope        event.ReviewScope
 	against      string
@@ -291,6 +294,12 @@ func (m *Model) reviewCommented(v event.ReviewCommented) {
 	switch v.Op {
 	case event.CommentAdded:
 		rec.comments = append(rec.comments, c)
+		if !m.replaying {
+			if rec.arrived == nil {
+				rec.arrived = map[uuid.UUID]time.Time{}
+			}
+			rec.arrived[c.ID] = time.Now()
+		}
 	case event.CommentEdited:
 		if i := slices.IndexFunc(rec.comments, func(o event.ReviewComment) bool { return o.ID == c.ID }); i >= 0 {
 			rec.comments[i] = c
@@ -851,6 +860,58 @@ func (m Model) blockByID(id uuid.UUID) *turnBlock {
 	for _, b := range m.blocks {
 		if id != uuid.Nil && b.id == id {
 			return b
+		}
+	}
+	return nil
+}
+
+// fadeFor is how long a comment that just came in stands out.
+const fadeFor = 900 * time.Millisecond
+
+// fadeMsg redraws a comment still fading.
+type fadeMsg struct{}
+
+// freshness is how far into its fade a comment is, 0 just in and 1 or more done.
+func (m Model) freshness(id uuid.UUID) float64 {
+	rec := m.reviewByID(m.review.id)
+	if rec == nil {
+		return 1
+	}
+	at, ok := rec.arrived[id]
+	if !ok {
+		return 1
+	}
+	return float64(time.Since(at)) / float64(fadeFor)
+}
+
+// fading is whether a comment of the open review still stands out.
+func (m Model) fading() bool {
+	rec := m.reviewByID(m.review.id)
+	if m.mode != modeReview || rec == nil {
+		return false
+	}
+	for _, at := range rec.arrived {
+		if time.Since(at) < fadeFor {
+			return true
+		}
+	}
+	return false
+}
+
+// fadeTick keeps one tick going while a comment fades, and none otherwise.
+func (m *Model) fadeTick() tea.Cmd {
+	if m.fadeTicking || !m.fading() {
+		return nil
+	}
+	m.fadeTicking = true
+	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return fadeMsg{} })
+}
+
+// reviewer is the reviewer working on the open review, nil when none is.
+func (m Model) reviewer() *agentState {
+	for _, a := range m.agentOrder {
+		if r := reviewerOf(a); r != nil && r.review == m.review.id && !a.ended {
+			return a
 		}
 	}
 	return nil

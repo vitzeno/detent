@@ -60,8 +60,10 @@ func section(b *strings.Builder, heading string, comments, all []event.ReviewCom
 	fmt.Fprintf(b, "\n%s\n", heading)
 	for _, c := range comments {
 		fmt.Fprintf(b, "\n%s\n", where(c))
-		for l := range strings.SplitSeq(c.Quote, "\n") {
-			fmt.Fprintf(b, "    %s\n", l)
+		if c.Quote != "" {
+			for l := range strings.SplitSeq(c.Quote, "\n") {
+				fmt.Fprintf(b, "    %s\n", l)
+			}
 		}
 		fmt.Fprintf(b, "  %s\n", indent(c.Body))
 		if c.Original != "" {
@@ -78,6 +80,9 @@ func section(b *strings.Builder, heading string, comments, all []event.ReviewCom
 // where names the lines a comment is about, as the file stands after the
 // change unless every one was removed.
 func where(c event.ReviewComment) string {
+	if c.Path == "" {
+		return "On the changes as a whole"
+	}
 	at := fmt.Sprintf("%s:%d", c.Path, c.Start)
 	if c.End > c.Start {
 		at += fmt.Sprintf("-%d", c.End)

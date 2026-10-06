@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -637,6 +638,62 @@ func TestReview_TheReviewerLooksLikeAReviewer(t *testing.T) {
 	k.m.pulse += 4
 	assert.NotEqual(t, first, ansi.Strip(k.m.agentGlyph(a)), "it breathes")
 	assert.NotEqual(t, ansi.Strip(k.m.spinner.View()), first)
+}
+
+// A comment that just came in stands out and settles. One replayed from the
+// store came in long ago, so it never does.
+func TestReview_ANewCommentStandsOutThenSettles(t *testing.T) {
+	k := loadedReview(t)
+	id := k.m.review.id
+	c := event.ReviewComment{ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "ui/facts.go", Side: "new", Start: 10, End: 10, Body: "x"}
+	k.m.apply(event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: c})
+	row := diffRow{comment: &k.m.reviewByID(id).comments[0], author: true}
+	fresh := k.m.commentLine(row)
+	require.NotNil(t, k.m.fadeTick(), "a tick to fade it by")
+	assert.Nil(t, k.m.fadeTick(), "and only one")
+
+	k.m.reviewByID(id).arrived[c.ID] = time.Now().Add(-fadeFor / 2)
+	midway := k.m.commentLine(row)
+	k.m.reviewByID(id).arrived[c.ID] = time.Now().Add(-2 * fadeFor)
+	settled := k.m.commentLine(row)
+	assert.NotEqual(t, fresh, midway, "lit, then only coloured")
+	assert.NotEqual(t, midway, settled, "then settled")
+	k.m.fadeTicking = false
+	assert.Nil(t, k.m.fadeTick(), "nothing left to fade")
+
+	replayed := New(t.Context(), event.New(), SessionInfo{}).Restore(asRecords([]event.Event{
+		event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: c}}))
+	assert.Empty(t, replayed.reviews[0].arrived)
+}
+
+// The file list shows where the reviewer is: the file it reads pulses, the ones
+// it has read are dotted.
+func TestReview_TheFileListShowsWhereTheReviewerIs(t *testing.T) {
+	k := loadedReview(t)
+	turn, agent, step := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	k.m.apply(event.TurnStarted{Turn: turn, Prompt: "review of request 2", Review: k.m.review.id, Files: 2})
+	k.m.apply(event.AgentStarted{Agent: agent, Turn: turn, Name: "reviewer"})
+	k.m.apply(event.StepStarted{Turn: turn, Step: step, N: 1, Agent: agent})
+	for _, p := range []string{"README.md", "ui/facts.go"} {
+		k.m.apply(event.ToolCallProposed{Step: step, ToolCall: uuid.Must(uuid.NewV7()), Tool: event.ToolReviewDiff,
+			Args: map[string]any{"path": p}, Agent: agent})
+	}
+	lines := k.m.reviewFileLines(40, 10)
+	assert.Contains(t, ansi.Strip(lines[0]), "◉ M", "reading ui/facts.go")
+	assert.Contains(t, ansi.Strip(lines[1]), "· A", "README.md read")
+	k.m.pulse += 4
+	assert.Contains(t, ansi.Strip(k.m.reviewFileLines(40, 10)[0]), "○ M", "and it pulses")
+}
+
+// Once the reviewer finishes, its verdict sits above the diff, a few lines of it.
+func TestReview_TheVerdictSitsAboveTheDiff(t *testing.T) {
+	k := loadedReview(t)
+	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: event.ReviewComment{
+		ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Body: strings.Repeat("a long verdict word ", 40)}})
+	lines := k.m.reviewDiffLines(30)
+	assert.Contains(t, ansi.Strip(lines[0]), "reviewer's verdict")
+	assert.True(t, strings.HasSuffix(ansi.Strip(lines[maxVerdictLines]), "…"), "cut to a few lines")
+	assert.Contains(t, ansi.Strip(lines[maxVerdictLines+2]), "@@ -10,2 +10,2 @@", "then the diff")
 }
 
 // Closing the modal leaves the reviewer working: its comments still land on

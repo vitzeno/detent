@@ -42,6 +42,8 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	spinner spinner.Model
 	// pulse counts spinner ticks, the clock a reviewer's glyph breathes by.
 	pulse int
+	// fadeTicking is a fadeMsg on its way, so a fade runs one tick, not one per fact.
+	fadeTicking bool
 
 	blocks []*turnBlock
 	// agents are the subagents history's spawn rows draw, by id, and
@@ -216,7 +218,7 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 			m.apply(e)
 		}
 		// A listing may have put another session under the picker's cursor.
-		load := tea.Batch(m.loadSelected(), m.reloadReview())
+		load := tea.Batch(m.loadSelected(), m.reloadReview(), m.fadeTick())
 		var cmd tea.Cmd
 		// Edge only: Tick carries the live tag, so re-arming restarts
 		// the chain and costs a frame.
@@ -224,6 +226,10 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 			cmd = m.spinner.Tick
 		}
 		return m, tea.Batch(cmd, load, nextFact(m.facts))
+
+	case fadeMsg:
+		m.fadeTicking = false
+		return m, m.fadeTick()
 
 	case welcomeTickMsg:
 		if !m.showWelcome() {

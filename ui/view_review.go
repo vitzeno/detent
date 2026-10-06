@@ -103,6 +103,69 @@ func (m Model) scopeLabel() string {
 	return label
 }
 
+// readMark says where a reviewer is in the diff: the file it is reading pulses,
+// those it has read are dotted, and the rest are blank.
+func (m Model) readMark(a *agentState, path string) string {
+	switch {
+	case a.reading == path && m.pulse/4%2 == 0:
+		return toolName.review.Render("◉") + " "
+	case a.reading == path:
+		return toolName.review.Render("○") + " "
+	case a.read[path]:
+		return styleFaint.Render("·") + " "
+	}
+	return "  "
+}
+
+// reviewVerdict is the reviewer's summary of the open review, its newest
+// comment on no line, nil until it has finished.
+func (m Model) reviewVerdict() *event.ReviewComment {
+	rec := m.reviewByID(m.review.id)
+	if rec == nil {
+		return nil
+	}
+	for i := len(rec.comments) - 1; i >= 0; i-- {
+		if c := &rec.comments[i]; c.Path == "" && c.Author != "" && c.ReplyTo == uuid.Nil {
+			return c
+		}
+	}
+	return nil
+}
+
+// verdictCard is the reviewer's summary above the diff: what it concluded, in
+// a few lines, lit for a moment when it lands.
+func (m Model) verdictCard(c *event.ReviewComment, width int) []string {
+	head := toolName.review
+	if m.freshness(c.ID) < 0.35 {
+		head = head.Reverse(true)
+	}
+	out := []string{head.Render("◆ "+c.Author+"'s verdict") + styleFaint.Render(" · "+countOf(m.reviewLineComments(), "comment on lines"))}
+	lines := wrapPlain(c.Body, max(8, width-2))
+	if len(lines) > maxVerdictLines {
+		lines = append(lines[:maxVerdictLines-1], layout.Truncate(lines[maxVerdictLines-1], width-3)+"…")
+	}
+	for _, l := range lines {
+		out = append(out, "  "+styleGoal.Render(l))
+	}
+	return append(out, styleFaint.Render(strings.Repeat("─", width)))
+}
+
+// maxVerdictLines is as much of a verdict as the card shows. The rest is sent with the review.
+const maxVerdictLines = 3
+
+// reviewLineComments counts the comments on lines, not the verdict or replies.
+func (m Model) reviewLineComments() int {
+	n := 0
+	if rec := m.reviewByID(m.review.id); rec != nil {
+		for _, c := range rec.comments {
+			if c.Path != "" && c.ReplyTo == uuid.Nil {
+				n++
+			}
+		}
+	}
+	return n
+}
+
 // reviewKeys offers what the cursor is on: the editor's keys while writing.
 func (m Model) reviewKeys() string {
 	r := m.review
@@ -134,12 +197,16 @@ func (m Model) reviewFileLines(width, height int) []string {
 		return []string{styleFaint.Render("nothing changed")}
 	}
 	var out []string
+	reading := m.reviewer()
 	start, end := listWindow(len(r.files), r.file, height)
 	for i := start; i < end; i++ {
 		f := r.files[i]
 		mark, style := "  ", styleGoal
 		if i == r.file {
 			mark, style = "▸ ", styleRowCursor
+		}
+		if reading != nil {
+			mark += m.readMark(reading, f.Path)
 		}
 		stat := fileStat(f)
 		if n := len(m.fileComments(f.Path)); n > 0 {
@@ -174,10 +241,14 @@ func (m Model) reviewDiffLines(height int) []string {
 		return []string{styleFaint.Render("only its mode changed")}
 	}
 	width := m.reviewTextWidth()
-	var editor []string
+	var editor, card []string
 	if r.edit != nil {
 		editor = m.commentEditor(width)
 		height = max(1, height-len(editor))
+	}
+	if v := m.reviewVerdict(); v != nil && height > 8 {
+		card = m.verdictCard(v, width)
+		height -= len(card)
 	}
 	rows := m.reviewRows()
 	nw := (reviewGutter(*f) - 3) / 2
@@ -191,7 +262,7 @@ func (m Model) reviewDiffLines(height int) []string {
 	if r.ranging {
 		lo, hi = min(r.anchor, r.line), max(r.anchor, r.line)
 	}
-	var out []string
+	out := card
 	start, end := listWindow(len(rows), r.line, height)
 	for i := start; i < end; i++ {
 		row := rows[i]
@@ -205,7 +276,7 @@ func (m Model) reviewDiffLines(height int) []string {
 		h := f.Hunks[row.hunk]
 		switch {
 		case row.comment != nil:
-			out = append(out, gutter.Render(mark)+strings.Repeat(" ", 2*nw+2)+commentLine(row))
+			out = append(out, gutter.Render(mark)+strings.Repeat(" ", 2*nw+2)+m.commentLine(row))
 		case row.line < 0:
 			out = append(out, gutter.Render(mark)+" "+styleFaint.Render(layout.Truncate(h.Header, width-2)))
 		default:
@@ -218,9 +289,18 @@ func (m Model) reviewDiffLines(height int) []string {
 }
 
 // commentLine is one line of a comment: who wrote it, or a line of its words.
-func commentLine(row diffRow) string {
+// One that just came in stands out, its name lit then its bar, and settles.
+func (m Model) commentLine(row diffRow) string {
 	c := row.comment
-	bar := styleBrand.Render("┃ ")
+	fresh := m.freshness(c.ID)
+	barStyle, labelStyle := styleBrand, styleBrand
+	if fresh < 1 {
+		barStyle, labelStyle = toolName.review, toolName.review
+	}
+	if fresh < 0.35 {
+		labelStyle = labelStyle.Reverse(true)
+	}
+	bar := barStyle.Render("┃ ")
 	if c.ReplyTo != uuid.Nil {
 		bar = styleFaint.Render("┃   ")
 	}
@@ -231,7 +311,7 @@ func commentLine(row diffRow) string {
 	if c.Author != "" {
 		who = c.Author
 	}
-	label := styleBrand.Render(who)
+	label := labelStyle.Render(who)
 	if c.Original != "" {
 		label += styleFaint.Render(" · edited from a reviewer's")
 	}
