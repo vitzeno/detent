@@ -172,6 +172,8 @@ func (m Model) reviewKeys() string {
 	switch {
 	case r.edit != nil:
 		return "enter save · " + m.prompt.NewlineKey() + " newline · esc drop it"
+	case r.triage != nil:
+		return fmt.Sprintf("comment %d of %d · y keep · n drop · e edit · esc stop", r.triage.at+1, len(r.triage.queue))
 	case !r.diffFocused:
 		return "↑↓ file · enter diff · s scope · r reviewer · ←→ reviews · ctrl+s send · esc back"
 	}
@@ -180,9 +182,9 @@ func (m Model) reviewKeys() string {
 		if r.deleting == rows[r.line].comment.ID {
 			return "x again deletes it · any other key keeps it"
 		}
-		return "c reply · e edit · x delete · ctrl+s send · esc back"
+		return "c reply · e edit · x delete · t triage · ctrl+s send · esc back"
 	}
-	return "c comment · v range · ]/[ hunk · n/p file · r reviewer · ctrl+s send · esc back"
+	return "c comment · v range · ]/[ hunk · n/p file · r reviewer · t triage · ctrl+s send · esc back"
 }
 
 // reviewFileLines lists each changed file with what happened to it.

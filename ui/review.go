@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strconv"
@@ -186,7 +187,7 @@ func (m *Model) loadScope(scope event.ReviewScope) tea.Cmd {
 	}
 	base, head, _ := m.scopeTrees(scope)
 	r.scope, r.base, r.head, r.loading = scope, base, head, true
-	r.files, r.err, r.cut, r.file, r.line, r.ranging, r.edit = nil, "", false, 0, 0, false, nil
+	r.files, r.err, r.cut, r.file, r.line, r.ranging, r.edit, r.triage = nil, "", false, 0, 0, false, nil, nil
 	r.block = r.request
 	if scope != event.ScopeRequest {
 		r.block = m.lastReviewable(scope != event.ScopeBranch)
@@ -353,6 +354,11 @@ func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m.editKey(msg)
 	}
 	key := msg.String()
+	if r.triage != nil {
+		if next, cmd, ok := m.triageKey(key); ok {
+			return next, cmd
+		}
+	}
 	if key != "x" {
 		r.deleting = uuid.Nil
 	}
@@ -385,7 +391,7 @@ func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		r.line = m.nextHunk(-1)
 	case "v":
 		m.toggleRange()
-	case "c", "e", "x", "ctrl+s", "r":
+	case "c", "e", "x", "ctrl+s", "r", "t":
 		if m.reviewSent() {
 			m.noteErr("this review was sent: s or /review starts another")
 			return m, nil
@@ -406,6 +412,8 @@ func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m.startReviewer()
 	case "left", "right":
 		return m.stepReview(map[string]int{"left": -1, "right": 1}[key])
+	case "t":
+		return m.startTriage()
 	}
 	return m, nil
 }
@@ -608,7 +616,13 @@ func (m Model) editKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		if body == "" {
 			return m, nil
 		}
-		return m, m.saveComment(e, body)
+		save := m.saveComment(e, body)
+		// An edit made in triage counts as kept, and moves on.
+		if r.triage != nil && e.op == event.CommentEdited {
+			r.triage.kept++
+			m.nextTriage()
+		}
+		return m, save
 	}
 	var cmd tea.Cmd
 	r.edit.input, cmd = r.edit.input.Update(msg)
@@ -915,4 +929,100 @@ func (m Model) reviewer() *agentState {
 		}
 	}
 	return nil
+}
+
+// triageState is a walk through the reviewer's comments: those left to go,
+// where it is, and what was kept and dropped.
+type triageState struct {
+	queue         []uuid.UUID
+	at            int
+	kept, dropped int
+}
+
+// startTriage goes through the reviewer's comments on lines one at a time, in
+// the order of the files and their lines, the way a human curates a review.
+func (m Model) startTriage() (Model, tea.Cmd) {
+	rec := m.reviewByID(m.review.id)
+	var queue []*event.ReviewComment
+	if rec != nil {
+		for i := range rec.comments {
+			if c := &rec.comments[i]; c.Author != "" && c.Path != "" && c.ReplyTo == uuid.Nil {
+				queue = append(queue, c)
+			}
+		}
+	}
+	if len(queue) == 0 {
+		m.noteErr("no reviewer comments to go through")
+		return m, nil
+	}
+	order := func(path string) int {
+		return slices.IndexFunc(m.review.files, func(f event.FileDiff) bool { return f.Path == path })
+	}
+	slices.SortStableFunc(queue, func(a, b *event.ReviewComment) int {
+		return cmp.Or(cmp.Compare(order(a.Path), order(b.Path)), cmp.Compare(a.Start, b.Start))
+	})
+	t := &triageState{}
+	for _, c := range queue {
+		t.queue = append(t.queue, c.ID)
+	}
+	m.review.triage = t
+	m.focusComment(t.queue[0])
+	return m, nil
+}
+
+// triageKey answers the comment under triage: y keeps it, n drops it, e
+// rewrites it, and esc stops. ok is false for any other key.
+func (m Model) triageKey(key string) (Model, tea.Cmd, bool) {
+	t := m.review.triage
+	switch key {
+	case "y":
+		t.kept++
+		m.nextTriage()
+		return m, nil, true
+	case "n":
+		t.dropped++
+		drop := m.sendComment(event.CommentDeleted, event.ReviewComment{ID: t.queue[t.at]})
+		m.nextTriage()
+		return m, drop, true
+	case "e":
+		m.focusComment(t.queue[t.at])
+		next, cmd := m.startEdit()
+		return next, cmd, true
+	case "esc":
+		m.review.triage = nil
+		return m, nil, true
+	}
+	return m, nil, false
+}
+
+// nextTriage moves to the next comment still there, or ends the walk saying how it went.
+func (m *Model) nextTriage() {
+	t := m.review.triage
+	for t.at++; t.at < len(t.queue); t.at++ {
+		if m.commentByID(t.queue[t.at]) != nil {
+			m.focusComment(t.queue[t.at])
+			return
+		}
+	}
+	m.review.triage = nil
+	m.noteOK(fmt.Sprintf("went through the reviewer's comments: kept %d, dropped %d", t.kept, t.dropped))
+}
+
+// focusComment puts the diff cursor on a comment, in its file.
+func (m *Model) focusComment(id uuid.UUID) {
+	c := m.commentByID(id)
+	if c == nil {
+		return
+	}
+	r := &m.review
+	if i := slices.IndexFunc(r.files, func(f event.FileDiff) bool { return f.Path == c.Path }); i >= 0 {
+		r.file = i
+	}
+	r.diffFocused, r.ranging = true, false
+	for i, row := range m.reviewRows() {
+		if row.comment != nil && row.comment.ID == id && row.author {
+			r.line = i
+			return
+		}
+	}
 }

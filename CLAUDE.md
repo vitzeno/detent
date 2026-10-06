@@ -729,7 +729,12 @@ adding a fat dependency fails with the transitive import named.
   inspector while it runs. A review is one
   line in history, its comments counted on the row since a block draws from
   its own state, and enter on it reopens it. `←`/`→` step between reviews,
-  oldest first, and a review once sent is read, never edited.
+  oldest first, and a review once sent is read, never edited. While it works
+  the reviewer has its own colour and a glyph that breathes, with the files it
+  has read where a child's context gauge would be, and in the modal the file it
+  reads pulses, a comment lights as it lands (`fadeTick`, one tick only while
+  one fades) and its verdict sits above the diff. `t` walks its comments one at
+  a time: `y` keeps, `n` drops, `e` rewrites.
   `ctrl+s` sends the review as the next prompt,
   which `internal/review` writes so a reviewer's words are always framed as
   opinions to weigh and the human's as instructions, then closes it.

@@ -146,6 +146,8 @@ type reviewState struct {
 	edit    *commentEdit
 	// deleting is the comment x was pressed on once, deleted on the second.
 	deleting uuid.UUID
+	// triage walks the reviewer's comments one at a time, nil when not.
+	triage *triageState
 	// back is the pane it was opened from, which esc returns to.
 	back focusPane
 }

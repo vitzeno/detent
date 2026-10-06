@@ -696,6 +696,63 @@ func TestReview_TheVerdictSitsAboveTheDiff(t *testing.T) {
 	assert.Contains(t, ansi.Strip(lines[maxVerdictLines+2]), "@@ -10,2 +10,2 @@", "then the diff")
 }
 
+// t walks the reviewer's comments on lines in file and line order, skipping
+// the human's and the verdict: y keeps, n drops, e rewrites, and the end says how it went.
+func TestReview_TriageWalksTheReviewersComments(t *testing.T) {
+	k := loadedReview(t)
+	id := k.m.review.id
+	add := func(c event.ReviewComment) uuid.UUID {
+		c.ID = uuid.Must(uuid.NewV7())
+		k.m.apply(event.ReviewCommented{Review: id, Op: event.CommentAdded, Comment: c})
+		return c.ID
+	}
+	readme := add(event.ReviewComment{Author: "reviewer", Path: "README.md", Side: "new", Start: 1, End: 1, Body: "typo"})
+	late := add(event.ReviewComment{Author: "reviewer", Path: "ui/facts.go", Side: "new", Start: 40, End: 40, Body: "dead code"})
+	early := add(event.ReviewComment{Author: "reviewer", Path: "ui/facts.go", Side: "new", Start: 10, End: 10, Body: "unclear"})
+	add(event.ReviewComment{Path: "ui/facts.go", Side: "new", Start: 10, End: 10, Body: "mine"})
+	add(event.ReviewComment{Author: "reviewer", Body: "the verdict"})
+
+	k.press(t, "t")
+	require.NotNil(t, k.m.review.triage)
+	assert.Equal(t, []uuid.UUID{early, late, readme}, k.m.review.triage.queue, "files in order, then lines")
+	assert.Equal(t, early, k.m.reviewRows()[k.m.review.line].comment.ID, "the cursor on the first")
+
+	k.press(t, "y")
+	assert.Equal(t, late, k.m.reviewRows()[k.m.review.line].comment.ID)
+	k.press(t, "n")
+	del := k.intentOf(t, event.CommentReviewKind).(event.CommentReview)
+	assert.Equal(t, event.CommentDeleted, del.Op)
+	assert.Equal(t, late, del.Comment.ID)
+	assert.Equal(t, 1, k.m.review.file, "on to README.md")
+
+	k.press(t, "e")
+	require.NotNil(t, k.m.review.edit)
+	k.typeText(t, " here")
+	k.press(t, "enter")
+	edit := k.intentOf(t, event.CommentReviewKind).(event.CommentReview)
+	assert.Equal(t, event.CommentEdited, edit.Op)
+	assert.Equal(t, readme, edit.Comment.ID)
+	assert.Nil(t, k.m.review.triage, "that was the last")
+	assert.Contains(t, k.m.notice.text, "kept 2, dropped 1")
+	assert.Equal(t, modeReview, k.m.mode)
+}
+
+func TestReview_TriageNeedsReviewerCommentsAndEscOnlyStopsIt(t *testing.T) {
+	k := loadedReview(t)
+	k.press(t, "t")
+	assert.Nil(t, k.m.review.triage)
+	assert.Contains(t, k.m.notice.text, "no reviewer comments")
+
+	k.m.apply(event.ReviewCommented{Review: k.m.review.id, Op: event.CommentAdded, Comment: event.ReviewComment{
+		ID: uuid.Must(uuid.NewV7()), Author: "reviewer", Path: "README.md", Side: "new", Start: 1, End: 1}})
+	k.press(t, "t")
+	require.NotNil(t, k.m.review.triage)
+	k.press(t, "esc")
+	assert.Nil(t, k.m.review.triage)
+	assert.Equal(t, modeReview, k.m.mode, "the walk stopped, not the review")
+	k.noIntent(t)
+}
+
 // Closing the modal leaves the reviewer working: its comments still land on
 // the review, and its row counts them.
 func TestReview_TheModalClosesWhileTheReviewerWorks(t *testing.T) {
