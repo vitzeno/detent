@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -62,6 +63,27 @@ func TestRollback_RevertsTheHumansDirectory(t *testing.T) {
 	}
 }
 
+// TurnEnded names the files as the Turn left them, so its changes can be read
+// later from its two trees whatever happened after it.
+func TestTurnEnded_NamesTheTreeTheTurnLeft(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("commands go through sh")
+	}
+	dir := gitRepo(t)
+	wt, err := worktree.Open(t.Context(), dir)
+	require.NoError(t, err)
+	fm := &fakeModel{replies: []model.Reply{
+		{Requests: []event.ToolRequest{bashCall("a", "echo new > made.txt")}},
+		{Text: "done"},
+	}}
+	r := rigWith(t, event.New(), fm, dirRunner{dir}, WithWorktree(wt))
+
+	end := r.run("make a file")
+	start := r.await(event.CheckpointTakenKind).(event.CheckpointTaken)
+	require.NotEmpty(t, end.Tree)
+	assert.Equal(t, "made.txt", treeDiff(t, dir, start.Tree, end.Tree), "the Turn's own change, and only it")
+}
+
 // Without a tree for the Turn, asking to revert files says so rather than nothing.
 func TestRollback_SaysWhenFilesWereNotCheckpointed(t *testing.T) {
 	snap := &snapRunner{fakeRunner: &fakeRunner{out: "ok\n"}}
@@ -98,6 +120,16 @@ func gitRepo(t *testing.T) string {
 		require.NoError(t, err, "git %v: %s", args, out)
 	}
 	return dir
+}
+
+// treeDiff names the paths that differ between two trees.
+func treeDiff(t *testing.T, dir, from, to string) string {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", "diff-tree", "-r", "--name-only", from, to)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "%s", out)
+	return strings.TrimSpace(string(out))
 }
 
 func writeFile(t *testing.T, dir, rel, body string) {

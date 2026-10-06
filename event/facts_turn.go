@@ -31,6 +31,7 @@ type TurnEnded struct {
 	Reason  EndReason `json:"Reason"`
 	Summary string    `json:"Summary"`
 	Usage   Usage     `json:"Usage"` // the whole Turn's cost
+	Tree    string    `json:"Tree"`  // the human's files as it left them, "" if not checkpointed
 }
 
 func (TurnEnded) Kind() Kind { return TurnEndedKind }

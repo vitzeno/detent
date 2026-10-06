@@ -200,12 +200,12 @@ func (e *Engine) runAgent(ctx context.Context, t *turnState, a *agent) (end agen
 // as the last Step finished never reaches the next Turn.
 func (e *Engine) endTurn(ctx context.Context, t *turnState, why event.EndReason, summary string, used event.Usage) {
 	t.drain()
-	e.settle(ctx, t)
+	tree := e.settle(ctx, t)
 	for _, n := range t.takeNotes() {
 		e.appended(e.root, t.id, uuid.Nil, func() []event.Message { return e.root.tr.note(n) })
 	}
 	t.ended.Store(true)
-	e.bus.Publish(event.TurnEnded{Turn: t.id, Reason: why, Summary: summary, Usage: used})
+	e.bus.Publish(event.TurnEnded{Turn: t.id, Reason: why, Summary: summary, Usage: used, Tree: tree})
 }
 
 // checkpoint takes the Turn's one snapshot, before any tool call runs. One
@@ -232,16 +232,17 @@ func (e *Engine) checkpoint(ctx context.Context, t *turnState) {
 
 // settle records the files as this Turn left them, before TurnEnded, so
 // a rollback sent on seeing it already knows. An aborted Turn still settles.
-func (e *Engine) settle(ctx context.Context, t *turnState) {
+func (e *Engine) settle(ctx context.Context, t *turnState) string {
 	w, ok := e.worktree()
 	if !ok || t.tree == "" {
-		return
+		return ""
 	}
 	id, err := w.Checkpoint(context.WithoutCancel(ctx))
 	if err != nil {
 		e.notice("warn", "could not record your files after this request, so undo may revert later edits: "+err.Error())
 	}
 	e.settled = id
+	return id
 }
 
 // askContinue pauses at the bound and waits. Stopping dead would throw

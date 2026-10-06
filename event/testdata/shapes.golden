@@ -161,6 +161,7 @@ turn.checkpoint Tree string
 turn.checkpoint Turn uuid.UUID
 turn.ended Reason event.EndReason
 turn.ended Summary string
+turn.ended Tree string
 turn.ended Turn uuid.UUID
 turn.ended Usage.CacheWriteTokens int
 turn.ended Usage.CachedTokens int
