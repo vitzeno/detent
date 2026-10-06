@@ -223,6 +223,27 @@ func (d *Dir) Restore(ctx context.Context, id, seen string) error {
 	return d.RestoreTo(ctx, Checkpoint(id), Checkpoint(seen))
 }
 
+// Patch is the unified diff from base to head, an empty head meaning the files
+// now. Past limit bytes it ends at the last whole line, and cut says so.
+func (d *Dir) Patch(ctx context.Context, base, head Checkpoint, limit int) (patch string, cut bool, err error) {
+	if err := d.exists(ctx, base); err != nil {
+		return "", false, err
+	}
+	if head == "" {
+		if head, err = d.Capture(ctx); err != nil {
+			return "", false, err
+		}
+	} else if err := d.exists(ctx, head); err != nil {
+		return "", false, err
+	}
+	patch, cut, err = runLimited(ctx, d.top, limit, "diff-tree", "-r", "-p", "--no-renames",
+		"--no-ext-diff", "--no-textconv", string(base), string(head), "--", d.pathspec())
+	if err != nil {
+		return "", false, fmt.Errorf("worktree: patch: %w", err)
+	}
+	return patch, cut, nil
+}
+
 func (d *Dir) capture(ctx context.Context) (Checkpoint, error) {
 	if _, err := os.Stat(d.index); errors.Is(err, os.ErrNotExist) {
 		if err := d.addIgnoredTracked(ctx); err != nil {
@@ -360,12 +381,7 @@ func (d *Dir) git(ctx context.Context, index string, stdin io.Reader, args ...st
 }
 
 func run(ctx context.Context, dir, index string, stdin io.Reader, args ...string) (string, error) {
-	// Hooks off, and no line ending conversion, so a checkpoint holds the exact bytes.
-	full := append([]string{"-c", "core.hooksPath=" + os.DevNull, "-c", "core.autocrlf=false",
-		"-c", "core.attributesFile=" + os.DevNull}, args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
-	cmd.Dir = dir
-	cmd.Env = env(index)
+	cmd := command(ctx, dir, index, args...)
 	cmd.Stdin = stdin
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -373,6 +389,46 @@ func run(ctx context.Context, dir, index string, stdin io.Reader, args ...string
 		return "", fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(errb.String()))
 	}
 	return out.String(), nil
+}
+
+// runLimited reads at most limit bytes, ending at a whole line, and stops git
+// there, since a generated file's diff can be far more than anyone reads.
+func runLimited(ctx context.Context, dir string, limit int, args ...string) (string, bool, error) {
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+	cmd := command(ctx, dir, "", args...)
+	var errb bytes.Buffer
+	cmd.Stderr = &errb
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", false, err
+	}
+	if err := cmd.Start(); err != nil {
+		return "", false, err
+	}
+	out, readErr := io.ReadAll(io.LimitReader(stdout, int64(limit)+1))
+	cut := len(out) > limit
+	if cut {
+		stop()
+		out = out[:bytes.LastIndexByte(out[:limit], '\n')+1]
+	}
+	if err := cmd.Wait(); err != nil && !cut {
+		return "", false, fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(errb.String()))
+	}
+	if readErr != nil && !cut {
+		return "", false, readErr
+	}
+	return string(out), cut, nil
+}
+
+func command(ctx context.Context, dir, index string, args ...string) *exec.Cmd {
+	// Hooks off, and no line ending conversion, so a checkpoint holds the exact bytes.
+	full := append([]string{"-c", "core.hooksPath=" + os.DevNull, "-c", "core.autocrlf=false",
+		"-c", "core.attributesFile=" + os.DevNull}, args...)
+	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd.Dir = dir
+	cmd.Env = env(index)
+	return cmd
 }
 
 // env drops inherited GIT_* variables, so a detent started from a hook or

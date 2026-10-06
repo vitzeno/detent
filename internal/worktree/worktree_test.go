@@ -405,6 +405,66 @@ func TestDiff_EmptyWhenUnchanged(t *testing.T) {
 	assertClean(t, d, c)
 }
 
+// Patch reads what changed between two checkpoints, a new file included.
+func TestPatch_ReadsTheChangeBetweenTwoCheckpoints(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	d := open(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "tracked.txt", "edited\n")
+	write(t, dir, "made.txt", "new\n")
+
+	patch, cut, err := d.Patch(ctx, before, "", 1<<20)
+	require.NoError(t, err)
+	assert.False(t, cut)
+	assert.Contains(t, patch, "diff --git a/made.txt b/made.txt\nnew file mode")
+	assert.Contains(t, patch, "-original\n+edited\n")
+}
+
+// A CRLF file committed under autocrlf is stored LF. Checkpoint to checkpoint,
+// one changed line is one changed line, not the whole file.
+func TestPatch_ShowsOnlyTheLineThatChanged(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	userGit(t, dir, "config", "core.autocrlf", "true")
+	write(t, dir, "crlf.txt", "one\r\ntwo\r\nthree\r\n")
+	userGit(t, dir, "add", "crlf.txt")
+	userGit(t, dir, "commit", "-qm", "crlf")
+	d := open(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "crlf.txt", "one\r\nTWO\r\nthree\r\n")
+
+	patch, _, err := d.Patch(ctx, before, "", 1<<20)
+	require.NoError(t, err)
+	assert.Contains(t, patch, "-two\r\n+TWO\r\n")
+	assert.NotContains(t, patch, "-one")
+}
+
+// A diff past the limit ends at a whole line within it, and says it was cut.
+func TestPatch_CutsAtAWholeLine(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	d := open(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "big.txt", strings.Repeat("a line of text\n", 10000))
+
+	patch, cut, err := d.Patch(ctx, before, "", 1000)
+	require.NoError(t, err)
+	assert.True(t, cut)
+	assert.LessOrEqual(t, len(patch), 1000)
+	assert.True(t, strings.HasSuffix(patch, "\n"), "never half a line")
+}
+
+// A checkpoint git has pruned is ErrGone, as for a restore.
+func TestPatch_UnknownCheckpoint(t *testing.T) {
+	d := open(t, repo(t))
+	_, _, err := d.Patch(t.Context(), "0123456789abcdef0123456789abcdef01234567", "", 1<<20)
+	assert.ErrorIs(t, err, ErrGone)
+}
+
 func kinds(changes []Change) map[string]Kind {
 	got := map[string]Kind{}
 	for _, c := range changes {
