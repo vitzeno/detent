@@ -10,8 +10,8 @@ import (
 	"github.com/vitzeno/detent/ui/layout"
 )
 
-// The modals: the finder, the inspector and the resume picker, each a box over
-// the panes, which stay in view round it, dimmed. Each keeps its own keys.
+// The modals: the finder, the inspector, the resume picker and the review, each
+// a box over the panes, which stay in view round it, dimmed. Each keeps its own keys.
 
 const (
 	// modalChrome is the most lines a modal spends on anything but its body.
@@ -23,7 +23,7 @@ const (
 
 // inModal is whether a modal holds every key.
 func (m Model) inModal() bool {
-	return m.mode == modeFinder || m.mode == modeInspector || m.mode == modeResume
+	return m.mode == modeFinder || m.mode == modeInspector || m.mode == modeResume || m.mode == modeReview
 }
 
 // withOverlay floats the open modal over base, with the panes behind it dimmed.
@@ -36,6 +36,8 @@ func (m Model) withOverlay(base string) string {
 		box = m.inspectorBox()
 	case modeResume:
 		box = m.resumeBox()
+	case modeReview:
+		box = m.reviewBox()
 	default:
 		return base
 	}

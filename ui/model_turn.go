@@ -38,6 +38,9 @@ type turnBlock struct {
 	// files and container say what that checkpoint covers.
 	files, container bool
 	err              string
+	// base and tree are the human's files as the Turn began and ended, which
+	// /review reads its changes between. Kept on a resume, unlike undo.
+	base, tree string
 
 	// rev moves whenever anything this block draws does, and its cache
 	// is keyed on it, so one live line redraws one block.

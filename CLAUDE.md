@@ -686,12 +686,15 @@ adding a fat dependency fails with the transitive import named.
   `!`, and is answered in the inspector with the box's guards, the settle
   and the whole command read.
 
-  **The finder, the inspector and the resume picker are modals**
+  **The finder, the inspector, the resume picker and the review are modals**
   (`view_modal.go`): a box over the dimmed panes sharing one frame, geometry
   and two-pane body, each with its own `mode` and keys. `/resume` lists the
   stored sessions beside the selected one's history, drawn by replaying its
   records into a Model of its own, and enter replays them into this one once
-  the engine has moved onto that session.
+  the engine has moved onto that session. `/review` lists the files a request
+  changed beside the selected one's diff, read between the trees its
+  `CheckpointTaken` and `TurnEnded` name, so a resumed session's requests can be
+  reviewed too, though never undone.
 
   **A thing leaves `ui` when it stops needing Model.** That is why
   `island`, `layout`, `markdown`, `search`, `status`, `theme` and `welcome` are

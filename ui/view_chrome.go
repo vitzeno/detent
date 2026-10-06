@@ -229,6 +229,9 @@ func (m Model) statusHint() string {
 	if m.mode == modeResume {
 		return "[enter] resume · [↑/↓] move · [esc] back"
 	}
+	if m.mode == modeReview {
+		return "the review's keys are in the box · [esc] back"
+	}
 	if m.mode == modeUndo {
 		return m.undoKeys(" · ")
 	}

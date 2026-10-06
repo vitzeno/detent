@@ -22,6 +22,7 @@
 //	finder.go       ctrl+f: what the finder matches and where a jump lands
 //	inspector.go    one subagent's work, and answering its questions
 //	resume.go       /resume: picking a stored session and continuing it
+//	review.go       /review: what a request changed in the human's files
 //	context.go      the /context page: what fills the model's context
 //	undo.go         the undo question
 //	forget.go       the /delete question
@@ -37,10 +38,11 @@
 //	view_history.go the history pane
 //	view_detail.go  the output pane
 //	view_ask.go     the question boxes
-//	view_modal.go   the frame the finder, inspector and resume picker share
+//	view_modal.go   the frame the finder, inspector, resume picker and review share
 //	view_finder.go  the finder's box
 //	view_inspector.go the inspector's box
 //	view_resume.go  the resume picker's box
+//	view_review.go  the review's box
 //	view_agents.go  the agents block pinned below history
 //	cache.go        the keys that let a block, history and the output pane skip a redraw
 //

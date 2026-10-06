@@ -50,6 +50,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.mode == modeResume {
 		return m.resumeKey(msg)
 	}
+	if m.mode == modeReview {
+		return m.reviewKey(msg)
+	}
 	switch msg.String() {
 	case "ctrl+f":
 		return m.openFinder("")

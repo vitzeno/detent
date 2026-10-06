@@ -23,6 +23,7 @@ const (
 	modeFinder         // the finder holds every key until it jumps or closes
 	modeInspector      // one subagent's work, over the panes, until esc
 	modeResume         // the stored sessions, over the panes, until one resumes or esc
+	modeReview         // a request's changes to the human's files, over the panes, until esc
 )
 
 // focusPane is which zone the arrow keys act in.
@@ -109,6 +110,22 @@ type resumeState struct {
 	scroll         int
 	previewFocused bool
 	loaded         map[uuid.UUID]*sessionPreview
+	// back is the pane it was opened from, which esc returns to.
+	back focusPane
+}
+
+// reviewState is the review modal: one request's changes, the file selected
+// and the line in it, and which pane the arrows move.
+type reviewState struct {
+	block      *turnBlock
+	base, head string
+	loading    bool
+	files      []event.FileDiff
+	cut        bool
+	err        string
+	file, line int
+	// diffFocused is whether the arrows move the line rather than the file.
+	diffFocused bool
 	// back is the pane it was opened from, which esc returns to.
 	back focusPane
 }

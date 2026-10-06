@@ -19,13 +19,9 @@ import (
 const maxLiveLines = 200
 
 // Restore rebuilds history from a stored session by looping over apply.
-// CheckpointTaken is skipped: its snapshot died with the container.
 func (m Model) Restore(records []event.Record) Model {
 	m.replaying = true
 	for _, r := range records {
-		if r.Event.Kind() == event.CheckpointTakenKind {
-			continue
-		}
 		m.apply(r.Event)
 	}
 	m.replaying = false
@@ -60,6 +56,9 @@ func (m *Model) apply(ev event.Event) {
 	case event.SessionLoaded:
 		m.loaded(v)
 
+	case event.DiffLoaded:
+		m.diffLoaded(v)
+
 	case event.ServersListed:
 		m.servers = v.Servers
 
@@ -75,7 +74,13 @@ func (m *Model) apply(ev event.Event) {
 		m.followNewest()
 
 	case event.CheckpointTaken:
-		if b := m.block(v.Turn); b != nil {
+		b := m.block(v.Turn)
+		if b == nil {
+			break
+		}
+		b.base = v.Tree
+		// Replayed, its snapshot died with the container, so there is nothing to undo.
+		if !m.replaying {
 			b.undoable = true
 			b.files, b.container = v.Tree != "", v.Snapshot != ""
 		}
@@ -240,7 +245,7 @@ func (m *Model) endTurn(v event.TurnEnded) {
 	// The block may be gone already, but the Turn still ended and
 	// nothing may be left waiting on it.
 	if b := m.block(v.Turn); b != nil {
-		b.ended, b.end, b.summary, b.used = true, v.Reason, v.Summary, v.Usage
+		b.ended, b.end, b.summary, b.used, b.tree = true, v.Reason, v.Summary, v.Usage, v.Tree
 		if v.Reason == event.EndError {
 			b.err = v.Summary
 		}
