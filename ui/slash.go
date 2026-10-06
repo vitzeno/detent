@@ -50,7 +50,7 @@ func slashCommands() []slashCmd {
 		{name: "/sessions", desc: "list the sessions that can be resumed", run: Model.listSessions},
 		{name: "/resume", desc: "look through stored sessions and continue one, e.g. /resume the sandbox bug",
 			run: Model.showResume},
-		{name: "/review", desc: "read what a request changed in your files, the last one or e.g. /review 3",
+		{name: "/review", desc: "review and comment on changes: the last request, /review 3, session, since or branch [ref]",
 			run: Model.showReview},
 		{name: "/skills", desc: "show the skills this session found", run: func(m Model, _ string) (Model, tea.Cmd) {
 			return m.openPanel(panelSkills)

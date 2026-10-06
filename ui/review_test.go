@@ -321,6 +321,114 @@ func TestReview_DefusesAComment(t *testing.T) {
 	assert.NotContains(t, c.Author+c.Body, "\x1b")
 }
 
+// s steps through request, session, since and branch, each asking for its own
+// pair of trees, the session ending where since begins.
+func TestReview_SCyclesThroughTheScopes(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	k.openReview("/review")
+	k.intentOf(t, event.LoadDiffKind)
+	for _, want := range []event.LoadDiff{
+		{Base: "b1", Head: "e2"},
+		{Base: "e2"},
+		{Branch: true},
+		{Base: "b2", Head: "e2"},
+	} {
+		k.press(t, "s")
+		assert.Equal(t, want, k.intentOf(t, event.LoadDiffKind))
+	}
+}
+
+// A scope with nothing of its own is skipped: one request has no session
+// beyond itself, and nothing is "since" while a request runs.
+func TestReview_SkipsAScopeWithNothingToShow(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	k.m.blocks = k.m.blocks[1:]
+	k.openReview("/review")
+	k.intentOf(t, event.LoadDiffKind)
+	k.press(t, "s")
+	assert.Equal(t, event.ScopeSince, k.m.review.scope, "no session of one request")
+	k.intentOf(t, event.LoadDiffKind)
+
+	k.press(t, "s")
+	k.intentOf(t, event.LoadDiffKind)
+	k.press(t, "s")
+	require.Equal(t, event.ScopeRequest, k.m.review.scope)
+	k.intentOf(t, event.LoadDiffKind)
+
+	k.m.apply(event.TurnStarted{Turn: uuid.Must(uuid.NewV7()), N: 3, Prompt: "running"})
+	k.press(t, "s")
+	assert.Equal(t, event.ScopeBranch, k.m.review.scope, "nothing since, while a request runs")
+}
+
+// Each scope has its own review, found again on the way back round.
+func TestReview_EachScopeKeepsItsOwnReview(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	k.openReview("/review")
+	request := k.m.review.id
+	k.m.apply(event.ReviewCommented{Review: request, Reviewed: k.m.blocks[1].id, Base: "b2", Head: "e2",
+		Scope: event.ScopeRequest, Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7())}})
+	k.press(t, "s")
+	assert.NotEqual(t, request, k.m.review.id)
+	for range 3 {
+		k.press(t, "s")
+	}
+	assert.Equal(t, request, k.m.review.id)
+}
+
+// A branch is compared with main or a named ref. Its review is found by where
+// it left that ref, belongs to no request, and is sent as the branch's.
+func TestReview_ABranchIsReviewedAgainstWhereItLeftARef(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	k.openReview("/review branch main")
+	assert.Equal(t, event.LoadDiff{Branch: true, Against: "main"}, k.intentOf(t, event.LoadDiffKind))
+	k.m.apply(event.DiffLoaded{Branch: true, Base: "mb", Against: "main", Files: loadedDiff("", "").Files})
+	assert.Equal(t, "mb", k.m.review.base)
+	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "this branch against main")
+
+	k.press(t, "tab")
+	k.press(t, "down")
+	k.press(t, "c")
+	k.typeText(t, "hm")
+	k.press(t, "enter")
+	c := k.intentOf(t, event.CommentReviewKind).(event.CommentReview)
+	assert.Equal(t, uuid.Nil, c.Reviewed)
+	assert.Equal(t, event.ScopeBranch, c.Scope)
+	assert.Equal(t, "mb", c.Base)
+
+	k.m.apply(commented(c))
+	k.ctrl(t, 's')
+	sub := k.intentOf(t, event.SubmitReviewKind).(event.SubmitReview)
+	assert.Equal(t, event.ScopeBranch, sub.Scope)
+	assert.Equal(t, "main", sub.Against)
+
+	k.press(t, "esc")
+	k.press(t, "esc")
+	k.openReview("/review branch main")
+	k.intentOf(t, event.LoadDiffKind)
+	k.m.apply(event.DiffLoaded{Branch: true, Base: "mb", Against: "main"})
+	assert.Equal(t, c.Review, k.m.review.id, "the same branch point finds the same review")
+}
+
+// No request owns a branch's review, so undoing one leaves it alone.
+func TestReview_UndoLeavesABranchReview(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	k.m.apply(event.ReviewCommented{Review: uuid.Must(uuid.NewV7()), Base: "mb", Scope: event.ScopeBranch,
+		Op: event.CommentAdded, Comment: event.ReviewComment{ID: uuid.Must(uuid.NewV7())}})
+	k.m.apply(event.RolledBack{Turn: k.m.blocks[1].id})
+	assert.Len(t, k.m.reviews, 1)
+}
+
+// /review session and /review since open straight onto those scopes.
+func TestReview_OpensOntoAScopeByName(t *testing.T) {
+	k := reviewable(t, "e1", "e2")
+	k.openReview("/review session")
+	assert.Equal(t, event.LoadDiff{Base: "b1", Head: "e2"}, k.intentOf(t, event.LoadDiffKind))
+	k.press(t, "esc")
+	k.openReview("/review since")
+	assert.Equal(t, event.LoadDiff{Base: "e2"}, k.intentOf(t, event.LoadDiffKind))
+	assert.Contains(t, ansi.Strip(k.m.reviewTitle()), "your edits since request 2")
+}
+
 // openReview runs a /review line and what it asks for.
 func (k *keyed) openReview(line string) {
 	var cmd tea.Cmd

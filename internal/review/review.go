@@ -14,9 +14,12 @@ import (
 // maxPatchBytes bounds one diff, which travels the bus and sits in memory.
 const maxPatchBytes = 4 << 20
 
-// Patcher reads a diff between checkpoints, satisfied by *worktree.Dir.
+// Patcher reads a diff between checkpoints, or a branch's against the one it
+// left, satisfied by *worktree.Dir.
 type Patcher interface {
 	Patch(ctx context.Context, base, head worktree.Checkpoint, limit int) (string, bool, error)
+	CaptureFiltered(ctx context.Context) (worktree.Checkpoint, error)
+	MergeBase(ctx context.Context, ref string) (base, against string, err error)
 }
 
 // Watch answers LoadDiff from files, the same Dir the engine checkpoints with,
@@ -39,15 +42,38 @@ func Watch(ctx context.Context, bus *event.Bus, files Patcher) func() {
 }
 
 func load(ctx context.Context, files Patcher, v event.LoadDiff) event.DiffLoaded {
-	out := event.DiffLoaded{Base: v.Base, Head: v.Head}
-	patch, cut, err := files.Patch(ctx, worktree.Checkpoint(v.Base), worktree.Checkpoint(v.Head), maxPatchBytes)
+	out := event.DiffLoaded{Base: v.Base, Head: v.Head, Branch: v.Branch}
+	base, head := worktree.Checkpoint(v.Base), worktree.Checkpoint(v.Head)
+	var err error
+	if v.Branch {
+		base, head, err = branch(ctx, files, v.Against, &out)
+	}
+	var patch string
+	var cut bool
+	if err == nil {
+		patch, cut, err = files.Patch(ctx, base, head, maxPatchBytes)
+	}
 	switch {
 	case errors.Is(err, worktree.ErrGone):
 		out.Err = "git has pruned these files, so the changes can no longer be read"
+	case errors.Is(err, worktree.ErrNoBranch):
+		out.Err = "there is no main or master branch to compare this one with: try /review branch <ref>"
 	case err != nil:
 		out.Err = err.Error()
 	default:
 		out.Files, out.Cut = parse(patch, cut), cut
 	}
 	return out
+}
+
+// branch is where the branch left against and the files as a commit would hold
+// them, since a raw checkpoint against a commit shows every filtered file changed.
+func branch(ctx context.Context, files Patcher, against string, out *event.DiffLoaded) (base, head worktree.Checkpoint, err error) {
+	b, ref, err := files.MergeBase(ctx, against)
+	if err != nil {
+		return "", "", err
+	}
+	out.Base, out.Against = b, ref
+	head, err = files.CaptureFiltered(ctx)
+	return worktree.Checkpoint(b), head, err
 }

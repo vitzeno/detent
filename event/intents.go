@@ -110,11 +110,14 @@ type LoadSession struct {
 func (LoadSession) Kind() Kind { return LoadSessionKind }
 
 // LoadDiff asks for the changes from Base to Head, an empty Head meaning the
-// files now. internal/review answers with DiffLoaded.
+// files now, or with Branch the branch's against Against, main when empty.
+// internal/review answers with DiffLoaded.
 type LoadDiff struct {
 	fact
-	Base string `json:"Base"`
-	Head string `json:"Head"`
+	Base    string `json:"Base"`
+	Head    string `json:"Head"`
+	Branch  bool   `json:"Branch"`
+	Against string `json:"Against"`
 }
 
 func (LoadDiff) Kind() Kind { return LoadDiffKind }
@@ -127,6 +130,7 @@ type CommentReview struct {
 	Reviewed uuid.UUID     `json:"Reviewed"`
 	Base     string        `json:"Base"`
 	Head     string        `json:"Head"`
+	Scope    ReviewScope   `json:"Scope"`
 	Op       CommentOp     `json:"Op"`
 	Comment  ReviewComment `json:"Comment"`
 }
@@ -134,11 +138,14 @@ type CommentReview struct {
 func (CommentReview) Kind() Kind { return CommentReviewKind }
 
 // SubmitReview sends a review's comments to the agent as its next prompt, the
-// human's as instructions and a reviewer's as opinions. Request is its number.
+// human's as instructions and a reviewer's as opinions. Request is the number
+// of the request reviewed, or the last one for a wider scope.
 type SubmitReview struct {
 	fact
 	Review   uuid.UUID       `json:"Review"`
+	Scope    ReviewScope     `json:"Scope"`
 	Request  int             `json:"Request"`
+	Against  string          `json:"Against"`
 	Comments []ReviewComment `json:"Comments"`
 }
 

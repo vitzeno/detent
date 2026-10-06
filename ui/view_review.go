@@ -49,13 +49,10 @@ func (m Model) reviewTextWidth() int {
 	return island.Inner(right)
 }
 
-// reviewTitle names the request, what it changed in all and the comments so far.
+// reviewTitle names the scope, what it changed in all and the comments so far.
 func (m Model) reviewTitle() string {
 	r := m.review
-	title := styleBrand.Render("review") + styleFaint.Render(fmt.Sprintf(" · request %d", r.block.n))
-	if r.head == "" {
-		title += styleFaint.Render(" · to your files now")
-	}
+	title := styleBrand.Render("review") + styleFaint.Render(" · "+m.scopeLabel())
 	if len(r.files) > 0 {
 		var add, del int
 		for _, f := range r.files {
@@ -74,6 +71,28 @@ func (m Model) reviewTitle() string {
 	return title
 }
 
+// scopeLabel says which changes are shown, from where to where.
+func (m Model) scopeLabel() string {
+	r := m.review
+	switch r.scope {
+	case event.ScopeSession:
+		return fmt.Sprintf("the session, requests %d to %d", m.firstReviewable().n, r.block.n)
+	case event.ScopeSince:
+		return fmt.Sprintf("your edits since request %d", r.block.n)
+	case event.ScopeBranch:
+		if r.against == "" {
+			return "this branch"
+		}
+		return "this branch against " + r.against + ", uncommitted too"
+	case event.ScopeRequest:
+	}
+	label := fmt.Sprintf("request %d", r.block.n)
+	if r.head == "" {
+		label += " · to your files now"
+	}
+	return label
+}
+
 // reviewKeys offers what the cursor is on: the editor's keys while writing.
 func (m Model) reviewKeys() string {
 	r := m.review
@@ -81,7 +100,7 @@ func (m Model) reviewKeys() string {
 	case r.edit != nil:
 		return "enter save · " + m.prompt.NewlineKey() + " newline · esc drop it"
 	case !r.diffFocused:
-		return "↑↓ file · enter diff · ctrl+s send · esc back"
+		return "↑↓ file · enter diff · s scope · ctrl+s send · esc back"
 	}
 	rows := m.reviewRows()
 	if r.line < len(rows) && rows[r.line].comment != nil {
@@ -136,7 +155,7 @@ func (m Model) reviewDiffLines(height int) []string {
 	case r.loading || r.err != "":
 		return nil
 	case f == nil:
-		return []string{styleFaint.Render("this request left your files as they were")}
+		return []string{styleFaint.Render("no changes here")}
 	case f.Binary:
 		return []string{styleFaint.Render("a binary file, not shown")}
 	case f.Cut:

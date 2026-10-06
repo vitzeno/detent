@@ -57,6 +57,42 @@ func TestWatch_LoadsTheChangesBetweenTwoCheckpoints(t *testing.T) {
 	}, tracked.Hunks[0].Lines)
 }
 
+// A branch runs from where it left main to the files now, new ones included, and
+// a file a clean filter stores (as git-lfs does) is unchanged until edited.
+func TestWatch_LoadsABranchAgainstMain(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the filter is a tr command")
+	}
+	dir := repo(t)
+	gitIn(t, dir, "config", "filter.up.clean", "tr a-z A-Z")
+	gitIn(t, dir, "config", "filter.up.smudge", "tr A-Z a-z")
+	write(t, dir, ".gitattributes", "*.dat filter=up\n")
+	write(t, dir, "x.dat", "hello\n")
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-qm", "filtered")
+	gitIn(t, dir, "branch", "-M", "main")
+	start := strings.TrimSpace(gitIn(t, dir, "rev-parse", "HEAD"))
+	gitIn(t, dir, "checkout", "-q", "-b", "feature")
+	write(t, dir, "committed.txt", "c\n")
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-qm", "c")
+	write(t, dir, "tracked.txt", "one\nTWO\nthree\n")
+	write(t, dir, "untracked.txt", "u\n")
+	d, err := worktree.Open(t.Context(), dir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = d.Close() })
+
+	got := ask(t, d, event.LoadDiff{Branch: true})
+	require.Empty(t, got.Err)
+	assert.Equal(t, start, got.Base)
+	assert.Equal(t, "main", got.Against)
+	var paths []string
+	for _, f := range got.Files {
+		paths = append(paths, f.Path)
+	}
+	assert.Equal(t, []string{"committed.txt", "tracked.txt", "untracked.txt"}, paths)
+}
+
 // A pruned checkpoint is said as what it means to the human, not git's words.
 func TestWatch_SaysWhenTheFilesArePruned(t *testing.T) {
 	d, err := worktree.Open(t.Context(), repo(t))
@@ -125,6 +161,20 @@ tool/registry.go:88-90
   Only copies
   every spec
   > the human: share them, as Without does`, got)
+}
+
+// The opening says whose changes these are, so the agent never takes the
+// human's work for its own.
+func TestPrompt_OpensWithWhoseChangesTheseAre(t *testing.T) {
+	for scope, want := range map[event.ReviewScope]string{
+		event.ScopeRequest: "Review of your changes in request 3.",
+		event.ScopeSession: "Review of everything you changed this session, up to request 3.",
+		event.ScopeSince:   "Review of changes the human made since your request 3 ended. You did not write these.",
+		event.ScopeBranch:  "Review of this branch against main, committed and not, which holds the human's work as well as yours.",
+	} {
+		got := prompt(event.SubmitReview{Scope: scope, Request: 3, Against: "main"})
+		assert.Equal(t, want, got, scope)
+	}
 }
 
 func TestParse(t *testing.T) {
@@ -261,16 +311,27 @@ func repo(t *testing.T) string {
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
 	write(t, dir, "tracked.txt", "one\ntwo\nthree\n")
-	for _, args := range [][]string{
-		{"init", "-q"}, {"add", "-A"},
-		{"-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "x"},
-	} {
-		cmd := exec.CommandContext(t.Context(), "git", args...)
-		cmd.Dir = dir
-		out, err := cmd.CombinedOutput()
-		require.NoError(t, err, "git %v: %s", args, out)
-	}
+	gitIn(t, dir, "init", "-q")
+	gitIn(t, dir, "config", "user.email", "t@example.com")
+	gitIn(t, dir, "config", "user.name", "t")
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-qm", "x")
 	return dir
+}
+
+// gitIn runs git as the human would in dir, attributes and filters on.
+func gitIn(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", args...)
+	cmd.Dir = dir
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "GIT_") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %v: %s", args, out)
+	return string(out)
 }
 
 func write(t *testing.T, dir, rel, body string) {

@@ -117,7 +117,12 @@ type resumeState struct {
 // reviewState is the review modal: one request's changes, the file selected
 // and the line in it, and which pane the arrows move.
 type reviewState struct {
-	block      *turnBlock
+	// block is the request the review belongs to, the last one for a wider
+	// scope and none for a branch, and request the one request scope shows.
+	block, request *turnBlock
+	scope          event.ReviewScope
+	// against is the ref a branch is compared with, "" until named or known.
+	against    string
 	base, head string
 	// id is the review comments go to, open or about to be.
 	id         uuid.UUID

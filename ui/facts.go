@@ -387,7 +387,7 @@ func (m *Model) rolledBack(id uuid.UUID) {
 	m.nav.cursor = min(m.nav.cursor, max(0, len(m.rows())-1))
 	// A review of an undone request is about changes that are gone.
 	m.reviews = slices.DeleteFunc(m.reviews, func(r *reviewRecord) bool {
-		return !slices.ContainsFunc(m.blocks, func(b *turnBlock) bool { return b.id == r.reviewed })
+		return r.reviewed != uuid.Nil && !slices.ContainsFunc(m.blocks, func(b *turnBlock) bool { return b.id == r.reviewed })
 	})
 	m.noteOK("undone")
 }

@@ -3,6 +3,7 @@ package review
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -27,11 +28,28 @@ func prompt(v event.SubmitReview) string {
 		}
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Review of your changes in request %d.\n", v.Request)
+	b.WriteString(opening(v) + "\n")
 	section(&b, "From the human. Act on these:", human, v.Comments)
 	section(&b, "From a reviewer agent, kept by the human. Weigh each, and say where you disagree:",
 		agent, v.Comments)
 	return strings.TrimSuffix(b.String(), "\n")
+}
+
+// opening says whose changes these are: the agent's, or the human's own, which
+// it must not take for its work to defend or undo.
+func opening(v event.SubmitReview) string {
+	switch v.Scope {
+	case event.ScopeSession:
+		return "Review of everything you changed this session, up to request " + strconv.Itoa(v.Request) + "."
+	case event.ScopeSince:
+		return "Review of changes the human made since your request " + strconv.Itoa(v.Request) +
+			" ended. You did not write these."
+	case event.ScopeBranch:
+		return "Review of this branch against " + v.Against +
+			", committed and not, which holds the human's work as well as yours."
+	case event.ScopeRequest:
+	}
+	return "Review of your changes in request " + strconv.Itoa(v.Request) + "."
 }
 
 // section writes each comment under heading, with what it quotes and its replies.

@@ -6,11 +6,15 @@ import "github.com/google/uuid"
 // are none. Never stored: the trees are the record, and a patch can be large.
 type DiffLoaded struct {
 	fact
-	Base  string     `json:"Base"`
-	Head  string     `json:"Head"` // as asked, "" meaning the files when it was asked
-	Files []FileDiff `json:"-"`
-	Cut   bool       `json:"Cut"` // the patch passed its limit, so files after the last are missing
-	Err   string     `json:"Err"`
+	Base string `json:"Base"`
+	Head string `json:"Head"` // as asked, "" meaning the files when it was asked
+	// Branch echoes the ask, and Against is the ref compared with, Base then
+	// being where the branch left it.
+	Branch  bool       `json:"Branch"`
+	Against string     `json:"Against"`
+	Files   []FileDiff `json:"-"`
+	Cut     bool       `json:"Cut"` // past its limit, so the last files are missing
+	Err     string     `json:"Err"`
 }
 
 func (DiffLoaded) Kind() Kind { return DiffLoadedKind }
@@ -65,11 +69,22 @@ type ReviewCommented struct {
 	Reviewed uuid.UUID     `json:"Reviewed"` // the request whose changes are under review
 	Base     string        `json:"Base"`
 	Head     string        `json:"Head"`
+	Scope    ReviewScope   `json:"Scope"`
 	Op       CommentOp     `json:"Op"`
 	Comment  ReviewComment `json:"Comment"`
 }
 
 func (ReviewCommented) Kind() Kind { return ReviewCommentedKind }
+
+// ReviewScope is which changes a review is of.
+type ReviewScope string
+
+const (
+	ScopeRequest ReviewScope = "request" // one request's
+	ScopeSession ReviewScope = "session" // every request's, together
+	ScopeSince   ReviewScope = "since"   // the human's own, since the last request ended
+	ScopeBranch  ReviewScope = "branch"  // the branch's against the one it left, uncommitted too
+)
 
 // ReviewSubmitted says a review was sent to the agent, which closes it.
 type ReviewSubmitted struct {

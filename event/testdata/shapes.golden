@@ -40,7 +40,10 @@ review.commented Head string
 review.commented Op event.CommentOp
 review.commented Review uuid.UUID
 review.commented Reviewed uuid.UUID
+review.commented Scope event.ReviewScope
+review.diff Against string
 review.diff Base string
+review.diff Branch bool
 review.diff Cut bool
 review.diff Err string
 review.diff Head string

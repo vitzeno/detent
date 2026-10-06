@@ -513,7 +513,9 @@ adding a fat dependency fails with the transitive import named.
   reports `ErrGone`. `Patch` diffs two trees against an empty index, because
   git reads a blob from its file when the index says they match, and with
   filters off that put the disk's bytes where a commit's belonged: a filtered
-  or CRLF file vanished from the diff.
+  or CRLF file vanished from the diff. `CaptureFiltered` is the opposite of a
+  checkpoint, seeded from a copy of the human's index with their filters on,
+  so a branch compares like with like against a commit.
 
 - **`internal/classify`**: `JevJudge`, the HTTP adapter, and
   `RiskJudge`, which adapts it to the engine's hook chain. It answers.
@@ -699,7 +701,11 @@ adding a fat dependency fails with the transitive import named.
   `CheckpointTaken` and `TurnEnded` name, so a resumed session's requests can be
   reviewed too, though never undone. A comment covers a line or a `v` range in
   one hunk and quotes it, and is stored as `ReviewCommented`, so a resumed
-  session reopens its reviews. `ctrl+s` sends the review as the next prompt,
+  session reopens its reviews. `s` cycles the scope: one request, the session
+  (first request's start to the last one's end), the human's edits since, and
+  the branch against main or a ref, uncommitted work included. Each scope has
+  its own review, and only a branch's belongs to no request, so undo leaves it.
+  `ctrl+s` sends the review as the next prompt,
   which `internal/review` writes so a reviewer's words are always framed as
   opinions to weigh and the human's as instructions, then closes it.
 

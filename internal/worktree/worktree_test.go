@@ -483,6 +483,76 @@ func TestPatch_UnknownCheckpoint(t *testing.T) {
 	assert.ErrorIs(t, err, ErrGone)
 }
 
+// Under autocrlf a commit holds LF where the disk holds CRLF, so captured as a
+// commit would hold it an untouched repository is exactly HEAD, unlike a raw capture.
+func TestCaptureFiltered_HoldsWhatACommitWould(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	userGit(t, dir, "config", "core.autocrlf", "true")
+	write(t, dir, "crlf.txt", "one\r\ntwo\r\n")
+	userGit(t, dir, "add", "crlf.txt")
+	userGit(t, dir, "commit", "-qm", "crlf")
+	head := strings.TrimSpace(git(t, dir, "rev-parse", "HEAD^{tree}"))
+	d := open(t, dir)
+
+	raw, err := d.Capture(ctx)
+	require.NoError(t, err)
+	require.NotEqual(t, head, string(raw), "the raw capture keeps the disk's CRLF")
+	filtered, err := d.CaptureFiltered(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, head, string(filtered))
+
+	write(t, dir, "made.txt", "new\n")
+	write(t, dir, "crlf.txt", "one\r\nTWO\r\n")
+	filtered, err = d.CaptureFiltered(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "crlf.txt\nmade.txt", strings.TrimSpace(git(t, dir, "diff-tree", "-r", "--name-only", head, string(filtered))))
+	assert.Equal(t, "one\nTWO\n", git(t, dir, "cat-file", "-p", string(filtered)+":crlf.txt"),
+		"an edited file is stored as a commit would store it")
+}
+
+// The human's index is copied, never written.
+func TestCaptureFiltered_LeavesTheUsersIndexAlone(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, "made.txt", "new\n")
+	before, err := os.ReadFile(filepath.Join(dir, ".git", "index"))
+	require.NoError(t, err)
+	_, err = open(t, dir).CaptureFiltered(t.Context())
+	require.NoError(t, err)
+	after, err := os.ReadFile(filepath.Join(dir, ".git", "index"))
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
+	assert.Contains(t, userGit(t, dir, "status", "--porcelain"), "?? made.txt", "still untracked")
+}
+
+// A branch is compared from where it left main, which a later commit to
+// main does not move.
+func TestMergeBase_FindsWhereTheBranchLeftMain(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	git(t, dir, "branch", "-M", "main")
+	start := strings.TrimSpace(git(t, dir, "rev-parse", "HEAD"))
+	git(t, dir, "checkout", "-q", "-b", "feature")
+	write(t, dir, "f.txt", "f\n")
+	commit(t, dir)
+	git(t, dir, "checkout", "-q", "main")
+	write(t, dir, "m.txt", "m\n")
+	commit(t, dir)
+	git(t, dir, "checkout", "-q", "feature")
+
+	base, against, err := open(t, dir).MergeBase(ctx, "")
+	require.NoError(t, err)
+	assert.Equal(t, start, base)
+	assert.Equal(t, "main", against)
+}
+
+func TestMergeBase_SaysWhenThereIsNoMain(t *testing.T) {
+	dir := repo(t)
+	git(t, dir, "branch", "-M", "trunk")
+	_, _, err := open(t, dir).MergeBase(t.Context(), "")
+	assert.ErrorIs(t, err, ErrNoBranch)
+}
+
 func kinds(changes []Change) map[string]Kind {
 	got := map[string]Kind{}
 	for _, c := range changes {

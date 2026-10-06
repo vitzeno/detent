@@ -21,6 +21,9 @@ import (
 // ErrGone is a checkpoint git no longer has, usually pruned by gc.
 var ErrGone = errors.New("worktree: checkpoint no longer exists")
 
+// ErrNoBranch is a repository with no default branch to compare a branch with.
+var ErrNoBranch = errors.New("worktree: no main or master branch to compare with")
+
 // emptyTree is git's well-known empty tree, which exists in every repository.
 const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
@@ -251,6 +254,64 @@ func (d *Dir) Patch(ctx context.Context, base, head Checkpoint, limit int) (patc
 	return patch, cut, nil
 }
 
+// CaptureFiltered is the files as a commit would hold them, line endings and
+// clean filters applied, so a diff against a commit shows only real changes.
+func (d *Dir) CaptureFiltered(ctx context.Context) (Checkpoint, error) {
+	index, cleanup, err := scratchIndex()
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+	// Seeded from theirs, the opposite of capture: its blobs are already filtered,
+	// as a commit's are, and its stat cache spares a rehash. Only the copy is written.
+	if b, err := os.ReadFile(d.theirs); err == nil {
+		if err := os.WriteFile(index, b, 0o600); err != nil { //nolint:gosec // our own scratch path
+			return "", fmt.Errorf("worktree: copy index: %w", err)
+		}
+		// Its time too, which git weighs entries against: a fresh copy missed an
+		// edit made just after a commit, 2 runs in 30.
+		if info, err := os.Stat(d.theirs); err == nil {
+			_ = os.Chtimes(index, info.ModTime(), info.ModTime())
+		}
+	}
+	if _, err := runFiltered(ctx, d.top, index, "add", "-A", "--", d.pathspec()); err != nil {
+		return "", fmt.Errorf("worktree: stage as committed: %w", err)
+	}
+	tree, err := runFiltered(ctx, d.top, index, "write-tree")
+	if err != nil {
+		return "", fmt.Errorf("worktree: write-tree: %w", err)
+	}
+	return Checkpoint(strings.TrimSpace(tree)), nil
+}
+
+// MergeBase is the commit HEAD branched from ref, the default branch when ref
+// is empty, and the ref it compared with.
+func (d *Dir) MergeBase(ctx context.Context, ref string) (base, against string, err error) {
+	if ref == "" {
+		if ref = d.defaultBranch(ctx); ref == "" {
+			return "", "", ErrNoBranch
+		}
+	}
+	out, err := d.git(ctx, "", nil, "merge-base", "HEAD", ref)
+	if err != nil {
+		return "", "", fmt.Errorf("worktree: merge-base with %s: %w", ref, err)
+	}
+	return strings.TrimSpace(out), ref, nil
+}
+
+// defaultBranch is what origin calls its default, else main, else master.
+func (d *Dir) defaultBranch(ctx context.Context) string {
+	if out, err := d.git(ctx, "", nil, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
+		return strings.TrimSpace(out)
+	}
+	for _, b := range []string{"main", "master"} {
+		if _, err := d.git(ctx, "", nil, "rev-parse", "--verify", "--quiet", b+"^{commit}"); err == nil {
+			return b
+		}
+	}
+	return ""
+}
+
 func (d *Dir) capture(ctx context.Context) (Checkpoint, error) {
 	if _, err := os.Stat(d.index); errors.Is(err, os.ErrNotExist) {
 		if err := d.addIgnoredTracked(ctx); err != nil {
@@ -426,6 +487,22 @@ func runLimited(ctx context.Context, dir, index string, limit int, args ...strin
 		return "", false, readErr
 	}
 	return string(out), cut, nil
+}
+
+// runFiltered runs git as the human's own does, attributes and filters on, which
+// is how a commit's content is made. Hooks stay off.
+func runFiltered(ctx context.Context, dir, index string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=" + os.DevNull}, args...)...)
+	cmd.Dir = dir
+	cmd.Env = slices.DeleteFunc(env(index), func(kv string) bool {
+		return strings.HasPrefix(kv, "GIT_ATTR_SOURCE=") || strings.HasPrefix(kv, "GIT_ATTR_NOSYSTEM=")
+	})
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(errb.String()))
+	}
+	return out.String(), nil
 }
 
 func command(ctx context.Context, dir, index string, args ...string) *exec.Cmd {

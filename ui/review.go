@@ -21,10 +21,14 @@ import (
 // until submitted, then read-only, and the next comment starts another.
 type reviewRecord struct {
 	id, reviewed uuid.UUID
+	scope        event.ReviewScope
 	base, head   string
 	comments     []event.ReviewComment
 	submitted    bool
 }
+
+// reviewScopes is the order s cycles through them.
+var reviewScopes = []event.ReviewScope{event.ScopeRequest, event.ScopeSession, event.ScopeSince, event.ScopeBranch}
 
 // diffRow is one line the diff pane draws: a hunk's header when line is -1,
 // and when comment is set, its author's line or one line of its words.
@@ -44,26 +48,35 @@ type commentEdit struct {
 	input    textarea.Model
 }
 
-// showReview is /review: the last request that checkpointed the files, or request N.
+// showReview is /review: the last request that checkpointed the files, request
+// N, the session, your edits since, or the branch against main or a ref.
 func (m Model) showReview(input string) (Model, tea.Cmd) {
-	b, why := m.reviewTarget(strings.TrimSpace(strings.TrimPrefix(input, "/review")))
-	if b == nil {
+	arg := strings.TrimSpace(strings.TrimPrefix(input, "/review"))
+	word, ref, _ := strings.Cut(arg, " ")
+	scope := event.ScopeRequest
+	switch word {
+	case "session", "since", "branch":
+		scope, arg = event.ReviewScope(word), ""
+	}
+	b, why := m.reviewTarget(arg)
+	if b == nil && (scope != event.ScopeBranch || m.run.Commit == "") {
 		m.noteErr(why)
 		return m, nil
 	}
-	m.review = reviewState{block: b, base: b.base, head: m.reviewHead(b), loading: true, back: m.nav.focus}
-	m.review.id = m.openReviewOf(b.id, m.review.base, m.review.head)
+	m.review = reviewState{block: b, back: m.nav.focus, against: strings.TrimSpace(ref)}
 	m.mode = modeReview
-	return m, m.send(event.LoadDiff{Base: m.review.base, Head: m.review.head})
+	if !m.scopeOpen(scope) {
+		m.noteErr(fmt.Sprintf("no %s to review yet", scopeNoun(scope)))
+		scope = event.ScopeRequest
+	}
+	return m, m.loadScope(scope)
 }
 
 // reviewTarget is the request /review means, or why there is none.
 func (m Model) reviewTarget(arg string) (*turnBlock, string) {
 	if arg == "" {
-		for _, b := range slices.Backward(m.blocks) {
-			if b.base != "" {
-				return b, ""
-			}
+		if b := m.lastReviewable(false); b != nil {
+			return b, ""
 		}
 		return nil, "nothing to review: no request has checkpointed your files, which needs a git work tree"
 	}
@@ -97,6 +110,115 @@ func (m Model) reviewHead(b *turnBlock) string {
 	return ""
 }
 
+// lastReviewable is the newest request with its files checkpointed, or with
+// ended the newest whose end is known too.
+func (m Model) lastReviewable(ended bool) *turnBlock {
+	for _, b := range slices.Backward(m.blocks) {
+		if b.base != "" && (!ended || m.reviewHead(b) != "") {
+			return b
+		}
+	}
+	return nil
+}
+
+// scopeTrees is what a scope compares, the session ending where since begins,
+// and ok is false for a scope with nothing to show.
+func (m Model) scopeTrees(scope event.ReviewScope) (base, head string, ok bool) {
+	r := m.review
+	switch scope {
+	case event.ScopeSession:
+		first, last := m.firstReviewable(), m.lastReviewable(true)
+		if first == nil || last == nil || first == last {
+			return "", "", false
+		}
+		return first.base, m.reviewHead(last), true
+	case event.ScopeSince:
+		last := m.lastReviewable(true)
+		if last == nil || m.cur != nil {
+			return "", "", false
+		}
+		return m.reviewHead(last), "", true
+	case event.ScopeBranch:
+		return "", "", true
+	case event.ScopeRequest:
+	}
+	if r.request == nil {
+		return "", "", false
+	}
+	return r.request.base, m.reviewHead(r.request), true
+}
+
+func (m Model) firstReviewable() *turnBlock {
+	for _, b := range m.blocks {
+		if b.base != "" {
+			return b
+		}
+	}
+	return nil
+}
+
+func (m Model) scopeOpen(scope event.ReviewScope) bool {
+	_, _, ok := m.scopeTrees(scope)
+	return ok
+}
+
+// loadScope switches the review to scope and asks for its changes. A branch's
+// base is only known once they come, so its review is found then.
+func (m *Model) loadScope(scope event.ReviewScope) tea.Cmd {
+	r := &m.review
+	if r.request == nil {
+		r.request = r.block
+	}
+	base, head, _ := m.scopeTrees(scope)
+	r.scope, r.base, r.head, r.loading = scope, base, head, true
+	r.files, r.err, r.cut, r.file, r.line, r.ranging, r.edit = nil, "", false, 0, 0, false, nil
+	r.block = r.request
+	if scope != event.ScopeRequest {
+		r.block = m.lastReviewable(scope != event.ScopeBranch)
+	}
+	if scope == event.ScopeBranch {
+		r.id = uuid.Nil
+		return m.send(event.LoadDiff{Branch: true, Against: r.against})
+	}
+	r.id = m.openReviewOf(m.reviewed(), base, head)
+	return m.send(event.LoadDiff{Base: base, Head: head})
+}
+
+// nextScope cycles to the next scope with something to show.
+func (m Model) nextScope() (Model, tea.Cmd) {
+	i := slices.Index(reviewScopes, m.review.scope)
+	for range len(reviewScopes) - 1 {
+		i = (i + 1) % len(reviewScopes)
+		if m.scopeOpen(reviewScopes[i]) {
+			return m, m.loadScope(reviewScopes[i])
+		}
+	}
+	return m, nil
+}
+
+// reviewed is the request a review belongs to, which undoing it drops, and
+// none for a branch, which no request owns.
+func (m Model) reviewed() uuid.UUID {
+	if m.review.scope == event.ScopeBranch || m.review.block == nil {
+		return uuid.Nil
+	}
+	return m.review.block.id
+}
+
+// scopeNoun is what a scope is called in a sentence.
+func scopeNoun(s event.ReviewScope) string {
+	switch s {
+	case event.ScopeSession:
+		return "session of more than one request"
+	case event.ScopeSince:
+		return "edits since the last request"
+	case event.ScopeBranch:
+		return "branch"
+	case event.ScopeRequest:
+	}
+	return "request"
+}
+
 // openReviewOf is the open review of these changes, or a new id when none is.
 // Minted here, so a second comment sent before the first is recorded joins it.
 func (m Model) openReviewOf(reviewed uuid.UUID, base, head string) uuid.UUID {
@@ -109,20 +231,26 @@ func (m Model) openReviewOf(reviewed uuid.UUID, base, head string) uuid.UUID {
 }
 
 // diffLoaded fills the review it answers, defusing what the files say once, here.
+// A branch's answer names where it left its base, which finds its review.
 func (m *Model) diffLoaded(v event.DiffLoaded) {
 	r := &m.review
-	if !r.loading || v.Base != r.base || v.Head != r.head {
+	branch := r.scope == event.ScopeBranch
+	if !r.loading || v.Branch != branch || !branch && (v.Base != r.base || v.Head != r.head) {
 		return
 	}
 	r.loading, r.cut, r.err = false, v.Cut, v.Err
 	r.files = defused(v.Files)
+	if branch {
+		r.base, r.against = v.Base, v.Against
+		r.id = m.openReviewOf(uuid.Nil, v.Base, "")
+	}
 }
 
 // reviewCommented folds one comment into its review, made on its first.
 func (m *Model) reviewCommented(v event.ReviewCommented) {
 	rec := m.reviewByID(v.Review)
 	if rec == nil {
-		rec = &reviewRecord{id: v.Review, reviewed: v.Reviewed, base: v.Base, head: v.Head}
+		rec = &reviewRecord{id: v.Review, reviewed: v.Reviewed, scope: v.Scope, base: v.Base, head: v.Head}
 		m.reviews = append(m.reviews, rec)
 	}
 	c := defusedComment(v.Comment)
@@ -222,6 +350,8 @@ func (m Model) reviewKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m.deleteComment()
 	case "ctrl+s":
 		return m.submitReview()
+	case "s":
+		return m.nextScope()
 	}
 	return m, nil
 }
@@ -503,8 +633,8 @@ func (m Model) commentByID(id uuid.UUID) *event.ReviewComment {
 
 func (m Model) sendComment(op event.CommentOp, c event.ReviewComment) tea.Cmd {
 	r := m.review
-	return m.send(event.CommentReview{Review: r.id, Reviewed: r.block.id, Base: r.base, Head: r.head,
-		Op: op, Comment: c})
+	return m.send(event.CommentReview{Review: r.id, Reviewed: m.reviewed(), Base: r.base, Head: r.head,
+		Scope: r.scope, Op: op, Comment: c})
 }
 
 // submitReview sends the review's comments to the agent as its next prompt.
@@ -514,8 +644,12 @@ func (m Model) submitReview() (Model, tea.Cmd) {
 		m.noteErr("nothing to send: c comments on the line under the cursor")
 		return m, nil
 	}
-	return m, m.send(event.SubmitReview{Review: rec.id, Request: m.review.block.n,
-		Comments: slices.Clone(rec.comments)})
+	n := 0
+	if m.review.block != nil {
+		n = m.review.block.n
+	}
+	return m, m.send(event.SubmitReview{Review: rec.id, Scope: m.review.scope, Request: n,
+		Against: m.review.against, Comments: slices.Clone(rec.comments)})
 }
 
 // defused is files with every path and line made safe to print. A copy, since
