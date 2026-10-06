@@ -1,0 +1,196 @@
+package review
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/worktree"
+)
+
+// Through real git: each file is named and numbered as the patch says, odd
+// names included, since the parser reads paths out of git's headers.
+func TestWatch_LoadsTheChangesBetweenTwoCheckpoints(t *testing.T) {
+	names := []string{"with space.txt", "ünï.txt"}
+	if runtime.GOOS != "windows" {
+		names = append(names, "tab\there.txt", `quote".txt`)
+	}
+	dir := repo(t)
+	d, err := worktree.Open(t.Context(), dir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = d.Close() })
+	before, err := d.Capture(t.Context())
+	require.NoError(t, err)
+	write(t, dir, "tracked.txt", "one\nTWO\nthree\n")
+	for _, n := range names {
+		write(t, dir, n, "new\n")
+	}
+
+	got := ask(t, d, event.LoadDiff{Base: string(before)})
+	require.Empty(t, got.Err)
+	byPath := map[string]event.FileDiff{}
+	for _, f := range got.Files {
+		byPath[f.Path] = f
+	}
+	for _, n := range names {
+		require.Contains(t, byPath, n)
+		assert.Equal(t, event.FileAdded, byPath[n].Change, n)
+	}
+	tracked := byPath["tracked.txt"]
+	assert.Equal(t, event.FileModified, tracked.Change)
+	require.Len(t, tracked.Hunks, 1)
+	assert.Equal(t, []event.DiffLine{
+		{Op: event.LineContext, Old: 1, New: 1, Text: "one"},
+		{Op: event.LineRemoved, Old: 2, Text: "two"},
+		{Op: event.LineAdded, New: 2, Text: "TWO"},
+		{Op: event.LineContext, Old: 3, New: 3, Text: "three"},
+	}, tracked.Hunks[0].Lines)
+}
+
+// A pruned checkpoint is said as what it means to the human, not git's words.
+func TestWatch_SaysWhenTheFilesArePruned(t *testing.T) {
+	d, err := worktree.Open(t.Context(), repo(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = d.Close() })
+	got := ask(t, d, event.LoadDiff{Base: "0123456789abcdef0123456789abcdef01234567"})
+	assert.Contains(t, got.Err, "pruned")
+	assert.Empty(t, got.Files)
+}
+
+func TestParse(t *testing.T) {
+	cases := []struct {
+		name  string
+		patch string
+		cut   bool
+		want  []event.FileDiff
+	}{
+		{
+			name: "a deleted file, numbered on the old side only",
+			patch: "diff --git a/gone.txt b/gone.txt\ndeleted file mode 100644\nindex 1..0\n" +
+				"--- a/gone.txt\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-a\n-b\n",
+			want: []event.FileDiff{{Path: "gone.txt", Change: event.FileDeleted, Hunks: []event.Hunk{{
+				Header: "@@ -1,2 +0,0 @@",
+				Lines:  []event.DiffLine{{Op: event.LineRemoved, Old: 1, Text: "a"}, {Op: event.LineRemoved, Old: 2, Text: "b"}},
+			}}}},
+		},
+		{
+			name:  "a binary file, listed with no hunks",
+			patch: "diff --git a/x.png b/x.png\nnew file mode 100644\nindex 0..1\nBinary files /dev/null and b/x.png differ\n",
+			want:  []event.FileDiff{{Path: "x.png", Change: event.FileAdded, Binary: true}},
+		},
+		{
+			name:  "no newline at the end belongs to the line before",
+			patch: "diff --git a/a b/a\nindex 1..2 100644\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-x\n\\ No newline at end of file\n+y\n",
+			want: []event.FileDiff{{Path: "a", Change: event.FileModified, Hunks: []event.Hunk{{
+				Header: "@@ -1 +1 @@",
+				Lines:  []event.DiffLine{{Op: event.LineRemoved, Old: 1, Text: "x"}, {Op: event.LineAdded, New: 1, Text: "y"}},
+			}}}},
+		},
+		{
+			name:  "content that looks like a header stays content",
+			patch: "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1,2 @@\n x\n+diff --git a/b b/b\n",
+			want: []event.FileDiff{{Path: "a", Change: event.FileModified, Hunks: []event.Hunk{{
+				Header: "@@ -1 +1,2 @@",
+				Lines: []event.DiffLine{{Op: event.LineContext, Old: 1, New: 1, Text: "x"},
+					{Op: event.LineAdded, New: 2, Text: "diff --git a/b b/b"}},
+			}}}},
+		},
+		{
+			name:  "the last file of a cut patch is listed without its hunks",
+			patch: "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-x\n+y\ndiff --git a/b b/b\n--- a/b\n+++ b/b\n@@ -1,9 +1,9 @@\n-p\n",
+			cut:   true,
+			want: []event.FileDiff{
+				{Path: "a", Change: event.FileModified, Hunks: []event.Hunk{{Header: "@@ -1 +1 @@",
+					Lines: []event.DiffLine{{Op: event.LineRemoved, Old: 1, Text: "x"}, {Op: event.LineAdded, New: 1, Text: "y"}}}}},
+				{Path: "b", Change: event.FileModified, Cut: true},
+			},
+		},
+		{
+			name:  "a quoted path",
+			patch: "diff --git \"a/tab\\there.txt\" \"b/tab\\there.txt\"\nnew file mode 100644\n",
+			want:  []event.FileDiff{{Path: "tab\there.txt", Change: event.FileAdded}},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, parse(c.patch, c.cut))
+		})
+	}
+}
+
+// A file too long to review line by line is listed, not drawn.
+func TestParse_ListsAnOverlongFileWithoutItsHunks(t *testing.T) {
+	patch := "diff --git a/lock b/lock\n--- a/lock\n+++ b/lock\n@@ -0,0 +1,9999 @@\n" +
+		strings.Repeat("+x\n", maxFileLines+1)
+	got := parse(patch, false)
+	require.Len(t, got, 1)
+	assert.True(t, got[0].Cut)
+	assert.Empty(t, got[0].Hunks)
+}
+
+// A patch is git's output, but its lines are file contents nothing controls.
+func FuzzParse(f *testing.F) {
+	f.Add("diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1,2 +1,2 @@\n x\n-y\n+z\n", false)
+	f.Add("diff --git \"a/\\303\\274\" \"b/\\303\\274\"\nBinary files a and b differ\n", true)
+	f.Add("diff --git \"a/x\n@@ -9 +9 @@\n\\\n", false)
+	f.Fuzz(func(t *testing.T, patch string, cut bool) {
+		for _, file := range parse(patch, cut) {
+			for _, h := range file.Hunks {
+				for _, l := range h.Lines {
+					switch l.Op {
+					case event.LineContext, event.LineAdded, event.LineRemoved:
+					default:
+						t.Fatalf("a line marked %q", l.Op)
+					}
+				}
+			}
+		}
+	})
+}
+
+func ask(t *testing.T, files Patcher, v event.LoadDiff) event.DiffLoaded {
+	t.Helper()
+	bus := event.New()
+	answers, unsub := bus.Subscribe(event.Only(event.DiffLoadedKind))
+	stop := Watch(context.Background(), bus, files)
+	t.Cleanup(func() { stop(); unsub(); bus.Close() })
+	bus.Publish(v)
+	select {
+	case rec := <-answers:
+		return rec.Event.(event.DiffLoaded)
+	case <-time.After(5 * time.Second):
+		t.Fatal("LoadDiff was never answered")
+		return event.DiffLoaded{}
+	}
+}
+
+func repo(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	write(t, dir, "tracked.txt", "one\ntwo\nthree\n")
+	for _, args := range [][]string{
+		{"init", "-q"}, {"add", "-A"},
+		{"-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "x"},
+	} {
+		cmd := exec.CommandContext(t.Context(), "git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+	}
+	return dir
+}
+
+func write(t *testing.T, dir, rel, body string) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o644))
+}

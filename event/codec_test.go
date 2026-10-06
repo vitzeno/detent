@@ -107,6 +107,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 			ExitCode: 1, Stdout: "o", Stderr: "e", Truncated: true, Err: "x"}},
 		Notice{Level: "warn", Text: "careful"},
 		SessionLoaded{Session: turn, Err: "no such session"},
+		DiffLoaded{Base: "a1", Head: "b2", Cut: true, Err: "gone"},
 		SessionsListed{Sessions: []SessionSummary{{ID: turn, Name: "named", Started: time.UnixMilli(1_700_000_000_000).UTC(), Model: "m", Events: 12}}},
 		ServersListed{Servers: []ServerSummary{
 			{Name: "github", Command: "docker", Tools: 12},
@@ -133,6 +134,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		ResetSession{},
 		ResumeSession{Session: turn},
 		LoadSession{Session: turn},
+		LoadDiff{Base: "a1", Head: "b2"},
 		RunCommand{Text: "git status"},
 		CancelCommand{UserCommand: shell},
 		StopAgent{Agent: agent},

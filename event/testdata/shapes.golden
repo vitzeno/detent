@@ -25,6 +25,10 @@ output.chunk Line string
 output.chunk Stderr bool
 output.chunk ToolCall uuid.UUID
 output.chunk UserCommand uuid.UUID
+review.diff Base string
+review.diff Cut bool
+review.diff Err string
+review.diff Head string
 servers.listed Servers[].Auth string
 servers.listed Servers[].Command string
 servers.listed Servers[].Connected bool

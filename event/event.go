@@ -62,6 +62,8 @@ const (
 	UserCommandStartedKind Kind = "user_command.started"
 	UserCommandEndedKind   Kind = "user_command.ended"
 
+	DiffLoadedKind Kind = "review.diff"
+
 	ServersListedKind        Kind = "servers.listed"
 	AuthorizationWaitingKind Kind = "auth.waiting"
 	ServerAuthorizedKind     Kind = "auth.done"
@@ -95,6 +97,9 @@ const (
 	CancelCommandKind Kind = "do.cancel_command"
 	StopAgentKind     Kind = "do.stop_agent"
 
+	// review's.
+	LoadDiffKind Kind = "do.load_diff"
+
 	// mcp's.
 	ListServersKind     Kind = "do.list_servers"
 	AuthorizeServerKind Kind = "do.authorize"
@@ -113,6 +118,7 @@ var intents = map[Kind]bool{
 	ListSessionsKind:  true, RenameSessionKind: true, LoadSessionKind: true, DeleteSessionKind: true,
 	RunCommandKind: true, CancelCommandKind: true, StopAgentKind: true,
 	ListServersKind: true, AuthorizeServerKind: true, OpenAuthKind: true,
+	LoadDiffKind: true,
 }
 
 // fact marks an event as never dropped. Every event but OutputChunk

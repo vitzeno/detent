@@ -109,6 +109,16 @@ type LoadSession struct {
 
 func (LoadSession) Kind() Kind { return LoadSessionKind }
 
+// LoadDiff asks for the changes from Base to Head, an empty Head meaning the
+// files now. internal/review answers with DiffLoaded.
+type LoadDiff struct {
+	fact
+	Base string `json:"Base"`
+	Head string `json:"Head"`
+}
+
+func (LoadDiff) Kind() Kind { return LoadDiffKind }
+
 // RenameSession gives a session a name a human will recognise. Not in the
 // log: the name is the header's own, and its holder answers with a listing.
 type RenameSession struct {

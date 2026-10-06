@@ -14,6 +14,7 @@ import (
 	"github.com/vitzeno/detent/internal/headless"
 	mcppkg "github.com/vitzeno/detent/internal/mcp"
 	"github.com/vitzeno/detent/internal/model"
+	"github.com/vitzeno/detent/internal/review"
 	"github.com/vitzeno/detent/internal/tool"
 	"github.com/vitzeno/detent/internal/usercommand"
 	"github.com/vitzeno/detent/ui"
@@ -65,6 +66,9 @@ func (s *session) runTUI(ctx context.Context) error {
 	// see what the agent just did is not worth having.
 	runner, where := s.runners.Select(event.UnknownRisk())
 	s.sd.userCommand = usercommand.Watch(ctx, s.bus, runner, where)
+	if s.sd.worktree != nil {
+		s.sd.review = review.Watch(ctx, s.bus, s.sd.worktree)
+	}
 	signins := mcppkg.NewSignIns(s.bus, s.servers, mcppkg.NewTokens(mcppkg.TokensDir()), openBrowser)
 	s.sd.unwatch = append(s.sd.unwatch, mcppkg.Watch(ctx, s.bus, s.servers,
 		mcppkg.Redialer(s.tools, s.servers, s.configured, signins), signins))

@@ -239,13 +239,13 @@ undo refuses before touching the sandbox or the files.
 
 ## Architecture
 
-**Everything is an event.** 33 facts and 20 intents are the entire
+**Everything is an event.** 34 facts and 21 intents are the entire
 interface between components. Facts are past tense, intents are
 imperative, and either may come from anyone: the engine publishes most
 facts, but a subscriber answering a question publishes one too. An extension
 listens, publishes, or both. There is no second mechanism.
 
-Nothing calls the engine. Every part of the program is one of ten
+Nothing calls the engine. Every part of the program is one of eleven
 subscribers:
 
 | Subscriber | Does | Remove it and |
@@ -260,6 +260,7 @@ subscribers:
 | `internal/mcp` | answers `ListServers`, signs in on `AuthorizeServer` | `/mcp` draws nothing, no server signs in |
 | `internal/forget` | answers `DeleteSession` | `/delete` does nothing |
 | `internal/usercommand` | runs `RunCommand`, the human's own | shift+tab stops working |
+| `internal/review` | answers `LoadDiff` with the changes between two checkpoints | `/review` has nothing to show |
 
 Each is a `Watch(...)` returning a stop that waits for whatever it
 started. One doing network or process work also takes the session's
@@ -269,7 +270,7 @@ everything else first and they must still write the session's last
 records.
 
 **The engine is not the only intent subscriber**, and a sentence here
-once said it was. Four packages own intents of their own. What holds is
+once said it was. Five packages own intents of their own. What holds is
 narrower: each intent kind has exactly one owner, and the engine owns
 the ones that drive the loop. Disjointness is what makes several
 subscribers sound, and it is why cancelling a command is its own
@@ -277,7 +278,7 @@ subscribers sound, and it is why cancelling a command is its own
 
 That table is the wiring. `cmd/detent` connects nothing to anything
 else, only each part to the bus, which is why each row is one line
-there: in `session.wire` for every run, and in `runTUI` for the two
+there: in `session.wire` for every run, and in `runTUI` for the three
 only an interactive session has. `run()` in `main.go` reads top to
 bottom as the phases a session opens in (`configure`, `openSandbox`,
 `buildEngine`, `wire`, then a front-end), each filling in the
@@ -300,6 +301,7 @@ ui          →  event, viewspec, views, version, logging, termsafe + its own su
 engine      →  event, tool, model, capture, classify (via an interface)
 mcp         →  event, tool, capture, the MCP SDK
 forget      →  event (the store and sandbox arrive as arguments)
+review      →  event, worktree
 usercommand →  event, capture (the runner arrives as an argument)
 tool        →  event
 model       →  event

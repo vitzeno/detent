@@ -39,8 +39,10 @@ type shutdown struct {
 	// userCommand stops the human's own command. Not in unwatch: that list
 	// runs after the drain, and a fact published then reaches nobody.
 	userCommand func()
-	stop        context.CancelFunc
-	engine      <-chan struct{}
+	// review reads the worktree, so it stops before that closes.
+	review func()
+	stop   context.CancelFunc
+	engine <-chan struct{}
 	// grace bounds the wait on engine, zero meaning engineGrace.
 	grace   time.Duration
 	bus     *event.Bus
@@ -82,7 +84,10 @@ func (s shutdown) close() {
 	// transcript still has somewhere to land.
 	errs := s.stopUserCommand()
 	errs = append(errs, s.stopEngine()...)
-	// After the engine, which is the only thing that checkpoints.
+	// After the engine and review, the two things that checkpoint.
+	if s.review != nil {
+		errs = appendErr(errs, bounded(drainGrace, "review", func() error { s.review(); return nil }))
+	}
 	if s.worktree != nil {
 		errs = appendErr(errs, s.worktree.Close())
 	}

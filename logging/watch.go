@@ -157,6 +157,9 @@ func describe(e event.Event) (slog.Level, []any) {
 		return slog.LevelDebug, []any{"sessions", len(v.Sessions)}
 	case event.SessionLoaded:
 		return slog.LevelDebug, []any{KeySession, v.Session, "records", len(v.Records), KeyReason, Snippet(v.Err)}
+	case event.DiffLoaded:
+		// Counts only: a patch is the human's code.
+		return slog.LevelDebug, []any{"files", len(v.Files), "cut", v.Cut, KeyReason, Snippet(v.Err)}
 	case event.ServersListed:
 		return slog.LevelDebug, []any{"servers", len(v.Servers)}
 	case event.AuthorizationWaiting:
