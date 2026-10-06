@@ -17,7 +17,6 @@ import (
 	"github.com/vitzeno/detent/internal/config"
 	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/model"
-	"github.com/vitzeno/detent/internal/tool"
 )
 
 // Every phase run() strings together, against a fake endpoint on the host,
@@ -62,7 +61,7 @@ func TestSession_HostShellPicksTheToolAndThePrompt(t *testing.T) {
 	}{
 		{host.Sh, model.ShellSh, "bash"},
 		{host.GitBash, model.ShellGitBash, "bash"},
-		{host.Pwsh, model.ShellPwsh, tool.PowerShellName},
+		{host.Pwsh, model.ShellPwsh, event.ToolPowerShell},
 	} {
 		t.Run(tt.shell, func(t *testing.T) {
 			if _, err := host.Find(tt.shell); err != nil {

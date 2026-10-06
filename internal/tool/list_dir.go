@@ -24,7 +24,7 @@ type ListDir struct{}
 
 var _ Native = ListDir{}
 
-func (ListDir) Name() string { return "list_dir" }
+func (ListDir) Name() string { return event.ToolListDir }
 
 func (ListDir) Describe() Spec {
 	return Spec{
@@ -66,7 +66,7 @@ func (ListDir) Run(ctx context.Context, a Args) capture.Result {
 	names := &top[string]{cmp: strings.Compare, limit: listEntries}
 	for {
 		if err := ctx.Err(); err != nil {
-			return stopped("list_dir", "", err)
+			return stopped(event.ToolListDir, "", err)
 		}
 		chunk, err := d.Readdirnames(256)
 		for _, name := range chunk {

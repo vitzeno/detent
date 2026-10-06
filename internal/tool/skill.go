@@ -44,7 +44,7 @@ type SkillEntry struct {
 	Hidden      bool
 }
 
-func (Skill) Name() string { return "skill" }
+func (Skill) Name() string { return event.ToolSkill }
 
 func (s Skill) Describe() Spec {
 	names := make([]string, len(s.entries))
@@ -91,7 +91,7 @@ func (s Skill) Run(ctx context.Context, a Args) capture.Result {
 	defer func() { _ = f.Close() }() // read only, so closing cannot lose anything
 	out, err := windowLinesSized(ctx, f, 1, skillLines, skillBudget, skillMore(file), skillEmpty)
 	if ctx.Err() != nil {
-		return stopped("skill", out, ctx.Err())
+		return stopped(event.ToolSkill, out, ctx.Err())
 	}
 	if err != nil {
 		return capture.Result{ExitCode: 2, Stdout: out, Stderr: "skill: " + err.Error() + "\n"}
@@ -105,7 +105,7 @@ func (s Skill) Run(ctx context.Context, a Args) capture.Result {
 	}
 	// The listing is a courtesy, so an unreadable directory is left out, as the command does.
 	if err := walkFiles(ctx, guard(e.Dir), nil, other, func(string, error) {}); err != nil {
-		return stopped("skill", out, err)
+		return stopped(event.ToolSkill, out, err)
 	}
 	if len(others.kept) > 0 {
 		out += "\n" + skillOthers + "\n" + strings.Join(others.kept, "\n") + "\n"

@@ -343,7 +343,7 @@ func commandCell(r *historyRow, width int) string {
 		}
 		return tag
 	}
-	if r.tool == "bash" || r.tool == "powershell" {
+	if r.tool == event.ToolBash || r.tool == event.ToolPowerShell {
 		return tag + " " + boldProgram(layout.Truncate(r.command, room))
 	}
 	if r.headline == "" {
@@ -382,15 +382,15 @@ func toolStyle(r *historyRow) (lipgloss.Style, bool) {
 		return toolName.server, true
 	}
 	switch r.tool {
-	case "bash", "powershell":
+	case event.ToolBash, event.ToolPowerShell:
 		return toolName.shell, true
-	case "read_file", "list_dir", "grep", "find_files":
+	case event.ToolReadFile, event.ToolListDir, event.ToolGrep, event.ToolFindFiles:
 		return toolName.read, true
-	case "write_file", "edit_file":
+	case event.ToolWriteFile, event.ToolEditFile:
 		return toolName.write, true
-	case "web_search":
+	case event.ToolWebSearch:
 		return toolName.web, true
-	case spawnTool:
+	case event.ToolSpawnAgent:
 		return toolName.agent, true
 	}
 	return toolName.other, true

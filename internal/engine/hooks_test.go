@@ -114,7 +114,7 @@ func TestRegexHook_FlagsPowerShell(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.cmd, func(t *testing.T) {
-			got, err := regexHook{}.Assess(context.Background(), tool.Call{Tool: tool.PowerShellName, Command: tt.cmd}, event.UnknownRisk())
+			got, err := regexHook{}.Assess(context.Background(), tool.Call{Tool: event.ToolPowerShell, Command: tt.cmd}, event.UnknownRisk())
 			require.NoError(t, err)
 			assert.Equal(t, tt.dangerous, got.Dangerous)
 			if tt.dangerous {

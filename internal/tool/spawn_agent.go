@@ -2,15 +2,12 @@ package tool
 
 import "github.com/vitzeno/detent/event"
 
-// SpawnAgentName is the tool a model delegates with, which the engine runs.
-const SpawnAgentName = "spawn_agent"
-
 // SpawnAgent hands a task to a subagent: another model with a transcript of
 // its own and every tool but this one, which replies with a report. It lowers
 // to nothing a shell could run, since running one is running the engine.
 type SpawnAgent struct{}
 
-func (SpawnAgent) Name() string { return SpawnAgentName }
+func (SpawnAgent) Name() string { return event.ToolSpawnAgent }
 
 func (SpawnAgent) Describe() Spec {
 	return Spec{
@@ -39,4 +36,4 @@ func (SpawnAgent) Describe() Spec {
 }
 
 // Lower is what a human reads before approving, should anything flag it.
-func (SpawnAgent) Lower(a Args) (string, error) { return event.Command(SpawnAgentName, a), nil }
+func (SpawnAgent) Lower(a Args) (string, error) { return event.Command(event.ToolSpawnAgent, a), nil }

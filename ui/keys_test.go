@@ -339,7 +339,7 @@ func TestSlash_AgentsBrowsesAResumedSessionsWork(t *testing.T) {
 	stored := asRecords([]event.Event{
 		event.SessionStarted{Session: uuid.Must(uuid.NewV7()), Subagents: true},
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "trace login"},
-		event.ToolCallProposed{ToolCall: spawn, Tool: spawnTool, Args: map[string]any{"task": "trace"}},
+		event.ToolCallProposed{ToolCall: spawn, Tool: event.ToolSpawnAgent, Args: map[string]any{"task": "trace"}},
 		event.AgentStarted{Agent: agent, ToolCall: spawn, Name: "trace", Task: "trace login"},
 		event.StepStarted{Turn: turn, Step: uuid.Must(uuid.NewV7()), N: 1, Agent: agent},
 		event.ToolCallProposed{ToolCall: call, Tool: "grep", Args: map[string]any{"pattern": "login"}, Agent: agent},

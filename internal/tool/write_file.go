@@ -16,7 +16,7 @@ type WriteFile struct{}
 
 var _ Native = WriteFile{}
 
-func (WriteFile) Name() string { return "write_file" }
+func (WriteFile) Name() string { return event.ToolWriteFile }
 
 func (WriteFile) Describe() Spec {
 	return Spec{
@@ -57,7 +57,7 @@ func (WriteFile) Run(ctx context.Context, a Args) capture.Result {
 		// diff, as the command does.
 		switch b, err := readCapped(ctx, p, maxEditBytes); {
 		case ctx.Err() != nil:
-			return stopped("write_file", "", ctx.Err())
+			return stopped(event.ToolWriteFile, "", ctx.Err())
 		case err == nil:
 			before, existed = string(b), true
 		case !info.Mode().IsRegular() || info.Size() > maxEditBytes:
@@ -65,7 +65,7 @@ func (WriteFile) Run(ctx context.Context, a Args) capture.Result {
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return stopped("write_file", "", err)
+		return stopped(event.ToolWriteFile, "", err)
 	}
 	if existed {
 		content = keepCRLF(before, content)

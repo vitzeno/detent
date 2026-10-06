@@ -327,7 +327,10 @@ import only the standard library.** `viewspec` and `google/uuid` both
 qualify. `event/event_test.go` walks the imports and checks it, so
 adding a fat dependency fails with the transitive import named.
 
-- **`event`**: the shared vocabulary and the `Bus`. `Publish` never
+- **`event`**: the shared vocabulary and the `Bus`. The built-in tools'
+  names are constants here (`event.ToolBash`, `event.ToolSpawnAgent`), since
+  `tool`, the engine and `ui` all match on them and `ui` cannot import `tool`.
+  MCP adds names at run time, so a call's `Tool` stays a string. `Publish` never
   blocks, whoever is listening and however slowly, so publishing from
   inside a handler is safe and cannot deadlock. Each subscriber has
   its own queue: a lagging one grows it and drops only events that say

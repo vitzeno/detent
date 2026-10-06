@@ -58,7 +58,7 @@ func (e *Engine) spawn(ctx context.Context, t *turnState, parent *agent, p *tool
 	task := p.prepared.Args.String("task")
 	name := cmp.Or(strings.TrimSpace(p.prepared.Args.String("name")), fmt.Sprintf("agent-%d", n))
 	// Every tool the parent has, MCP's included, but spawn_agent: one level deep.
-	child := newAgent(uuid.Must(uuid.NewV7()), name, e.childModel, parent.tools.Without(tool.SpawnAgentName), e.extra...)
+	child := newAgent(uuid.Must(uuid.NewV7()), name, e.childModel, parent.tools.Without(event.ToolSpawnAgent), e.extra...)
 
 	// Stoppable before it is announced, so no stop is lost.
 	cctx, stop := context.WithCancelCause(ctx)
@@ -178,7 +178,7 @@ func readList(msgs []event.Message) string {
 			// Ids are only unique within a Step, so each Step starts afresh.
 			clear(pending)
 			for _, r := range m.Requests {
-				if r.Name == "read_file" {
+				if r.Name == event.ToolReadFile {
 					pending[r.ID] = r
 				}
 			}

@@ -21,7 +21,7 @@ type ReadFile struct{}
 
 var _ Native = ReadFile{}
 
-func (ReadFile) Name() string { return "read_file" }
+func (ReadFile) Name() string { return event.ToolReadFile }
 
 func (ReadFile) Describe() Spec {
 	return Spec{
@@ -58,7 +58,7 @@ func (ReadFile) Run(ctx context.Context, a Args) capture.Result {
 	defer func() { _ = f.Close() }() // read only, so closing cannot lose anything
 	out, err := windowLines(ctx, f, from, n, readMore, readEmpty)
 	if ctx.Err() != nil {
-		return stopped("read_file", out, ctx.Err())
+		return stopped(event.ToolReadFile, out, ctx.Err())
 	}
 	if err != nil {
 		return capture.Result{ExitCode: 1, Stdout: out, Stderr: "read_file: " + err.Error() + "\n"}

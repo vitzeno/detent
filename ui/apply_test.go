@@ -602,7 +602,7 @@ func spawnIn(m *Model, name string) spawn {
 	sp := spawn{turn: uuid.Must(uuid.NewV7()), spawn: uuid.Must(uuid.NewV7()), agent: uuid.Must(uuid.NewV7())}
 	m.apply(event.TurnStarted{Turn: sp.turn, N: len(m.blocks) + 1, Prompt: "look into it"})
 	m.apply(event.StepEnded{Turn: sp.turn, Step: uuid.Must(uuid.NewV7()), Usage: event.Usage{PromptTokens: 1_000}})
-	m.apply(event.ToolCallProposed{ToolCall: sp.spawn, Tool: spawnTool, Args: map[string]any{"task": "find it"}})
+	m.apply(event.ToolCallProposed{ToolCall: sp.spawn, Tool: event.ToolSpawnAgent, Args: map[string]any{"task": "find it"}})
 	m.apply(event.ToolCallStarted{ToolCall: sp.spawn, Runner: "agent"})
 	m.apply(event.AgentStarted{Agent: sp.agent, ToolCall: sp.spawn, Name: name, Task: "find it"})
 	return sp
@@ -611,7 +611,7 @@ func spawnIn(m *Model, name string) spawn {
 // spawnAlso starts another subagent in the same Turn.
 func spawnAlso(m *Model, turn uuid.UUID, name string) spawn {
 	sp := spawn{turn: turn, spawn: uuid.Must(uuid.NewV7()), agent: uuid.Must(uuid.NewV7())}
-	m.apply(event.ToolCallProposed{ToolCall: sp.spawn, Tool: spawnTool, Args: map[string]any{"task": "find it"}})
+	m.apply(event.ToolCallProposed{ToolCall: sp.spawn, Tool: event.ToolSpawnAgent, Args: map[string]any{"task": "find it"}})
 	m.apply(event.ToolCallStarted{ToolCall: sp.spawn, Runner: "agent"})
 	m.apply(event.AgentStarted{Agent: sp.agent, ToolCall: sp.spawn, Name: name, Task: "find it"})
 	return sp

@@ -27,7 +27,7 @@ func TestSpawn_AChildHasEveryToolButSpawn(t *testing.T) {
 		&fakeRunner{out: "ok\n"}, reg, WithChildModel(cm))
 	r.run("explore")
 
-	want := slices.DeleteFunc(reg.Names(), func(n string) bool { return n == tool.SpawnAgentName })
+	want := slices.DeleteFunc(reg.Names(), func(n string) bool { return n == event.ToolSpawnAgent })
 	require.NotEmpty(t, cm.offered())
 	for _, names := range cm.offered() {
 		assert.Equal(t, want, names)
@@ -409,7 +409,7 @@ func spawnRig(t *testing.T, cm *childModel, calls []event.ToolRequest, opts ...O
 func spawns(calls ...event.ToolRequest) []event.ToolRequest { return calls }
 
 func spawnCall(id, task, name string) event.ToolRequest {
-	return event.ToolRequest{ID: id, Name: tool.SpawnAgentName, Args: map[string]any{"task": task, "name": name}}
+	return event.ToolRequest{ID: id, Name: event.ToolSpawnAgent, Args: map[string]any{"task": task, "name": name}}
 }
 
 // toolAnswers is every tool result the root's transcript holds, joined.

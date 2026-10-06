@@ -12,14 +12,9 @@ import (
 // The review tools are how a reviewer agent reads the diff the human sees and
 // comments on it. The engine answers both from that diff, so they run nothing.
 
-const (
-	ReviewDiffName    = "review_diff"
-	ReviewCommentName = "review_comment"
-)
-
 // ReviewReads is every other tool a reviewer may call: reads of the files, and
 // nothing that writes or reaches the network, where an injected line could send them.
-var ReviewReads = []string{"read_file", "grep", "find_files", "list_dir"}
+var ReviewReads = []string{event.ToolReadFile, event.ToolGrep, event.ToolFindFiles, event.ToolListDir}
 
 // ReviewDiff shows one changed file's hunks, each line numbered.
 type ReviewDiff struct{ files []event.FileDiff }
@@ -27,7 +22,7 @@ type ReviewDiff struct{ files []event.FileDiff }
 // NewReviewDiff answers from files, the diff under review.
 func NewReviewDiff(files []event.FileDiff) ReviewDiff { return ReviewDiff{files: files} }
 
-func (ReviewDiff) Name() string { return ReviewDiffName }
+func (ReviewDiff) Name() string { return event.ToolReviewDiff }
 
 func (ReviewDiff) Describe() Spec {
 	return Spec{
@@ -40,7 +35,7 @@ func (ReviewDiff) Describe() Spec {
 	}
 }
 
-func (ReviewDiff) Lower(a Args) (string, error) { return event.Command(ReviewDiffName, a), nil }
+func (ReviewDiff) Lower(a Args) (string, error) { return event.Command(event.ToolReviewDiff, a), nil }
 
 // Answer is path's hunks, or which files there are when it is not one of them.
 func (r ReviewDiff) Answer(a Args) (string, error) {
@@ -74,7 +69,7 @@ type ReviewComment struct{ files []event.FileDiff }
 // NewReviewComment checks against files, the diff under review.
 func NewReviewComment(files []event.FileDiff) ReviewComment { return ReviewComment{files: files} }
 
-func (ReviewComment) Name() string { return ReviewCommentName }
+func (ReviewComment) Name() string { return event.ToolReviewComment }
 
 func (ReviewComment) Describe() Spec {
 	return Spec{
@@ -95,7 +90,9 @@ func (ReviewComment) Describe() Spec {
 	}
 }
 
-func (ReviewComment) Lower(a Args) (string, error) { return event.Command(ReviewCommentName, a), nil }
+func (ReviewComment) Lower(a Args) (string, error) {
+	return event.Command(event.ToolReviewComment, a), nil
+}
 
 // Check is the comment a call makes, quoting its lines, or why there are no
 // such lines to comment on.

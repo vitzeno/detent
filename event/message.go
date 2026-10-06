@@ -62,7 +62,7 @@ func RequestIDs(calls []ToolRequest) []string {
 // Command renders a call as a human is shown it: a shell tool as its command,
 // anything else as tool k=v, quoting any value that could run into the next pair.
 func Command(tool string, args map[string]any) string {
-	if tool == "bash" || tool == "powershell" {
+	if tool == ToolBash || tool == ToolPowerShell {
 		if c, ok := args["command"].(string); ok {
 			return c
 		}

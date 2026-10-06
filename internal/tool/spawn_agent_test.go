@@ -12,7 +12,7 @@ import (
 // A spawn reads by itself and names no executor: the UI and undo read an
 // executor as work outside the sandbox, which a child that only reads is not.
 func TestSpawnAgent_DelegatesAndOnlyReads(t *testing.T) {
-	c, err := Standard(SpawnAgent{}).Prepare(SpawnAgentName, map[string]any{"task": "find the session code", "name": nil})
+	c, err := Standard(SpawnAgent{}).Prepare(event.ToolSpawnAgent, map[string]any{"task": "find the session code", "name": nil})
 	require.NoError(t, err)
 	assert.True(t, c.Delegates)
 	assert.Equal(t, event.MutRead, c.Mutability)
@@ -22,6 +22,6 @@ func TestSpawnAgent_DelegatesAndOnlyReads(t *testing.T) {
 }
 
 func TestSpawnAgent_NeedsATask(t *testing.T) {
-	_, err := Standard(SpawnAgent{}).Prepare(SpawnAgentName, map[string]any{"name": "x"})
+	_, err := Standard(SpawnAgent{}).Prepare(event.ToolSpawnAgent, map[string]any{"name": "x"})
 	assert.ErrorContains(t, err, "task")
 }

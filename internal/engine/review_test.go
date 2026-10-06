@@ -18,8 +18,8 @@ import (
 func TestReview_CommentsOnTheDiffAndTouchesNoRequest(t *testing.T) {
 	rm := &fakeModel{replies: []model.Reply{
 		{Requests: []event.ToolRequest{
-			reviewCall("d", tool.ReviewDiffName, map[string]any{"path": "a.go"}),
-			reviewCall("c", tool.ReviewCommentName, map[string]any{"path": "a.go", "side": "new", "start": 11, "end": 11, "body": "wrong"}),
+			reviewCall("d", event.ToolReviewDiff, map[string]any{"path": "a.go"}),
+			reviewCall("c", event.ToolReviewComment, map[string]any{"path": "a.go", "side": "new", "start": 11, "end": 11, "body": "wrong"}),
 		}},
 		{Text: "One problem: line 11."},
 	}}
@@ -79,7 +79,7 @@ func TestReview_TheReviewerCannotRunOrWrite(t *testing.T) {
 // and records nothing.
 func TestReview_ACommentOffTheDiffIsRefused(t *testing.T) {
 	rm := &fakeModel{replies: []model.Reply{
-		{Requests: []event.ToolRequest{reviewCall("c", tool.ReviewCommentName,
+		{Requests: []event.ToolRequest{reviewCall("c", event.ToolReviewComment,
 			map[string]any{"path": "a.go", "side": "new", "start": 90, "end": 90, "body": "x"})}},
 		{Text: ""},
 	}}
@@ -173,7 +173,7 @@ func TestRun_EndsAReviewACrashLeftOpenWithoutTellingTheModel(t *testing.T) {
 // Jev judges what a call would change, and a review tool changes nothing.
 func TestJev_SkipsWhatTheEngineAnswers(t *testing.T) {
 	j := &countingJudge{}
-	_, err := jevHook{judge: j}.Assess(t.Context(), tool.Call{Tool: tool.ReviewCommentName, Internal: true}, event.Risk{})
+	_, err := jevHook{judge: j}.Assess(t.Context(), tool.Call{Tool: event.ToolReviewComment, Internal: true}, event.Risk{})
 	require.NoError(t, err)
 	assert.Zero(t, j.calls)
 }

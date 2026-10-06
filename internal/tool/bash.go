@@ -1,12 +1,16 @@
 package tool
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/vitzeno/detent/event"
+)
 
 // Bash is why the registry is an optimisation, not a boundary: a model
 // that cannot say what it wants routes around you.
 type Bash struct{}
 
-func (Bash) Name() string { return "bash" }
+func (Bash) Name() string { return event.ToolBash }
 
 func (Bash) Describe() Spec {
 	return Spec{

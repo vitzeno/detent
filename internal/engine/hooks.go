@@ -60,7 +60,7 @@ func (regexHook) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Ris
 	}
 	tables := [][]danger{dangerPatterns}
 	// The unix table too, since a model writes bash in pwsh and Windows has sudo and git.
-	if c.Tool == tool.PowerShellName {
+	if c.Tool == event.ToolPowerShell {
 		tables = [][]danger{powershellPatterns, dangerPatterns}
 	}
 	for _, table := range tables {

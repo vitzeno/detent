@@ -169,15 +169,15 @@ func TestRegistry_OnlyKeepsTheNamedToolsInOrder(t *testing.T) {
 	reg := Standard(SpawnAgent{})
 	sub := reg.Only("grep", "read_file", "no_such_tool")
 	assert.Equal(t, []string{"read_file", "grep"}, sub.Names())
-	_, ok := sub.Lookup(SpawnAgentName)
+	_, ok := sub.Lookup(event.ToolSpawnAgent)
 	assert.False(t, ok, "a child must not be able to spawn")
 	assert.Error(t, sub.Register(ReadFile{}), "a kept built-in is still a built-in")
 }
 
 func TestRegistry_WithoutDropsOnlyTheNamedTools(t *testing.T) {
 	reg := Standard(SpawnAgent{})
-	sub := reg.Without(SpawnAgentName)
-	assert.Equal(t, slices.DeleteFunc(reg.Names(), func(n string) bool { return n == SpawnAgentName }), sub.Names())
+	sub := reg.Without(event.ToolSpawnAgent)
+	assert.Equal(t, slices.DeleteFunc(reg.Names(), func(n string) bool { return n == event.ToolSpawnAgent }), sub.Names())
 }
 
 func TestPrepare_TreatsNullAsAbsent(t *testing.T) {
@@ -223,19 +223,19 @@ func TestRegistry_KeepsBuiltInsInTheirOwnOrder(t *testing.T) {
 func TestStandardFor_PutsTheShellInBashsPlace(t *testing.T) {
 	r := StandardFor(PowerShell{}, NewSkill(nil))
 	names := r.Names()
-	assert.Equal(t, PowerShellName, names[0])
+	assert.Equal(t, event.ToolPowerShell, names[0])
 	assert.NotContains(t, names, "bash")
 	assert.Len(t, names, len(Standard(NewSkill(nil)).Names()))
 
-	call, err := r.Prepare(PowerShellName, map[string]any{"command": "Get-ChildItem"})
+	call, err := r.Prepare(event.ToolPowerShell, map[string]any{"command": "Get-ChildItem"})
 	require.NoError(t, err)
 	assert.Equal(t, "Get-ChildItem", call.Command)
 	assert.Empty(t, call.Mutability, "unknown, as bash's is")
-	_, err = r.Prepare(PowerShellName, map[string]any{"command": ""})
+	_, err = r.Prepare(event.ToolPowerShell, map[string]any{"command": ""})
 	require.Error(t, err)
 
 	// The approval box shows the command itself, which event spells by name.
-	assert.Equal(t, "Get-ChildItem", event.Command(PowerShellName, map[string]any{"command": "Get-ChildItem"}))
+	assert.Equal(t, "Get-ChildItem", event.Command(event.ToolPowerShell, map[string]any{"command": "Get-ChildItem"}))
 	assert.Contains(t, PowerShell{}.Describe().Description, "not a POSIX shell")
 }
 

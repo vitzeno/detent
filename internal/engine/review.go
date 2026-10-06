@@ -111,9 +111,9 @@ func (e *Engine) answer(a *agent, p *toolCallPlan) {
 // at once, so the human sees it while the reviewer works.
 func (r *reviewRun) answer(e *Engine, c tool.Call) (string, error) {
 	switch c.Tool {
-	case tool.ReviewDiffName:
+	case event.ToolReviewDiff:
 		return r.diff.Answer(c.Args)
-	case tool.ReviewCommentName:
+	case event.ToolReviewComment:
 		comment, err := r.comment.Check(c.Args)
 		if err != nil {
 			return "", err

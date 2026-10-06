@@ -32,7 +32,7 @@ type WebSearch struct{}
 
 var _ Native = WebSearch{}
 
-func (WebSearch) Name() string { return "web_search" }
+func (WebSearch) Name() string { return event.ToolWebSearch }
 
 func (WebSearch) Describe() Spec {
 	return Spec{

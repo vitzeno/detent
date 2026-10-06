@@ -17,7 +17,7 @@ type EditFile struct{}
 
 var _ Native = EditFile{}
 
-func (EditFile) Name() string { return "edit_file" }
+func (EditFile) Name() string { return event.ToolEditFile }
 
 func (EditFile) Describe() Spec {
 	return Spec{
@@ -63,7 +63,7 @@ func (EditFile) Run(ctx context.Context, a Args) capture.Result {
 	}
 	b, err := readCapped(ctx, p, maxEditBytes)
 	if ctx.Err() != nil {
-		return stopped("edit_file", "", ctx.Err())
+		return stopped(event.ToolEditFile, "", ctx.Err())
 	}
 	if err != nil {
 		return failed(perlStatus(err), "edit_file: %v", err)
@@ -83,7 +83,7 @@ func (EditFile) Run(ctx context.Context, a Args) capture.Result {
 		return failed(255, "edit_file: %s would grow to %d MB, more than edit_file writes (%d MB), so change it with a command", p, grown>>20, maxEditBytes>>20)
 	}
 	if err := ctx.Err(); err != nil {
-		return stopped("edit_file", "", err)
+		return stopped(event.ToolEditFile, "", err)
 	}
 	after := strings.Replace(before, old, repl, n)
 	if err := writeAsShell(p, after); err != nil {

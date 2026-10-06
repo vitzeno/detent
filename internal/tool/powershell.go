@@ -1,13 +1,12 @@
 package tool
 
-// PowerShellName is the shell tool's name when host commands run in PowerShell 7.
-const PowerShellName = "powershell"
+import "github.com/vitzeno/detent/event"
 
 // PowerShell is Bash where the shell is pwsh, named for what it runs,
 // since a model asked to call bash writes bash.
 type PowerShell struct{}
 
-func (PowerShell) Name() string { return PowerShellName }
+func (PowerShell) Name() string { return event.ToolPowerShell }
 
 func (PowerShell) Describe() Spec {
 	return Spec{

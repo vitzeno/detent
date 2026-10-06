@@ -6,9 +6,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/config"
 	"github.com/vitzeno/detent/internal/model"
-	"github.com/vitzeno/detent/internal/tool"
 )
 
 // spawn_agent without a child model could only say there are none, and a
@@ -32,7 +32,7 @@ func TestSubagents_TheToolAndTheChildModelComeTogether(t *testing.T) {
 	on, err := subagents(config.Config{Subagents: &yes}, child)
 	require.NoError(t, err)
 	require.Len(t, on.tools, 1)
-	assert.Equal(t, tool.SpawnAgentName, on.tools[0].Name())
+	assert.Equal(t, event.ToolSpawnAgent, on.tools[0].Name())
 	assert.Len(t, on.engine, 3, "the child model, its limits and the reviewer")
 	assert.Len(t, on.root, 1, "the root is told it may spawn")
 	require.Len(t, built, 2)

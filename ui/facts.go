@@ -471,7 +471,7 @@ func styled(r event.Result) event.Result {
 func wroteBy(v event.ToolCallProposed) *written {
 	path, _ := v.Args["path"].(string)
 	content, ok := v.Args["content"].(string)
-	if v.Tool != "write_file" || !ok || content == "" {
+	if v.Tool != event.ToolWriteFile || !ok || content == "" {
 		return nil
 	}
 	return &written{path: termsafe.Printable(path), content: termsafe.Printable(content)}

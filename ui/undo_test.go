@@ -69,7 +69,7 @@ func TestUndoPage_NamesWhatASubagentCannotReverse(t *testing.T) {
 	turn, spawn, agent, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	m := feed(t, event.SessionStarted{Model: "m"},
 		event.TurnStarted{Turn: turn, N: 1, Prompt: "file the bug"},
-		event.ToolCallProposed{ToolCall: spawn, Tool: spawnTool, Args: map[string]any{"task": "file it"}},
+		event.ToolCallProposed{ToolCall: spawn, Tool: event.ToolSpawnAgent, Args: map[string]any{"task": "file it"}},
 		event.AgentStarted{Agent: agent, ToolCall: spawn, Name: "filer"},
 		event.ToolCallProposed{ToolCall: call, Tool: "github__create_issue", Executor: "github", Agent: agent},
 		event.ToolCallEnded{ToolCall: call},

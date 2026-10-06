@@ -30,7 +30,7 @@ type Grep struct{}
 
 var _ Native = Grep{}
 
-func (Grep) Name() string { return "grep" }
+func (Grep) Name() string { return event.ToolGrep }
 
 func (Grep) Describe() Spec {
 	return Spec{
@@ -110,7 +110,7 @@ func (Grep) Run(ctx context.Context, a Args) capture.Result {
 
 	out := windowTop(hits.kept, hits.total, g.limit, grepMore, grepEmpty)
 	if stop != nil {
-		return stopped("grep", out, stop)
+		return stopped(event.ToolGrep, out, stop)
 	}
 	res := capture.Result{Stdout: out, Stderr: stderr.String()}
 	if res.Stderr != "" {

@@ -23,7 +23,7 @@ type FindFiles struct{}
 
 var _ Native = FindFiles{}
 
-func (FindFiles) Name() string { return "find_files" }
+func (FindFiles) Name() string { return event.ToolFindFiles }
 
 func (FindFiles) Describe() Spec {
 	return Spec{
@@ -79,7 +79,7 @@ func (FindFiles) Run(ctx context.Context, a Args) capture.Result {
 	case info.IsDir():
 		if filepath.Base(root) != ".git" {
 			if err := walkFiles(ctx, root, func(name string) bool { return name == ".git" }, visit, fail); err != nil {
-				return stopped("find_files", windowTop(files.kept, files.total, f.limit, findMore, findEmpty), err)
+				return stopped(event.ToolFindFiles, windowTop(files.kept, files.total, f.limit, findMore, findEmpty), err)
 			}
 		}
 	case info.Mode().IsRegular():

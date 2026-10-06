@@ -59,11 +59,11 @@ func TestReviewTools_AreAnsweredByTheEngine(t *testing.T) {
 	r := Standard()
 	require.NoError(t, r.Register(NewReviewDiff(nil)))
 	require.NoError(t, r.Register(NewReviewComment(nil)))
-	call, err := r.Prepare(ReviewCommentName, map[string]any{"path": "a.go", "side": "new", "start": 1, "end": 1, "body": "x"})
+	call, err := r.Prepare(event.ToolReviewComment, map[string]any{"path": "a.go", "side": "new", "start": 1, "end": 1, "body": "x"})
 	require.NoError(t, err)
 	assert.True(t, call.Internal)
 	assert.Equal(t, event.MutRead, call.Mutability)
-	_, err = r.Prepare(ReviewCommentName, map[string]any{"path": "a.go", "side": "left", "start": 1, "end": 1, "body": "x"})
+	_, err = r.Prepare(event.ToolReviewComment, map[string]any{"path": "a.go", "side": "left", "start": 1, "end": 1, "body": "x"})
 	assert.Error(t, err, "side is old or new")
 }
 

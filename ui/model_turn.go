@@ -148,9 +148,6 @@ type verdict struct {
 // written is a write_file call's path and content, defused.
 type written struct{ path, content string }
 
-// spawnTool is internal/tool.SpawnAgentName, which ui cannot import.
-const spawnTool = "spawn_agent"
-
 // newFileReport is how write_file says it created a file, rather than
 // showing a diff the model would pay to read (internal/tool/write_file.go).
 const newFileReport = "created "
