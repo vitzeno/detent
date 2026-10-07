@@ -76,6 +76,11 @@ func run() error {
 		return err
 	}
 	s := &session{o: o, cfg: cfg, trusted: trusted, id: id, restore: restore}
+	// Held before anything writes it, and let go only after the store closes.
+	if s.held, err = holdSession(id); err != nil {
+		return err
+	}
+	defer s.held.Close()
 	s.warnTrust()
 	// A session that cannot log is still a session: Setup says so and
 	// carries on discarding.

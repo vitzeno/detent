@@ -129,6 +129,26 @@ func TestResume_IsRefusedWhileARequestRuns(t *testing.T) {
 	assert.Contains(t, r.of(event.NoticeKind)[0].(event.Notice).Text, "while a request is running")
 }
 
+// A session another detent holds is refused before anything changes, or both
+// would write it and overwrite each other's records.
+func TestResume_IsRefusedForASessionHeldElsewhere(t *testing.T) {
+	stored := uuid.Must(uuid.NewV7())
+	log := fakeLog{stored: asRecords([]event.Event{event.SessionStarted{Session: stored}})}
+	held := &fakeHolder{refuse: stored}
+	r := newRig(t, []model.Reply{{Text: "a"}}, WithSessions(log, nil), WithHolder(held))
+	r.run("before")
+
+	r.bus.Publish(event.ResumeSession{Session: stored})
+	r.dispatched()
+	assert.Len(t, r.of(event.SessionStartedKind), 1, "the session did not change")
+	assert.Contains(t, r.of(event.NoticeKind)[0].(event.Notice).Text, "open in another detent")
+	assert.NotEmpty(t, r.eng.messages(), "the transcript is untouched")
+
+	r.bus.Publish(event.ResetSession{})
+	second := r.awaitNth(event.SessionStartedKind, 2).(event.SessionStarted)
+	assert.Equal(t, []uuid.UUID{second.Session}, held.taken, "/new holds the session it starts")
+}
+
 // Undo and reset are facts, so a resumed session does not bring back
 // what the human took back.
 func TestRestore_HonoursUndoAndReset(t *testing.T) {
@@ -332,6 +352,20 @@ func (failingRunner) Run(context.Context, string, chan<- capture.StreamEvent) (c
 }
 
 // fakeLog is a stored session log holding one session.
+// fakeHolder refuses one session and records the rest it takes.
+type fakeHolder struct {
+	refuse uuid.UUID
+	taken  []uuid.UUID
+}
+
+func (h *fakeHolder) Take(session uuid.UUID) error {
+	if session == h.refuse {
+		return errors.New("open in another detent")
+	}
+	h.taken = append(h.taken, session)
+	return nil
+}
+
 type fakeLog struct{ stored []event.Record }
 
 func (f fakeLog) Replay(uuid.UUID) ([]event.Record, error) { return f.stored, nil }

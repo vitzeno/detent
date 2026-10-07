@@ -79,6 +79,7 @@ type Engine struct {
 	worktreer Worktreer
 	// sessions is the stored log a resume reads, and resumeNote what it tells the model.
 	sessions   SessionLog
+	holder     Holder
 	resumeNote func([]event.Record) string
 	// settled is the tree as the last Turn left it, so a rollback can tell
 	// the human's later edits from the Turn's own.
@@ -233,6 +234,12 @@ type Worktreer interface {
 	Restore(ctx context.Context, id, seen string) error
 }
 
+// Holder keeps a session to this process, refusing one another detent holds, and
+// lets go of the one before only once it has the next.
+type Holder interface {
+	Take(session uuid.UUID) error
+}
+
 // SessionLog replays a stored session, satisfied structurally by store.Store.
 type SessionLog interface {
 	Replay(session uuid.UUID) ([]event.Record, error)
@@ -375,9 +382,20 @@ func (e *Engine) reset() {
 	clear(e.past)
 	e.mu.Unlock()
 	e.session, e.resumed = uuid.Must(uuid.NewV7()), 0
+	if err := e.hold(e.session); err != nil {
+		e.notice("warn", "the new session is not held, so another detent could resume it: "+err.Error())
+	}
 	e.started()
 	e.bus.Publish(e.measure(0))
 	e.notice("info", "new session")
+}
+
+// hold takes session for this process, when something is holding sessions.
+func (e *Engine) hold(session uuid.UUID) error {
+	if e.holder == nil {
+		return nil
+	}
+	return e.holder.Take(session)
 }
 
 // started describes this session, which is also what moves the store onto it.

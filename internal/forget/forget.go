@@ -25,14 +25,20 @@ type Sessions interface {
 	Delete(session uuid.UUID) (bool, error)
 }
 
-// Option is what a caller may add. Containers is the only one: a
-// session always has events, and may or may not have a container.
+// Option is what a caller may add: a session always has events, and may or may
+// not have a container or a lock.
 type Option func(*watcher)
 
 // WithContainers says how a deleted session's container goes. Without
 // it there is nothing to remove, which is the no-sandbox case.
 func WithContainers(remove func(ctx context.Context, sessionID string) error) Option {
 	return func(w *watcher) { w.containers = remove }
+}
+
+// WithLocks holds a session for as long as its delete runs, failing with ErrLive
+// when another detent holds it, which with no sandbox nothing else can tell.
+func WithLocks(lock func(session uuid.UUID) (unlock func(), err error)) Option {
+	return func(w *watcher) { w.lock = lock }
 }
 
 // Watch answers DeleteSession, refusing current, the running session. The
@@ -58,6 +64,7 @@ type watcher struct {
 	sessions   Sessions
 	current    uuid.UUID
 	containers func(ctx context.Context, sessionID string) error
+	lock       func(session uuid.UUID) (unlock func(), err error)
 }
 
 func (w watcher) forget(bus *event.Bus, id uuid.UUID) {
@@ -70,7 +77,16 @@ func (w watcher) forget(bus *event.Bus, id uuid.UUID) {
 		return
 	}
 
-	// The container first: only it can tell that another detent has
+	if w.lock != nil {
+		unlock, err := w.lock(id)
+		if err != nil {
+			fail(bus, "session "+id.String()+" is "+heldBy(err)+", so it was not deleted")
+			return
+		}
+		defer unlock()
+	}
+
+	// The container first: it can also tell that another detent has
 	// this session open, and by then its events must still be there.
 	stayed := w.container(id)
 	switch {
@@ -109,6 +125,14 @@ func (w watcher) container(id uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(w.ctx, containerTimeout)
 	defer cancel()
 	return w.containers(ctx, id.String())
+}
+
+// heldBy says why a lock was refused, which is usually another detent.
+func heldBy(err error) string {
+	if errors.Is(err, ErrLive) {
+		return "open in another detent"
+	}
+	return "not lockable (" + err.Error() + ")"
 }
 
 func fail(bus *event.Bus, text string) {

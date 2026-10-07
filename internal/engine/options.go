@@ -72,6 +72,10 @@ func WithWorkspace(dir string) Option {
 	return func(e *Engine) { e.extra = append(e.extra, newWorkspaceHook(dir)) }
 }
 
+// WithHolder holds each session this engine moves to, so /resume refuses one
+// another detent is running. The caller holds the first.
+func WithHolder(h Holder) Option { return func(e *Engine) { e.holder = h } }
+
 // WithWorktree checkpoints the human's own files, which the container
 // snapshot never covers.
 func WithWorktree(w Worktreer) Option { return func(e *Engine) { e.worktreer = w } }

@@ -297,7 +297,7 @@ shape was worth the rework:
   and no existing component at all.
 
 ```
-cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless, trust, worktree
+cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless, trust, worktree, hold
 ui          →  event, viewspec, views, version, logging, termsafe + its own subpackages
 engine      →  event, tool, model, capture, classify (via an interface)
 mcp         →  event, tool, capture, the MCP SDK
@@ -311,6 +311,7 @@ viewspec    →  the standard library, nothing else
 termsafe    →  the standard library, nothing else
 gitroot     →  the standard library (instructions and skills share it)
 private     →  the standard library, nothing else
+hold        →  the standard library, plus google/uuid and x/sys
 views       →  viewspec, event
 logging     →  the standard library, plus event
 config      →  engine, model, classify, sandbox, host (for defaults and names only)
@@ -398,7 +399,8 @@ adding a fat dependency fails with the transitive import named.
   `/new` starts another session under a new id: the engine publishes its
   `SessionStarted`, the store, log and `forget` follow it, and the old
   session is left whole and resumable. `/resume` continues a stored one the
-  same way (`WithSessions`), refused mid-request: the engine replays it,
+  same way (`WithSessions`), refused mid-request or while another detent
+  holds it (`WithHolder`, `internal/hold`): the engine replays it,
   raises the bus past its last ordinal so its records land after the stored
   ones, and keeps the container and the servers. `SessionReset` is only read
   from sessions stored before that. A crash's end is a fact too: a
@@ -629,9 +631,17 @@ adding a fat dependency fails with the transitive import named.
   diagnostic outliving the thing it describes is the point of one. The
   store and the container remover are taken rather than imported, so
   the one path that destroys things tests with nothing to destroy. The
-  container goes first, so a session another detent holds is refused
-  before any event is deleted, and the running session is refused: its
-  store and container are both open.
+  session's lock is taken first and held through the delete, then the
+  container goes, so a session another detent holds is refused before any
+  event is deleted, and the running session is refused: its store and
+  container are both open.
+
+- **`internal/hold`**: one detent per session. Each holds the session it
+  runs with an OS lock (`flock`, `LockFileEx` on Windows) on a file under
+  `~/.local/state/detent/sessions`, taken at startup and moved by `/new` and
+  `/resume` only once the next is held. Two on one session overwrote each
+  other's records, since both counted on from the same ordinal. The OS drops
+  the lock with the process, so a crash leaves nothing stale.
 
 - **`internal/headless`**: one prompt on a terminal, no TUI. A bus
   subscriber like any front-end, which is what makes it a fair test of

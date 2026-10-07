@@ -15,6 +15,7 @@ import (
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/config"
+	"github.com/vitzeno/detent/internal/hold"
 	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/model"
 )
@@ -107,4 +108,19 @@ func TestNilGuards_StayNil(t *testing.T) {
 	assert.Nil(t, sessionStore(nil))
 	assert.Nil(t, containerRemover(""))
 	assert.NotNil(t, containerRemover("/s.sock"))
+}
+
+// A second detent on a session fails at startup and says what to do, before it
+// has written anything over the first one's records.
+func TestHoldSession_RefusesASecondDetent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME")) // where Windows looks for home
+	id := uuid.Must(uuid.NewV7())
+	first, err := holdSession(id)
+	require.NoError(t, err)
+	defer first.Close()
+
+	_, err = holdSession(id)
+	require.ErrorIs(t, err, hold.ErrHeld)
+	assert.Contains(t, err.Error(), "open in another detent")
 }

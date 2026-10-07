@@ -16,6 +16,7 @@ import (
 	"github.com/vitzeno/detent/internal/config"
 	"github.com/vitzeno/detent/internal/engine"
 	"github.com/vitzeno/detent/internal/forget"
+	"github.com/vitzeno/detent/internal/hold"
 	"github.com/vitzeno/detent/internal/host"
 	"github.com/vitzeno/detent/internal/instructions"
 	judgepkg "github.com/vitzeno/detent/internal/judge"
@@ -38,6 +39,7 @@ type session struct {
 	trusted trust.Decision
 	id      uuid.UUID
 	restore []event.Record
+	held    *hold.Holder
 	sd      shutdown
 	// Said once something can show them: printed headless, a Notice in
 	// the TUI, whose screen would otherwise hide anything printed now.
@@ -163,6 +165,7 @@ func (s *session) buildEngine() error {
 
 	opts := []engine.Option{
 		engine.WithSessionID(s.id),
+		engine.WithHolder(s.held),
 		engine.WithDescription(s.cfg.Model, judgeName(s.cfg),
 			s.cfg.SandboxNetwork != sandbox.NetworkNone, events != nil),
 		engine.WithContextTokens(s.cfg.ContextTokens),
@@ -256,7 +259,8 @@ func (s *session) wire() context.Context {
 	// Without a key there is nothing to compose with, but shipped and saved views still draw.
 	s.sd.unwatch = append(s.sd.unwatch, composer(s.cfg.Views, s.judge).Watch(ctx, s.bus))
 	s.sd.unwatch = append(s.sd.unwatch, forget.Watch(ctx, s.bus, sessionStore(s.events), s.id,
-		forget.WithContainers(containerRemover(sandboxSocketFor(s.cfg)))))
+		forget.WithContainers(containerRemover(sandboxSocketFor(s.cfg))),
+		forget.WithLocks(lockForDelete(hold.DefaultDir()))))
 
 	// After the watchers, so what this records is recorded too.
 	announceResume(s.bus, s.id, s.restore, s.env)
@@ -305,6 +309,33 @@ func sessionStore(s *store.Store) forget.Sessions {
 		return nil
 	}
 	return s
+}
+
+// holdSession keeps id to this process, refusing one another detent is running.
+func holdSession(id uuid.UUID) (*hold.Holder, error) {
+	h := hold.New(hold.DefaultDir())
+	if err := h.Take(id); err != nil {
+		return nil, fmt.Errorf("session %s is %w: quit that one first, or start a new session", id, err)
+	}
+	return h, nil
+}
+
+// lockForDelete is forget's lock: another detent's hold is ErrLive, and a session
+// deleted under it takes its lock file too.
+func lockForDelete(dir string) func(uuid.UUID) (func(), error) {
+	return func(id uuid.UUID) (func(), error) {
+		unlock, err := hold.Lock(dir, id)
+		if errors.Is(err, hold.ErrHeld) {
+			return nil, fmt.Errorf("%w: %w", forget.ErrLive, err)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return func() {
+			_ = hold.Remove(dir, id)
+			unlock()
+		}, nil
+	}
 }
 
 // containerRemover is how a deleted session's container goes, or nil

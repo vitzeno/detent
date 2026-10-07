@@ -64,6 +64,9 @@ func (e *Engine) resume(id uuid.UUID) {
 	if err == nil && len(records) == 0 {
 		err = fmt.Errorf("session %s has nothing recorded", id)
 	}
+	if err == nil {
+		err = e.hold(id)
+	}
 	if err != nil {
 		e.notice("error", "could not resume: "+err.Error())
 		return

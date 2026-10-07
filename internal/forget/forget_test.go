@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -110,6 +111,32 @@ func TestForget_RefusesASessionOpenElsewhere(t *testing.T) {
 	assert.Empty(t, store.calls(), "its history went while it was open")
 }
 
+// Without a sandbox there is no container to say a session is open, so the
+// session's lock does, and is held until the delete is done.
+func TestForget_RefusesASessionHeldWithNoSandbox(t *testing.T) {
+	store := &fakeSessions{gone: true}
+	r := start(t, store, uuid.Must(uuid.NewV7()),
+		WithLocks(func(uuid.UUID) (func(), error) { return nil, fmt.Errorf("%w: held", ErrLive) }))
+	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
+
+	n := r.notice(t)
+	assert.Equal(t, "error", n.Level)
+	assert.Contains(t, n.Text, "another detent")
+	assert.Empty(t, store.calls(), "its history went while it was open")
+}
+
+func TestForget_HoldsTheLockUntilTheDeleteIsDone(t *testing.T) {
+	var held, unlocked atomic.Bool
+	store := &fakeSessions{gone: true, during: func() { held.Store(!unlocked.Load()) }}
+	r := start(t, store, uuid.Must(uuid.NewV7()),
+		WithLocks(func(uuid.UUID) (func(), error) { return func() { unlocked.Store(true) }, nil }))
+	r.bus.Publish(event.DeleteSession{Session: uuid.Must(uuid.NewV7())})
+
+	assert.Equal(t, "info", r.notice(t).Level)
+	assert.True(t, held.Load(), "the store deleted with the lock let go")
+	assert.Eventually(t, unlocked.Load, 2*time.Second, 10*time.Millisecond)
+}
+
 // Stop must wait for a delete in flight, or it runs on against a store
 // the caller is about to close.
 func TestWatch_StopWaitsForADeleteInFlight(t *testing.T) {
@@ -188,12 +215,17 @@ type fakeSessions struct {
 	deleted []uuid.UUID
 	gone    bool
 	err     error
+	// during runs as the delete does.
+	during func()
 }
 
 func (f *fakeSessions) Delete(id uuid.UUID) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.deleted = append(f.deleted, id)
+	if f.during != nil {
+		f.during()
+	}
 	return f.gone, f.err
 }
 
