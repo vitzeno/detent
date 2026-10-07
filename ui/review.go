@@ -13,8 +13,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
+	"github.com/vitzeno/detent/defuse"
 	"github.com/vitzeno/detent/event"
-	"github.com/vitzeno/detent/termsafe"
 )
 
 // The review modal: what one request changed in the human's files, read
@@ -1162,13 +1162,13 @@ func endsOn(c event.ReviewComment, l event.DiffLine) bool {
 func defused(files []event.FileDiff) []event.FileDiff {
 	out := make([]event.FileDiff, len(files))
 	for i, f := range files {
-		f.Path = termsafe.Printable(f.Path)
+		f.Path = defuse.Text(f.Path)
 		f.Hunks = slices.Clone(f.Hunks)
 		for j, h := range f.Hunks {
-			h.Header = termsafe.Printable(h.Header)
+			h.Header = defuse.Text(h.Header)
 			h.Lines = slices.Clone(h.Lines)
 			for k, l := range h.Lines {
-				h.Lines[k].Text = termsafe.Printable(strings.TrimSuffix(l.Text, "\r"))
+				h.Lines[k].Text = defuse.Text(strings.TrimSuffix(l.Text, "\r"))
 			}
 			f.Hunks[j] = h
 		}
@@ -1179,10 +1179,10 @@ func defused(files []event.FileDiff) []event.FileDiff {
 
 // defusedComment is c safe to print, since a reviewer's words are a model's.
 func defusedComment(c event.ReviewComment) event.ReviewComment {
-	c.Author = termsafe.Printable(c.Author)
-	c.Path = termsafe.Printable(c.Path)
-	c.Quote = termsafe.Printable(c.Quote)
-	c.Body = termsafe.Printable(c.Body)
-	c.Original = termsafe.Printable(c.Original)
+	c.Author = defuse.Text(c.Author)
+	c.Path = defuse.Text(c.Path)
+	c.Quote = defuse.Text(c.Quote)
+	c.Body = defuse.Text(c.Body)
+	c.Original = defuse.Text(c.Original)
 	return c
 }

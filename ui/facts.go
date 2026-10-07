@@ -10,8 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
+	"github.com/vitzeno/detent/defuse"
 	"github.com/vitzeno/detent/event"
-	"github.com/vitzeno/detent/termsafe"
 	"github.com/vitzeno/detent/ui/status"
 )
 
@@ -129,7 +129,7 @@ func (m *Model) apply(ev event.Event) tea.Cmd {
 
 	case event.ModelText:
 		if a := m.agents[v.Agent]; a != nil {
-			a.rows = append(a.rows, &historyRow{prose: termsafe.Printable(v.Text)})
+			a.rows = append(a.rows, &historyRow{prose: defuse.Text(v.Text)})
 			m.touch(a)
 			return nil
 		}
@@ -145,10 +145,10 @@ func (m *Model) apply(ev event.Event) tea.Cmd {
 				if a.read == nil {
 					a.read = map[string]bool{}
 				}
-				a.reading = termsafe.Printable(path)
+				a.reading = defuse.Text(path)
 				a.read[a.reading] = true
 			}
-			a.last = termsafe.Printable(event.Command(v.Tool, v.Args))
+			a.last = defuse.Text(event.Command(v.Tool, v.Args))
 			m.touch(a)
 			return nil
 		}
@@ -300,7 +300,7 @@ func (m *Model) addProse(text string) {
 	}
 	m.cur.rev++
 	// Defused once here, since the pane draws it whole through glamour.
-	m.cur.rows = append(m.cur.rows, &historyRow{prose: termsafe.Printable(text)})
+	m.cur.rows = append(m.cur.rows, &historyRow{prose: defuse.Text(text)})
 	m.trackNewest()
 }
 
@@ -324,7 +324,7 @@ func newCallRow(v event.ToolCallProposed) *historyRow {
 // addAgent ties a subagent to the row that started it, which draws it: its
 // spawn call's, or for a reviewer, which no call started, its review's.
 func (m *Model) addAgent(v event.AgentStarted) {
-	a := &agentState{id: v.Agent, name: termsafe.Printable(v.Name), task: termsafe.Printable(v.Task)}
+	a := &agentState{id: v.Agent, name: defuse.Text(v.Name), task: defuse.Text(v.Task)}
 	r := m.row(v.ToolCall)
 	if v.ToolCall == uuid.Nil {
 		r = m.row(v.Turn)
@@ -377,7 +377,7 @@ func (m *Model) addLine(v event.OutputChunk) {
 		r.dropped++
 		r.live = r.live[1:]
 	}
-	r.live = append(r.live, termsafe.Styled(v.Line))
+	r.live = append(r.live, defuse.Styled(v.Line))
 }
 
 func (m *Model) judged(v event.ToolCallJudged) {
@@ -493,7 +493,7 @@ func (m *Model) setCur(b *turnBlock) {
 // styled defuses what a command printed as it arrives, keeping its colour,
 // so every view, preview and pane after this draws safe text.
 func styled(r event.Result) event.Result {
-	r.Stdout, r.Stderr, r.Err = termsafe.Styled(r.Stdout), termsafe.Styled(r.Stderr), termsafe.Printable(r.Err)
+	r.Stdout, r.Stderr, r.Err = defuse.Styled(r.Stdout), defuse.Styled(r.Stderr), defuse.Text(r.Err)
 	return r
 }
 
@@ -505,7 +505,7 @@ func wroteBy(v event.ToolCallProposed) *written {
 	if v.Tool != event.ToolWriteFile || !ok || content == "" {
 		return nil
 	}
-	return &written{path: termsafe.Printable(path), content: termsafe.Printable(content)}
+	return &written{path: defuse.Text(path), content: defuse.Text(content)}
 }
 
 // createdDiff is a new file's content as a diff, empty for anything else: an

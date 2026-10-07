@@ -298,7 +298,7 @@ shape was worth the rework:
 
 ```
 cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless, trust, worktree, hold
-ui          →  event, viewspec, views, version, logging, termsafe + its own subpackages
+ui          →  event, viewspec, views, version, logging, defuse + its own subpackages
 engine      →  event, tool, model, capture, classify (via an interface)
 mcp         →  event, tool, capture, the MCP SDK
 forget      →  event (the store and sandbox arrive as arguments)
@@ -308,7 +308,7 @@ tool        →  event
 model       →  event
 event       →  the standard library, plus viewspec and google/uuid
 viewspec    →  the standard library, nothing else
-termsafe    →  the standard library, nothing else
+defuse      →  the standard library, nothing else
 gitroot     →  the standard library (instructions and skills share it)
 private     →  the standard library, nothing else
 hold        →  the standard library, plus google/uuid and x/sys
@@ -648,7 +648,7 @@ adding a fat dependency fails with the transitive import named.
   the engine's interface. `New` subscribes a `Printer` before the
   engine runs, so it misses nothing, and `Run` sends the prompt.
   Everything it prints that a model or command could influence goes
-  through `termsafe.Printable`, as the approval box does, so an escape
+  through `defuse.Text`, as the approval box does, so an escape
   sequence is shown rather than sent to the terminal. A subagent's lines
   are prefixed with its name, since several interleave.
 
@@ -713,7 +713,7 @@ adding a fat dependency fails with the transitive import named.
   key in between dropping the ask. An `esc` that closes something never counts,
   since a double-press meant to close a modal once aborted a request, and the
   bar always leads with what `esc` will do (`escHint`, which mirrors `onEscape`). A command's output is defused once, as `facts.go` folds it
-  (`termsafe.Styled`): its colour stays, and any other escape (a cursor
+  (`defuse.Styled`): its colour stays, and any other escape (a cursor
   move, a clipboard write, a link) is shown rather than sent, so no pane
   or preview has to remember to. A view that panics while drawing falls
   back to plain text.

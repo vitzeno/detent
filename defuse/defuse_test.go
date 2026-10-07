@@ -1,4 +1,4 @@
-package termsafe
+package defuse
 
 import (
 	"os/exec"
@@ -12,7 +12,7 @@ import (
 
 // A proposed command is model text, so nothing in it may drive the
 // terminal on the very row a human reads to approve it.
-func TestPrintable_DefusesControls(t *testing.T) {
+func TestText_DefusesControls(t *testing.T) {
 	tests := []struct {
 		name, in, want string
 	}{
@@ -35,7 +35,7 @@ func TestPrintable_DefusesControls(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, Printable(tt.in))
+			assert.Equal(t, tt.want, Text(tt.in))
 		})
 	}
 }
@@ -61,12 +61,12 @@ func TestStyled_KeepsColourOnly(t *testing.T) {
 
 // Whatever goes in, what comes out is valid UTF-8 with nothing that acts
 // on a terminal, bar a newline and, for Styled, a colour.
-func FuzzPrintable(f *testing.F) {
+func FuzzText(f *testing.F) {
 	for _, s := range []string{"ls", "\x1b[31mx", "\x9b", "a\u202eb", "\x1b]52;c;x\x07", "\u2028"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
-		for _, out := range []string{Printable(s), withoutSGR(Styled(s))} {
+		for _, out := range []string{Text(s), withoutSGR(Styled(s))} {
 			require.True(t, utf8.ValidString(out), "%q", out)
 			for _, r := range out {
 				require.False(t, needsEscape(r), "%q kept %U", out, r)
@@ -91,13 +91,13 @@ func withoutSGR(s string) string {
 
 // headless shares it with the TUI, and needs nothing from outside the standard library.
 func TestPackage_DependsOnStdlibOnly(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", "github.com/vitzeno/detent/termsafe").Output()
+	out, err := exec.Command("go", "list", "-deps", "github.com/vitzeno/detent/defuse").Output()
 	require.NoError(t, err)
 	for dep := range strings.FieldsSeq(string(out)) {
 		// Stdlib paths have no dot in their first segment.
 		first, _, _ := strings.Cut(dep, "/")
 		if strings.Contains(first, ".") {
-			require.Equal(t, "github.com/vitzeno/detent/termsafe", dep, "termsafe must import stdlib only")
+			require.Equal(t, "github.com/vitzeno/detent/defuse", dep, "defuse must import stdlib only")
 		}
 	}
 }

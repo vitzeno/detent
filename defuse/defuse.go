@@ -1,6 +1,6 @@
-// Package termsafe defuses text a model or a command wrote before it
-// reaches a terminal. Stdlib only, so the TUI and headless can share it.
-package termsafe
+// Package defuse shows what a model or a command wrote as text, never as
+// instructions to the terminal. Stdlib only, so the TUI and headless can share it.
+package defuse
 
 import (
 	"fmt"
@@ -9,11 +9,11 @@ import (
 	"unicode/utf8"
 )
 
-// Printable shows control, bidi and other invisible characters as escapes,
+// Text shows control, bidi and other invisible characters as escapes,
 // rather than letting them act on the terminal. Tabs become spaces.
-func Printable(s string) string { return clean(s, false) }
+func Text(s string) string { return clean(s, false) }
 
-// Styled is Printable that keeps colour: an SGR sequence (ESC [ … m) passes,
+// Styled is Text that keeps colour: an SGR sequence (ESC [ … m) passes,
 // and every other escape is shown rather than sent.
 func Styled(s string) string { return clean(s, true) }
 

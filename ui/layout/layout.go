@@ -9,7 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/vitzeno/detent/termsafe"
+	"github.com/vitzeno/detent/defuse"
 )
 
 // MinTruncate is the narrowest Truncate will cut to.
@@ -33,7 +33,7 @@ func Row(blocks ...string) string {
 // Truncate fits s into one line of at most w cells, so no tail lands
 // outside the caller's frame. It cuts graphemes, never mid-character.
 func Truncate(s string, w int) string {
-	return ansi.Truncate(termsafe.Printable(flatten(s)), max(w, MinTruncate), "…")
+	return ansi.Truncate(defuse.Text(flatten(s)), max(w, MinTruncate), "…")
 }
 
 func split(total int, weights []int, least int, out []int, floored []bool) []int {

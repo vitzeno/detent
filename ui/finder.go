@@ -10,7 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/vitzeno/detent/termsafe"
+	"github.com/vitzeno/detent/defuse"
 	"github.com/vitzeno/detent/ui/search"
 )
 
@@ -251,10 +251,10 @@ func outputHit(query string, r *historyRow) (finderHit, bool) {
 // Kept once the row has finished, since it no longer changes.
 func (r *historyRow) searchable() search.Text {
 	if r.running {
-		return search.NewText(termsafe.Printable(strings.Join(r.live, "\n")))
+		return search.NewText(defuse.Text(strings.Join(r.live, "\n")))
 	}
 	if r.found == nil || r.foundOf != r.result {
-		t := search.NewText(termsafe.Printable(r.text()))
+		t := search.NewText(defuse.Text(r.text()))
 		r.found, r.foundOf = &t, r.result
 	}
 	return *r.found
@@ -273,5 +273,5 @@ func (k finderKind) wants(of finderKind) bool { return k == finderAll || k == of
 // oneLine defuses s onto one line, rune for rune, so offsets in it are
 // offsets in what is drawn. It trims nothing: a typed space is a space.
 func oneLine(s string) string {
-	return strings.NewReplacer("\n", " ", "\r", " ").Replace(termsafe.Printable(s))
+	return strings.NewReplacer("\n", " ", "\r", " ").Replace(defuse.Text(s))
 }

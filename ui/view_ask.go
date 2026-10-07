@@ -6,8 +6,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/vitzeno/detent/defuse"
 	"github.com/vitzeno/detent/event"
-	"github.com/vitzeno/detent/termsafe"
 	"github.com/vitzeno/detent/ui/island"
 	"github.com/vitzeno/detent/ui/layout"
 )
@@ -57,10 +57,10 @@ func (m Model) confirmBox() string {
 // confirmTitle names what is asked: the tool in its history colour, and
 // where this question stands when more wait behind it.
 func (m Model) confirmTitle(a *event.ApprovalAsked) string {
-	tool := styleGoal.Render(termsafe.Printable(string(a.Tool)))
+	tool := styleGoal.Render(defuse.Text(string(a.Tool)))
 	if r := m.row(a.ToolCall); r != nil {
 		if style, ok := toolStyle(r); ok {
-			tool = style.Render(termsafe.Printable(string(a.Tool)))
+			tool = style.Render(defuse.Text(string(a.Tool)))
 		}
 	}
 	title := styleDanger.Render("approve") + styleFaint.Render(" · ") + tool
@@ -86,7 +86,7 @@ func (m Model) confirmLines() (lines []string, room int) {
 	if a == nil {
 		return nil, 0
 	}
-	lines = wrapPlain(termsafe.Printable(event.Command(a.Tool, a.Args)), island.Inner(m.layout.width))
+	lines = wrapPlain(defuse.Text(event.Command(a.Tool, a.Args)), island.Inner(m.layout.width))
 	// The border, title, keys and rationale, counted as drawn so the
 	// read-to-the-end gate measures what is really on screen.
 	chrome := 4 + len(m.rationaleLines())
@@ -157,7 +157,7 @@ func (m Model) rationaleLines() []string {
 		return nil
 	}
 	width := max(1, island.Inner(m.layout.width)-len(flaggedLabel))
-	lines := wrapPlain(termsafe.Printable(a.Rationale), width)
+	lines := wrapPlain(defuse.Text(a.Rationale), width)
 	if len(lines) > maxRationale {
 		lines = lines[:maxRationale]
 		lines[maxRationale-1] = layout.Truncate(lines[maxRationale-1]+" …", width)

@@ -14,8 +14,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vitzeno/detent/defuse"
 	"github.com/vitzeno/detent/event"
-	"github.com/vitzeno/detent/termsafe"
 )
 
 // Printer is one headless Turn, subscribed from New so nothing published
@@ -74,9 +74,9 @@ func Ask(in io.Reader, out io.Writer) Approver {
 	r := bufio.NewReader(in)
 	return func(a event.ApprovalAsked) bool {
 		// The same rendering the row shows, rather than a raw map.
-		fmt.Fprintf(out, "\n!! %s\n", termsafe.Printable(event.Command(a.Tool, a.Args)))
+		fmt.Fprintf(out, "\n!! %s\n", defuse.Text(event.Command(a.Tool, a.Args)))
 		if a.Rationale != "" {
-			fmt.Fprintf(out, "   flagged: %s\n", termsafe.Printable(a.Rationale))
+			fmt.Fprintf(out, "   flagged: %s\n", defuse.Text(a.Rationale))
 		}
 		fmt.Fprint(out, "[y] run   [n] skip: ")
 		line, err := r.ReadString('\n')
@@ -107,9 +107,9 @@ func (p *Printer) handle(ev event.Event) (event.EndReason, bool) {
 		if v.Sandbox {
 			where = "sandbox"
 		}
-		fmt.Fprintf(p.errOut, "detent: model %s, commands run on the %s\n", termsafe.Printable(v.Model), where)
+		fmt.Fprintf(p.errOut, "detent: model %s, commands run on the %s\n", defuse.Text(v.Model), where)
 	case event.AgentStarted:
-		p.names[v.Agent] = termsafe.Printable(v.Name)
+		p.names[v.Agent] = defuse.Text(v.Name)
 	case event.AgentEnded:
 		fmt.Fprintf(p.out, "  %s%s\n", p.from(v.Agent), v.Reason)
 	case event.ToolCallProposed:
@@ -118,10 +118,10 @@ func (p *Printer) handle(ev event.Event) (event.EndReason, bool) {
 		}
 		fmt.Fprintf(p.out, "  %s→ %s\n", p.from(v.Agent), clip(event.Command(v.Tool, v.Args), 120))
 	case event.ToolCallEnded:
-		fmt.Fprintln(p.out, "    "+p.from(p.children[v.ToolCall])+termsafe.Printable(outcome(v.Result)))
+		fmt.Fprintln(p.out, "    "+p.from(p.children[v.ToolCall])+defuse.Text(outcome(v.Result)))
 		delete(p.children, v.ToolCall)
 	case event.ModelText:
-		fmt.Fprintf(p.out, "\n%s%s\n", p.from(v.Agent), termsafe.Printable(v.Text))
+		fmt.Fprintf(p.out, "\n%s%s\n", p.from(v.Agent), defuse.Text(v.Text))
 	case event.ApprovalAsked:
 		p.bus.Publish(event.ResolveApproval{ToolCall: v.ToolCall, Approved: p.approve(v)})
 	case event.BoundReached:
@@ -129,7 +129,7 @@ func (p *Printer) handle(ev event.Event) (event.EndReason, bool) {
 		fmt.Fprintf(p.out, "\nstopped after %d steps\n", v.Steps)
 		p.bus.Publish(event.Continue{Turn: v.Turn, Approved: false})
 	case event.Notice:
-		fmt.Fprintf(p.errOut, "detent: %s: %s\n", v.Level, termsafe.Printable(v.Text))
+		fmt.Fprintf(p.errOut, "detent: %s: %s\n", v.Level, defuse.Text(v.Text))
 	case event.TurnStarted:
 		if p.turn == uuid.Nil && v.Review == uuid.Nil {
 			p.turn = v.Turn
@@ -152,7 +152,7 @@ func (p *Printer) from(agent uuid.UUID) string {
 // clip keeps a tool call to one line of at most n runes, defused.
 func clip(s string, n int) string {
 	first, _, more := strings.Cut(s, "\n")
-	first = termsafe.Printable(first)
+	first = defuse.Text(first)
 	r := []rune(first)
 	if len(r) > n {
 		return string(r[:n]) + "…"

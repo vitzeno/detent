@@ -87,8 +87,8 @@ jobs:
                     # The finder's matcher reads output nothing controls, as viewspec does.
                     - target: FuzzMatch
                       pkg: ./ui/search/
-                    - target: FuzzPrintable
-                      pkg: ./termsafe/
+                    - target: FuzzText
+                      pkg: ./defuse/
                     - target: FuzzParse
                       pkg: ./internal/review/
                     - target: FuzzHunk

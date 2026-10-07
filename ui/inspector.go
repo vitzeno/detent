@@ -9,8 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
+	"github.com/vitzeno/detent/defuse"
 	"github.com/vitzeno/detent/event"
-	"github.com/vitzeno/detent/termsafe"
 )
 
 // The inspector: one subagent's work over the panes. Its question is answered
@@ -226,5 +226,5 @@ func (m Model) askOf(r *historyRow) *event.ApprovalAsked {
 
 // inspectorCommand is a waiting call as it will run, defused.
 func inspectorCommand(q *event.ApprovalAsked) string {
-	return termsafe.Printable(event.Command(q.Tool, q.Args))
+	return defuse.Text(event.Command(q.Tool, q.Args))
 }
