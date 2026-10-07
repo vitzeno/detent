@@ -9,7 +9,7 @@ import (
 
 // Number is the release, set at build time for anything else with
 // go build -ldflags "-X github.com/vitzeno/detent/version.Number=1.2.0"
-var Number = "0.5.0"
+var Number = "0.6.0"
 
 // String is the number plus the build's revision when known, marked
 // dirty so a modified tree never claims to be a release.
