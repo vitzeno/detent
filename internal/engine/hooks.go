@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -113,6 +115,8 @@ var dangerPatterns = []danger{
 		event.MutSystem, 0.9, "runs a download as code"},
 	{regexp.MustCompile(`>\s*/dev/(sd|nvme|disk)`), event.MutIrreversible, 0.95, "writes to a raw disk"},
 	{regexp.MustCompile(`\b(sudo|doas|pkexec|run0)\b`), event.MutSystem, 0.7, "runs as root"},
+	{regexp.MustCompile(`>\s*(~|\$HOME|\$\{HOME\})/\.`), event.MutSystem, 0.7, "writes a dotfile in the home directory"},
+	{regexp.MustCompile(`\.git/hooks\b`), event.MutSystem, 0.7, "touches the hooks git runs"},
 }
 
 // powershellPatterns are PowerShell's, case-insensitive as it is. A
@@ -134,6 +138,58 @@ var powershellPatterns = []danger{
 	{regexp.MustCompile(`(?i)\bSet-ExecutionPolicy\b`), event.MutSystem, 0.7, "changes the script execution policy"},
 	{regexp.MustCompile(`(?i)\b(Set-ItemProperty|New-ItemProperty|Remove-ItemProperty|Rename-ItemProperty|Set-Item|New-Item|Remove-Item|sp|rp|ni|si|ri)\b[^;|\n]*\b(HKLM:|Registry::HKEY_LOCAL_MACHINE)|\breg(\.exe)?\s+(add|delete|import|restore)\s+(HKLM|HKEY_LOCAL_MACHINE)\b`),
 		event.MutSystem, 0.8, "writes the machine's registry"},
+}
+
+// workspaceHook flags a file tool writing outside the working directory, where no
+// checkpoint reaches, or into a .git, whose hooks git runs.
+type workspaceHook struct{ root string }
+
+// newWorkspaceHook resolves root once, so a symlink above it never reads as an escape.
+func newWorkspaceHook(root string) workspaceHook {
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		root = r
+	}
+	return workspaceHook{root: root}
+}
+
+func (workspaceHook) Name() string { return "workspace" }
+
+func (h workspaceHook) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
+	r := event.UnknownRisk()
+	p := c.Args.String("path")
+	if c.Mutability != event.MutWorkspace || c.Executor != "" || p == "" {
+		return r, nil
+	}
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(h.root, p)
+	}
+	rel, err := filepath.Rel(h.root, resolved(filepath.Clean(p)))
+	switch {
+	case err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)):
+		r.Dangerous, r.Mutability, r.Note = true, event.MutSystem, "writes outside the working directory"
+	case slices.ContainsFunc(strings.Split(rel, string(filepath.Separator)), func(part string) bool {
+		return strings.EqualFold(part, ".git")
+	}):
+		r.Dangerous, r.Mutability, r.Note = true, event.MutSystem, "writes inside .git"
+	}
+	return r, nil
+}
+
+// resolved follows the symlinks in p's longest existing prefix, since a link
+// inside the working directory may point anywhere and what follows may not exist yet.
+func resolved(p string) string {
+	rest := ""
+	for {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(r, rest)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(p, rest)
+		}
+		rest = filepath.Join(filepath.Base(p), rest)
+		p = parent
+	}
 }
 
 // repeatHook notices a command run again and again in one Turn with the

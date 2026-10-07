@@ -16,7 +16,8 @@ approve it. Everything else runs straight through.
 
 Dangerous comes from a **hook chain** (`internal/engine/hooks.go`),
 cheapest first: each tool's declared mutability, a regex backstop, a
-repeat check, then TypeSafe's Jev over the network. The chain folds
+repeat check, on the host a file tool writing outside the working
+directory or into a `.git`, then TypeSafe's Jev over the network. The chain folds
 every answer with `event.Risk.Widen`, which takes a max and ORs
 Dangerous, so **a hook can widen a verdict and never narrow it**:
 arithmetic, not a convention. Widening what counts as Dangerous means

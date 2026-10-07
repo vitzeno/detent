@@ -3,6 +3,8 @@ package engine
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -78,6 +80,10 @@ func TestRegexHook_FlagsWhatItShould(t *testing.T) {
 		{"kill -s KILL 1234", true},
 		{"pkill -f node", false},
 		{"kill 1234", false},
+		{"echo 'alias ls=rm' >> ~/.bashrc", true},
+		{`printf x > "$HOME/.ssh/authorized_keys"`, true},
+		{"cp hook.sh .git/hooks/pre-commit", true},
+		{"echo done > ./out/.result", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.cmd, func(t *testing.T) {
@@ -180,6 +186,48 @@ func TestRegexHook_LeavesTheFileToolsAlone(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, got.Dangerous, "%s tripped %q", name, got.Note)
 	}
+}
+
+// A file tool writing where no checkpoint reaches, or into .git whose hooks git
+// runs, is the human's to approve. Each of these once ran unasked.
+func TestWorkspaceHook_FlagsWritesOutsideTheWorkingDirectory(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.Symlink(outside, filepath.Join(root, "link")))
+	h := newWorkspaceHook(root)
+	reg := tool.Standard()
+	tests := []struct {
+		path      string
+		dangerous bool
+	}{
+		{"main.go", false},
+		{"new/deep/file.go", false},
+		{filepath.Join(root, "abs.go"), false},
+		{"../escape.txt", true},
+		{filepath.Join(outside, "x"), true},
+		{"link/x", true},
+		{".git/hooks/pre-commit", true},
+		{"vendor/lib/.git/config", true},
+		{".gitignore", false},
+	}
+	for _, tt := range tests {
+		for _, name := range []event.ToolName{"write_file", "edit_file"} {
+			args := map[string]any{"path": tt.path, "old_string": "a", "new_string": "b"}
+			if name == "write_file" {
+				args = map[string]any{"path": tt.path, "content": "x"}
+			}
+			c, err := reg.Prepare(name, args)
+			require.NoError(t, err)
+			got, err := h.Assess(t.Context(), c, event.UnknownRisk())
+			require.NoError(t, err)
+			assert.Equal(t, tt.dangerous, got.Dangerous, "%s %s", name, tt.path)
+		}
+	}
+	c, err := reg.Prepare("bash", map[string]any{"command": "ls ../"})
+	require.NoError(t, err)
+	got, err := h.Assess(t.Context(), c, event.UnknownRisk())
+	require.NoError(t, err)
+	assert.False(t, got.Dangerous, "a shell command is the regex's and Jev's to read")
 }
 
 // A hook that fails is skipped, not fatal: it only means nobody

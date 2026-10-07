@@ -62,6 +62,12 @@ func WithAssessor(a Assessor) Option {
 	}
 }
 
+// WithWorkspace flags a file tool writing outside dir or into a .git there. The
+// sandbox's paths are the container's, which this machine cannot resolve.
+func WithWorkspace(dir string) Option {
+	return func(e *Engine) { e.extra = append(e.extra, newWorkspaceHook(dir)) }
+}
+
 // WithWorktree checkpoints the human's own files, which the container
 // snapshot never covers.
 func WithWorktree(w Worktreer) Option { return func(e *Engine) { e.worktreer = w } }

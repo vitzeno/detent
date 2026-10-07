@@ -177,6 +177,9 @@ func (s *session) buildEngine() error {
 		engine.WithSummarizer(client),
 	}
 	opts = append(opts, spawn.engine...)
+	if s.cfg.SandboxMode != config.SandboxAuto {
+		opts = append(opts, engine.WithWorkspace(s.local.Dir))
+	}
 	// Only a store that opened, since a nil one in an interface is not nil.
 	if events != nil {
 		opts = append(opts, engine.WithSessions(events, func(r []event.Record) string { return resumeNote(r, s.env) }))
