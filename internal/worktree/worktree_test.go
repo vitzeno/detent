@@ -245,6 +245,77 @@ func TestRestore_FileAndDirectorySwap(t *testing.T) {
 	assertClean(t, d, before)
 }
 
+// A directory the request made where a file was, holding a file the human added
+// since, stays a directory. Restoring the file over it deleted their work.
+func TestRestore_KeepsTheHumansFileInADirectoryTheRequestMade(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	write(t, dir, "foo", "file\n")
+	d := open(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "foo")))
+	write(t, dir, "foo/a", "the request's\n")
+	seen, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "foo/b", "the human's\n")
+
+	err = d.RestoreTo(ctx, before, seen)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "foo/b")
+	assert.Equal(t, "the human's\n", read(t, dir, "foo/b"))
+}
+
+// A request that clears .gitignore leaves what it ignored looking new. Undo
+// reads the old rules, so the human's ignored files are not deleted as the request's.
+func TestRestore_KeepsWhatTheOldGitignoreIgnored(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	write(t, dir, "ignored/secret.env", "KEY=1\n")
+	d := open(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+
+	write(t, dir, ".gitignore", "")
+	write(t, dir, "made.txt", "the request's\n")
+
+	changes, err := d.Diff(ctx, before, "")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]Kind{".gitignore": Restored, "made.txt": Removed}, kinds(changes))
+
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
+	assert.Equal(t, "KEY=1\n", read(t, dir, "ignored/secret.env"))
+	assert.Equal(t, "ignored/\n", read(t, dir, ".gitignore"))
+	assert.NoFileExists(t, filepath.Join(dir, "made.txt"))
+}
+
+// A repository inside this one is its own, so a checkpoint leaves it out. One
+// with no commit failed every capture, and one with a commit "reverted" nothing.
+func TestCapture_LeavesANestedRepositoryOut(t *testing.T) {
+	ctx := t.Context()
+	dir := repo(t)
+	git(t, dir, "init", "-q", "fresh")
+	write(t, dir, "fresh/f", "in a repository with no commit\n")
+	nested(t, dir, "held")
+	nested(t, dir, "sub")
+	git(t, dir, "add", "sub")
+	git(t, dir, "commit", "-qm", "a submodule")
+	d := open(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+
+	for _, r := range []string{"held", "sub"} {
+		write(t, dir, r+"/f", "edited\n")
+		git(t, filepath.Join(dir, r), "commit", "-qam", "y")
+	}
+	write(t, dir, "tracked.txt", "edited\n")
+
+	changes, err := d.Diff(ctx, before, "")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]Kind{"tracked.txt": Restored}, kinds(changes))
+}
+
 func TestRestore_Symlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlinks need privileges on windows")
@@ -588,6 +659,17 @@ func repo(t *testing.T) string {
 	write(t, dir, ".gitignore", "ignored/\n")
 	commit(t, dir)
 	return dir
+}
+
+// nested is a repository with one commit at dir/name.
+func nested(t *testing.T, dir, name string) {
+	t.Helper()
+	at := filepath.Join(dir, name)
+	write(t, at, "f", "committed\n")
+	git(t, at, "init", "-q")
+	git(t, at, "config", "user.email", "t@example.com")
+	git(t, at, "config", "user.name", "t")
+	commit(t, at)
 }
 
 func realpath(t *testing.T, p string) string {

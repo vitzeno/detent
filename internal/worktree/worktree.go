@@ -1,6 +1,7 @@
 // Package worktree checkpoints the human's working directory, which the
 // container's snapshot never covers, so undo can offer to revert it. It uses git
-// plumbing on an index of its own, never the human's, and skips what git ignores.
+// plumbing on an index of its own, never the human's, and skips what git ignores
+// and any repository nested inside, which is its own.
 package worktree
 
 import (
@@ -11,6 +12,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -153,6 +155,9 @@ func (d *Dir) Diff(ctx context.Context, to, seen Checkpoint) ([]Change, error) {
 	if err != nil {
 		return nil, err
 	}
+	if changes, err = d.dropIgnored(ctx, to, changes); err != nil {
+		return nil, err
+	}
 	if seen == "" || seen == now {
 		return changes, nil
 	}
@@ -191,6 +196,8 @@ func (d *Dir) RestoreTo(ctx context.Context, to, seen Checkpoint) error {
 			drop = append(drop, c.Path)
 		}
 	}
+
+	bring, kept = keepAround(bring, kept)
 
 	// Restored first, and nothing is deleted unless that worked.
 	var errs []error
@@ -318,7 +325,12 @@ func (d *Dir) capture(ctx context.Context) (Checkpoint, error) {
 			return "", err
 		}
 	}
-	if _, err := d.git(ctx, d.index, nil, "add", "-A", "--", d.pathspec()); err != nil {
+	specs, err := d.nestedExcluded(ctx)
+	if err != nil {
+		return "", err
+	}
+	if _, err := d.git(ctx, d.index, strings.NewReader(strings.Join(specs, "\x00")), "add", "-A",
+		"--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
 		return "", fmt.Errorf("worktree: stage: %w", err)
 	}
 	tree, err := d.git(ctx, d.index, nil, "write-tree")
@@ -342,6 +354,91 @@ func (d *Dir) addIgnoredTracked(ctx context.Context) error {
 		return fmt.Errorf("worktree: stage ignored tracked files: %w", err)
 	}
 	return nil
+}
+
+// nestedExcluded is the pathspec leaving out each nested repository, which git
+// cannot stage without a commit and stages with one as a gitlink no restore writes.
+func (d *Dir) nestedExcluded(ctx context.Context) ([]string, error) {
+	out, err := d.git(ctx, d.index, nil, "ls-files", "-z", "--others", "--exclude-standard", "--", d.pathspec())
+	if err != nil {
+		return nil, fmt.Errorf("worktree: list untracked: %w", err)
+	}
+	specs := []string{d.pathspec()}
+	for p := range strings.SplitSeq(out, "\x00") {
+		if strings.HasSuffix(p, "/") {
+			specs = append(specs, ":(exclude,literal)"+p)
+		}
+	}
+	return specs, nil
+}
+
+// dropIgnored leaves out a new path to's own ignore rules match. A request that
+// edited a .gitignore made the human's ignored files look new, and undo deleted them.
+func (d *Dir) dropIgnored(ctx context.Context, to Checkpoint, changes []Change) ([]Change, error) {
+	if !slices.ContainsFunc(changes, func(c Change) bool { return path.Base(c.Path) == ".gitignore" }) {
+		return changes, nil
+	}
+	var added []string
+	for _, c := range changes {
+		if c.Kind == Removed {
+			added = append(added, c.Path)
+		}
+	}
+	if len(added) == 0 {
+		return changes, nil
+	}
+	rules, err := os.MkdirTemp("", "detent-ignore-")
+	if err != nil {
+		return nil, fmt.Errorf("worktree: ignore rules: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(rules) }()
+	if err := d.writeIgnoreRules(ctx, to, rules); err != nil {
+		return nil, err
+	}
+	// check-ignore reads the rules from the scratch tree and exits 1 when none match.
+	out, err := d.git(ctx, "", strings.NewReader(strings.Join(added, "\x00")+"\x00"),
+		"--work-tree="+rules, "check-ignore", "-z", "--stdin", "--no-index")
+	if err != nil && !exitedWith(err, 1) {
+		return nil, fmt.Errorf("worktree: check-ignore: %w", err)
+	}
+	ignored := map[string]bool{}
+	for p := range strings.SplitSeq(out, "\x00") {
+		ignored[p] = true
+	}
+	return slices.DeleteFunc(changes, func(c Change) bool { return c.Kind == Removed && ignored[c.Path] }), nil
+}
+
+// writeIgnoreRules lays out to's .gitignore files under dir, with the ones above
+// the directory, which no checkpoint holds, copied from disk.
+func (d *Dir) writeIgnoreRules(ctx context.Context, to Checkpoint, dir string) error {
+	above := []string{".gitignore"}
+	for i, r := range d.prefix {
+		if r == '/' {
+			above = append(above, d.prefix[:i]+"/.gitignore")
+		}
+	}
+	for _, p := range above {
+		if b, err := os.ReadFile(filepath.Join(d.top, filepath.FromSlash(p))); err == nil {
+			full := filepath.Join(dir, filepath.FromSlash(p))
+			if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+				return fmt.Errorf("worktree: ignore rules: %w", err)
+			}
+			if err := os.WriteFile(full, b, 0o600); err != nil { //nolint:gosec // our own scratch path
+				return fmt.Errorf("worktree: ignore rules: %w", err)
+			}
+		}
+	}
+	out, err := d.git(ctx, "", nil, "ls-tree", "-r", "-z", "--name-only", string(to))
+	if err != nil {
+		return fmt.Errorf("worktree: ignore rules: %w", err)
+	}
+	var files []string
+	for p := range strings.SplitSeq(out, "\x00") {
+		if path.Base(p) == ".gitignore" {
+			files = append(files, p)
+		}
+	}
+	return d.checkoutInto(ctx, to, files, filepath.ToSlash(dir)+"/")
 }
 
 // changes reads from→to: an "A" is a path that arrived after from, so
@@ -373,6 +470,11 @@ func (d *Dir) changes(ctx context.Context, from, to Checkpoint) ([]Change, error
 
 // checkout writes paths from the tree, over whatever stands there now.
 func (d *Dir) checkout(ctx context.Context, to Checkpoint, paths []string) error {
+	return d.checkoutInto(ctx, to, paths, "")
+}
+
+// checkoutInto writes paths from the tree under prefix, the work tree when empty.
+func (d *Dir) checkoutInto(ctx context.Context, to Checkpoint, paths []string, prefix string) error {
 	if len(paths) == 0 {
 		return nil
 	}
@@ -386,7 +488,11 @@ func (d *Dir) checkout(ctx context.Context, to Checkpoint, paths []string) error
 	}
 	// Paths go on stdin, since a large revert would overflow argv.
 	stdin := strings.NewReader(strings.Join(paths, "\x00") + "\x00")
-	if _, err := d.git(ctx, index, stdin, "checkout-index", "-f", "-z", "--stdin"); err != nil {
+	args := []string{"checkout-index", "-f", "-z", "--stdin"}
+	if prefix != "" {
+		args = append(args, "--prefix="+prefix)
+	}
+	if _, err := d.git(ctx, index, stdin, args...); err != nil {
 		return fmt.Errorf("checkout: %w", err)
 	}
 	return nil
@@ -537,12 +643,32 @@ func env(index string) []string {
 
 // scratchIndex is a throwaway index in its own directory, so staging
 // never disturbs the one the human is using and a stale lock goes with it.
-func scratchIndex() (path string, cleanup func(), err error) {
+func scratchIndex() (index string, cleanup func(), err error) {
 	dir, err := os.MkdirTemp("", "detent-index-")
 	if err != nil {
 		return "", nil, fmt.Errorf("worktree: scratch index: %w", err)
 	}
 	return filepath.Join(dir, "index"), func() { _ = os.RemoveAll(dir) }, nil
+}
+
+// keepAround moves to kept a path whose restore would write over a kept one, a
+// file where a kept path's directory stands now, or a directory over a kept file.
+func keepAround(bring, kept []string) (rest, all []string) {
+	under := func(p, dir string) bool { return strings.HasPrefix(p, dir+"/") }
+	for _, b := range bring {
+		if slices.ContainsFunc(kept, func(k string) bool { return under(k, b) || under(b, k) }) {
+			kept = append(kept, b)
+		} else {
+			rest = append(rest, b)
+		}
+	}
+	return rest, kept
+}
+
+// exitedWith reports whether err is git exiting with code.
+func exitedWith(err error, code int) bool {
+	var exit *exec.ExitError
+	return errors.As(err, &exit) && exit.ExitCode() == code
 }
 
 // gone is a path already absent, or one whose parent is now a file.

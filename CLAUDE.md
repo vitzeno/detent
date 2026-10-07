@@ -523,7 +523,9 @@ adding a fat dependency fails with the transitive import named.
   kept for the session so its stat cache spares a rehash, so it captures
   tracked *and* untracked files without touching the index, branch or
   stash, and `.gitignore` is honoured for free (the sandbox's
-  `.detent-sandbox/` ignores itself). That index is **never seeded from
+  `.detent-sandbox/` ignores itself). Undo reads the checkpoint's own ignore
+  rules, so a request that edits `.gitignore` cannot make the human's ignored
+  files look like its own, and a repository nested inside is left out. That index is **never seeded from
   the human's**: theirs holds git's cleaned blobs (LF under autocrlf, a
   pointer under git-lfs), and a restore runs with every filter off, so a
   seeded checkpoint wrote those over the human's files. It runs at the work tree's root, scoped to the starting
