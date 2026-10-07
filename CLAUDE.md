@@ -69,9 +69,9 @@ three containerd 1.7 advisories have no fix short of containerd v2.
 
 ## Configuration
 
-Precedence: flags > environment > config file > built-ins. Config file
-is `./.detent.yaml` (repo-local, gitignored) or
-`~/.config/detent/config.yaml`. `internal/config/detent.example.yaml` names
+Precedence: flags > environment > config file > built-ins. Config files
+are `~/.config/detent/config.yaml` and, over it key by key, `./.detent.yaml`
+(repo-local, gitignored), so a project's file never drops the human's own keys. `internal/config/detent.example.yaml` names
 every key, and is embedded so `detent -init` can write it to the user's
 path, 0600 and never over a file already there. As written it sets nothing, so
 a config made from it does not pin today's defaults. Relevant env vars: `DETENT_BASE_URL`, `DETENT_MODEL`,
@@ -843,13 +843,14 @@ adding a fat dependency fails with the transitive import named.
   `event.Subject`. A fact a child produced carries `Agent` (zero is the
   root), and a child's later tool call records, which carry none, are
   found by joining on their proposal's `tool_call`. The
-  schema lives in `migrations/*.sql`, embedded, plus Go steps in
-  `goSteps` for what SQL cannot say (rewriting payloads), numbered
-  together and versioned by SQLite's own `PRAGMA user_version` rather
-  than a migration library. Each step applies in one transaction with
-  its version bump, so a half-applied one cannot be recorded as done,
+  schema lives in `migrations/*.sql`, embedded, plus Go migrations in
+  `goMigrations` for what SQL cannot say (rewriting payloads), numbered
+  1..n together and run by goose. goose's record of what ran is SQLite's own
+  `PRAGMA user_version` (`pragmaVersions`), as before goose, so an older
+  database needs nothing added. Each migration applies in one transaction
+  with its version bump, so a half-applied one cannot be recorded as done,
   and a database about to migrate is first copied to
-  `events.db.bak-v<n>` with `VACUUM INTO`. A Go step is frozen once
+  `events.db.bak-v<n>` with `VACUUM INTO`. A Go migration is frozen once
   released: it carries its own copy of the shapes it reads rather than
   the event package's, which will have moved on. Each session row says
   which detent started it and the schema its records are in. Encoding is **not** here: a
