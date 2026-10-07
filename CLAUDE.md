@@ -521,9 +521,14 @@ adding a fat dependency fails with the transitive import named.
 
 - **`internal/worktree`**: checkpoints the human's own directory,
   which the container snapshot never covers. `Dir` satisfies
-  `engine.Worktreer` structurally and is wired in the TUI only when the
-  working directory is inside a git work tree, in host and sandbox mode
-  alike. Git plumbing against an index of its own (`GIT_INDEX_FILE`),
+  `engine.Worktreer` structurally and is wired in the TUI, in host and
+  sandbox mode alike. Outside a git work tree, `Private` keeps the
+  directory's checkpoints in a git directory of detent's own under
+  `~/.local/state/detent/checkpoints`, one per directory, so undo and review
+  work there too and nothing is written into it. It leaves out dependencies
+  and caches (`privateExcludes`), refuses a home or root directory or one
+  over 50,000 files, has no branch to review, and turns off `core.fsmonitor`,
+  whose daemon never answered for a work tree its git directory does not hold. Git plumbing against an index of its own (`GIT_INDEX_FILE`),
   kept for the session so its stat cache spares a rehash, so it captures
   tracked *and* untracked files without touching the index, branch or
   stash, and `.gitignore` is honoured for free (the sandbox's

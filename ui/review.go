@@ -148,7 +148,7 @@ func (m Model) reviewTarget(arg string) (*turnBlock, string) {
 		if b := m.lastReviewable(false); b != nil {
 			return b, ""
 		}
-		return nil, "nothing to review: no request has checkpointed your files, which needs a git work tree"
+		return nil, "nothing to review: no request has checkpointed your files yet"
 	}
 	n, err := strconv.Atoi(strings.TrimPrefix(arg, "#"))
 	if err != nil {

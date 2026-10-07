@@ -103,6 +103,29 @@ func TestWatch_SaysWhenTheFilesArePruned(t *testing.T) {
 	assert.Empty(t, got.Files)
 }
 
+// Outside git a request's changes still read, from detent's own checkpoints, and
+// only a branch, which needs a repository, is refused in words the human can act on.
+func TestWatch_ReviewsADirectoryOutsideGit(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "a.txt", "one\n")
+	d, err := worktree.Private(t.Context(), dir, t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = d.Close() })
+	base, err := d.Capture(t.Context())
+	require.NoError(t, err)
+	write(t, dir, "a.txt", "two\n")
+	head, err := d.Capture(t.Context())
+	require.NoError(t, err)
+
+	got := ask(t, d, event.LoadDiff{Base: string(base), Head: string(head)})
+	require.Empty(t, got.Err)
+	require.Len(t, got.Files, 1)
+	assert.Equal(t, "a.txt", got.Files[0].Path)
+
+	got = ask(t, d, event.LoadDiff{Branch: true})
+	assert.Contains(t, got.Err, "has no branch to review")
+}
+
 // A comment is recorded as a fact, which is what the store keeps and the modal draws.
 func TestWatch_RecordsACommentAsAFact(t *testing.T) {
 	bus, seen := watching(t)

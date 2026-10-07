@@ -159,7 +159,9 @@ With subagents on `r` starts a reviewer that reads the diff and comments as it g
 
 `/undo 2` trims the transcript to before your second request
 
-When the directory is inside a git repository, detent checkpoints your files with git before each request, without touching your index, branch or stash.
+detent checkpoints your files with git before each request, without touching your index, branch or stash
+
+Outside a git repository it keeps the checkpoints in a git directory of its own under `~/.local/state/detent/checkpoints`, so undo and `/review` work there too, leaving out dependencies like `node_modules`. A home directory, or one with over 50,000 files, is not checkpointed
 
 In sandbox mode undo also restores the container to its snapshot, and commands you ran yourself go back with it. Your working directory is mounted at `/workspace`
 

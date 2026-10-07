@@ -624,6 +624,105 @@ func TestMergeBase_SaysWhenThereIsNoMain(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNoBranch)
 }
 
+// Outside git a directory keeps its checkpoints in a git directory of detent's
+// own, so undo works there too and nothing is written into it.
+func TestPrivate_UndoesWhatARequestDidOutsideGit(t *testing.T) {
+	ctx := t.Context()
+	dir := plain(t)
+	write(t, dir, "notes.txt", "mine\n")
+	write(t, dir, "sub/keep.txt", "kept\n")
+	d := private(t, dir)
+
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "notes.txt", "the request's\n")
+	require.NoError(t, os.Remove(filepath.Join(dir, "sub/keep.txt")))
+	write(t, dir, "made.txt", "new\n")
+
+	changes, err := d.Diff(ctx, before, "")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]Kind{"notes.txt": Restored, "sub/keep.txt": Restored, "made.txt": Removed}, kinds(changes))
+	require.NoError(t, d.RestoreTo(ctx, before, ""))
+	assert.Equal(t, "mine\n", read(t, dir, "notes.txt"))
+	assert.Equal(t, "kept\n", read(t, dir, "sub/keep.txt"))
+	assert.NoFileExists(t, filepath.Join(dir, "made.txt"))
+	assert.NoDirExists(t, filepath.Join(dir, ".git"), "the directory was left as it was")
+	assert.False(t, Available(ctx, dir), "and is still not a repository")
+}
+
+// Review reads the same checkpoints, but a branch needs a repository.
+func TestPrivate_ReviewsAChangeButNoBranch(t *testing.T) {
+	ctx := t.Context()
+	dir := plain(t)
+	write(t, dir, "a.txt", "one\n")
+	d := private(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "a.txt", "two\n")
+
+	patch, _, err := d.Patch(ctx, before, "", 1<<20)
+	require.NoError(t, err)
+	assert.Contains(t, patch, "+two")
+	_, _, err = d.MergeBase(ctx, "")
+	require.ErrorIs(t, err, ErrNoRepository)
+}
+
+// What nobody would undo, and what would make every capture slow, is left out.
+func TestPrivate_LeavesOutDependenciesAndCaches(t *testing.T) {
+	ctx := t.Context()
+	dir := plain(t)
+	d := private(t, dir)
+	before, err := d.Capture(ctx)
+	require.NoError(t, err)
+	write(t, dir, "node_modules/x/index.js", "dep\n")
+	write(t, dir, ".venv/bin/python", "env\n")
+	write(t, dir, "app.py", "code\n")
+
+	changes, err := d.Diff(ctx, before, "")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]Kind{"app.py": Removed}, kinds(changes))
+}
+
+// A directory reopened, as a resumed session does, finds the checkpoints it took.
+func TestPrivate_KeepsCheckpointsAcrossARestart(t *testing.T) {
+	ctx := t.Context()
+	dir, store := plain(t), t.TempDir()
+	write(t, dir, "a.txt", "one\n")
+	first, err := Private(ctx, dir, store)
+	require.NoError(t, err)
+	before, err := first.Capture(ctx)
+	require.NoError(t, err)
+	require.NoError(t, first.Close())
+
+	second, err := Private(ctx, dir, store)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = second.Close() })
+	write(t, dir, "a.txt", "two\n")
+	require.NoError(t, second.RestoreTo(ctx, before, ""))
+	assert.Equal(t, "one\n", read(t, dir, "a.txt"))
+}
+
+// The home directory or a tree too large to hash each request is refused up
+// front, rather than stalling every request on a capture.
+func TestPrivate_RefusesWhatIsTooBroad(t *testing.T) {
+	home := plain(t)
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // where Windows looks for home
+	_, err := Private(t.Context(), home, t.TempDir())
+	require.ErrorIs(t, err, ErrTooBroad)
+
+	was := maxPrivateFiles
+	maxPrivateFiles = 3
+	t.Cleanup(func() { maxPrivateFiles = was })
+	dir := plain(t)
+	for _, n := range []string{"a", "b", "c", "d"} {
+		write(t, dir, n, n)
+	}
+	write(t, dir, "node_modules/x", "not counted\n")
+	_, err = Private(t.Context(), dir, t.TempDir())
+	require.ErrorIs(t, err, ErrTooBroad)
+}
+
 func kinds(changes []Change) map[string]Kind {
 	got := map[string]Kind{}
 	for _, c := range changes {
@@ -659,6 +758,22 @@ func repo(t *testing.T) string {
 	write(t, dir, ".gitignore", "ignored/\n")
 	commit(t, dir)
 	return dir
+}
+
+// plain is a directory outside any git repository.
+func plain(t *testing.T) string {
+	t.Helper()
+	dir := realpath(t, t.TempDir())
+	require.False(t, Available(t.Context(), dir), "the temp directory sits in a repository")
+	return dir
+}
+
+func private(t *testing.T, dir string) *Dir {
+	t.Helper()
+	d, err := Private(t.Context(), dir, t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = d.Close() })
+	return d
 }
 
 // nested is a repository with one commit at dir/name.
@@ -703,7 +818,7 @@ func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
-	cmd.Env = env("")
+	cmd.Env = env(nil)
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "git %v: %s", args, out)
 	return string(out)

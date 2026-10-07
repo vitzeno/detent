@@ -56,6 +56,8 @@ func load(ctx context.Context, files Patcher, v event.LoadDiff) event.DiffLoaded
 	switch {
 	case errors.Is(err, worktree.ErrGone):
 		out.Err = "git has pruned these files, so the changes can no longer be read"
+	case errors.Is(err, worktree.ErrNoRepository):
+		out.Err = "this directory is not a git repository, so it has no branch to review"
 	case errors.Is(err, worktree.ErrNoBranch):
 		out.Err = "there is no main or master branch to compare this one with: try /review branch <ref>"
 	case err != nil:

@@ -1,15 +1,18 @@
 // Package worktree checkpoints the human's working directory, which the
 // container's snapshot never covers, so undo can offer to revert it. It uses git
 // plumbing on an index of its own, never the human's, and skips what git ignores
-// and any repository nested inside, which is its own.
+// and any repository nested inside. Outside git it keeps a git directory of its own.
 package worktree
 
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -25,6 +28,20 @@ var ErrGone = errors.New("worktree: checkpoint no longer exists")
 
 // ErrNoBranch is a repository with no default branch to compare a branch with.
 var ErrNoBranch = errors.New("worktree: no main or master branch to compare with")
+
+// ErrNoRepository is a directory outside git, which has checkpoints but no branch.
+var ErrNoRepository = errors.New("worktree: not a git repository, so there is no branch")
+
+// ErrTooBroad is a directory outside git too large to capture on every request.
+var ErrTooBroad = errors.New("worktree: too broad to checkpoint")
+
+// maxPrivateFiles is the most files a directory outside git may hold. A test lowers it.
+var maxPrivateFiles = 50_000
+
+// privateExcludes are what a directory outside git leaves out, having no .gitignore
+// to say so: dependencies and caches nobody would undo, and which make captures slow.
+var privateExcludes = []string{"node_modules/", ".venv/", "venv/", "__pycache__/", ".DS_Store",
+	".cache/", ".gradle/", "target/", ".next/"}
 
 // emptyTree is git's well-known empty tree, which exists in every repository.
 const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
@@ -68,6 +85,7 @@ type Dir struct {
 	top    string // the work tree's root, where every command runs
 	prefix string // dir relative to top, "" at the root, else ending in /
 	theirs string // the human's index, read once for tracked files git ignores
+	gitDir string // detent's own git directory for one outside git, else ""
 
 	// index is detent's own, kept for its stat cache. Never seeded from theirs,
 	// whose cleaned blobs a restore with filters off would write over their files.
@@ -78,14 +96,14 @@ type Dir struct {
 // Available reports whether dir is inside a git work tree, which is
 // what this package needs to checkpoint anything.
 func Available(ctx context.Context, dir string) bool {
-	out, err := run(ctx, dir, "", nil, "rev-parse", "--is-inside-work-tree")
+	out, err := run(ctx, dir, nil, nil, "rev-parse", "--is-inside-work-tree")
 	return err == nil && strings.TrimSpace(out) == "true"
 }
 
 // Head is the commit dir's work tree is on, empty outside git or before the
 // first commit. A session records it so it can be replayed against that code.
 func Head(ctx context.Context, dir string) string {
-	out, err := run(ctx, dir, "", nil, "rev-parse", "HEAD")
+	out, err := run(ctx, dir, nil, nil, "rev-parse", "HEAD")
 	if err != nil {
 		return ""
 	}
@@ -96,7 +114,7 @@ func Head(ctx context.Context, dir string) string {
 // only itself and every path git prints is joined onto the right place.
 func Open(ctx context.Context, dir string) (*Dir, error) {
 	ask := func(dir string, arg ...string) (string, error) {
-		out, err := run(ctx, dir, "", nil, append([]string{"rev-parse"}, arg...)...)
+		out, err := run(ctx, dir, nil, nil, append([]string{"rev-parse"}, arg...)...)
 		return strings.TrimSuffix(out, "\n"), err
 	}
 	top, err := ask(dir, "--show-toplevel")
@@ -119,6 +137,42 @@ func Open(ctx context.Context, dir string) (*Dir, error) {
 		return nil, fmt.Errorf("worktree: index: %w", err)
 	}
 	return &Dir{top: top, prefix: prefix, theirs: theirs, index: filepath.Join(scratch, "index")}, nil
+}
+
+// Private opens dir outside any git repository, keeping its checkpoints in a git
+// directory of its own under store, so nothing is written into dir.
+func Private(ctx context.Context, dir, store string) (*Dir, error) {
+	top, err := filepath.Abs(dir)
+	if err == nil {
+		top, err = filepath.EvalSymlinks(top)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("worktree: %w", err)
+	}
+	if err := broad(top); err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256([]byte(top))
+	gitDir := filepath.Join(store, filepath.Base(top)+"-"+hex.EncodeToString(sum[:8])+".git")
+	if _, err := os.Stat(gitDir); errors.Is(err, os.ErrNotExist) {
+		if err := initPrivate(ctx, gitDir); err != nil {
+			return nil, err
+		}
+	}
+	scratch, err := os.MkdirTemp("", "detent-index-")
+	if err != nil {
+		return nil, fmt.Errorf("worktree: index: %w", err)
+	}
+	return &Dir{top: top, gitDir: gitDir, index: filepath.Join(scratch, "index")}, nil
+}
+
+// PrivateStore is where directories outside git keep their checkpoints.
+func PrivateStore() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(os.TempDir(), "detent-checkpoints")
+	}
+	return filepath.Join(home, ".local", "state", "detent", "checkpoints")
 }
 
 // Close removes detent's index. The checkpoints stay in the repository.
@@ -253,7 +307,7 @@ func (d *Dir) Patch(ctx context.Context, base, head Checkpoint, limit int) (patc
 		return "", false, err
 	}
 	defer cleanup()
-	patch, cut, err = runLimited(ctx, d.top, empty, limit, "diff-tree", "-r", "-p", "--no-renames",
+	patch, cut, err = runLimited(ctx, d.top, d.vars(empty), limit, "diff-tree", "-r", "-p", "--no-renames",
 		"--no-ext-diff", "--no-textconv", string(base), string(head), "--", d.pathspec())
 	if err != nil {
 		return "", false, fmt.Errorf("worktree: patch: %w", err)
@@ -264,6 +318,9 @@ func (d *Dir) Patch(ctx context.Context, base, head Checkpoint, limit int) (patc
 // CaptureFiltered is the files as a commit would hold them, line endings and
 // clean filters applied, so a diff against a commit shows only real changes.
 func (d *Dir) CaptureFiltered(ctx context.Context) (Checkpoint, error) {
+	if d.gitDir != "" {
+		return "", ErrNoRepository
+	}
 	index, cleanup, err := scratchIndex()
 	if err != nil {
 		return "", err
@@ -294,6 +351,9 @@ func (d *Dir) CaptureFiltered(ctx context.Context) (Checkpoint, error) {
 // MergeBase is the commit HEAD branched from ref, the default branch when ref
 // is empty, and the ref it compared with.
 func (d *Dir) MergeBase(ctx context.Context, ref string) (base, against string, err error) {
+	if d.gitDir != "" {
+		return "", "", ErrNoRepository
+	}
 	if ref == "" {
 		if ref = d.defaultBranch(ctx); ref == "" {
 			return "", "", ErrNoBranch
@@ -343,6 +403,9 @@ func (d *Dir) capture(ctx context.Context) (Checkpoint, error) {
 // addIgnoredTracked stages the committed files a .gitignore matches, which
 // add -A skips in a new index. Once there, add -A keeps them up to date.
 func (d *Dir) addIgnoredTracked(ctx context.Context) error {
+	if d.theirs == "" {
+		return nil
+	}
 	paths, err := d.git(ctx, d.theirs, nil, "ls-files", "-z", "--cached", "--ignored",
 		"--exclude-standard", "--", d.pathspec())
 	if err != nil || paths == "" {
@@ -551,11 +614,21 @@ func (d *Dir) pathspec() string {
 }
 
 func (d *Dir) git(ctx context.Context, index string, stdin io.Reader, args ...string) (string, error) {
-	return run(ctx, d.top, index, stdin, args...)
+	return run(ctx, d.top, d.vars(index), stdin, args...)
 }
 
-func run(ctx context.Context, dir, index string, stdin io.Reader, args ...string) (string, error) {
-	cmd := command(ctx, dir, index, args...)
+// vars is the environment that points git at index, and at a private git
+// directory with the directory as its work tree when there is one.
+func (d *Dir) vars(index string) []string {
+	vars := indexVar(index)
+	if d.gitDir != "" {
+		vars = append(vars, "GIT_DIR="+d.gitDir, "GIT_WORK_TREE="+d.top)
+	}
+	return vars
+}
+
+func run(ctx context.Context, dir string, vars []string, stdin io.Reader, args ...string) (string, error) {
+	cmd := command(ctx, dir, vars, args...)
 	cmd.Stdin = stdin
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -567,10 +640,10 @@ func run(ctx context.Context, dir, index string, stdin io.Reader, args ...string
 
 // runLimited reads at most limit bytes, ending at a whole line, and stops git
 // there, since a generated file's diff can be far more than anyone reads.
-func runLimited(ctx context.Context, dir, index string, limit int, args ...string) (string, bool, error) {
+func runLimited(ctx context.Context, dir string, vars []string, limit int, args ...string) (string, bool, error) {
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
-	cmd := command(ctx, dir, index, args...)
+	cmd := command(ctx, dir, vars, args...)
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
 	stdout, err := cmd.StdoutPipe()
@@ -600,7 +673,7 @@ func runLimited(ctx context.Context, dir, index string, limit int, args ...strin
 func runFiltered(ctx context.Context, dir, index string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=" + os.DevNull}, args...)...)
 	cmd.Dir = dir
-	cmd.Env = slices.DeleteFunc(env(index), func(kv string) bool {
+	cmd.Env = slices.DeleteFunc(env(indexVar(index)), func(kv string) bool {
 		return strings.HasPrefix(kv, "GIT_ATTR_SOURCE=") || strings.HasPrefix(kv, "GIT_ATTR_NOSYSTEM=")
 	})
 	var out, errb bytes.Buffer
@@ -611,19 +684,19 @@ func runFiltered(ctx context.Context, dir, index string, args ...string) (string
 	return out.String(), nil
 }
 
-func command(ctx context.Context, dir, index string, args ...string) *exec.Cmd {
+func command(ctx context.Context, dir string, vars []string, args ...string) *exec.Cmd {
 	// Hooks off, and no line ending conversion, so a checkpoint holds the exact bytes.
 	full := append([]string{"-c", "core.hooksPath=" + os.DevNull, "-c", "core.autocrlf=false",
 		"-c", "core.attributesFile=" + os.DevNull}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Dir = dir
-	cmd.Env = env(index)
+	cmd.Env = env(vars)
 	return cmd
 }
 
 // env drops inherited GIT_* variables, so a detent started from a hook or
 // a rebase still checkpoints the directory it was asked to.
-func env(index string) []string {
+func env(vars []string) []string {
 	var out []string
 	for _, kv := range os.Environ() {
 		name, _, _ := strings.Cut(kv, "=")
@@ -635,10 +708,14 @@ func env(index string) []string {
 	// The empty tree as the attribute source, and no system attributes: no
 	// text, eol or filter rule (git-lfs included) rewrites what is kept.
 	out = append(out, "GIT_OPTIONAL_LOCKS=0", "GIT_ATTR_SOURCE="+emptyTree, "GIT_ATTR_NOSYSTEM=1")
-	if index != "" {
-		out = append(out, "GIT_INDEX_FILE="+index)
+	return append(out, vars...)
+}
+
+func indexVar(index string) []string {
+	if index == "" {
+		return nil
 	}
-	return out
+	return []string{"GIT_INDEX_FILE=" + index}
 }
 
 // scratchIndex is a throwaway index in its own directory, so staging
@@ -649,6 +726,65 @@ func scratchIndex() (index string, cleanup func(), err error) {
 		return "", nil, fmt.Errorf("worktree: scratch index: %w", err)
 	}
 	return filepath.Join(dir, "index"), func() { _ = os.RemoveAll(dir) }, nil
+}
+
+// initPrivate makes a git directory for checkpoints only, with no work tree of
+// its own, since each command names the directory as one.
+func initPrivate(ctx context.Context, gitDir string) error {
+	if err := os.MkdirAll(filepath.Dir(gitDir), 0o700); err != nil {
+		return fmt.Errorf("worktree: %w", err)
+	}
+	if _, err := run(ctx, filepath.Dir(gitDir), nil, nil, "init", "-q", "--bare", gitDir); err != nil {
+		return fmt.Errorf("worktree: %w", err)
+	}
+	// An fsmonitor daemon never answered for a work tree its git directory does not hold.
+	for _, kv := range [][2]string{{"core.bare", "false"}, {"core.fsmonitor", "false"}} {
+		if _, err := run(ctx, gitDir, []string{"GIT_DIR=" + gitDir}, nil, "config", kv[0], kv[1]); err != nil {
+			return fmt.Errorf("worktree: %w", err)
+		}
+	}
+	exclude := filepath.Join(gitDir, "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(exclude), 0o700); err != nil {
+		return fmt.Errorf("worktree: %w", err)
+	}
+	return os.WriteFile(exclude, []byte(strings.Join(privateExcludes, "\n")+"\n"), 0o600)
+}
+
+// broad refuses the home directory, a root, or more files than a capture
+// should hash, counting only what privateExcludes would keep.
+func broad(dir string) error {
+	if home, err := os.UserHomeDir(); err == nil && samePath(home, dir) || filepath.Dir(dir) == dir {
+		return fmt.Errorf("%w: %s is a home or root directory", ErrTooBroad, dir)
+	}
+	skip := map[string]bool{".git": true}
+	for _, e := range privateExcludes {
+		skip[strings.TrimSuffix(e, "/")] = true
+	}
+	n := 0
+	err := filepath.WalkDir(dir, func(_ string, e fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return nil
+		case e.IsDir() && skip[e.Name()]:
+			return filepath.SkipDir
+		case !e.IsDir():
+			if n++; n > maxPrivateFiles {
+				return ErrTooBroad
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, ErrTooBroad) {
+		return fmt.Errorf("%w: %s holds over %d files", ErrTooBroad, dir, maxPrivateFiles)
+	}
+	return nil
+}
+
+// samePath compares two paths as the filesystem does, symlinks resolved.
+func samePath(a, b string) bool {
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	return errA == nil && errB == nil && ra == rb
 }
 
 // keepAround moves to kept a path whose restore would write over a kept one,
