@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/internal/capture"
 	"github.com/vitzeno/detent/internal/tool"
 )
 
@@ -262,7 +263,13 @@ func (h *repeatHook) refuses(command string) (int, bool) {
 type jevHook struct {
 	judge     Judge
 	threshold float64
+	// failClosed reads a judge that could not answer as a no, for anything but a read.
+	failClosed bool
 }
+
+// judgedBytes is the most of a command the judge is sent. Padding past what it
+// could read in time left the regex alone to decide.
+const judgedBytes = 64 << 10
 
 func (jevHook) Name() string { return "jev" }
 
@@ -272,7 +279,23 @@ func (h jevHook) Assess(ctx context.Context, c tool.Call, _ event.Risk) (event.R
 	if h.judge == nil || c.Delegates || c.Internal {
 		return event.UnknownRisk(), nil
 	}
-	return h.judge.Assess(ctx, c.Command, h.threshold)
+	cmd := c.Command
+	if len(cmd) > judgedBytes {
+		// A file's body runs nothing, so its ends are enough. A shell command that long is read whole.
+		if c.Mutability != event.MutWorkspace {
+			r := event.UnknownRisk()
+			r.Dangerous, r.Note = true, "too long for the judge to read"
+			return r, nil
+		}
+		cmd = capture.Clip(cmd, judgedBytes)
+	}
+	r, err := h.judge.Assess(ctx, cmd, h.threshold)
+	if err != nil && h.failClosed && c.Mutability != event.MutRead {
+		r = event.UnknownRisk()
+		r.Dangerous, r.Note = true, "the judge could not answer: "+err.Error()
+		return r, nil
+	}
+	return r, err
 }
 
 // describe renders a Risk for a human, for the approval prompt.

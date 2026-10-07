@@ -94,6 +94,9 @@ func merge(c *Config, o Config) {
 	if o.LogBodies != nil {
 		c.LogBodies = o.LogBodies
 	}
+	if o.JevFailClosed != nil {
+		c.JevFailClosed = o.JevFailClosed
+	}
 	if o.HostShell != "" {
 		c.HostShell = o.HostShell
 	}

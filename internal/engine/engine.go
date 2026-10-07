@@ -46,9 +46,11 @@ type Engine struct {
 	root *agent
 
 	// extra is the hooks a caller added, which every agent's chain ends with.
-	extra   []Assessor
-	judge   *jevHook
-	invoker Invoker
+	extra []Assessor
+	judge *jevHook
+	// judgeFailsClosed is WithJudgeFailingClosed, applied to judge once every option has run.
+	judgeFailsClosed bool
+	invoker          Invoker
 
 	// childModel runs subagents, and without one spawn_agent answers that
 	// there are none. The limits below bound each child.
@@ -148,6 +150,7 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 	e.childContext = min(e.childContext, e.contextTokens)
 	// The network hook last.
 	if e.judge != nil {
+		e.judge.failClosed = e.judgeFailsClosed
 		e.extra = append(e.extra, e.judge)
 	}
 	e.root = newAgent(uuid.Nil, "", m, tools, e.extra...)

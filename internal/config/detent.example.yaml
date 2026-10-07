@@ -29,6 +29,7 @@ jev_api_key: ""            # or TYPESAFE_API_KEY
 jev_model: ""
 jev_endpoint: ""
 risk_threshold: 0          # scope risk that needs approval (0.5)
+jev_fail_closed:           # ask about a call the judge could not answer for (false)
 
 # --- MCP: servers live in .mcp.json ---
 

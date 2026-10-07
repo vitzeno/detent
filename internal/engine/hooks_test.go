@@ -367,6 +367,44 @@ func TestJevHook_IsSkippedWithoutAJudge(t *testing.T) {
 	assert.Equal(t, event.UnknownRisk(), got)
 }
 
+// Padding a command until the judge times out left the regex alone to decide,
+// so a shell command too long to send is the human's, and a file's body is clipped.
+func TestJevHook_NeverSendsMoreThanItCanJudge(t *testing.T) {
+	j := &askedJudge{}
+	h := jevHook{judge: j}
+	long := "rm -rf ~; echo " + strings.Repeat("x", judgedBytes)
+
+	got, err := h.Assess(t.Context(), tool.Call{Tool: "bash", Command: long}, event.UnknownRisk())
+	require.NoError(t, err)
+	assert.True(t, got.Dangerous)
+	assert.Empty(t, j.asked, "nothing is sent")
+
+	_, err = h.Assess(t.Context(), tool.Call{Tool: "write_file", Command: long, Mutability: event.MutWorkspace},
+		event.UnknownRisk())
+	require.NoError(t, err)
+	require.Len(t, j.asked, 1)
+	assert.LessOrEqual(t, len(j.asked[0]), judgedBytes+64)
+}
+
+// A judge that could not answer is a no when asked to fail closed, except for a
+// read, which has nothing to approve.
+func TestJevHook_FailingClosedFlagsWhatItCouldNotJudge(t *testing.T) {
+	j := &askedJudge{err: errors.New("timed out")}
+	run := tool.Call{Tool: "bash", Command: "make deploy"}
+	read := tool.Call{Tool: "read_file", Command: "cat x", Mutability: event.MutRead}
+
+	_, err := jevHook{judge: j}.Assess(t.Context(), run, event.UnknownRisk())
+	require.Error(t, err, "open by default: the chain skips it and says so")
+
+	got, err := jevHook{judge: j, failClosed: true}.Assess(t.Context(), run, event.UnknownRisk())
+	require.NoError(t, err)
+	assert.True(t, got.Dangerous)
+	assert.Contains(t, got.Note, "timed out")
+
+	_, err = jevHook{judge: j, failClosed: true}.Assess(t.Context(), read, event.UnknownRisk())
+	require.Error(t, err)
+}
+
 func TestDescribe_ReadsAsASentence(t *testing.T) {
 	got := describe(event.Risk{Dangerous: true, Mutability: event.MutIrreversible,
 		ScopeRisk: 0.9, Note: "recursive or forced delete"})
@@ -432,6 +470,17 @@ func (panicHook) Assess(context.Context, tool.Call, event.Risk) (event.Risk, err
 type fixedJudge struct{ risk event.Risk }
 
 func (j fixedJudge) Assess(context.Context, string, float64) (event.Risk, error) { return j.risk, nil }
+
+// askedJudge records each command it is sent and answers with err.
+type askedJudge struct {
+	asked []string
+	err   error
+}
+
+func (j *askedJudge) Assess(_ context.Context, cmd string, _ float64) (event.Risk, error) {
+	j.asked = append(j.asked, cmd)
+	return event.UnknownRisk(), j.err
+}
 
 type liarHook struct{}
 

@@ -544,7 +544,9 @@ adding a fat dependency fails with the transitive import named.
   `RiskJudge`, which adapts it to the engine's hook chain. It answers.
   It never decides, because `Widen` folds its answer with everyone
   else's. A failed request is an error the engine shows once a Turn,
-  and adds nothing to the verdict. With a key set, every tool call's request,
+  and adds nothing to the verdict unless `jev_fail_closed` makes it a flag.
+  Nothing over 64KB is sent: a shell command that long is flagged unread, since
+  padding is how one outlasts the judge, and a file's body is clipped. With a key set, every tool call's request,
   command and up to 4KB of its output go to TypeSafe, whatever
   `log_bodies` says.
 

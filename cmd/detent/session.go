@@ -198,6 +198,9 @@ func (s *session) buildEngine() error {
 		opts = append(opts, engine.WithJudge(
 			classify.NewRiskJudge(s.judge, s.cfg.RiskThreshold),
 			s.cfg.RiskThreshold))
+		if s.cfg.JudgeFailsClosed() {
+			opts = append(opts, engine.WithJudgeFailingClosed())
+		}
 	}
 
 	// Connected before the engine, which takes the registry by value.

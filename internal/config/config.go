@@ -104,6 +104,8 @@ type Config struct {
 	JevModel      string  `yaml:"jev_model"`
 	JevEndpoint   string  `yaml:"jev_endpoint"`
 	RiskThreshold float64 `yaml:"risk_threshold"`
+	// JevFailClosed flags a call the judge could not answer for. Off, the rest of the chain decides.
+	JevFailClosed *bool `yaml:"jev_fail_closed"`
 
 	// Theme is a name from ui/theme.Themes, checked by main.go so config need not import ui.
 	Theme string `yaml:"theme"`
@@ -275,6 +277,9 @@ func (c Config) FinishChecks() bool { return c.FinishCheck == nil || *c.FinishCh
 
 // TrustsMCPHints is MCPTrustHints with its default, on.
 func (c Config) TrustsMCPHints() bool { return c.MCPTrustHints == nil || *c.MCPTrustHints }
+
+// JudgeFailsClosed is JevFailClosed with its default, off.
+func (c Config) JudgeFailsClosed() bool { return c.JevFailClosed != nil && *c.JevFailClosed }
 
 // LogsBodies is LogBodies with its default, off.
 func (c Config) LogsBodies() bool { return c.LogBodies != nil && *c.LogBodies }

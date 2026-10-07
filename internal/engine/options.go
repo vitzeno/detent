@@ -52,6 +52,10 @@ func WithJudge(j Judge, threshold float64) Option {
 	}
 }
 
+// WithJudgeFailingClosed flags a call the judge could not answer for, rather than
+// leaving the rest of the chain to decide it.
+func WithJudgeFailingClosed() Option { return func(e *Engine) { e.judgeFailsClosed = true } }
+
 // WithAssessor registers another hook. It can widen the verdict and
 // never narrow it, whatever it returns.
 func WithAssessor(a Assessor) Option {
