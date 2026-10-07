@@ -10,6 +10,8 @@ const (
 	// A name is the human's, so a later run must not overwrite it.
 	renameSession = `UPDATE sessions SET name = ? WHERE id = ?`
 
+	selectName = `SELECT name FROM sessions WHERE id = ?`
+
 	insert = `INSERT OR REPLACE INTO events
 	  (session, ordinal, at, kind, turn, tool_call, agent, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 

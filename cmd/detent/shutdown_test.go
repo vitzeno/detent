@@ -108,7 +108,7 @@ func TestShutdown_GivesUpOnAnEngineThatWillNotStop(t *testing.T) {
 	select {
 	case errs := <-done:
 		require.Len(t, errs, 1)
-		sd.report(&out, errs)
+		sd.report(&out, errs, "")
 		assert.Contains(t, out.String(), "did not stop in 50ms")
 		assert.Contains(t, out.String(), "last steps may be missing")
 	case <-time.After(10 * time.Second):
@@ -121,16 +121,30 @@ func TestShutdown_GivesUpOnAnEngineThatWillNotStop(t *testing.T) {
 func TestShutdown_ReportsHowItWentAndHowToResume(t *testing.T) {
 	id := uuid.Must(uuid.NewV7())
 	tests := []struct {
-		name string
-		sd   shutdown
-		errs []error
-		want []string
-		gone []string
+		name    string
+		sd      shutdown
+		session string
+		errs    []error
+		want    []string
+		gone    []string
 	}{
 		{
 			name: "a session that was recorded",
 			sd:   shutdown{session: &latestSession{id: id}, bus: event.New(), events: &store.Store{}},
 			want: []string{"session saved", "-resume " + id.String()},
+		},
+		{
+			name:    "a named session resumes by its name",
+			sd:      shutdown{session: &latestSession{id: id}, bus: event.New(), events: &store.Store{}},
+			session: "fix-auth",
+			want:    []string{`session "fix-auth" saved`, "-resume fix-auth"},
+			gone:    []string{id.String()},
+		},
+		{
+			name:    "a name the shell would split is quoted",
+			sd:      shutdown{session: &latestSession{id: id}, bus: event.New(), events: &store.Store{}},
+			session: "the auth bug",
+			want:    []string{"-resume 'the auth bug'"},
 		},
 		{
 			name: "a session nothing was writing down",
@@ -153,7 +167,7 @@ func TestShutdown_ReportsHowItWentAndHowToResume(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			tt.sd.report(&out, tt.errs)
+			tt.sd.report(&out, tt.errs, tt.session)
 			for _, w := range tt.want {
 				assert.Contains(t, out.String(), w)
 			}

@@ -206,6 +206,19 @@ func (s *Store) Delete(session uuid.UUID) (bool, error) {
 	return n > 0, nil
 }
 
+// Name is what the human called session, empty when unnamed or never stored.
+func (s *Store) Name(session uuid.UUID) (string, error) {
+	var name string
+	err := s.db.QueryRowContext(context.Background(), selectName, session.String()).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("store: name: %w", err)
+	}
+	return name, nil
+}
+
 // ownerOnly creates path 0600 and tightens one an older detent left 0644. SQLite
 // gives its -wal and -shm the database's mode, so only those already there need it.
 func ownerOnly(path string) error {

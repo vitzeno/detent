@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 
@@ -99,6 +101,8 @@ func (s shutdown) close() {
 	for _, f := range s.unwatch {
 		errs = appendErr(errs, bounded(drainGrace, "a subscriber", func() error { f(); return nil }))
 	}
+	// Read before the store closes, so quitting can say how to resume by name.
+	name := s.name()
 	if s.events != nil {
 		errs = appendErr(errs, s.events.Close())
 	}
@@ -113,7 +117,16 @@ func (s shutdown) close() {
 		errs = appendErr(errs, s.container.Close(ctx))
 		cancel()
 	}
-	s.report(os.Stderr, errs)
+	s.report(os.Stderr, errs, name)
+}
+
+// name is what the human called the session, empty when unnamed or unread.
+func (s shutdown) name() string {
+	if s.events == nil {
+		return ""
+	}
+	name, _ := s.events.Name(s.session.get())
+	return name
 }
 
 // stopUserCommand cancels the human's command and waits for its last facts,
@@ -151,8 +164,8 @@ func (s shutdown) stopEngine() []error {
 }
 
 // report is what a human reads once the screen is back: what failed, if
-// anything, and the id that picks this session up again.
-func (s shutdown) report(w io.Writer, errs []error) {
+// anything, and the name or id that picks this session up again.
+func (s shutdown) report(w io.Writer, errs []error, name string) {
 	for _, err := range errs {
 		fmt.Fprintln(w, "detent:", err)
 	}
@@ -163,6 +176,10 @@ func (s shutdown) report(w io.Writer, errs []error) {
 	}
 	if s.events == nil {
 		fmt.Fprintln(w, "detent: session was not recorded, so there is nothing to resume")
+		return
+	}
+	if name != "" {
+		fmt.Fprintf(w, "detent: session %q saved, resume with: detent -resume %s\n", name, shellWord(name))
 		return
 	}
 	fmt.Fprintf(w, "detent: session saved, resume with: detent -resume %s\n", s.session.get())
@@ -199,4 +216,15 @@ func appendErr(errs []error, err error) []error {
 		return errs
 	}
 	return append(errs, err)
+}
+
+// shellWord is s as one word a shell reads back unchanged, quoted only when it must be.
+func shellWord(s string) string {
+	plain := func(r rune) bool {
+		return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("-_.:@/+=,", r)
+	}
+	if !strings.ContainsFunc(s, func(r rune) bool { return !plain(r) }) {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

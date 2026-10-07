@@ -325,6 +325,25 @@ func TestRename_RefusesANameAlreadyTaken(t *testing.T) {
 }
 
 // Unnamed is the normal state, and any number of sessions share it.
+// Quitting says how to resume by name, read here once the session has one.
+func TestName_ReadsWhatRenameSet(t *testing.T) {
+	s := open(t)
+	session := uuid.Must(uuid.NewV7())
+	begin(t, s, session)
+	got, err := s.Name(session)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	require.NoError(t, s.Rename(session, "fix-auth"))
+	got, err = s.Name(session)
+	require.NoError(t, err)
+	assert.Equal(t, "fix-auth", got)
+
+	got, err = s.Name(uuid.Must(uuid.NewV7()))
+	require.NoError(t, err, "a session never stored has no name")
+	assert.Empty(t, got)
+}
+
 func TestRename_ManySessionsMayBeUnnamed(t *testing.T) {
 	s := open(t)
 	for range 3 {
