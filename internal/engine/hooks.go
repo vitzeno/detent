@@ -58,20 +58,29 @@ func (regexHook) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Ris
 	if c.Mutability == event.MutRead {
 		return event.UnknownRisk(), nil
 	}
-	tables := [][]danger{dangerPatterns}
 	// The unix table too, since a model writes bash in pwsh and Windows has sudo and git.
 	if c.Tool == event.ToolPowerShell {
-		tables = [][]danger{powershellPatterns, dangerPatterns}
-	}
-	for _, table := range tables {
-		for _, p := range table {
-			if p.re.MatchString(c.Command) {
-				return event.Risk{Dangerous: true, Mutability: p.mut, ScopeRisk: p.scope, Note: p.note}, nil
-			}
+		if r, ok := matchDanger(powershellPatterns, c.Command); ok {
+			return r, nil
 		}
+	}
+	if r, ok := matchDanger(dangerPatterns, unquote.Replace(c.Command)); ok {
+		return r, nil
 	}
 	return event.UnknownRisk(), nil
 }
+
+func matchDanger(table []danger, cmd string) (event.Risk, bool) {
+	for _, p := range table {
+		if p.re.MatchString(cmd) {
+			return event.Risk{Dangerous: true, Mutability: p.mut, ScopeRisk: p.scope, Note: p.note}, true
+		}
+	}
+	return event.Risk{}, false
+}
+
+// unquote drops what sh removes before running a word, so 'rm' and r”m read as rm.
+var unquote = strings.NewReplacer(`'`, "", `"`, "", `\`, "")
 
 // danger is one command shape worth a human's eye.
 type danger struct {
@@ -81,17 +90,29 @@ type danger struct {
 	note  string
 }
 
+// dangerPatterns read a flag anywhere among a command's words, up to the next
+// ;, &, | or line, since rm ./build -rf deletes as surely as rm -rf ./build.
 var dangerPatterns = []danger{
-	{regexp.MustCompile(`\brm\s+(-[a-zA-Z]*[rRf][a-zA-Z]*\s+|--(recursive|force)\b)`), event.MutIrreversible, 0.9, "recursive or forced delete"},
+	{regexp.MustCompile(`\brm\b[^;|&\n]*\s(-[a-zA-Z]*[rRf][a-zA-Z]*|--(recursive|force))\b`),
+		event.MutIrreversible, 0.9, "recursive or forced delete"},
 	{regexp.MustCompile(`\bfind\b[^;|&\n]*\s-delete\b`), event.MutIrreversible, 0.9, "deletes what find matches"},
 	{regexp.MustCompile(`\b(mkfs(\.\w+)?|fdisk|dd)(\s|$)`), event.MutIrreversible, 0.95, "writes a device directly"},
-	{regexp.MustCompile(`\bchmod\s+-R\b|\bchown\s+-R\b`), event.MutSystem, 0.7, "recursive permission change"},
+	{regexp.MustCompile(`\b(chmod|chown|chgrp)\b[^;|&\n]*\s(-[a-zA-Z]*R[a-zA-Z]*|--recursive)\b`),
+		event.MutSystem, 0.7, "recursive permission change"},
 	{regexp.MustCompile(`\b(shutdown|reboot|halt|poweroff)\b`), event.MutSystem, 0.8, "stops the machine"},
-	{regexp.MustCompile(`\bkill(all)?\s+-9\b`), event.MutSystem, 0.6, "force kills processes"},
-	{regexp.MustCompile(`\bgit\s+(push\b[^;|&\n]*(\s--force|\s-[a-zA-Z]*f)|reset\s+--hard|clean\s+-[a-z]*f)`), event.MutIrreversible, 0.8, "discards git history or work"},
-	{regexp.MustCompile(`(curl|wget)\b[^|]*\|\s*(sudo\s+)?((ba|z|da)?sh|python3?|perl|ruby|node)\b`), event.MutSystem, 0.9, "pipes a download into an interpreter"},
+	{regexp.MustCompile(`\b(kill|pkill|killall)\b[^;|&\n]*\s-(s\s+)?(9|KILL|SIGKILL)\b`),
+		event.MutSystem, 0.6, "force kills processes"},
+	{regexp.MustCompile(`\bgit\s+push\b[^;|&\n]*\s(--force|-[a-zA-Z]*f|--delete|-d|--mirror|\+|:)`),
+		event.MutIrreversible, 0.8, "rewrites or deletes a remote branch"},
+	{regexp.MustCompile(`\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f|checkout\b[^;|&\n]*\s(--|\.)(\s|$)|` +
+		`restore\s+\.(\s|$)|stash\s+(drop|clear)|branch\b[^;|&\n]*\s-D\b)`),
+		event.MutIrreversible, 0.8, "discards git history or work"},
+	{regexp.MustCompile(`(curl|wget)\b.*\|\s*((sudo|doas|env|exec)\s+)*(\S*/)?((ba|z|da|k)?sh|python3?|perl|ruby|node)\b`),
+		event.MutSystem, 0.9, "pipes a download into an interpreter"},
+	{regexp.MustCompile(`(^|[\s;&|(])((ba|z|da|k)?sh|eval|source|\.)\s[^;|&\n]*(\$\(|<\(|` + "`" + `)\s*(curl|wget)\b`),
+		event.MutSystem, 0.9, "runs a download as code"},
 	{regexp.MustCompile(`>\s*/dev/(sd|nvme|disk)`), event.MutIrreversible, 0.95, "writes to a raw disk"},
-	{regexp.MustCompile(`\bsudo\b`), event.MutSystem, 0.7, "runs as root"},
+	{regexp.MustCompile(`\b(sudo|doas|pkexec|run0)\b`), event.MutSystem, 0.7, "runs as root"},
 }
 
 // powershellPatterns are PowerShell's, case-insensitive as it is. A
