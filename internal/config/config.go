@@ -154,27 +154,31 @@ func Default() Config {
 	}
 }
 
-// Load reads path, else ./.detent.y(a)ml from local (the bytes trust
-// approved), else ~/.config/detent/config.y(a)ml, else returns Default.
+// Load reads path alone, else ~/.config/detent/config.y(a)ml with
+// ./.detent.y(a)ml from local (the bytes trust approved) over it, key by key.
 func Load(path string, local map[string][]byte) (Config, error) {
+	cfg := Default()
 	if path != "" {
-		return read(path)
-	}
-	for _, name := range []string{".detent.yaml", ".detent.yml"} {
-		if raw, ok := local[name]; ok {
-			return decode(name, raw)
-		}
+		return cfg, read(&cfg, path)
 	}
 	for _, c := range userPaths() {
 		_, err := os.Stat(c)
-		switch {
-		case err == nil:
-			return read(c)
-		case !errors.Is(err, fs.ErrNotExist):
+		if err == nil {
+			if err := read(&cfg, c); err != nil {
+				return Config{}, err
+			}
+			break
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
 			return Config{}, fmt.Errorf("config: %w", err)
 		}
 	}
-	return Default(), nil
+	for _, name := range []string{".detent.yaml", ".detent.yml"} {
+		if raw, ok := local[name]; ok {
+			return cfg, decode(&cfg, name, raw)
+		}
+	}
+	return cfg, nil
 }
 
 // example is the commented config detent ships, every value at its built-in.
@@ -325,23 +329,23 @@ func (c Config) validate(goos string) error {
 	return errors.Join(errs...)
 }
 
-func read(path string) (Config, error) {
+func read(cfg *Config, path string) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("config: %w", err)
+		return fmt.Errorf("config: %w", err)
 	}
-	return decode(path, raw)
+	return decode(cfg, path, raw)
 }
 
-func decode(path string, raw []byte) (Config, error) {
-	cfg := Default()
+// decode sets the keys raw names over cfg and leaves the rest.
+func decode(cfg *Config, path string, raw []byte) error {
 	// Strict, so a misspelt key fails with its line instead of quietly doing nothing.
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
-	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
-		return Config{}, fmt.Errorf("config %s: %w", path, err)
+	if err := dec.Decode(cfg); err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("config %s: %w", path, err)
 	}
-	return cfg, nil
+	return nil
 }
 
 // plain drops LogValue, or logging one would recurse.

@@ -36,7 +36,7 @@ func parseFlags() options {
 	flag.StringVar(&o.baseURL, "url", "", "OpenAI-compatible base URL (default: env, else config file, else "+config.DefaultBaseURL+")")
 	flag.StringVar(&o.modelName, "model", "", "model name (default: env, else config file, else "+config.DefaultModel+")")
 	flag.StringVar(&o.apiKey, "key", "", "API key, better set as DETENT_API_KEY since a flag shows in ps (default: env, else config file; empty for a local endpoint)")
-	flag.StringVar(&o.configPath, "config", "", "config file path (default: ./.detent.yaml, then ~/.config/detent/config.yaml)")
+	flag.StringVar(&o.configPath, "config", "", "config file path, read alone (default: ~/.config/detent/config.yaml with ./.detent.yaml over it)")
 	flag.StringVar(&o.prompt, "prompt", "", "run one request through the agent loop and exit")
 	flag.BoolVar(&o.unattended, "unattended", false, "with -prompt, decline every flagged command instead of asking")
 	flag.BoolVar(&o.approveAll, "approve-all", false, "with -prompt, run every flagged command without asking, only where nothing can be harmed, like a throwaway container")

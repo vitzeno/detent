@@ -1,4 +1,4 @@
-# detent -init writes this to ~/.config/detent/config.yaml. ./.detent.yaml sets one repository's.
+# detent -init writes this to ~/.config/detent/config.yaml. ./.detent.yaml sets one repository's over it.
 # Flags > environment > this file > built-ins. Empty or 0 is the built-in, shown in brackets.
 # Each key also reads DETENT_<KEY>, except steps, headers, jev_*, risk_threshold,
 # sandbox_image and sandbox_workspace. An unknown key is an error.

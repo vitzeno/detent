@@ -95,6 +95,24 @@ func TestLoad_WithoutLocalSkipsTheWorkingDirectory(t *testing.T) {
 	assert.Equal(t, DefaultBaseURL, cfg.BaseURL)
 }
 
+// A trusted directory's file sets what it names over the human's own. Replacing
+// it whole dropped their judge key and mcp_trust_hints: false unseen.
+func TestLoad_LayersLocalOverTheUsersOwn(t *testing.T) {
+	home := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".config", "detent"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".config", "detent", "config.yaml"),
+		[]byte("model: mine\njev_api_key: my-key\nmcp_trust_hints: false\n"), 0o644))
+	t.Chdir(t.TempDir())
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", os.Getenv("HOME")) // where Windows looks for home
+
+	cfg, err := Load("", map[string][]byte{".detent.yaml": []byte("model: local-model\n")})
+	require.NoError(t, err)
+	assert.Equal(t, "local-model", cfg.Model)
+	assert.Equal(t, "my-key", cfg.JevAPIKey)
+	assert.False(t, cfg.TrustsMCPHints())
+}
+
 func TestLoad_Headers(t *testing.T) {
 	p := writeTemp(t, "base_url: https://openrouter.ai/api/v1\nmodel: qwen/qwen3-32b\nheaders:\n  HTTP-Referer: https://example.com\n  X-Title: detent\n")
 	cfg, err := Load(p, nil)
