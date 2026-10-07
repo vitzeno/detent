@@ -120,15 +120,6 @@ func (s shutdown) close() {
 	s.report(os.Stderr, errs, name)
 }
 
-// name is what the human called the session, empty when unnamed or unread.
-func (s shutdown) name() string {
-	if s.events == nil {
-		return ""
-	}
-	name, _ := s.events.Name(s.session.get())
-	return name
-}
-
 // stopUserCommand cancels the human's command and waits for its last facts,
 // then lets them reach the engine before that stops too.
 func (s shutdown) stopUserCommand() []error {
@@ -161,6 +152,15 @@ func (s shutdown) stopEngine() []error {
 	case <-time.After(grace):
 		return []error{fmt.Errorf("the running request did not stop in %s; its last steps may be missing", grace)}
 	}
+}
+
+// name is what the human called the session, empty when unnamed or unread.
+func (s shutdown) name() string {
+	if s.events == nil {
+		return ""
+	}
+	name, _ := s.events.Name(s.session.get())
+	return name
 }
 
 // report is what a human reads once the screen is back: what failed, if

@@ -196,6 +196,19 @@ func (s *Store) Rename(session uuid.UUID, name string) error {
 	return nil
 }
 
+// Name is what the human called session, empty when unnamed or never stored.
+func (s *Store) Name(session uuid.UUID) (string, error) {
+	var name string
+	err := s.db.QueryRowContext(context.Background(), selectName, session.String()).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("store: name: %w", err)
+	}
+	return name, nil
+}
+
 // Delete forgets a session and its events, reporting whether there
 // was anything to forget.
 func (s *Store) Delete(session uuid.UUID) (bool, error) {
@@ -208,19 +221,6 @@ func (s *Store) Delete(session uuid.UUID) (bool, error) {
 		return false, fmt.Errorf("store: delete: %w", err)
 	}
 	return n > 0, nil
-}
-
-// Name is what the human called session, empty when unnamed or never stored.
-func (s *Store) Name(session uuid.UUID) (string, error) {
-	var name string
-	err := s.db.QueryRowContext(context.Background(), selectName, session.String()).Scan(&name)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("store: name: %w", err)
-	}
-	return name, nil
 }
 
 // ownerOnly creates path 0600 and tightens one an older detent left 0644. SQLite

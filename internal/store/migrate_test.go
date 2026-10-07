@@ -84,12 +84,32 @@ func TestMigrate_DoesNotRecordAFailedGoMigration(t *testing.T) {
 }
 
 // user_version says every migration up to it ran, which holds only while the
-// shipped ones count 1..n between the SQL files and the Go ones.
+// shipped ones count on from the baseline with no gap.
 func TestMigrate_NumberingHasNoGaps(t *testing.T) {
-	p := shipped(t, memory(t))
-	for i, src := range p.ListSources() {
-		assert.Equal(t, int64(i+1), src.Version, src.Path)
+	sources := shipped(t, memory(t)).ListSources()
+	for i, src := range sources {
+		assert.Equal(t, sources[0].Version+int64(i), src.Version, src.Path)
 	}
+}
+
+// A database v0.5.0 left is at the baseline, so it is already up to date, and
+// one from before is refused rather than half rebuilt.
+func TestMigrate_StartsFromTheBaseline(t *testing.T) {
+	db := memory(t)
+	_, err := db.Exec(`PRAGMA user_version = 4`)
+	require.NoError(t, err)
+	at, err := migrate(db, "")
+	require.NoError(t, err)
+	assert.Equal(t, 4, at)
+	_, err = db.Exec(`SELECT 1 FROM events LIMIT 1`)
+	require.Error(t, err, "nothing ran: v0.5.0 made the tables")
+
+	old := memory(t)
+	_, err = old.Exec(`PRAGMA user_version = 2`)
+	require.NoError(t, err)
+	_, err = migrate(old, "")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "open it once with v0.5.0")
 }
 
 // shipped is goose over the migrations this build carries.
@@ -97,7 +117,7 @@ func shipped(t *testing.T, db *sql.DB) *goose.Provider {
 	t.Helper()
 	sqlFiles, err := fs.Sub(migrations, "migrations")
 	require.NoError(t, err)
-	p, err := provider(db, sqlFiles, goMigrations...)
+	p, err := provider(db, sqlFiles)
 	require.NoError(t, err)
 	return p
 }

@@ -17,22 +17,6 @@ const childWork = `SELECT e.ordinal FROM events e
   LEFT JOIN events p ON p.session = e.session AND p.tool_call = e.tool_call AND p.kind = ?
   WHERE e.session = ? AND (e.agent = ? OR p.agent = ?) ORDER BY e.ordinal`
 
-// Everything recorded before agents existed was the root's.
-func TestMigrate0004_LeavesOldRowsAsRoot(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "events.db")
-	session := uuid.Must(uuid.NewV7())
-	writeAtVersion2(t, file, session, []struct{ kind, payload string }{
-		{"notice", `{"Level":"info","Text":"old"}`},
-	})
-	s, err := Open(file)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = s.Close() })
-
-	var agent *string
-	require.NoError(t, s.db.QueryRow(`SELECT agent FROM events WHERE session = ?`, session.String()).Scan(&agent))
-	assert.Nil(t, agent)
-}
-
 // A child's records come back by its id, and the spawn call that started it
 // stays the parent's.
 func TestAppend_FillsAgentFromTheFact(t *testing.T) {

@@ -15,12 +15,6 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-// goMigrations say what SQL cannot. Each is frozen once released: it describes
-// the data as it was, not as it is now.
-var goMigrations = []*goose.Migration{
-	goose.NewGoMigration(3, &goose.GoFunc{RunTx: toolCallNames}, nil),
-}
-
 // migrate applies what db has not seen and returns the version it is at, first
 // copying file aside when there is something to apply to a database already in use.
 func migrate(db *sql.DB, file string) (int, error) {
@@ -28,7 +22,7 @@ func migrate(db *sql.DB, file string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("store: read migrations: %w", err)
 	}
-	return migrateFrom(db, file, sqlFiles, goMigrations...)
+	return migrateFrom(db, file, sqlFiles)
 }
 
 // migrateFrom is migrate over any migrations, so a test can apply one that fails.
@@ -41,11 +35,14 @@ func migrateFrom(db *sql.DB, file string, sqlFiles fs.FS, gos ...*goose.Migratio
 	if len(sources) == 0 {
 		return 0, nil
 	}
-	latest := int(sources[len(sources)-1].Version)
+	first, latest := int(sources[0].Version), int(sources[len(sources)-1].Version)
 	at, err := schemaVersion(db)
 	switch {
 	case err != nil:
 		return 0, err
+	case at > 0 && at < first:
+		// The first migration is a baseline, which an older database already partly holds.
+		return 0, fmt.Errorf("store: database is at schema %d, from before v0.5.0: open it once with v0.5.0, which brings it to %d", at, first)
 	case at > latest:
 		return 0, fmt.Errorf("store: database is at schema %d, this build only knows %d, so it was written by a newer detent", at, latest)
 	case at == latest:
@@ -86,9 +83,8 @@ func backup(db *sql.DB, file string, at int) error {
 	return os.Chmod(to, 0o600)
 }
 
-// pragmaVersions keeps goose's record of what ran in SQLite's own user_version, as
-// detent did before goose, so a database migrated then needs nothing added.
-// Every version up to it has run, since migrations count 1..n with no gap.
+// pragmaVersions keeps goose's record in SQLite's own user_version, where v0.5.0
+// left it. Every version up to it has run, since migrations count on with no gap.
 type pragmaVersions struct{}
 
 var _ database.Store = pragmaVersions{}

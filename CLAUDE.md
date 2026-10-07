@@ -209,7 +209,8 @@ shell mode (shift+tab). Its output is still drawn: `viewgen` asks Jev
 its shape, never how it went.
 
 Sessions saved under the old names (Call, Shell) were rewritten by store
-migration 0003, so nothing on disk uses them.
+migration 0003, which v0.5.0 runs and the baseline now holds, so nothing on
+disk uses them.
 
 ### The transcript's atom is a Step
 
@@ -843,16 +844,17 @@ adding a fat dependency fails with the transitive import named.
   `event.Subject`. A fact a child produced carries `Agent` (zero is the
   root), and a child's later tool call records, which carry none, are
   found by joining on their proposal's `tool_call`. The
-  schema lives in `migrations/*.sql`, embedded, plus Go migrations in
-  `goMigrations` for what SQL cannot say (rewriting payloads), numbered
-  1..n together and run by goose. goose's record of what ran is SQLite's own
-  `PRAGMA user_version` (`pragmaVersions`), as before goose, so an older
-  database needs nothing added. Each migration applies in one transaction
-  with its version bump, so a half-applied one cannot be recorded as done,
-  and a database about to migrate is first copied to
-  `events.db.bak-v<n>` with `VACUUM INTO`. A Go migration is frozen once
-  released: it carries its own copy of the shapes it reads rather than
-  the event package's, which will have moved on. Each session row says
+  schema lives in `migrations/*.sql`, embedded and run by goose, starting
+  from `0004_baseline.sql`: the schema v0.5.0 left, with the migrations before
+  it folded in, so a database older than that is refused and v0.5.0 brings it
+  on. goose's record of what ran is SQLite's own `PRAGMA user_version`
+  (`pragmaVersions`), so migrations count on from the baseline with no gap.
+  Each applies in one transaction with its version bump, so a half-applied
+  one cannot be recorded as done, and a database about to migrate is first
+  copied to `events.db.bak-v<n>` with `VACUUM INTO`. What SQL cannot say, such
+  as rewriting payloads, is a Go migration (`goose.NewGoMigration`) passed to
+  `migrateFrom`, frozen once released: it carries its own copy of the shapes
+  it reads rather than the event package's, which will have moved on. Each session row says
   which detent started it and the schema its records are in. Encoding is **not** here: a
   store holding its own type list would decode every old record and
   silently drop a new one, so `event/codec.go` owns it and a test
@@ -879,7 +881,7 @@ decision rather than whatever the Go field is called, and
 Renaming a Go field is free. Changing a tag, a kind string, or a field's
 type fails `TestShapes_StoredFactsKeepTheirShape`, and the fix is two
 things in one commit: a store migration that rewrites the old records
-(see `internal/store/migrate_0003.go`), then
+(a Go one, as 0003 was before the baseline folded it in), then
 `go test ./event -run TestShapes -update`. Adding a field needs only the
 update, since an old record decodes it as zero, and so does giving a field a
 named type over the same kind (`string` to `event.ToolName`), which stores
