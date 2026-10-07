@@ -235,7 +235,9 @@ containerd snapshots, and "undo call #23" is not a thought anyone has.
 Rolling back truncates the transcript to where that prompt landed,
 which is a whole number of Steps by construction. Reverting the
 human's own files is a separate yes/no question, offered only when the
-Turn's checkpoint holds a tree. A Turn already compacted into the
+Turn's checkpoint holds a tree. Whatever the answer, a file that still differs
+from before the Turn is named in a note after the rewound transcript, since the
+model has forgotten the Turn and would otherwise reason from code not on disk. A Turn already compacted into the
 summary cannot be undone: the summary mixes it with what came before, so
 undo refuses before touching the sandbox or the files.
 

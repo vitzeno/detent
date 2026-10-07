@@ -154,16 +154,20 @@ func TestResume_IsRefusedForASessionHeldElsewhere(t *testing.T) {
 func TestRestore_HonoursUndoAndReset(t *testing.T) {
 	t.Run("a rollback", func(t *testing.T) {
 		snap := &snapRunner{fakeRunner: &fakeRunner{out: "ok\n"}}
-		r := rigWith(t, event.New(), &fakeModel{replies: []model.Reply{{Text: "a"}, {Text: "b"}}}, snap)
+		r := rigWith(t, event.New(), &fakeModel{replies: []model.Reply{
+			{Text: "a"}, {Requests: []event.ToolRequest{bashCall("c", "touch x")}}, {Text: "b"},
+		}}, snap)
 		r.run("kept")
 		second := r.run("undone").Turn
 		r.bus.Publish(event.RequestRollback{Turn: second})
 		r.await(event.RolledBackKind)
+		r.dispatched()
 
 		fresh := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}})
 		defer fresh.unsub()
 		fresh.Restore(r.records())
-		assert.Equal(t, r.eng.messages(), fresh.messages())
+		require.Contains(t, r.eng.messages()[len(r.eng.messages())-1].Content, "was undone")
+		assert.Equal(t, r.eng.messages(), fresh.messages(), "the undo's note comes back with it")
 		assert.Equal(t, 1, fresh.turns, "the next request is numbered 2 again")
 	})
 

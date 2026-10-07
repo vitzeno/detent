@@ -287,6 +287,16 @@ func (d *Dir) Restore(ctx context.Context, id, seen string) error {
 	return d.RestoreTo(ctx, Checkpoint(id), Checkpoint(seen))
 }
 
+// Changed names the paths that differ now from the checkpoint id, for the engine.
+func (d *Dir) Changed(ctx context.Context, id string) ([]string, error) {
+	changes, err := d.Diff(ctx, Checkpoint(id), "")
+	paths := make([]string, len(changes))
+	for i, c := range changes {
+		paths[i] = c.Path
+	}
+	return paths, err
+}
+
 // Patch is the unified diff from base to head, an empty head meaning the files
 // now. Past limit bytes it ends at the last whole line, and cut says so.
 func (d *Dir) Patch(ctx context.Context, base, head Checkpoint, limit int) (patch string, cut bool, err error) {

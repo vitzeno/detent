@@ -2,11 +2,16 @@ package engine
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
 )
+
+// maxUndoneFiles is how many files an undo's note names before counting the rest.
+const maxUndoneFiles = 40
 
 // rollback restores a Turn's checkpoint and rewinds the transcript to
 // where that Turn began. Only called while idle.
@@ -42,6 +47,36 @@ func (e *Engine) rollback(ctx context.Context, req event.RequestRollback) {
 	e.root.lock(func() { e.root.tr.truncate(t.mark) })
 	e.forgetFrom(req.Turn)
 	e.bus.Publish(event.RolledBack{Turn: req.Turn, RevertFiles: req.RevertFiles})
+	// After RolledBack, so a replay truncates and then adds it, as this did.
+	if note := e.undoneNote(ctx, t); note != "" {
+		e.appended(e.root, uuid.Nil, uuid.Nil, func() []event.Message { return e.root.tr.note(note) })
+	}
+}
+
+// undoneNote tells the model which files an undo left differing from before the
+// request, since the transcript has forgotten it and would reason from code not there.
+func (e *Engine) undoneNote(ctx context.Context, t *turnState) string {
+	if !t.changed.Load() {
+		return ""
+	}
+	w, has := e.worktree()
+	if !has || t.tree == "" {
+		return fmt.Sprintf("[Request %d was undone, but your files were not checkpointed, so whatever it "+
+			"changed may still be on disk. Read a file again before relying on it.]", t.n)
+	}
+	paths, err := w.Changed(ctx, t.tree)
+	switch {
+	case err != nil:
+		return fmt.Sprintf("[Request %d was undone, but which files still differ could not be read (%v). "+
+			"Read a file again before relying on it.]", t.n, err)
+	case len(paths) == 0:
+		return ""
+	}
+	if len(paths) > maxUndoneFiles {
+		paths = append(paths[:maxUndoneFiles], fmt.Sprintf("and %d more", len(paths)-maxUndoneFiles))
+	}
+	return fmt.Sprintf("[Request %d was undone, but these files still differ from before it, so read them "+
+		"again before relying on them: %s]", t.n, strings.Join(paths, ", "))
 }
 
 // forgetFrom drops the rolled-back Turn and everything after it: they

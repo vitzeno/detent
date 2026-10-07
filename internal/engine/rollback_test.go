@@ -44,8 +44,11 @@ func TestRollback_RestoresTheTurnsCheckpoint(t *testing.T) {
 	require.Len(t, restored, 1, "one restore, to the second Turn's own checkpoint")
 	assert.Equal(t, "snap-b", restored[0])
 
-	assert.Len(t, r.eng.messages(), afterFirst, "the transcript rewinds to where that prompt landed")
-	wellFormed(t, r.eng.messages())
+	r.dispatched()
+	msgs := r.eng.messages()
+	require.Len(t, msgs, afterFirst+1, "the transcript rewinds to where that prompt landed")
+	assert.Contains(t, msgs[afterFirst].Content, "Request 2 was undone", "then says what may still be on disk")
+	wellFormed(t, msgs)
 }
 
 func TestRollback_RefusesWhatItCannotDo(t *testing.T) {

@@ -232,6 +232,8 @@ type Snapshotter interface {
 type Worktreer interface {
 	Checkpoint(ctx context.Context) (string, error)
 	Restore(ctx context.Context, id, seen string) error
+	// Changed names the files that differ now from checkpoint id.
+	Changed(ctx context.Context, id string) ([]string, error)
 }
 
 // Holder keeps a session to this process, refusing one another detent holds, and

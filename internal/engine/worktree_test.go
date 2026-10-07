@@ -48,11 +48,18 @@ func TestRollback_RevertsTheHumansDirectory(t *testing.T) {
 			assert.Equal(t, revert, back.RevertFiles)
 
 			assert.Equal(t, "the human's\n", readFile(t, dir, "mine.txt"), "written after the Turn, so never reverted")
+			r.dispatched()
+			note := lastNote(t, r.eng)
 			if !revert {
 				assert.Equal(t, "edited\n", readFile(t, dir, "tracked.txt"))
 				assert.FileExists(t, filepath.Join(dir, "made.txt"))
+				for _, f := range []string{"tracked.txt", "made.txt", "pkg/a.go", "mine.txt"} {
+					assert.Contains(t, note, f, "the model is told its edits are still there")
+				}
 				return
 			}
+			assert.Contains(t, note, "mine.txt", "and what the human kept")
+			assert.NotContains(t, note, "tracked.txt", "but not what went back")
 			assert.Equal(t, "original\n", readFile(t, dir, "tracked.txt"))
 			assert.NoFileExists(t, filepath.Join(dir, "made.txt"))
 			assert.NoDirExists(t, filepath.Join(dir, "pkg"))
@@ -84,6 +91,21 @@ func TestTurnEnded_NamesTheTreeTheTurnLeft(t *testing.T) {
 	assert.Equal(t, "made.txt", treeDiff(t, dir, start.Tree, end.Tree), "the Turn's own change, and only it")
 }
 
+// The transcript forgets an undone request, so the model is told when its
+// files may still hold what it did, or it reasons from code that is not there.
+func TestRollback_TellsTheModelWhatStayedOnDisk(t *testing.T) {
+	fm := &fakeModel{replies: []model.Reply{
+		{Requests: []event.ToolRequest{bashCall("a", "echo edited > a.txt")}},
+		{Text: "done"},
+	}}
+	r := rigWith(t, event.New(), fm, &fakeRunner{out: "ok\n"})
+	end := r.run("change a file")
+	r.bus.Publish(event.RequestRollback{Turn: end.Turn})
+	r.await(event.RolledBackKind)
+	r.dispatched()
+	assert.Contains(t, lastNote(t, r.eng), "not checkpointed")
+}
+
 // Without a tree for the Turn, asking to revert files says so rather than nothing.
 func TestRollback_SaysWhenFilesWereNotCheckpointed(t *testing.T) {
 	snap := &snapRunner{fakeRunner: &fakeRunner{out: "ok\n"}}
@@ -93,6 +115,14 @@ func TestRollback_SaysWhenFilesWereNotCheckpointed(t *testing.T) {
 	r.await(event.RolledBackKind)
 	n := r.await(event.NoticeKind).(event.Notice)
 	assert.Contains(t, n.Text, "not checkpointed")
+}
+
+// lastNote is the last message in the root's transcript, where an undo's note lands.
+func lastNote(t *testing.T, e *Engine) string {
+	t.Helper()
+	msgs := e.messages()
+	require.NotEmpty(t, msgs, "the undo left no note")
+	return msgs[len(msgs)-1].Content
 }
 
 // dirRunner runs each command in one directory, as the host runner does in the workspace.
