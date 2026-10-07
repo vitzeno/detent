@@ -318,3 +318,28 @@ func TestWatch_LoadSessionAnswersWithRecordsItDoesNotStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, kept, 1, "only the header, not the answer")
 }
+
+// A listing is an answer for whoever asked, and stored it kept a deleted
+// session's name alive inside every session that had listed it.
+func TestWatch_ListingIsNotStored(t *testing.T) {
+	s := open(t)
+	session := uuid.Must(uuid.NewV7())
+	bus := event.New()
+	stop := store.Watch(bus, s, session)
+	bus.Publish(event.SessionStarted{Session: session, Model: "m"})
+
+	listed, unsub := bus.Subscribe(event.Only(event.SessionsListedKind))
+	defer unsub()
+	bus.Publish(event.ListSessions{})
+	select {
+	case <-listed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("a listing went unanswered")
+	}
+	bus.Drain(3 * time.Second)
+	stop()
+
+	kept, err := s.Replay(session)
+	require.NoError(t, err)
+	assert.Len(t, kept, 1, "only the header, not the listing")
+}

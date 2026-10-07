@@ -72,11 +72,11 @@ func (s *Store) serve(bus *event.Bus, e event.Event) bool {
 	return true
 }
 
-// wanted is every fact bar live output, which CallEnded carries whole, another
-// session's records and a diff, plus the questions this package answers.
+// wanted is every fact bar live output, which CallEnded carries whole, a listing,
+// another session's records and a diff, plus the questions this package answers.
 func wanted(e event.Event) bool {
 	switch e.Kind() {
-	case event.OutputChunkKind, event.SessionLoadedKind, event.DiffLoadedKind:
+	case event.OutputChunkKind, event.SessionsListedKind, event.SessionLoadedKind, event.DiffLoadedKind:
 		return false
 	case event.ListSessionsKind, event.RenameSessionKind, event.LoadSessionKind:
 		return true

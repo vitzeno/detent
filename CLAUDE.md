@@ -850,7 +850,8 @@ adding a fat dependency fails with the transitive import named.
   because a replayed tool call has already finished and `ToolCallEnded` carries
   the whole output. It also answers `ListSessions` and `LoadSession` over the bus,
   since `ui` cannot import it to ask directly, and never stores `SessionLoaded`,
-  another session's records. Its pragmas (`foreign_keys`,
+  another session's records, or `SessionsListed`, which would keep a deleted
+  session's name alive. Its pragmas (`foreign_keys`,
   `busy_timeout`, WAL) are in the DSN and the pool holds one connection,
   because a pragma set by `Exec` reaches one pooled connection and a
   delete's cascade silently skipped the rest. WAL leaves `-wal` and
