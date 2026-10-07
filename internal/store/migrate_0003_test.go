@@ -44,7 +44,7 @@ func TestMigrate_0003RewritesSessionsSavedUnderTheOldNames(t *testing.T) {
 
 	_, err = os.Stat(file + ".bak-v2")
 	require.NoError(t, err, "the database was copied before it was rewritten")
-	assert.Equal(t, latest(), userVersion(t, s.db))
+	assert.Equal(t, s.schema, userVersion(t, s.db))
 	_, err = s.db.Exec(`SELECT tool_call FROM events LIMIT 1`)
 	require.NoError(t, err, "the lifted column has the new name")
 	var schema int
@@ -83,11 +83,8 @@ func writeAtVersion2(t *testing.T, file string, session uuid.UUID, records []str
 	db, err := sql.Open("sqlite", file+pragmas)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, db.Close()) }()
-	all, err := steps()
+	_, err = shipped(t, db).UpTo(t.Context(), 2)
 	require.NoError(t, err)
-	for i, s := range all[:2] {
-		require.NoError(t, apply(db, s, i+1))
-	}
 	_, err = db.Exec(`INSERT INTO sessions (id, started, model, sandbox, network) VALUES (?, 0, 'm', 0, 0)`, session.String())
 	require.NoError(t, err)
 	for i, r := range records {

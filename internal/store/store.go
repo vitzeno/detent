@@ -29,7 +29,11 @@ const ReservedName = "last"
 const pragmas = "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_txlock=immediate"
 
 // Store is one database, safe for concurrent use.
-type Store struct{ db *sql.DB }
+type Store struct {
+	db *sql.DB
+	// schema is the version this build migrates to, which each session row records.
+	schema int
+}
 
 // Open creates the database if it is not there. ":memory:" works, for
 // a test that wants no file.
@@ -57,15 +61,15 @@ func Open(path string) (*Store, error) {
 	// SQLite has one writer anyway, and one connection is also what
 	// keeps ":memory:" a single database.
 	db.SetMaxOpenConns(1)
-	if path != ":memory:" {
-		if err := backup(db, path); err != nil {
-			return nil, errors.Join(err, db.Close())
-		}
+	file := path
+	if path == ":memory:" {
+		file = ""
 	}
-	if err := migrate(db); err != nil {
+	schema, err := migrate(db, file)
+	if err != nil {
 		return nil, errors.Join(err, db.Close())
 	}
-	return &Store{db: db}, nil
+	return &Store{db: db, schema: schema}, nil
 }
 
 // DefaultPath is where a session's events go, beside the logs.
@@ -97,7 +101,7 @@ func (s *Store) Append(session uuid.UUID, r event.Record) error {
 	if started, ok := r.Event.(event.SessionStarted); ok {
 		if _, err := tx.ExecContext(ctx, upsertSession, session.String(), r.At.UnixMilli(),
 			started.Model, started.Judge, started.Sandbox, started.Network,
-			started.Resumed, version.String(), latest()); err != nil {
+			started.Resumed, version.String(), s.schema); err != nil {
 			return fmt.Errorf("store: session header: %w", err)
 		}
 	}

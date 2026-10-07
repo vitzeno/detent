@@ -1,3 +1,4 @@
+-- +goose Up
 -- A session header and its log. The header comes from SessionStarted and
 -- only its resumed count and name ever change, so it cannot drift.
 CREATE TABLE sessions (
