@@ -5,6 +5,7 @@ package tool
 import (
 	"context"
 	"os"
+	"os/exec"
 	"syscall"
 	"testing"
 	"time"
@@ -40,5 +41,24 @@ func TestNative_RefusesWhatCouldBlock(t *testing.T) {
 		require.NoError(t, err, "%s returned before its deadline", c.tl.Name())
 		assert.NotZero(t, got.ExitCode, c.tl.Name())
 		assert.Contains(t, got.Stderr, c.why, c.tl.Name())
+	}
+}
+
+// The sandbox reads through awk, which waited on a FIFO until the command
+// timeout and grew without end on /dev/zero, so its command refuses them too.
+func TestReadFile_LoweredRefusesWhatCouldBlock(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, syscall.Mkfifo(dir+"/pipe", 0o600))
+	for _, p := range []string{"pipe", "/dev/zero"} {
+		cmd, err := ReadFile{}.Lower(Args{"path": p})
+		require.NoError(t, err)
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		c := exec.CommandContext(ctx, "sh", "-c", cmd)
+		c.Dir = dir
+		out, err := c.CombinedOutput()
+		require.NoError(t, ctx.Err(), "%s returned before its deadline", p)
+		cancel()
+		require.Error(t, err, p)
+		assert.Contains(t, string(out), "not a regular file", p)
 	}
 }

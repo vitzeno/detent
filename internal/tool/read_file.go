@@ -36,13 +36,16 @@ func (ReadFile) Describe() Spec {
 	}
 }
 
-// Lower is awk over the file, through window.
+// Lower is awk over the file, through window, once it is known to be a regular
+// file: awk waits on a FIFO and reads a device for ever, as Run refuses to.
 func (ReadFile) Lower(a Args) (string, error) {
 	p, from, n, err := readArgs(a)
 	if err != nil {
 		return "", err
 	}
-	return window(from, n, readMore, readEmpty) + " " + path(p), nil
+	q := path(p)
+	return fmt.Sprintf("if [ -f %s ] || [ ! -e %s ]; then %s %s; else printf 'read_file: %%s: not a regular file\\n' %s >&2; false; fi",
+		q, q, window(from, n, readMore, readEmpty), q, q), nil
 }
 
 // Run reads the file here, in the same window and with the same footers.
