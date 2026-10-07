@@ -31,6 +31,8 @@ type Printer struct {
 	// proposed each call, so lines interleaved from several say whose they are.
 	names    map[uuid.UUID]string
 	children map[uuid.UUID]uuid.UUID
+	// turn is the request this run sent, since a resumed session first ends the one it left open.
+	turn uuid.UUID
 }
 
 // New subscribes to facts. approve decides the dangerous calls, and nil
@@ -128,8 +130,12 @@ func (p *Printer) handle(ev event.Event) (event.EndReason, bool) {
 		p.bus.Publish(event.Continue{Turn: v.Turn, Approved: false})
 	case event.Notice:
 		fmt.Fprintf(p.errOut, "detent: %s: %s\n", v.Level, termsafe.Printable(v.Text))
+	case event.TurnStarted:
+		if p.turn == uuid.Nil && v.Review == uuid.Nil {
+			p.turn = v.Turn
+		}
 	case event.TurnEnded:
-		return v.Reason, true
+		return v.Reason, v.Turn == p.turn
 	}
 	return "", false
 }

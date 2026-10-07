@@ -35,6 +35,7 @@ func TestRun(t *testing.T) {
 				switch v := ev.(type) {
 				case event.SubmitPrompt:
 					bus.Publish(event.SessionStarted{Model: "m", Sandbox: true})
+					bus.Publish(event.TurnStarted{Turn: turn, N: 1, Prompt: "clean up"})
 					bus.Publish(event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "rm -rf x"}})
 					bus.Publish(event.ApprovalAsked{ToolCall: call, Tool: "bash"})
 				case event.ResolveApproval:
@@ -57,6 +58,22 @@ func TestRun(t *testing.T) {
 			assert.Contains(t, errOut.String(), "commands run on the sandbox")
 		})
 	}
+}
+
+// Resuming a crashed session ends its open request first. That end is not this
+// run's, which once exited 1 before the prompt it was given had run.
+func TestRun_WaitsForItsOwnRequest(t *testing.T) {
+	bus := event.New()
+	t.Cleanup(bus.Close)
+	old, turn := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	fakeEngine(t, bus, func(ev event.Event) {
+		if _, ok := ev.(event.SubmitPrompt); ok {
+			bus.Publish(event.TurnEnded{Turn: old, Reason: event.EndError})
+			bus.Publish(event.TurnStarted{Turn: turn, N: 2, Prompt: "go"})
+			bus.Publish(event.TurnEnded{Turn: turn, Reason: event.EndDone})
+		}
+	})
+	assert.Equal(t, event.EndDone, New(bus, AutoDecline, io.Discard, io.Discard).Run(t.Context(), "go"))
 }
 
 func TestRun_ACancelIsAnAbort(t *testing.T) {
