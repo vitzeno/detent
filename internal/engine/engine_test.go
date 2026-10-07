@@ -141,6 +141,24 @@ func TestTurn_BoundAsksAndCanBeContinued(t *testing.T) {
 	answered(t, r.eng)
 }
 
+// Stopping at the bound's question is an abort, which a headless run exits 130
+// for, not the bound it was asked about.
+func TestTurn_AbortAtTheBoundEndsAborted(t *testing.T) {
+	var replies []model.Reply
+	for i := range 4 {
+		replies = append(replies, model.Reply{Requests: []event.ToolRequest{bashCall("c"+string(rune('0'+i)), "ls")}})
+	}
+	r := newRig(t, replies, WithMaxSteps(2))
+	r.bus.Publish(event.SubmitPrompt{Text: "keep going"})
+
+	b := r.await(event.BoundReachedKind).(event.BoundReached)
+	r.bus.Publish(event.Abort{Turn: b.Turn})
+
+	end := r.await(event.TurnEndedKind).(event.TurnEnded)
+	assert.Equal(t, event.EndAborted, end.Reason)
+	answered(t, r.eng)
+}
+
 func TestTurn_BoundContinuesWhenApproved(t *testing.T) {
 	replies := []model.Reply{
 		{Requests: []event.ToolRequest{bashCall("a", "ls")}},

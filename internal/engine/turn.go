@@ -118,6 +118,13 @@ type agentEnd struct {
 // runAgent is the loop, blocking and linear: Steps until the model stops
 // asking for tools. What only the root does is said where it happens.
 func (e *Engine) runAgent(ctx context.Context, t *turnState, a *agent) (end agentEnd) {
+	// An abort landing as the loop ends, at the bound's question or with the last
+	// reply, still ends it aborted.
+	defer func() {
+		if (end.reason == event.EndDone || end.reason == event.EndBound) && (t.aborted.Load() || ctx.Err() != nil) {
+			end.reason = event.EndAborted
+		}
+	}()
 	limit, nudges, checked := e.maxSteps, 0, false
 	for step := 1; ; step++ {
 		if a.root() {
