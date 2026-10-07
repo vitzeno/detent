@@ -48,7 +48,7 @@ type Engine struct {
 	// extra is the hooks a caller added, which every agent's chain ends with.
 	extra []Assessor
 	judge *jevHook
-	// judgeFailsClosed is WithJudgeFailingClosed, applied to judge once every option has run.
+	// judgeFailsClosed is applied once every option has run, since WithJudge may come later.
 	judgeFailsClosed bool
 	invoker          Invoker
 
@@ -390,7 +390,6 @@ func (e *Engine) reset() {
 	e.notice("info", "new session")
 }
 
-// hold takes session for this process, when something is holding sessions.
 func (e *Engine) hold(session uuid.UUID) error {
 	if e.holder == nil {
 		return nil

@@ -651,8 +651,8 @@ func scratchIndex() (index string, cleanup func(), err error) {
 	return filepath.Join(dir, "index"), func() { _ = os.RemoveAll(dir) }, nil
 }
 
-// keepAround moves to kept a path whose restore would write over a kept one, a
-// file where a kept path's directory stands now, or a directory over a kept file.
+// keepAround moves to kept a path whose restore would write over a kept one,
+// either a file over a kept directory or a directory over a kept file.
 func keepAround(bring, kept []string) (rest, all []string) {
 	under := func(p, dir string) bool { return strings.HasPrefix(p, dir+"/") }
 	for _, b := range bring {
@@ -665,7 +665,6 @@ func keepAround(bring, kept []string) (rest, all []string) {
 	return rest, kept
 }
 
-// exitedWith reports whether err is git exiting with code.
 func exitedWith(err error, code int) bool {
 	var exit *exec.ExitError
 	return errors.As(err, &exit) && exit.ExitCode() == code

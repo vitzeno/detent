@@ -104,7 +104,7 @@ type Config struct {
 	JevModel      string  `yaml:"jev_model"`
 	JevEndpoint   string  `yaml:"jev_endpoint"`
 	RiskThreshold float64 `yaml:"risk_threshold"`
-	// JevFailClosed flags a call the judge could not answer for. Off, the rest of the chain decides.
+	// JevFailClosed flags a call the judge could not answer for.
 	JevFailClosed *bool `yaml:"jev_fail_closed"`
 
 	// Theme is a name from ui/theme.Themes, checked by main.go so config need not import ui.

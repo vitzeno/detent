@@ -27,8 +27,8 @@ type Holder struct {
 // New holds sessions under dir, one lock file each.
 func New(dir string) *Holder { return &Holder{dir: dir} }
 
-// Take holds session, then lets go of the one held before. Refused, the old
-// one is still held, since the caller stays on it.
+// Take holds session, then lets go of the one before, which a refusal keeps
+// since the caller stays on it.
 func (h *Holder) Take(session uuid.UUID) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -57,7 +57,6 @@ func (h *Holder) Close() {
 }
 
 // Lock holds session until unlock, failing with ErrHeld when another holds it.
-// A delete takes it for as long as it runs, so nothing resumes what is going.
 func Lock(dir string, session uuid.UUID) (unlock func(), err error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("hold: %w", err)

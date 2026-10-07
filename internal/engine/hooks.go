@@ -94,7 +94,7 @@ type danger struct {
 }
 
 // dangerPatterns read a flag anywhere among a command's words, up to the next
-// ;, &, | or line, since rm ./build -rf deletes as surely as rm -rf ./build.
+// separator or line, since rm ./build -rf deletes as surely as rm -rf ./build.
 var dangerPatterns = []danger{
 	{regexp.MustCompile(`\brm\b[^;|&\n]*\s(-[a-zA-Z]*[rRf][a-zA-Z]*|--(recursive|force))\b`),
 		event.MutIrreversible, 0.9, "recursive or forced delete"},
@@ -139,58 +139,6 @@ var powershellPatterns = []danger{
 	{regexp.MustCompile(`(?i)\bSet-ExecutionPolicy\b`), event.MutSystem, 0.7, "changes the script execution policy"},
 	{regexp.MustCompile(`(?i)\b(Set-ItemProperty|New-ItemProperty|Remove-ItemProperty|Rename-ItemProperty|Set-Item|New-Item|Remove-Item|sp|rp|ni|si|ri)\b[^;|\n]*\b(HKLM:|Registry::HKEY_LOCAL_MACHINE)|\breg(\.exe)?\s+(add|delete|import|restore)\s+(HKLM|HKEY_LOCAL_MACHINE)\b`),
 		event.MutSystem, 0.8, "writes the machine's registry"},
-}
-
-// workspaceHook flags a file tool writing outside the working directory, where no
-// checkpoint reaches, or into a .git, whose hooks git runs.
-type workspaceHook struct{ root string }
-
-// newWorkspaceHook resolves root once, so a symlink above it never reads as an escape.
-func newWorkspaceHook(root string) workspaceHook {
-	if r, err := filepath.EvalSymlinks(root); err == nil {
-		root = r
-	}
-	return workspaceHook{root: root}
-}
-
-func (workspaceHook) Name() string { return "workspace" }
-
-func (h workspaceHook) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
-	r := event.UnknownRisk()
-	p := c.Args.String("path")
-	if c.Mutability != event.MutWorkspace || c.Executor != "" || p == "" {
-		return r, nil
-	}
-	if !filepath.IsAbs(p) {
-		p = filepath.Join(h.root, p)
-	}
-	rel, err := filepath.Rel(h.root, resolved(filepath.Clean(p)))
-	switch {
-	case err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)):
-		r.Dangerous, r.Mutability, r.Note = true, event.MutSystem, "writes outside the working directory"
-	case slices.ContainsFunc(strings.Split(rel, string(filepath.Separator)), func(part string) bool {
-		return strings.EqualFold(part, ".git")
-	}):
-		r.Dangerous, r.Mutability, r.Note = true, event.MutSystem, "writes inside .git"
-	}
-	return r, nil
-}
-
-// resolved follows the symlinks in p's longest existing prefix, since a link
-// inside the working directory may point anywhere and what follows may not exist yet.
-func resolved(p string) string {
-	rest := ""
-	for {
-		if r, err := filepath.EvalSymlinks(p); err == nil {
-			return filepath.Join(r, rest)
-		}
-		parent := filepath.Dir(p)
-		if parent == p {
-			return filepath.Join(p, rest)
-		}
-		rest = filepath.Join(filepath.Base(p), rest)
-		p = parent
-	}
 }
 
 // repeatHook notices a command run again and again in one Turn with the
@@ -258,6 +206,45 @@ func (h *repeatHook) refuses(command string) (int, bool) {
 	return n, n >= h.limit
 }
 
+// workspaceHook flags a file tool writing outside the working directory, where no
+// checkpoint reaches, or into a .git, whose hooks git runs.
+type workspaceHook struct{ root string }
+
+// newWorkspaceHook resolves root once, so a symlink above it never reads as an escape.
+func newWorkspaceHook(root string) workspaceHook {
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		root = r
+	}
+	return workspaceHook{root: root}
+}
+
+func (workspaceHook) Name() string { return "workspace" }
+
+func (h workspaceHook) Assess(_ context.Context, c tool.Call, _ event.Risk) (event.Risk, error) {
+	r := event.UnknownRisk()
+	p := c.Args.String("path")
+	if c.Mutability != event.MutWorkspace || c.Executor != "" || p == "" {
+		return r, nil
+	}
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(h.root, p)
+	}
+	rel, err := filepath.Rel(h.root, resolved(filepath.Clean(p)))
+	switch {
+	case err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)):
+		r.Dangerous, r.Mutability, r.Note = true, event.MutSystem, "writes outside the working directory"
+	case slices.ContainsFunc(strings.Split(rel, string(filepath.Separator)), func(part string) bool {
+		return strings.EqualFold(part, ".git")
+	}):
+		r.Dangerous, r.Mutability, r.Note = true, event.MutSystem, "writes inside .git"
+	}
+	return r, nil
+}
+
+// judgedBytes is the most of a command the judge is sent. Padding past what it
+// could read in time left the regex alone to decide.
+const judgedBytes = 64 << 10
+
 // jevHook asks the classifier what a command would change. The one
 // network hook, so it goes last.
 type jevHook struct {
@@ -266,10 +253,6 @@ type jevHook struct {
 	// failClosed reads a judge that could not answer as a no, for anything but a read.
 	failClosed bool
 }
-
-// judgedBytes is the most of a command the judge is sent. Padding past what it
-// could read in time left the regex alone to decide.
-const judgedBytes = 64 << 10
 
 func (jevHook) Name() string { return "jev" }
 
@@ -281,7 +264,7 @@ func (h jevHook) Assess(ctx context.Context, c tool.Call, _ event.Risk) (event.R
 	}
 	cmd := c.Command
 	if len(cmd) > judgedBytes {
-		// A file's body runs nothing, so its ends are enough. A shell command that long is read whole.
+		// A file's body runs nothing, so its ends will do. A command that long goes to the human.
 		if c.Mutability != event.MutWorkspace {
 			r := event.UnknownRisk()
 			r.Dangerous, r.Note = true, "too long for the judge to read"
@@ -311,4 +294,21 @@ func describe(r event.Risk) string {
 		parts = append(parts, r.Note)
 	}
 	return strings.Join(parts, ", ")
+}
+
+// resolved follows the symlinks in p's longest existing prefix, since the rest
+// may not exist yet.
+func resolved(p string) string {
+	rest := ""
+	for {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(r, rest)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(p, rest)
+		}
+		rest = filepath.Join(filepath.Base(p), rest)
+		p = parent
+	}
 }

@@ -68,22 +68,6 @@ func Open(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-// ownerOnly creates path 0600 and tightens one an older detent left 0644. SQLite
-// gives its -wal and -shm the database's mode, so only those already there need it.
-func ownerOnly(path string) error {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) //nolint:gosec // the store's own path
-	if err != nil {
-		return fmt.Errorf("store: %w", err)
-	}
-	_ = f.Close()
-	for _, p := range []string{path, path + "-wal", path + "-shm"} {
-		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("store: %w", err)
-		}
-	}
-	return nil
-}
-
 // DefaultPath is where a session's events go, beside the logs.
 func DefaultPath() string {
 	home, err := os.UserHomeDir()
@@ -220,6 +204,22 @@ func (s *Store) Delete(session uuid.UUID) (bool, error) {
 		return false, fmt.Errorf("store: delete: %w", err)
 	}
 	return n > 0, nil
+}
+
+// ownerOnly creates path 0600 and tightens one an older detent left 0644. SQLite
+// gives its -wal and -shm the database's mode, so only those already there need it.
+func ownerOnly(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) //nolint:gosec // the store's own path
+	if err != nil {
+		return fmt.Errorf("store: %w", err)
+	}
+	_ = f.Close()
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("store: %w", err)
+		}
+	}
+	return nil
 }
 
 func usableName(name string) error {

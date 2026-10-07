@@ -127,7 +127,6 @@ func (w watcher) container(id uuid.UUID) error {
 	return w.containers(ctx, id.String())
 }
 
-// heldBy says why a lock was refused, which is usually another detent.
 func heldBy(err error) string {
 	if errors.Is(err, ErrLive) {
 		return "open in another detent"
