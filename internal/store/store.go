@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,11 @@ func Open(path string) (*Store, error) {
 			return nil, fmt.Errorf("store: %w", err)
 		}
 	}
+	if path != ":memory:" {
+		if err := ownerOnly(path); err != nil {
+			return nil, err
+		}
+	}
 	db, err := sql.Open("sqlite", path+pragmas)
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
@@ -60,6 +66,22 @@ func Open(path string) (*Store, error) {
 		return nil, errors.Join(err, db.Close())
 	}
 	return &Store{db: db}, nil
+}
+
+// ownerOnly creates path 0600 and tightens one an older detent left 0644. SQLite
+// gives its -wal and -shm the database's mode, so only those already there need it.
+func ownerOnly(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) //nolint:gosec // the store's own path
+	if err != nil {
+		return fmt.Errorf("store: %w", err)
+	}
+	_ = f.Close()
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("store: %w", err)
+		}
+	}
+	return nil
 }
 
 // DefaultPath is where a session's events go, beside the logs.

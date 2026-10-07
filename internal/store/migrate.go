@@ -66,7 +66,7 @@ func backup(db *sql.DB, file string) error {
 	if _, err := db.ExecContext(context.Background(), `VACUUM INTO ?`, to); err != nil {
 		return fmt.Errorf("store: back up before migrating: %w", err)
 	}
-	return nil
+	return os.Chmod(to, 0o600)
 }
 
 func apply(db *sql.DB, s step, version int) error {

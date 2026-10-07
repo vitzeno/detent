@@ -2,7 +2,9 @@ package store_test
 
 import (
 	"database/sql"
+	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -253,6 +255,27 @@ func TestStore_TwoProcessesWriteOneFile(t *testing.T) {
 		got, err := stores[1-i].Replay(session)
 		require.NoError(t, err)
 		assert.Len(t, got, each, "every record of session %d arrived", i)
+	}
+}
+
+// The database holds every prompt and output, so only its owner may read it,
+// even one an older detent created 0644.
+func TestOpen_KeepsTheFilesOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows has no mode bits, and the profile's ACL keeps it private")
+	}
+	path := filepath.Join(t.TempDir(), "events.db")
+	require.NoError(t, os.WriteFile(path, nil, 0o644))
+	s, err := store.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	session := uuid.Must(uuid.NewV7())
+	require.NoError(t, s.Append(session, rec(1, event.SessionStarted{Session: session})))
+
+	for _, f := range []string{path, path + "-wal", path + "-shm"} {
+		info, err := os.Stat(f)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), f)
 	}
 }
 

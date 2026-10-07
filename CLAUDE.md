@@ -854,7 +854,8 @@ adding a fat dependency fails with the transitive import named.
   `busy_timeout`, WAL) are in the DSN and the pool holds one connection,
   because a pragma set by `Exec` reaches one pooled connection and a
   delete's cascade silently skipped the rest. WAL leaves `-wal` and
-  `-shm` files beside `events.db`.
+  `-shm` files beside `events.db`, which with its backups are owner-only, since
+  they hold every prompt and output.
 
 - **`version`**: what this build calls itself, and nothing else.
 
