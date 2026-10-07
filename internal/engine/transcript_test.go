@@ -10,6 +10,7 @@ import (
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/model"
+	"github.com/vitzeno/detent/internal/tool"
 )
 
 // The gate: whatever goes wrong in a Step, the transcript that comes
@@ -335,6 +336,25 @@ func TestCompact_SaysSoBeforeItStalls(t *testing.T) {
 		}
 	}
 	assert.True(t, said, "compaction stalled the Turn without saying so")
+}
+
+// An abort mid-summary kept the fold with no summary in it, a loss recorded for
+// good. Aborted, the transcript stays as it was and compacts next time.
+func TestCompact_AnAbortLeavesTheTranscriptWhole(t *testing.T) {
+	e := New(event.New(), &fakeModel{}, tool.Standard(), fakeSelector{&fakeRunner{}},
+		WithContextTokens(200), WithSummarizer(stubSummarizer{out: "never used"}))
+	defer e.unsub()
+	big := strings.Repeat("x", 3000)
+	for range 4 {
+		e.root.tr.user(0, "old")
+		e.root.tr.step(model.Reply{Text: big, Requests: []event.ToolRequest{call("c", "bash")}}, []string{big})
+	}
+	before := e.root.tr.bytes()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	e.compact(ctx, &turnState{})
+	assert.Equal(t, before, e.root.tr.bytes())
 }
 
 // A Turn under budget must not flash a compaction that never happens.

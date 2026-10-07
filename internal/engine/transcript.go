@@ -81,6 +81,10 @@ func (e *Engine) compact(ctx context.Context, t *turnState) {
 	}
 	e.bus.Publish(event.Notice{Level: "info", Text: "compacting the transcript"})
 	note := summarise(ctx, e.summarizer, gone)
+	// Aborted, the note says only that history was dropped, and that is recorded for good.
+	if ctx.Err() != nil {
+		return
+	}
 	e.root.lock(func() { e.root.tr.fold(cut, note) })
 	e.bus.Publish(event.Compacted{Turn: t.id, Dropped: cut, Note: note})
 }
