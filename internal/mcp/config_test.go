@@ -168,6 +168,16 @@ func TestTransport_PicksByTypeAndRefusesTheRest(t *testing.T) {
 	}
 }
 
+// Both set is refused as written, not as expanded: an unset ${VAR} emptied the
+// url and launched the command the trust question never showed.
+func TestLoad_RefusesBothTransportsBeforeExpanding(t *testing.T) {
+	cfgs, err := Load([]byte(`{"mcpServers": {"x": {"url": "${DETENT_TEST_UNSET}", "command": "sh"}}}`))
+	require.NoError(t, err)
+	_, err = cfgs["x"].transport(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not both")
+}
+
 // Claude Code's own shape, since .mcp.json is its file first. Scopes
 // come spaced, as it writes them, or listed, as Gemini CLI does.
 func TestLoad_ReadsClaudeCodesOAuth(t *testing.T) {

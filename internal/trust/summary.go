@@ -113,14 +113,19 @@ func servers(raw []byte) []string {
 	var out []string
 	for _, name := range slices.Sorted(maps.Keys(f.Servers)) {
 		s := f.Servers[name]
-		what := cleanURL(s.URL)
-		if s.URL == "" {
-			what = "runs " + strings.Join(append([]string{s.Command}, s.Args...), " ")
+		// Both are shown when both are set, since expanding can empty either.
+		var what []string
+		if s.URL != "" {
+			what = append(what, cleanURL(s.URL))
 		}
+		if s.Command != "" || s.URL == "" {
+			what = append(what, "runs "+strings.Join(append([]string{s.Command}, s.Args...), " "))
+		}
+		line := name + ": " + strings.Join(what, " or ")
 		if s.Disabled {
-			what += " (disabled)"
+			line += " (disabled)"
 		}
-		out = append(out, name+": "+what)
+		out = append(out, line)
 		if len(s.Env) > 0 {
 			out = append(out, "  env: "+strings.Join(slices.Sorted(maps.Keys(s.Env)), ", "))
 		}

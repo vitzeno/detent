@@ -30,6 +30,8 @@ type Config struct {
 	OAuth *OAuth `json:"oauth"`
 	// Auth is another client's field, read for what it can give OAuth.
 	Auth foreignAuth `json:"auth"`
+	// both is Command and URL set as written, which expanding may hide by emptying one.
+	both bool
 }
 
 // OAuth is Claude Code's "oauth" object, for a sign-in discovery cannot
@@ -106,6 +108,7 @@ func merge(into map[string]Config, path string, raw []byte) error {
 		return fmt.Errorf("mcp: %s: %w", path, err)
 	}
 	for name, c := range f.Servers {
+		c.both = c.Command != "" && c.URL != ""
 		into[name] = c.expanded()
 	}
 	return nil

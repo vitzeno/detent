@@ -207,7 +207,7 @@ func connect(ctx context.Context, name string, c Config, oauth auth.OAuthHandler
 // config describes no server at all or two of them. oauth signs in.
 func (c Config) transport(oauth auth.OAuthHandler) (sdk.Transport, error) {
 	switch {
-	case c.Command != "" && c.URL != "":
+	case c.both || c.Command != "" && c.URL != "":
 		return nil, errors.New("set command or url, not both")
 
 	case c.URL != "":
