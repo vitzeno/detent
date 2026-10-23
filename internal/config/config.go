@@ -70,7 +70,7 @@ type Config struct {
 	// A string because YAML has no duration, and empty takes the built-in.
 	CommandTimeout string `yaml:"command_timeout"`
 	// FinishCheck asks the model to check its work before a request that changed
-	// something ends. A pointer so unset means on rather than false.
+	// something ends. A pointer so unset means the engine's default.
 	FinishCheck *bool `yaml:"finish_check"`
 	// Subagents lets the model hand work to spawn_agent. Off until measured.
 	Subagents *bool `yaml:"subagents"`
@@ -258,8 +258,13 @@ func (c Config) ChildTimeoutDuration() (time.Duration, error) {
 // SpawnsSubagents is Subagents with its default, off.
 func (c Config) SpawnsSubagents() bool { return c.Subagents != nil && *c.Subagents }
 
-// FinishChecks is FinishCheck with its default, on.
-func (c Config) FinishChecks() bool { return c.FinishCheck == nil || *c.FinishCheck }
+// FinishChecks is FinishCheck with the engine's default.
+func (c Config) FinishChecks() bool {
+	if c.FinishCheck == nil {
+		return engine.DefaultFinishCheck
+	}
+	return *c.FinishCheck
+}
 
 // TrustsMCPHints is MCPTrustHints with its default, on.
 func (c Config) TrustsMCPHints() bool { return c.MCPTrustHints == nil || *c.MCPTrustHints }

@@ -197,15 +197,15 @@ func TestChildTimeout_TakesADurationOrTheDefault(t *testing.T) {
 	assert.ErrorContains(t, err, "child_timeout")
 }
 
-func TestResolve_FinishCheckIsOnUnlessTurnedOff(t *testing.T) {
+func TestResolve_FinishCheckIsOffUnlessTurnedOn(t *testing.T) {
 	t.Setenv("DETENT_FINISH_CHECK", "")
-	assert.True(t, Resolve(Config{}, Config{}, -1).FinishChecks())
-
-	off := false
-	assert.False(t, Resolve(Config{FinishCheck: &off}, Config{}, -1).FinishChecks())
-
-	t.Setenv("DETENT_FINISH_CHECK", "false")
 	assert.False(t, Resolve(Config{}, Config{}, -1).FinishChecks())
+
+	on := true
+	assert.True(t, Resolve(Config{FinishCheck: &on}, Config{}, -1).FinishChecks())
+
+	t.Setenv("DETENT_FINISH_CHECK", "true")
+	assert.True(t, Resolve(Config{}, Config{}, -1).FinishChecks())
 }
 
 // clearEnv is only as good as envKeys, so the two must name the same variables.

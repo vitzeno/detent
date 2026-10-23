@@ -12,7 +12,7 @@ headers: {}                # extra request headers
 
 steps: 0                   # Steps before it asks to continue (100)
 command_timeout: ""        # stop a command after this long, e.g. 30m (10m)
-finish_check:              # ask the model to check its work before finishing (true)
+finish_check:              # ask the model to check its work before finishing (false)
 context_tokens: 0          # transcript budget before compacting (200000)
 
 # --- Subagents ---

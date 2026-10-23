@@ -29,7 +29,7 @@ class DetentOptions(InstalledAgentOptions):
         default=None, description="Steps per request before detent stops (detent's default when unset)."
     )
     finish_check: bool | None = Field(
-        default=None, description="Ask the model to check its work before finishing (detent's default, on, when unset)."
+        default=None, description="Ask the model to check its work before finishing (detent's default, off, when unset)."
     )
 
 

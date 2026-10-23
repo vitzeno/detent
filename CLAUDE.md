@@ -402,9 +402,10 @@ adding a fat dependency fails with the transitive import named.
   it says how long it ran. A declined tool call returns a result saying
   so and its siblings still run: **declining stops a tool call, not a
   Turn.** A reply with no calls that stopped short (cut off, errored,
-  empty or only reasoning) is nudged to carry on, twice at most, and a
+  empty or only reasoning) is nudged to carry on, twice at most. With
+  `finish_check` on (off by default, since the check mostly redid the work), a
   Turn that ran anything not read-only is asked once to check its work
-  against the request before it ends (`finish_check`). The judge reading the request
+  against the request before it ends. The judge reading the request
   as answered is advice the model reads at its next Step (`SuggestFinish`),
   never a stop: when it ended Turns, every such stop in real sessions cut
   the model off mid-plan. `MaxSteps` defaults to 100 and is soft: hitting it publishes

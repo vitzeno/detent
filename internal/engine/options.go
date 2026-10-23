@@ -133,7 +133,7 @@ func WithCommandTimeout(d time.Duration) Option {
 	}
 }
 
-// WithFinishCheck turns the check before a changing Turn ends on or off. On by default.
+// WithFinishCheck turns the check before a changing Turn ends on or off, from DefaultFinishCheck.
 func WithFinishCheck(on bool) Option {
 	return func(e *Engine) { e.finishCheck = on }
 }

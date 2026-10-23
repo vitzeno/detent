@@ -24,6 +24,8 @@ const (
 	// DefaultContextTokens caps the transcript, resent whole every Step.
 	// Sized for a large window, so a small local model wants context_tokens.
 	DefaultContextTokens = 200_000
+	// DefaultFinishCheck is off, since asking the model to check its work mostly redid it.
+	DefaultFinishCheck = false
 )
 
 const (
@@ -134,7 +136,7 @@ func New(bus *event.Bus, m Completer, tools *tool.Registry, runners RunnerSelect
 		maxSteps:       defaultMaxSteps,
 		maxToolCalls:   defaultToolCallsPerStep,
 		commandTimeout: DefaultCommandTimeout,
-		finishCheck:    true,
+		finishCheck:    DefaultFinishCheck,
 		contextTokens:  DefaultContextTokens,
 		stopGrace:      DefaultStopGrace,
 		past:           map[uuid.UUID]*turnState{},
