@@ -19,11 +19,11 @@ Commands run on your machine, and anything flagged dangerous waits for you to ap
 
 <table>
   <tr>
-    <td colspan="2"><img src=".github/assets/timings.gif" alt="A request timing the ui test packages: the tool calls run, then its view lands, a bar chart of each package's test time growing in with a stat and a passing status"><br><sub><b>Views</b>: a request ends with its answer drawn as it lands, here a chart of test times</sub></td>
+    <td colspan="2"><img src=".github/assets/sizes.gif" alt="A question about why the ui package is largest, answered with a bar chart of lines per package, stat tiles and a card of what each part does"><br><sub><b>Sizes</b>: a chart, stats and a card of what lives where</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src=".github/assets/choice.gif" alt="A question about which SQLite driver to keep, answered with two options side by side, the recommended one starred, and the facts behind it"><br><sub><b>A choice</b>: options side by side, the pick starred</sub></td>
-    <td width="50%"><img src=".github/assets/sizes.gif" alt="A question about why the ui package is largest, answered with a bar chart of lines per package, stat tiles and a card of what each part does"><br><sub><b>Sizes</b>: a chart, stats and a card of what lives where</sub></td>
+    <td width="50%"><img src=".github/assets/timings.gif" alt="A request timing the ui test packages: the tool calls run, then its view lands, a bar chart of each package's test time growing in with a stat and a passing status"><br><sub><b>Views</b>: a request ends with its answer drawn as it lands, here a chart of test times</sub></td>
   </tr>
   <tr>
     <td colspan="2"><img src=".github/assets/sub-agents.png" alt="The inspector over a session: one subagent's output on the left and its own history of calls on the right, with the main history's finished subagents behind it"><br><sub><b>Subagents</b>: <code>a</code> opens one's work, <code>←</code>/<code>→</code> moves between them</sub></td>
