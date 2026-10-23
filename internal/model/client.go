@@ -320,13 +320,13 @@ func (c *Client) systemPrompt() string {
 func (c *Client) builtIn() string {
 	switch {
 	case c.role == RoleChild:
-		return c.env.preamble() + childPrompt
+		return c.env.preamble(c.model) + childPrompt
 	case c.role == RoleReviewer:
-		return c.env.preamble() + reviewerPrompt
+		return c.env.preamble(c.model) + reviewerPrompt
 	case c.subagents:
-		return systemPrompt(c.env) + subagentRule
+		return systemPrompt(c.env, c.model) + subagentRule
 	}
-	return systemPrompt(c.env)
+	return systemPrompt(c.env, c.model)
 }
 
 // snippet bounds an error body so a 2MB HTML error page cannot become

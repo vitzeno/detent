@@ -16,7 +16,7 @@ func TestSystemPrompt_EndsWithTheProjectsInstructions(t *testing.T) {
 	got := c.systemPrompt()
 	assert.True(t, strings.HasSuffix(got, "use tabs\n</instructions>"))
 	assert.Less(t, strings.Index(got, "Work the request"), strings.Index(got, "use tabs"))
-	assert.Equal(t, systemPrompt(LocalEnvironment()), NewClient("", "", "").systemPrompt(),
+	assert.Equal(t, systemPrompt(LocalEnvironment(), DefaultModel), NewClient("", "", "").systemPrompt(),
 		"no instructions adds nothing")
 }
 
@@ -107,23 +107,29 @@ func TestBrief_WritesADurationAsAPersonWould(t *testing.T) {
 
 func TestSystemPrompt_StatesTheCommandLimit(t *testing.T) {
 	env := LocalEnvironment()
-	assert.NotContains(t, systemPrompt(env), "is stopped")
+	assert.NotContains(t, systemPrompt(env, DefaultModel), "is stopped")
 	env.Timeout = 10 * time.Minute
-	assert.Contains(t, systemPrompt(env), "A command still running after 10m is stopped.")
+	assert.Contains(t, systemPrompt(env, DefaultModel), "A command still running after 10m is stopped.")
 }
 
 // The prompt promises a shape another package emits, so it is checked
 // against that package's constant: prose drifting from it fails silently.
 func TestSystemPrompt_NamesTheMarkerUsercommandActuallyWrites(t *testing.T) {
-	assert.Contains(t, systemPrompt(LocalEnvironment()), usercommand.Marker)
-	assert.Contains(t, systemPrompt(LocalEnvironment()), "read it rather than running it again",
+	assert.Contains(t, systemPrompt(LocalEnvironment(), DefaultModel), usercommand.Marker)
+	assert.Contains(t, systemPrompt(LocalEnvironment(), DefaultModel), "read it rather than running it again",
 		"and says what to do with it, which is the point of naming it")
+}
+
+func TestSystemPrompt_UsesConfiguredModelInPreamble(t *testing.T) {
+	c := NewClient("", "vendor/custom-model", "")
+	assert.Contains(t, c.systemPrompt(), `You are the configured model "vendor/custom-model".`)
+	assert.NotContains(t, c.systemPrompt(), DefaultModel)
 }
 
 // Point 4 says earlier steps are still on disk, which a resume makes
 // false, so its exception must name the marker the note opens with.
 func TestSystemPrompt_NamesTheResumeMarker(t *testing.T) {
-	got := systemPrompt(LocalEnvironment())
+	got := systemPrompt(LocalEnvironment(), DefaultModel)
 	assert.Contains(t, got, ResumeMarker)
 	assert.Contains(t, got, "is the exception, and says what survived")
 }
@@ -150,7 +156,7 @@ func TestEnvironment_SaysWhatChanges(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := systemPrompt(tt.env)
+			got := systemPrompt(tt.env, DefaultModel)
 			for _, w := range tt.wants {
 				assert.Contains(t, got, w)
 			}
@@ -162,21 +168,21 @@ func TestEnvironment_SaysWhatChanges(t *testing.T) {
 }
 
 func TestSystemPrompt_SpeaksTheShellsDialect(t *testing.T) {
-	sh := systemPrompt(Environment{OS: "linux", Arch: "amd64", Dir: "/x"})
-	assert.Equal(t, sh, systemPrompt(Environment{OS: "linux", Arch: "amd64", Dir: "/x", Shell: ShellSh}),
+	sh := systemPrompt(Environment{OS: "linux", Arch: "amd64", Dir: "/x"}, DefaultModel)
+	assert.Equal(t, sh, systemPrompt(Environment{OS: "linux", Arch: "amd64", Dir: "/x", Shell: ShellSh}, DefaultModel),
 		"sh named or not is the same prompt")
 	assert.Contains(t, sh, "Each command runs through a fresh `sh -c` starting in that directory. ")
 	assert.Contains(t, sh, "9. Prefer a specific tool over bash when one fits.")
 	assert.Contains(t, sh, "Never through bash with echo, printf, cat, tee, sed -i or a > redirect")
 
-	ps := systemPrompt(Environment{OS: "windows", Arch: "amd64", Dir: `C:\x`, Shell: ShellPwsh})
+	ps := systemPrompt(Environment{OS: "windows", Arch: "amd64", Dir: `C:\x`, Shell: ShellPwsh}, DefaultModel)
 	assert.Contains(t, ps, "PowerShell 7")
 	assert.Contains(t, ps, "9. Prefer a specific tool over powershell when one fits.")
 	assert.Contains(t, ps, "Never through powershell with Set-Content")
 	assert.NotContains(t, ps, "bash", "every mention of bash is replaced, or the model calls a tool it has not got")
 	assert.NotContains(t, ps, "sh -c")
 
-	gb := systemPrompt(Environment{OS: "windows", Arch: "amd64", Dir: `C:\x`, Shell: ShellGitBash})
+	gb := systemPrompt(Environment{OS: "windows", Arch: "amd64", Dir: `C:\x`, Shell: ShellGitBash}, DefaultModel)
 	assert.Contains(t, gb, "Git Bash")
 	assert.Contains(t, gb, "over bash when", "Git Bash keeps the bash tool")
 }

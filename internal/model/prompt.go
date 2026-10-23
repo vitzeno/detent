@@ -61,12 +61,15 @@ func Brief(d time.Duration) string {
 	return s
 }
 
-func systemPrompt(env Environment) string { return env.preamble() + env.rules() }
+func systemPrompt(env Environment, modelName string) string {
+	return env.preamble(modelName) + env.rules()
+}
 
-// preamble states the facts a command depends on: whose flags, where
-// it starts, what survives, what can be undone.
-func (e Environment) preamble() string {
+// preamble states the configured model and facts a command depends on:
+// whose flags, where it starts, what survives, and what can be undone.
+func (e Environment) preamble(modelName string) string {
 	var b strings.Builder
+	fmt.Fprintf(&b, "You are the configured model %q.\n", modelName)
 	fmt.Fprintf(&b, "Environment: %s/%s, working directory %s.\n", e.OS, e.Arch, e.Dir)
 
 	if e.Sandboxed {
