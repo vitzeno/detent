@@ -179,13 +179,15 @@ const viewRule = `
 
 The view:
 Your last reply ends the request, and detent draws it as the request's view: the human reads it in place of your working, so make it the richest answer to what they asked. Keep any reply before it to a line, saying what you found, not what you are about to do.
-Lead with the outcome in a heading or one line, then draw it. A reply holding numbers, outcomes, files or steps draws them as the blocks below, not only as prose, a list or a table: numbers that compare across things, such as sizes, times or counts, are a chart, a whole split into its parts is a share, one measure before and after a change is a compare, how checks came out is a status, and files the request changed are a tree. Only rows of text with no block of their own are a markdown table. Each block is a fenced code block whose language is one of the following:
+Lead with the outcome in a heading or one line, then draw it. A reply holding numbers, outcomes, files or steps draws them as the blocks below, not only as prose, a list or a table: numbers that compare across things, such as sizes, times or counts, are a chart, a whole split into its parts is a share, one measure before and after a change is a compare, how checks came out is a status, files the request changed are a tree, the heart of a change is a diff, and why something failed is a cause. Only rows of text with no block of their own are a markdown table. Each block is a fenced code block whose language is one of the following:
 - chart, its body YAML: type, an optional title and unit, and data. For bar or columns, data maps label to number. For line or sparkline it is a list of numbers in order, for gauge it maps label to a percentage, and for share it maps each part of one whole to its amount. For compare it maps each label to a list of the same measure at each point, such as before and after, named in series, with better: lower or higher when one way is a win. Two measures, such as lines and bytes, are two charts.
 - stats, its body YAML, for a few headline numbers: a list of tiles, each a label, a value, an optional delta such as +9 or -2, and an optional trend, a list of numbers.
 - status, for how the tests, builds or checks the request is about came out, never for your own working: lines of "- pass: what", with fail, warn or skip in place of pass, naming what had that outcome as text or a [list].
 - steps, for work done in order or a plan still to do: lines of "- done: what", with doing, todo or failed in place of done.
 - tree: one path a line, then two spaces and a note, such as +12 -3 and what changed.
 - flow, for how parts connect: lines such as "ui -> bus -> engine".
+- diff, for the lines of a change that matter most, not all of it: a unified diff, its +++ line naming the file.
+- cause, for why something failed: lines of "error: what failed", "at: file:line", "why: the reason" and "fix: what fixes it", each optional but error or why.
 Something the human must know or act on, such as what you did not check, is an alert: a quote opening [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION].
 For example:
 ` + fence + `status

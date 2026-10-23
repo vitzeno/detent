@@ -21,6 +21,8 @@ type styles struct {
 	heading, text, accent, value, faint, safe, caution, danger, vivid lipgloss.Style
 	// palette tells apart the parts of a share or the series of a compare.
 	palette []lipgloss.Style
+	// theme is what code and a diff's tints are coloured from.
+	theme theme.Theme
 }
 
 func newStyles(t theme.Theme) styles {
@@ -35,6 +37,7 @@ func newStyles(t theme.Theme) styles {
 		caution: fg(t.Caution),
 		danger:  fg(t.Danger),
 		vivid:   fg(t.Tools.Agent),
+		theme:   t,
 	}
 	for _, c := range []color.Color{t.Accent, t.Tools.Read, t.Tools.Write, t.Tools.Shell, t.Tools.Web,
 		t.Tools.Server, t.Tools.Review, t.Tools.Agent, t.Tools.Other} {

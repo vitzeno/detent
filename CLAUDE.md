@@ -197,7 +197,9 @@ A request's **view** is the reply it ended `done` with, which the model is told
 to make the richest answer to what was asked (`viewRule` in `internal/model`, which a
 test holds to naming every block `ui/view` draws). `ui/view` draws it, markdown through
 glamour plus what markdown cannot draw: fenced `chart`, `stats`, `status`, `steps`,
-`tree` and `flow` blocks, and GitHub's `[!NOTE]` alerts. Plain markdown is lifted too
+`tree`, `flow`, `diff` and `cause` blocks, and GitHub's `[!NOTE]` alerts. A `diff` is
+coloured as `/review` colours one (`syntax.Tinted`), its lines read by their markers since
+a model miscounts a hunk's header. Plain markdown is lifted too
 (`lift`), since a model often writes no block: a table gets bars in its number columns, a
 task list is steps, a list of paths is a tree and a list of measures is bars, a heading
 shimmers, code types out and a bold number counts up. History leads it with `▤` and

@@ -4,6 +4,7 @@ package view
 
 import (
 	"maps"
+	"math"
 	"slices"
 	"strings"
 
@@ -28,6 +29,8 @@ var drawers = map[string]drawer{
 	"steps":  drawSteps,
 	"tree":   drawTree,
 	"flow":   drawFlow,
+	"diff":   drawDiff,
+	"cause":  drawCause,
 }
 
 // Blocks names the fenced languages a view draws, which the model must be told of.
@@ -105,7 +108,8 @@ func (d Drawing) Frame(n int) string {
 		out = append(out, p.draw(ease(clamp((t-start)/(1-sweep))))...)
 	}
 	// The front of the reveal is drawn faint, so lines fade in rather than appear.
-	shown := int(t / sweep * float64(d.height))
+	// Rounded up, so a line shows as its block starts and a short view loses no frames.
+	shown := int(math.Ceil(t / sweep * float64(d.height)))
 	for i := range out {
 		switch {
 		case i >= shown:

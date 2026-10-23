@@ -256,6 +256,8 @@ A request ends with its view: the final reply, drawn as markdown with whatever f
 | `steps` | work in order, done to still to do |
 | `tree` | the files a request changed, with their counts |
 | `flow` | how parts connect, as boxes and arrows |
+| `diff` | the heart of a change, coloured as `/review` colours one |
+| `cause` | why something failed: the error, where, why and the fix |
 | `> [!WARNING]` | a note, tip or warning, as GitHub draws its alerts |
 
 Plain markdown gets the same treatment: a table's number columns get bars, a task list becomes steps, a list of paths a tree, and a list of sizes or times a bar chart

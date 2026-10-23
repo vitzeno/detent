@@ -1,6 +1,8 @@
 package view
 
 import (
+	"fmt"
+	"image/color"
 	"strings"
 	"testing"
 
@@ -334,6 +336,69 @@ func TestOutsideEscapes_LeavesEscapesAlone(t *testing.T) {
 	assert.Equal(t, "\x1b[38;2;12;3m99 of 99\x1b[m", got)
 }
 
+// A diff is drawn as /review draws one: its file named, its header gone, and what it
+// added and removed on their tints, read by marker since a model miscounts the header.
+func TestRender_DrawsADiffAsTheReviewDoes(t *testing.T) {
+	block := "```diff\n--- a/x.go\n+++ b/x.go\n@@ -1,1 +1,1 @@\n same()\n-old()\n+new()\n```\n"
+	raw := strings.Split(Render(block, theme.Current(), 60), "\n")
+	out := strings.Split(plain(strings.Join(raw, "\n")), "\n")
+	require.Len(t, out, 5, "%q", out)
+	assert.Equal(t, "  x.go", out[0], "the file, not its --- and +++ lines")
+	assert.Contains(t, out[1], "@@ -1,1 +1,1 @@")
+	assert.NotContains(t, raw[2], "\x1b[48", "what the change kept is untinted")
+	assert.Contains(t, raw[3], bg(theme.Current().DiffRemoved), "past the one line the header counts")
+	assert.Contains(t, raw[4], bg(theme.Current().DiffAdded))
+	assert.Contains(t, out[4], "+new()")
+
+	headless := plain(Render("```diff\n-a\n+b\n```\n", theme.Current(), 40))
+	assert.Equal(t, "  -a\n  +b", headless, "a diff with no header still draws")
+	half := plain(Render("```diff\n+++ ui/x.go\n-a\n+b\n```\n", theme.Current(), 40))
+	assert.Equal(t, "  ui/x.go\n  -a\n  +b", half, "a model often names the file with +++ alone")
+	removed := plain(Render("```diff\n--- a/x.sql\n+++ b/x.sql\n@@ -1 +1 @@\n--- a comment\n+++ added\n```\n", theme.Current(), 40))
+	assert.Equal(t, "  x.sql\n  @@ -1 +1 @@\n  --- a comment\n  +++ added", removed, "past a hunk's header, --- is code")
+
+	bad := plain(Render("```diff\njust some code\n```\n", theme.Current(), 80))
+	assert.Contains(t, bad, "diff block not drawn: a diff adds or removes at least one line")
+}
+
+// What a diff added is written in as it arrives, while what it removed is there from the start.
+func TestLayout_ADiffWritesInWhatItAdded(t *testing.T) {
+	const old, nu = "-the old line, long enough to fill it", "+the new line, long enough to fill it"
+	d := Layout("```diff\n"+old+"\n"+nu+"\n```\n", theme.Current(), 40)
+	early := strings.Split(plain(d.Frame(4)), "\n")
+	require.Len(t, early, 2)
+	assert.Equal(t, "  "+old, early[0])
+	assert.NotEmpty(t, early[1], "it has started")
+	assert.NotContains(t, early[1], nu, "and is still being written")
+	assert.Contains(t, plain(d.Frame(Frames)), nu)
+}
+
+// A cause is a card: the error and its stack, where, why, and the fix, which lands last.
+func TestRender_DrawsACauseAsACard(t *testing.T) {
+	block := "```cause\nfix: bound the loop\nerror: index out of range\n  goroutine 1\nat: `store.go:142`\nwhy: one past the end\n```\n"
+	out := plain(Render(block, theme.Current(), 60))
+	assert.Equal(t, "  ▌ ✗ index out of range\n  ▌   goroutine 1\n  ▌   at store.go:142\n  ▌\n"+
+		"  ▌ why  one past the end\n  ▌ fix  bound the loop", out, "drawn in its order, not the order written")
+
+	// Below a long reply the reveal passes the card at once, and the card holds its fix back.
+	d := Layout(strings.Repeat("A line of the reply.\n\n", 30)+block+"\nAfter.\n", theme.Current(), 60)
+	held := false
+	for n := range Frames {
+		frame := plain(d.Frame(n))
+		held = held || strings.Contains(frame, "After.") && !strings.Contains(frame, "bound the loop")
+	}
+	assert.True(t, held, "the reveal has passed the card while its fix has still to land")
+
+	for name, c := range map[string]struct{ body, want string }{
+		"no error or why": {"at: x.go:1\nfix: y\n", "a cause says what failed"},
+		"an unknown key":  {"reason: x\n", "line 1: start each line with error, at, why or fix"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Contains(t, plain(Render("```cause\n"+c.body+"```\n", theme.Current(), 100)), c.want)
+		})
+	}
+}
+
 // every is a view holding one of each kind of block, for what all of them must keep.
 const every = sample + "```chart\ntype: columns\ndata: {a: 3, b: 9}\n```\n" +
 	"```chart\ntype: line\ndata: [1, 5, 2, 8]\n```\n```chart\ntype: sparkline\ndata: [1, 5, 2]\n```\n" +
@@ -344,7 +409,9 @@ const every = sample + "```chart\ntype: columns\ndata: {a: 3, b: 9}\n```\n" +
 	"```flow\na -> b -> c\n```\n```flow\nalpha -> beta -> gamma -> delta -> epsilon -> zeta\n```\n" +
 	"> [!NOTE]\n> noted\n\n# Heading\n\nFrom **3,550ms**.\n\n| a | n |\n|---|---|\n| x | 1 |\n| y | 20 |\n\n" +
 	"- [x] done\n- [ ] not\n\n1. `a.go` — 3 lines\n2. `b.go` — 9 lines\n\n- `a/b.go` new\n- `a/c.go` gone\n\n" +
-	"```go\nfunc f() {}\n```\n"
+	"```go\nfunc f() {}\n```\n" +
+	"```diff\n--- a/x.go\n+++ b/x.go\n@@ -1 +1 @@\n-old()\n+new()\n```\n" +
+	"```cause\nerror: boom\nat: x.go:1\nwhy: because\nfix: this\n```\n"
 
 // A view arrives from nothing and rests as Render draws it, and no frame between
 // changes its height, which would make the pane jump as it arrives.
@@ -411,6 +478,7 @@ func FuzzRender(f *testing.F) {
 	f.Add("> [!NOTE]\n> ```chart\n> type: bar\n\n> [!tip] inline", 5)
 	f.Add("| a |\n|---|---|\n| 1 |\n\n|x|\n|-|\n|9|\n|1e99|\n\n| \\| | **b** |\n|:-:|--:|\n| `|` | 2 |\n", 7)
 	f.Add("- [x]\n- [ ] \n1. `a/b` — 1\n2. [x/](y) —\n# \n**1,2,3** **9.**", 3)
+	f.Add("```diff\n--- a\n+++ /dev/null\n@@\n\\ No newline\n+\n-\n--- x\n```\n```cause\nerror:\n  \nwhy:\n```", 2)
 	f.Fuzz(func(t *testing.T, text string, width int) {
 		width = width%200 + 1
 		if width < 1 {
@@ -425,6 +493,12 @@ func FuzzRender(f *testing.F) {
 			}
 		}
 	})
+}
+
+// bg is the escape that sets c as the background, as a diff's tint is set.
+func bg(c color.Color) string {
+	r, g, b, _ := c.RGBA()
+	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r>>8, g>>8, b>>8)
 }
 
 func plain(s string) string {
