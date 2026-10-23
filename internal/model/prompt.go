@@ -87,8 +87,8 @@ func (e Environment) preamble() string {
 		b.WriteString("Everything you do for one request is checkpointed together, and the human can undo the whole request.\n")
 	}
 
-	b.WriteString(e.shellLine() +
-		"A bare `cd` does not carry to the next command, but files you create or change do, and so does anything you install.\n")
+	b.WriteString(e.shellLine())
+	b.WriteString("A bare `cd` does not carry to the next command, but files you create or change do, and so does anything you install.\n")
 	if e.Timeout > 0 {
 		fmt.Fprintf(&b, "A command still running after %s is stopped. Run anything longer in the background and check on it.\n", Brief(e.Timeout))
 	}
