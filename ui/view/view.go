@@ -46,7 +46,8 @@ func Render(text string, t theme.Theme, width int) string {
 	return strings.Join(out, "\n")
 }
 
-// Title is what history names a view by: its first heading, else its first line.
+// Title is what history names a view by: its first heading, else its first line,
+// whose leading bold is a title of its own, as a model opens its reasoning.
 func Title(text string) string {
 	first := ""
 	for line := range strings.SplitSeq(defuse.Text(text), "\n") {
@@ -56,6 +57,11 @@ func Title(text string) string {
 		}
 		if first == "" && line != "" {
 			first = line
+		}
+	}
+	if rest, ok := strings.CutPrefix(first, "**"); ok {
+		if bold, _, closed := strings.Cut(rest, "**"); closed && bold != "" {
+			return bold
 		}
 	}
 	return first

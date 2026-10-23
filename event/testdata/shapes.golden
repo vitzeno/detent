@@ -115,6 +115,7 @@ step.started Turn uuid.UUID
 step.text Agent uuid.UUID
 step.text Step uuid.UUID
 step.text Text string
+step.text Thinking bool
 step.text Turn uuid.UUID
 tool_call.approval Agent uuid.UUID
 tool_call.approval Args{} interface {}

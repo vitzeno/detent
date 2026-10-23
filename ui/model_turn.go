@@ -95,6 +95,8 @@ type historyRow struct {
 	// view, and drawn caches its rendering for the width and style it was drawn at.
 	final bool
 	drawn proseDrawing
+	// thinking is reasoning the model gave in place of a reply, drawn faint.
+	thinking bool
 	// tool is the tool's name, empty for a command the human ran, and
 	// headline its arguments as history leads with them.
 	tool     event.ToolName

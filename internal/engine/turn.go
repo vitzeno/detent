@@ -182,7 +182,7 @@ func (e *Engine) runAgent(ctx context.Context, t *turnState, a *agent) (end agen
 		nudging := reply.Unfinished() && nudges < maxNudges
 		checking := len(reply.Requests) == 0 && !nudging && a.root() && e.finishCheck && t.changed.Load() && !checked
 		if reply.Text != "" && !checking {
-			e.bus.Publish(event.ModelText{Turn: t.id, Step: stepID, Text: reply.Text, Agent: a.id})
+			e.bus.Publish(event.ModelText{Turn: t.id, Step: stepID, Text: reply.Text, Thinking: reply.Thinking, Agent: a.id})
 		}
 
 		// No calls means the model is finished asking, unless it stopped mid-thought.

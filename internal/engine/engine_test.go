@@ -454,6 +454,22 @@ func TestTurn_AChangingTurnIsAskedToCheckOnce(t *testing.T) {
 	answered(t, r.eng)
 }
 
+// Reasoning an endpoint sent in place of an answer is said to be reasoning,
+// so a front-end can draw it apart from what the model replied.
+func TestTurn_ReasoningIsMarkedAsThinking(t *testing.T) {
+	r := newRig(t, []model.Reply{
+		{Text: "**Inspecting files** I should list them.", Thinking: true,
+			Requests: []event.ToolRequest{readCall("c1", "a.go")}},
+		{Text: "a.go holds main", Stop: "stop"},
+	})
+	r.run("what is in a.go")
+	var got []bool
+	for _, e := range r.of(event.ModelTextKind) {
+		got = append(got, e.(event.ModelText).Thinking)
+	}
+	assert.Equal(t, []bool{true, false}, got)
+}
+
 // The answer the check sends back is a draft, kept in the transcript but never
 // shown: when it was, the human read the request's view twice.
 func TestTurn_TheDraftTheCheckSendsBackIsNotShown(t *testing.T) {

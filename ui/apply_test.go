@@ -75,6 +75,27 @@ func TestApply_TheReplyARequestEndsWithIsItsView(t *testing.T) {
 	assert.Empty(t, view(event.EndDone, ""), "a request that ended with no reply has no view")
 }
 
+// Reasoning is a faint row of its own, named by its bold title in history and
+// shown whole when selected, and never mistaken for the request's view.
+func TestApply_ReasoningIsAFaintRowOfItsOwn(t *testing.T) {
+	const thought, final = "**Inspecting Go files**\n\nI need to count them.", "There are two."
+	turn, evs := aTurn("count the go files")
+	m := sized(t, 120, 40, append(evs,
+		event.ModelText{Turn: turn, Text: thought, Thinking: true},
+		event.ModelText{Turn: turn, Text: final},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: final},
+	)...)
+	rows := m.blocks[0].rows
+	require.Len(t, rows, 2)
+	assert.True(t, rows[0].thinking)
+	assert.False(t, rows[0].final)
+	assert.True(t, rows[1].final)
+
+	history, _ := m.historyLines()
+	assert.Contains(t, stripANSI(strings.Join(history, "\n")), "∴ Inspecting Go files")
+	assert.Contains(t, stripANSI(m.proseBody(rows[0])), "I need to count them.")
+}
+
 func TestApply_CountsWhatStatusReports(t *testing.T) {
 	turn, evs := aTurn("go")
 	bad, good := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())

@@ -175,9 +175,24 @@ func wrapWide(s string, width int) string {
 func (m Model) proseBody(r *historyRow) string {
 	width, style := paneInner(m.layout.outputColW), theme.Current().Markdown
 	if r.drawn.width != width || r.drawn.style != style {
-		r.drawn = proseDrawing{width: width, style: style, text: view.Render(r.prose, theme.Current(), width)}
+		text := view.Render(r.prose, theme.Current(), width)
+		if r.thinking {
+			text = thoughtBody(r.prose, width)
+		}
+		r.drawn = proseDrawing{width: width, style: style, text: text}
 	}
 	return r.drawn.text
+}
+
+// thoughtBody is reasoning wrapped and dimmed, read as background to the view.
+func thoughtBody(text string, width int) string {
+	var lines []string
+	for line := range strings.SplitSeq(text, "\n") {
+		for _, part := range (painter{}).Wrap(line, width) {
+			lines = append(lines, styleFaint.Render(part))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // viewBody draws the row's view whole. Height lets a plot grow into the

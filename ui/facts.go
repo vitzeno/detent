@@ -129,11 +129,11 @@ func (m *Model) apply(ev event.Event) tea.Cmd {
 
 	case event.ModelText:
 		if a := m.agents[v.Agent]; a != nil {
-			a.rows = append(a.rows, &historyRow{prose: defuse.Text(v.Text)})
+			a.rows = append(a.rows, &historyRow{prose: defuse.Text(v.Text), thinking: v.Thinking})
 			m.touch(a)
 			return nil
 		}
-		m.addProse(v.Text)
+		m.addProse(v.Text, v.Thinking)
 
 	case event.ToolCallProposed:
 		if a := m.agents[v.Agent]; a != nil {
@@ -297,13 +297,13 @@ func (m *Model) endTurn(v event.TurnEnded) {
 
 // addProse gives the model's words a row of their own: it is the
 // answer, not a banner nobody can scroll.
-func (m *Model) addProse(text string) {
+func (m *Model) addProse(text string, thinking bool) {
 	if m.cur == nil || strings.TrimSpace(text) == "" {
 		return
 	}
 	m.cur.rev++
 	// Defused once here, since the pane draws it whole through glamour.
-	m.cur.rows = append(m.cur.rows, &historyRow{prose: defuse.Text(text)})
+	m.cur.rows = append(m.cur.rows, &historyRow{prose: defuse.Text(text), thinking: thinking})
 	m.trackNewest()
 }
 

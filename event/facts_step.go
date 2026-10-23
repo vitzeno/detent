@@ -36,6 +36,8 @@ type ModelText struct {
 	Turn uuid.UUID `json:"Turn"`
 	Step uuid.UUID `json:"Step"`
 	Text string    `json:"Text"`
+	// Thinking is reasoning the endpoint sent in place of an answer, never a reply.
+	Thinking bool `json:"Thinking"`
 	// Agent is the subagent this came from, uuid.Nil for the root.
 	Agent uuid.UUID `json:"Agent"`
 }

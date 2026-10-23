@@ -230,6 +230,10 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 	if r.review != uuid.Nil {
 		return []string{m.reviewRowLine(mark, r)}
 	}
+	if r.thinking {
+		return []string{fmt.Sprintf("%s%s %s", mark, styleFaint.Render("∴"),
+			styleFaint.Render(layout.Truncate(view.Title(r.prose), m.blockWidth()-10)))}
+	}
 	if r.final {
 		return []string{fmt.Sprintf("%s%s %s", mark, styleBrand.Render("▤"),
 			styleGoal.Render(layout.Truncate(view.Title(r.prose), m.blockWidth()-10)))}

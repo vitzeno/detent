@@ -125,6 +125,7 @@ func TestTitle(t *testing.T) {
 	for text, want := range map[string]string{
 		"Some intro\n\n## Fixed undo\nmore": "Fixed undo",
 		"\n\nJust an answer.\nSecond line":  "Just an answer.",
+		"**Inspecting Go files**\n\nI need": "Inspecting Go files",
 		"":                                  "",
 	} {
 		assert.Equal(t, want, Title(text), text)

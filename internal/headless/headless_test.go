@@ -142,6 +142,18 @@ func TestAsk_ShowsControlsInTheCommandEscaped(t *testing.T) {
 	assert.Contains(t, out.String(), "flagged: flag echo hi^[[2J")
 }
 
+// Reasoning between calls was most of what a run printed, so a thought is
+// one line naming it, and the reply is printed whole.
+func TestHandle_PrintsAThoughtAsOneLine(t *testing.T) {
+	var out bytes.Buffer
+	p := &Printer{bus: event.New(), out: &out, errOut: io.Discard}
+	p.handle(event.ModelText{Text: "**Inspecting files**\n\nI should list them first.", Thinking: true})
+	p.handle(event.ModelText{Text: "There are two."})
+	assert.Contains(t, out.String(), "∴ Inspecting files")
+	assert.NotContains(t, out.String(), "I should list them")
+	assert.Contains(t, out.String(), "There are two.")
+}
+
 func TestHandle_DefusesWhatAModelOrCommandWrote(t *testing.T) {
 	cases := []struct {
 		name string

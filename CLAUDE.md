@@ -197,6 +197,9 @@ A request's **view** is the reply it ended `done` with, which the model is told
 to make the richest answer to what was asked (`viewRule` in `internal/model`).
 `ui/view` draws it, markdown through glamour plus the fenced `chart`, `stats` and
 `status` blocks markdown cannot draw, and history leads it with `▤` and its title.
+Reasoning an endpoint sends in place of an answer is `ModelText.Thinking`: a faint
+`∴` row titled by its leading bold, shown dimmed when selected, and in a headless
+run only that title, so the working stays background to the view.
 The word once meant a spec drawing one command's output, which `viewspec` still
 does until those per-output views go (`docs/views.md`), so code says
 "per-output view" for that one.

@@ -121,6 +121,11 @@ func (p *Printer) handle(ev event.Event) (event.EndReason, bool) {
 		fmt.Fprintln(p.out, "    "+p.from(p.children[v.ToolCall])+defuse.Text(outcome(v.Result)))
 		delete(p.children, v.ToolCall)
 	case event.ModelText:
+		if v.Thinking {
+			// One line, since the reasoning between calls was most of what a run printed.
+			fmt.Fprintf(p.out, "  %s∴ %s\n", p.from(v.Agent), clip(thought(v.Text), 120))
+			break
+		}
 		fmt.Fprintf(p.out, "\n%s%s\n", p.from(v.Agent), defuse.Text(v.Text))
 	case event.ApprovalAsked:
 		p.bus.Publish(event.ResolveApproval{ToolCall: v.ToolCall, Approved: p.approve(v)})
@@ -147,6 +152,17 @@ func (p *Printer) from(agent uuid.UUID) string {
 		return ""
 	}
 	return "[" + p.names[agent] + "] "
+}
+
+// thought is reasoning's title: its leading bold, else its first line.
+func thought(text string) string {
+	first, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	if rest, ok := strings.CutPrefix(first, "**"); ok {
+		if bold, _, closed := strings.Cut(rest, "**"); closed && bold != "" {
+			return bold
+		}
+	}
+	return first
 }
 
 // clip keeps a tool call to one line of at most n runes, defused.

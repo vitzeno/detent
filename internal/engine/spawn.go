@@ -160,7 +160,7 @@ func (e *Engine) lastWords(ctx context.Context, t *turnState, child *agent, why 
 	end.used = end.used.Add(used)
 	e.bus.Publish(event.StepEnded{Turn: t.id, Step: step, Usage: used, Stop: reply.Stop, Agent: child.id})
 	if err == nil && strings.TrimSpace(reply.Text) != "" {
-		e.bus.Publish(event.ModelText{Turn: t.id, Step: step, Text: reply.Text, Agent: child.id})
+		e.bus.Publish(event.ModelText{Turn: t.id, Step: step, Text: reply.Text, Thinking: reply.Thinking, Agent: child.id})
 		e.appended(child, t.id, step, func() []event.Message { return child.tr.say(reply.Text) })
 		return reply.Text
 	}
