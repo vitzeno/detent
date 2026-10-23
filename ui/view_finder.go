@@ -133,12 +133,10 @@ func (f *finderModal) preview(m Model, h finderHit, width int) (lines []string, 
 		lines = signInPageLines(r.signin, width)
 	case r.running:
 		lines = r.live
+	case r.drawable():
+		lines = m.rowBody(r, width)
 	default:
-		rendered, ok := m.drawRow(r, width, m.finderBodyHeight(), false)
-		if !ok {
-			return []string{styleFaint.Render("(no output)")}, 0
-		}
-		lines = rendered.Lines
+		return []string{styleFaint.Render("(no output)")}, 0
 	}
 	if line, _, ok := search.Lines(f.query, ansi.Strip(strings.Join(lines, "\n"))); ok {
 		return lines, line

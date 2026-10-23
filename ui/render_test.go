@@ -139,6 +139,27 @@ func TestRender_ARequestsViewIsDrawnInPlaceOfItsText(t *testing.T) {
 	assert.NotContains(t, pane, "type: bar", "not shown as code")
 }
 
+// A command's output is drawn as it came, except a diff, coloured as /review colours
+// one: by language, with what it added and removed tinted the pane's width.
+func TestRender_ADiffInAnOutputIsColouredAsTheReviewColoursIt(t *testing.T) {
+	const diff = "--- a/x.go\n+++ b/x.go\n@@ -1,2 +1,2 @@\n-- old comment\n+func new() {}\n same\n"
+	turn, evs := oneTurn("show the change", "make show", diff)
+	m := sized(t, 120, 40, append(evs, event.TurnEnded{Turn: turn, Reason: event.EndDone})...)
+	r := m.rows()[0]
+
+	lines := m.rowBody(r, 80)
+	require.Len(t, lines, 6, "two headers, the hunk header and its three lines")
+	added, removed := sgr(48, palette.DiffAdded), sgr(48, palette.DiffRemoved)
+	assert.Contains(t, lines[3], removed, "a removed line reading -- stays in the hunk")
+	assert.Contains(t, lines[4], added)
+	assert.NotContains(t, lines[5], "\x1b[48", "context is untinted")
+	assert.Contains(t, stripANSI(m.viewportHeader()), "diff")
+
+	_, evs = oneTurn("list", "ls", "a.go\nb.go\n")
+	m = sized(t, 120, 40, evs...)
+	assert.Equal(t, []string{"a.go", "b.go", ""}, m.rowBody(m.rows()[0], 80), "anything else is the text it is")
+}
+
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 func stripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }

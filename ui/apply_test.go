@@ -93,7 +93,7 @@ func TestApply_ReasoningIsAFaintRowOfItsOwn(t *testing.T) {
 
 	history, _ := m.historyLines()
 	assert.Contains(t, stripANSI(strings.Join(history, "\n")), "∴ Inspecting Go files")
-	assert.Contains(t, stripANSI(m.proseBody(rows[0])), "I need to count them.")
+	assert.Contains(t, stripANSI(m.proseBody(rows[0], 80)), "I need to count them.")
 }
 
 func TestApply_CountsWhatStatusReports(t *testing.T) {
@@ -351,12 +351,10 @@ func TestApply_JudgementExpandsWhatNeedsAttention(t *testing.T) {
 	m := feed(t, append(evs,
 		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "make"}},
 		event.ToolCallEnded{ToolCall: call, Result: event.Result{ExitCode: 2, Stderr: "boom"}},
-		event.ToolCallJudged{ToolCall: call, Status: "hard_failure", RenderKind: "errors",
-			Attention: 0.95, FromJudge: true},
+		event.ToolCallJudged{ToolCall: call, Status: "hard_failure", Attention: 0.95, FromJudge: true},
 	)...)
 	r := m.rows()[0]
 	require.NotNil(t, r.post)
-	assert.Equal(t, event.RenderKind("errors"), r.kind())
 	assert.True(t, r.expanded, "something needing attention opens itself")
 }
 
@@ -383,7 +381,7 @@ func TestRestore_RebuildsHistoryFromTheStream(t *testing.T) {
 		event.CheckpointTaken{Turn: turn, Snapshot: "gone-with-the-container"},
 		event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "ls"}},
 		event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: "a.go\n"}},
-		event.ToolCallJudged{ToolCall: call, Status: "clean_success", RenderKind: "file_listing", FromJudge: true},
+		event.ToolCallJudged{ToolCall: call, Status: "clean_success", FromJudge: true},
 		event.ModelText{Turn: turn, Text: "one file"},
 		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: "one file",
 			Usage: event.Usage{PromptTokens: 20, CompletionTokens: 5}},
@@ -400,7 +398,6 @@ func TestRestore_RebuildsHistoryFromTheStream(t *testing.T) {
 	assert.Equal(t, event.EndDone, b.end)
 	require.Len(t, b.rows, 2, "the call and the model's words")
 	assert.Equal(t, "ls", b.rows[0].command)
-	assert.Equal(t, event.RendersFiles, b.rows[0].kind())
 
 	assert.Equal(t, 1, m.calls)
 	assert.Equal(t, 25, m.tokens)

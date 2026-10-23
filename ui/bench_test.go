@@ -275,7 +275,7 @@ func withBigOutput(m Model, lines int) Model {
 		fmt.Fprintf(&b, "%-6d detent/internal/pkg%-3d  ok  0.42s  %d allocs\n", i, i%40, i*7)
 	}
 	r.result = &event.Result{Stdout: b.String()}
-	r.running, r.viewTried, r.view = false, false, nil
+	r.running = false
 	m.nav.cursor = len(rows) - 1
 	m.nav.focus = focusOutput
 	m.histRev++

@@ -27,9 +27,7 @@ import (
 	"github.com/vitzeno/detent/internal/store"
 	"github.com/vitzeno/detent/internal/tool"
 	"github.com/vitzeno/detent/internal/trust"
-	"github.com/vitzeno/detent/internal/viewgen"
 	"github.com/vitzeno/detent/logging"
-	"github.com/vitzeno/detent/ui"
 )
 
 // session is what one run opens, filled in phase by phase. sd closes it.
@@ -152,6 +150,9 @@ func (s *session) buildEngine() error {
 	if err != nil {
 		return err
 	}
+	if s.cfg.Views != "" {
+		s.warnings = append(s.warnings, "views is no longer read, since a request now ends with its view: remove it from your config")
+	}
 	if !s.cfg.SpawnsSubagents() && s.cfg.ReviewModel != "" {
 		s.warnings = append(s.warnings, "review_model is set but subagents is off, so /review has no reviewer")
 	}
@@ -256,8 +257,6 @@ func (s *session) wire() context.Context {
 	if s.judge != nil {
 		s.sd.unwatch = append(s.sd.unwatch, judgepkg.Watch(ctx, s.bus, s.judge))
 	}
-	// Without a key there is nothing to compose with, but shipped and saved views still draw.
-	s.sd.unwatch = append(s.sd.unwatch, composer(s.cfg.Views, s.judge).Watch(ctx, s.bus))
 	s.sd.unwatch = append(s.sd.unwatch, forget.Watch(ctx, s.bus, sessionStore(s.events), s.id,
 		forget.WithContainers(containerRemover(sandboxSocketFor(s.cfg))),
 		forget.WithLocks(lockForDelete(hold.DefaultDir()))))
@@ -286,20 +285,6 @@ func loadMCPConfig(enabled bool, project []byte, files []string) (map[string]mcp
 		return map[string]mcppkg.Config{}, nil
 	}
 	return mcppkg.Load(project, files...)
-}
-
-// composer wires the view composer. Only views: generate hands it the
-// judge, and Validate refuses that mode without a jev key.
-func composer(mode string, judge *classify.JevJudge) *viewgen.Generator {
-	opts := []viewgen.Option{viewgen.WithRegistry(ui.Registry()), viewgen.WithStore(viewgen.NewStore(viewgen.DefaultDir()))}
-	if judge == nil {
-		// Without a key nothing publishes ToolCallJudged.
-		opts = append(opts, viewgen.WithoutVerdicts())
-	}
-	if mode == config.ViewsGenerate && judge != nil {
-		opts = append(opts, viewgen.WithJudge(judge))
-	}
-	return viewgen.New(opts...)
 }
 
 // sessionStore avoids handing forget a non-nil interface holding a

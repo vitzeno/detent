@@ -156,12 +156,13 @@ func TestDefaults_DoNotDriftFromModel(t *testing.T) {
 	assert.Equal(t, model.DefaultBaseURL, DefaultBaseURL)
 }
 
-// Only generate ever writes a spec. saved draws from what already exists.
-func TestViews_DefaultsToSavedAndSpendsNothing(t *testing.T) {
-	assert.Equal(t, ViewsSaved, Default().Views)
-	assert.Equal(t, "saved", ViewsSaved)
-	assert.NotEqual(t, ViewsGenerate, Default().Views,
-		"generation costs judge calls, so it is opt-in")
+// Every config -init wrote before views went says views: saved, and decoding is
+// strict, so the key is still accepted for one release rather than refused.
+func TestLoad_StillAcceptsTheViewsKey(t *testing.T) {
+	cfg, err := Load(writeTemp(t, "views: saved\n"), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "saved", cfg.Views)
+	assert.NoError(t, cfg.Validate())
 }
 
 func TestValidate_ReportsEveryBadValue(t *testing.T) {
@@ -170,7 +171,6 @@ func TestValidate_ReportsEveryBadValue(t *testing.T) {
 	bad := Default()
 	bad.SandboxMode = "docker"
 	bad.SandboxNetwork = "bridge"
-	bad.Views = "generte"
 	bad.LogLevel = "verbose"
 	bad.RiskThreshold = 1.5
 	bad.Steps = -1
@@ -179,15 +179,9 @@ func TestValidate_ReportsEveryBadValue(t *testing.T) {
 	bad.HostShell = "cmd"
 	err := bad.Validate()
 	require.Error(t, err)
-	for _, want := range []string{"docker", "bridge", "generte", "verbose", "1.5", "steps", "context_tokens", "soon", `host_shell "cmd"`} {
+	for _, want := range []string{"docker", "bridge", "verbose", "1.5", "steps", "context_tokens", "soon", `host_shell "cmd"`} {
 		assert.Contains(t, err.Error(), want)
 	}
-
-	gen := Default()
-	gen.Views = ViewsGenerate
-	require.ErrorContains(t, gen.Validate(), "jev_api_key")
-	gen.JevAPIKey = "k"
-	assert.NoError(t, gen.Validate())
 }
 
 func TestValidate_TheSandboxIsRefusedOnWindows(t *testing.T) {

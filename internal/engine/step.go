@@ -117,7 +117,7 @@ func (e *Engine) plan(ctx context.Context, a *agent, step uuid.UUID, reply model
 		p := &toolCallPlan{id: uuid.Must(uuid.NewV7()), call: c}
 		out = append(out, p)
 		e.bus.Publish(event.ToolCallProposed{ToolCall: p.id, Step: step, Tool: c.Name, Args: c.Args,
-			Renders: renders(a, c.Name), Executor: executor(a, c.Name), Agent: a.id})
+			Executor: executor(a, c.Name), Agent: a.id})
 
 		dup := ids[c.ID]
 		ids[c.ID] = true
@@ -147,16 +147,6 @@ func (e *Engine) plan(ctx context.Context, a *agent, step uuid.UUID, reply model
 		e.bus.Publish(event.ToolCallAssessed{ToolCall: p.id, Risk: p.risk})
 	}
 	return out
-}
-
-// renders asks the tool how its output should be read. Advisory: a
-// front-end may ignore it.
-func renders(a *agent, name event.ToolName) event.RenderKind {
-	t, ok := a.tools.Lookup(name)
-	if !ok {
-		return ""
-	}
-	return t.Describe().Renders
 }
 
 // executor names what runs a tool, empty for a shell command. A

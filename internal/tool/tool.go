@@ -42,8 +42,6 @@ type Spec struct {
 	// Mutability floors the risk chain without a model call. Empty
 	// means unknown, which is bash and only bash.
 	Mutability string
-	// Renders says how to read the output. Empty leaves it to the judge.
-	Renders event.RenderKind
 	// Executor names what runs this call, empty being a shell command.
 	Executor string
 	// Delegates says the call has no effect of its own: each effect is

@@ -299,11 +299,6 @@ func TestDetailCache_NeverGoesStale(t *testing.T) {
 		{"the terminal widens", func(m *Model) { m.layout.width = 190; m.sizeViewport() }},
 		{"the terminal shortens", func(m *Model) { m.layout.height = 20; m.sizeViewport() }},
 		{"focus moves to the pane", func(m *Model) { m.nav.focus = focusOutput }},
-		{"the table cursor moves", func(m *Model) {
-			if r := m.focused(); r != nil {
-				r.tableCursor = 4
-			}
-		}},
 		{"undo opens", func(m *Model) { m.mode = modeUndo }},
 		{"undo closes", func(m *Model) { m.mode = modeInput }},
 	}
@@ -342,7 +337,6 @@ func TestDetailKey_CoversEverythingThePaneDrawsFrom(t *testing.T) {
 		{"a panel opens", func(m *Model) { m.panel.open = panelContext }},
 		{"the mode", func(m *Model) { m.mode = modeUndo }},
 		{"which pane has focus", func(m *Model) { m.nav.focus = focusOutput }},
-		{"the table cursor", func(m *Model) { m.focused().tableCursor = 4 }},
 	}
 
 	for _, in := range inputs {

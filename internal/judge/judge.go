@@ -14,10 +14,12 @@ import (
 
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/internal/classify"
-	"github.com/vitzeno/detent/internal/viewgen"
 )
 
 const (
+	// maxJudgeBytes is the most of an output the judge is sent, over a network call.
+	maxJudgeBytes = 4 * 1024
+
 	// goalMet is where the goal-achieved score stops being an opinion and
 	// becomes a reason to stop asking for tools.
 	goalMet = 0.9
@@ -58,9 +60,6 @@ func (j resultJudge) Judge(ctx context.Context, command string, res event.Result
 	out.FromJudge = true
 	if a, has := answers["result_status"]; has && a.Choice != "" {
 		out.Status = event.Status(a.Choice)
-	}
-	if a, has := answers["render_kind"]; has && a.Choice != "" {
-		out.RenderKind = event.RenderKind(a.Choice)
 	}
 	if a, has := answers["attention"]; has {
 		out.Attention = a.Noul
@@ -184,10 +183,10 @@ func (w *watcher) publish(j resultJudge, turn uuid.UUID, done event.ToolCallEnde
 // heuristic is what a row reads as with no judge wired. It never claims
 // a shape, only that something failed or was silent.
 func heuristic(res event.Result) event.ToolCallJudged {
-	out := event.ToolCallJudged{RenderKind: event.RendersText, GoalAchieved: -1}
+	out := event.ToolCallJudged{GoalAchieved: -1}
 	switch {
 	case res.Err != "" || res.ExitCode != 0:
-		out.Status, out.RenderKind, out.Attention = event.StatusFailed, event.RendersError, 0.9
+		out.Status, out.Attention = event.StatusFailed, 0.9
 	case strings.TrimSpace(res.Stdout+res.Stderr) == "":
 		out.Status, out.Attention = event.StatusEmpty, 0.1
 	default:
@@ -199,10 +198,10 @@ func heuristic(res event.Result) event.ToolCallJudged {
 // output caps what the judge is shown. A judgement is about shape and
 // outcome, neither of which needs a megabyte.
 func output(r event.Result) string {
-	outLimit := viewgen.MaxJudgeBytes - min(len(r.Stderr), stderrShare)
+	outLimit := maxJudgeBytes - min(len(r.Stderr), stderrShare)
 	stdout := headOf(r.Stdout, outLimit)
 	stderr := r.Stderr
-	if errLimit := viewgen.MaxJudgeBytes - min(len(r.Stdout), outLimit); len(stderr) > errLimit {
+	if errLimit := maxJudgeBytes - min(len(r.Stdout), outLimit); len(stderr) > errLimit {
 		stderr = "…[truncated]\n" + tailOf(stderr, errLimit)
 	}
 	if stdout != "" && stderr != "" {
@@ -223,7 +222,6 @@ func resultQuestions() classify.Questions {
 				string(event.StatusEmpty):    "ran fine but produced no useful output",
 			}},
 		},
-		"render_kind": viewgen.RenderKindQuestion(),
 		"attention": {
 			Instructions: "Does this outcome need the human's attention before continuing — " +
 				"a failure, a surprise, a destructive result — rather than collapsing to one line?",

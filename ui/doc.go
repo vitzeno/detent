@@ -30,15 +30,13 @@
 //	forget.go       the /delete question
 //	signin.go       a server asking to be signed in to
 //
-//	spec.go         viewspec wiring: registry, binding, fallbacks
-//	spec_paint.go   viewspec's Painter, over lipgloss
 //	styles.go       every style baked from the theme
 //
 //	view.go         composes the screen
 //	view_layout.go  sizing
 //	view_chrome.go  bars and pane headers
 //	view_history.go the history pane
-//	view_detail.go  the output pane
+//	view_detail.go  the output pane: a row's words as a view, a diff, or plain text
 //	view_ask.go     the question boxes
 //	view_modal.go   the frame the finder, inspector, resume picker and review share
 //	view_finder.go  the finder's box

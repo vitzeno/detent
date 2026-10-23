@@ -26,7 +26,6 @@ func (WriteFile) Describe() Spec {
 			{Name: "content", Type: TypeString, Desc: "the file's full contents", Required: true},
 		},
 		Mutability: event.MutWorkspace,
-		Renders:    event.RendersDiff,
 	}
 }
 

@@ -52,7 +52,7 @@ func kinds() []kind {
 		}
 		spec := t.Describe()
 		out = append(out, kind{name: name, runner: g.runner, render: g.render,
-			renders: spec.Renders, args: g.args, result: g.result, risk: riskFor(spec.Mutability)})
+			args: g.args, result: g.result, risk: riskFor(spec.Mutability)})
 	}
 	// Two MCP tools, which no registry holds until a server answers.
 	return append(out,

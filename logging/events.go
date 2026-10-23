@@ -9,16 +9,6 @@ const (
 	LLMRequest = "llm.request"
 	LLMReply   = "llm.reply"
 	LLMError   = "llm.error"
-
-	// How the output pane got drawn. Every silent branch says which,
-	// because "it looked plain" is otherwise unanswerable.
-	ViewLookup   = "view.lookup"
-	ViewSkipped  = "view.skipped"
-	ViewInvalid  = "view.invalid"
-	ViewFit      = "view.fit"
-	ViewAccepted = "view.accepted"
-	ViewDeclined = "view.declined"
-	ViewDrawn    = "view.drawn"
 )
 
 // Field names records carry. Spelled once so queries can rely on them.
@@ -44,7 +34,6 @@ const (
 	Judge   = "judge"
 	Host    = "host"
 	Sandbox = "sandbox"
-	Viewgen = "viewgen"
 	Store   = "store"
 	// Bus is every fact Watch writes, whoever published it.
 	Bus = "bus"

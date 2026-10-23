@@ -10,17 +10,8 @@ import (
 // Where a keystroke moves things: the history cursor, the output pane's
 // scroll and focus. keys.go decides what a key means, this what it does.
 
-// outputNav moves inside the detail component: the view's own
-// selection when it draws one, viewport lines otherwise.
+// outputNav scrolls the output pane by d lines.
 func (m Model) outputNav(d int) (Model, tea.Cmd) {
-	if r := m.focused(); r != nil && !r.running {
-		if b, ok := boundView(r); ok {
-			if n, ok := b.SelectableRows(); ok && n > 0 {
-				r.tableCursor = min(max(r.tableCursor+d, 0), n-1)
-				return m, nil
-			}
-		}
-	}
 	if d < 0 {
 		m.output.ScrollUp(-d)
 	} else {

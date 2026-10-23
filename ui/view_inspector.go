@@ -83,9 +83,7 @@ func (in *inspectorModal) outputLines(m Model) []string {
 	case r.running:
 		return append([]string(nil), r.live...)
 	case r.drawable():
-		if rendered, ok := m.drawRow(r, width, m.modalPaneHeight(), in.outputFocused); ok {
-			return strings.Split(wrapWide(strings.Join(rendered.Lines, "\n"), width), "\n")
-		}
+		return m.rowBody(r, width)
 	}
 	return []string{styleFaint.Render("(no output yet)")}
 }

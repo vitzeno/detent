@@ -19,7 +19,6 @@ import (
 func TestJudge_ReadsWhatTheJudgeSaid(t *testing.T) {
 	j := resultJudge{Asker: fakeAsker{answers: classify.Answers{
 		"result_status": {Choice: string(event.StatusWarnings)},
-		"render_kind":   {Choice: "file_listing"},
 		"attention":     {Noul: 0.7},
 		"goal_achieved": {Noul: 0.95},
 	}}}
@@ -27,7 +26,6 @@ func TestJudge_ReadsWhatTheJudgeSaid(t *testing.T) {
 
 	assert.True(t, got.FromJudge)
 	assert.Equal(t, event.StatusWarnings, got.Status)
-	assert.Equal(t, event.RendersFiles, got.RenderKind)
 	assert.InDelta(t, 0.7, got.Attention, 1e-9)
 	assert.InDelta(t, 0.95, got.GoalAchieved, 1e-9)
 }
@@ -53,7 +51,6 @@ func TestJudge_FallsBackWithoutClaimingToBeAVerdict(t *testing.T) {
 			got := resultJudge{Asker: tt.asker}.Judge(context.Background(), "bash", tt.res)
 			assert.Equal(t, tt.status, got.Status)
 			assert.False(t, got.FromJudge, "a guess must never present as a verdict")
-			assert.NotEmpty(t, got.RenderKind, "something must always be drawable")
 		})
 	}
 }

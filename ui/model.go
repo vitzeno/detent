@@ -106,7 +106,7 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 
 	// Counters for /context and /status, folded from the stream rather
 	// than read back from anywhere.
-	calls, steps, errors, views, tokens int
+	calls, steps, errors, tokens int
 
 	// run is how this session described itself at startup.
 	run event.SessionStarted

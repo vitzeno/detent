@@ -51,20 +51,6 @@ const (
 	SandboxHost = "host"
 )
 
-// The Views modes. There is no "off": the pane draws from a spec either
-// way, and the only question is whether a new one may be written.
-const (
-	// ViewsSaved draws only from specs that exist (built in, shipped
-	// for known commands, or saved on disk) and never calls a model.
-	ViewsSaved = "saved"
-	// ViewsGenerate also asks the judge to compose a spec when nothing
-	// covers an output, and saves it so the next run is free.
-	ViewsGenerate = "generate"
-)
-
-// DefaultViews spends nothing. Generation is opt-in because it costs judge calls.
-const DefaultViews = ViewsSaved
-
 // DefaultLogLevel records what happened without recording everything.
 const DefaultLogLevel = "info"
 
@@ -118,7 +104,8 @@ type Config struct {
 	// LogDir holds one JSONL file per session, empty for logging.DefaultDir.
 	LogDir string `yaml:"log_dir"`
 
-	// Views is ViewsSaved or ViewsGenerate.
+	// Views is no longer read, since a request ends with its view. Accepted for one
+	// release, so a config -init wrote still loads, and a run that sets it is told.
 	Views string `yaml:"views"`
 
 	// HostShell is what host commands run in, one of host.Dialects, or empty to pick per OS.
@@ -145,7 +132,6 @@ func Default() Config {
 		JevModel:      classify.DefaultModel,
 		RiskThreshold: classify.DefaultRiskThreshold,
 		Theme:         DefaultTheme,
-		Views:         DefaultViews,
 		LogLevel:      DefaultLogLevel,
 
 		// The sandbox is experimental, so commands run here unless asked for it.
@@ -306,15 +292,6 @@ func (c Config) validate(goos string) error {
 	}
 	if c.SandboxNetwork != sandbox.NetworkHost && c.SandboxNetwork != sandbox.NetworkNone {
 		bad("unknown sandbox_network %q, choose one of: %s, %s", c.SandboxNetwork, sandbox.NetworkHost, sandbox.NetworkNone)
-	}
-	switch c.Views {
-	case ViewsSaved:
-	case ViewsGenerate:
-		if c.JevAPIKey == "" {
-			bad("views: generate composes a view by asking the judge, so it needs jev_api_key (or TYPESAFE_API_KEY). Set one, or use views: saved")
-		}
-	default:
-		bad("unknown views %q, choose one of: %s, %s", c.Views, ViewsSaved, ViewsGenerate)
 	}
 	if !slices.Contains(LogLevels, strings.ToLower(c.LogLevel)) {
 		bad("unknown log_level %q, choose one of: %s", c.LogLevel, strings.Join(LogLevels, ", "))

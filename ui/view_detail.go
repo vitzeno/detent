@@ -1,26 +1,28 @@
 package ui
 
 import (
-	"fmt"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/google/uuid"
 
-	"github.com/vitzeno/detent/logging"
+	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/ui/layout"
+	"github.com/vitzeno/detent/ui/syntax"
 	"github.com/vitzeno/detent/ui/theme"
 	"github.com/vitzeno/detent/ui/view"
 	"github.com/vitzeno/detent/ui/welcome"
 	"github.com/vitzeno/detent/version"
-	"github.com/vitzeno/detent/viewspec"
 )
 
 // The output pane: what the focused row renders into it, and the
 // viewport refresh that keeps it in step.
 
-// scrollMargin is how many lines of context the selection keeps. Two,
-// so reaching a table's first row brings its header back into view.
+// scrollMargin is how many lines of context a jump keeps above the line it lands on.
 const scrollMargin = 2
 
 // detailLines renders the focused row: a pending question first,
@@ -117,18 +119,11 @@ func (m *Model) refreshViewport() {
 		return
 	}
 	var body string
-	cursor := -1
 	switch {
-	case r.prose != "":
-		body = m.proseBody(r)
 	case r.running:
 		body = strings.Join(r.live, "\n")
 	case r.drawable():
-		rendered, ok := m.viewBody(r)
-		if !ok {
-			break
-		}
-		body, cursor = strings.Join(rendered.Lines, "\n"), rendered.CursorLine
+		body = strings.Join(m.rowBody(r, paneInner(m.layout.outputColW)), "\n")
 	}
 	if body == "" {
 		m.setViewContent(styleFaint.Render("(no output)"))
@@ -139,9 +134,6 @@ func (m *Model) refreshViewport() {
 	m.setViewContent(body)
 	if follow {
 		m.output.GotoBottom()
-	}
-	if cursor >= 0 {
-		m.scrollToLine(cursor)
 	}
 }
 
@@ -165,15 +157,37 @@ func wrapWide(s string, width int) string {
 	lines := strings.Split(s, "\n")
 	out := make([]string, 0, len(lines))
 	for _, l := range lines {
-		out = append(out, painter{}.Wrap(l, width)...)
+		out = append(out, wrapANSI(l, width)...)
 	}
 	return strings.Join(out, "\n")
 }
 
+// wrapANSI breaks at spaces, and mid-word only for a word wider than n, keeping
+// a command's colours on whichever line they fall.
+func wrapANSI(s string, n int) []string {
+	if n <= 0 || ansi.StringWidth(s) <= n {
+		return []string{s}
+	}
+	return strings.Split(ansi.Wrap(s, n, ""), "\n")
+}
+
+// rowBody draws a row width wide wherever it is shown: the model's words as a view,
+// a diff as /review colours one, and any other output as the text it is.
+func (m Model) rowBody(r *historyRow, width int) []string {
+	if r.prose != "" {
+		return strings.Split(m.proseBody(r, width), "\n")
+	}
+	text := r.text()
+	if diffHunk.MatchString(text) {
+		return diffLines(text, width)
+	}
+	return strings.Split(wrapWide(text, width), "\n")
+}
+
 // proseBody draws the model's words through ui/view, kept on the row since the
 // pane redraws on every focus change and glamour is the slow part.
-func (m Model) proseBody(r *historyRow) string {
-	width, style := paneInner(m.layout.outputColW), theme.Current().Markdown
+func (m Model) proseBody(r *historyRow, width int) string {
+	style := theme.Current().Markdown
 	if r.drawn.width != width || r.drawn.style != style {
 		text := view.Render(r.prose, theme.Current(), width)
 		if r.thinking {
@@ -188,66 +202,87 @@ func (m Model) proseBody(r *historyRow) string {
 func thoughtBody(text string, width int) string {
 	var lines []string
 	for line := range strings.SplitSeq(text, "\n") {
-		for _, part := range (painter{}).Wrap(line, width) {
+		for _, part := range wrapANSI(line, width) {
 			lines = append(lines, styleFaint.Render(part))
 		}
 	}
 	return strings.Join(lines, "\n")
 }
 
-// viewBody draws the row's view whole. Height lets a plot grow into the
-// pane but clips nothing, so a view scrolls like any other output.
-func (m Model) viewBody(r *historyRow) (viewspec.Render, bool) {
-	return m.drawRow(r, paneInner(m.layout.outputColW), m.output.Height(), m.nav.focus == focusOutput)
-}
+// hunkPattern is a unified diff's hunk header, its counts 1 when git leaves them out.
+const hunkPattern = `@@ -\d+(,\d+)? \+\d+(,\d+)? @@`
 
-// drawRow draws a row's view at any size, for the output pane and the
-// finder's preview alike, so a row looks the same wherever it is shown.
-func (m Model) drawRow(r *historyRow, width, height int, focused bool) (viewspec.Render, bool) {
-	b, ok := boundView(r)
-	if !ok {
-		return viewspec.Render{}, false
-	}
-	out, err := drawSafely(b, viewspec.Frame{
-		Width:   width,
-		Height:  height,
-		Focused: focused,
-		Cursor:  r.tableCursor,
-		Paint:   painter{},
-	})
-	if err != nil {
-		// The output is still worth reading when the view of it is not.
-		logging.For(logging.UI).Warn("a view could not draw this output",
-			logging.KeyEvent, logging.ViewInvalid, logging.KeyReason, err.Error())
-		return viewspec.Render{Lines: strings.Split(r.text(), "\n"), CursorLine: -1}, true
-	}
-	return out, true
-}
+// diffHunk finds a hunk header anywhere, which is what says an output is a diff.
+var diffHunk, hunkHeader = regexp.MustCompile(`(?m)^` + hunkPattern), regexp.MustCompile(`^` + hunkPattern)
 
-// drawSafely turns a widget's panic into an error, so one bad view
-// cannot take the whole TUI down with it.
-func drawSafely(b *viewspec.Bound, f viewspec.Frame) (out viewspec.Render, err error) {
-	defer func() {
-		if p := recover(); p != nil {
-			err = fmt.Errorf("the view panicked: %v", p)
+// diffLines draws a unified diff as /review does: each hunk coloured by its file's
+// language, read for exactly the lines its header counts, so a removed "-- x" stays code.
+func diffLines(text string, width int) []string {
+	var out []string
+	path := ""
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		m := hunkHeader.FindStringSubmatch(line)
+		if m == nil {
+			if after, ok := strings.CutPrefix(line, "+++ "); ok {
+				path = strings.TrimPrefix(after, "b/")
+			}
+			out = append(out, styleMuted.Render(layout.Truncate(line, width)))
+			continue
 		}
-	}()
-	return b.Draw(f)
+		out = append(out, styleFaint.Render(layout.Truncate(line, width)))
+		old, nu := count(m[1]), count(m[2])
+		var hunk []string
+		for i+1 < len(lines) && (old > 0 || nu > 0) {
+			next := lines[i+1]
+			switch {
+			case strings.HasPrefix(next, "-"):
+				old--
+			case strings.HasPrefix(next, "+"):
+				nu--
+			case strings.HasPrefix(next, `\`):
+			default:
+				old, nu = old-1, nu-1
+			}
+			hunk = append(hunk, next)
+			i++
+		}
+		out = append(out, hunkLines(path, hunk, width)...)
+	}
+	return out
 }
 
-// scrollToLine brings line into view without recentring: a selection
-// already on screen must not make the pane jump under the cursor.
-func (m *Model) scrollToLine(line int) {
-	top, h := m.output.YOffset(), m.output.Height()
-	if h <= 0 {
-		return
+func count(group string) int {
+	if group == "" {
+		return 1
 	}
-	switch {
-	case line-scrollMargin < top:
-		m.output.SetYOffset(max(0, line-scrollMargin))
-	case line+scrollMargin >= top+h:
-		m.output.SetYOffset(line + scrollMargin - h + 1)
+	n, _ := strconv.Atoi(group[1:])
+	return n
+}
+
+// hunkLines colours one hunk's lines by the language of the file at path.
+func hunkLines(path string, lines []string, width int) []string {
+	texts := make([]string, len(lines))
+	for i, l := range lines {
+		if l != "" {
+			texts[i] = l[1:]
+		}
 	}
+	code := syntax.Hunk(path, texts, palette.Syntax)
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		op := event.LineContext
+		if l != "" {
+			op = event.LineOp(l[0])
+		}
+		if code == nil || l == "" || op == '\\' {
+			out[i] = lineStyle(op).Render(layout.Truncate(l, width))
+			continue
+		}
+		out[i] = tinted(op, code[i], width)
+	}
+	return out
 }
 
 // tildePath trades a home prefix for ~, so a deep working directory

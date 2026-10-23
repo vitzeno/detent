@@ -338,22 +338,6 @@ func TestEngine_ResetForgetsTheTranscript(t *testing.T) {
 		2*time.Second, 10*time.Millisecond)
 }
 
-// A front-end cannot ask the registry, so the tool's own answer about
-// how to read its output has to travel on the fact.
-func TestToolCallProposed_CarriesTheToolsDeclaredShape(t *testing.T) {
-	reg := tool.Standard()
-	require.NoError(t, reg.Register(markdownTool{}))
-	call := event.ToolRequest{ID: "m1", Name: "declares_markdown"}
-	r := rigWithTools(t, event.New(), &fakeModel{replies: []model.Reply{{Requests: []event.ToolRequest{call}}}},
-		&fakeRunner{out: "ok\n"}, reg)
-	r.run("go")
-
-	proposed := r.of(event.ToolCallProposedKind)
-	require.Len(t, proposed, 1)
-	assert.Equal(t, event.RendersMarkdown, proposed[0].(event.ToolCallProposed).Renders,
-		"the tool's answer did not reach the fact")
-}
-
 // A front-end says what a rollback cannot take back, so it has to be
 // told which tool calls ran outside the sandbox.
 func TestToolCallProposed_CarriesTheExecutor(t *testing.T) {
@@ -502,15 +486,3 @@ func TestTurn_AReadOnlyTurnIsNotAskedToCheck(t *testing.T) {
 	assert.Len(t, r.of(event.StepEndedKind), 2)
 	assert.Empty(t, r.of(event.NoticeKind))
 }
-
-// markdownTool stands in for one that knows its output is a document,
-// since none of the shipped tools claims a shape today.
-type markdownTool struct{}
-
-func (markdownTool) Name() event.ToolName { return "declares_markdown" }
-
-func (markdownTool) Describe() tool.Spec {
-	return tool.Spec{Description: "x", Mutability: event.MutRead, Renders: event.RendersMarkdown}
-}
-
-func (markdownTool) Lower(tool.Args) (string, error) { return "true", nil }

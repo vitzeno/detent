@@ -73,7 +73,6 @@ func (m *Model) statusLines() []string {
 		{"steps", strconv.Itoa(m.steps)},
 		{"tool calls", strconv.Itoa(m.calls)},
 		{"errors", strconv.Itoa(m.errors)},
-		{"views drawn", strconv.Itoa(m.views)},
 		{"tokens", status.Tokens(m.tokens)},
 		{"context", m.contextDetail()},
 	}

@@ -36,9 +36,12 @@ func TestExample_NamesEveryKeyAndNoOthers(t *testing.T) {
 	}
 	for key := range want {
 		_, ok := got[key]
-		assert.True(t, ok, "%s is a config key the example never mentions", key)
+		assert.True(t, ok || retired[key], "%s is a config key the example never mentions", key)
 	}
 }
+
+// retired are keys still accepted, so an old config loads, that a new one never sets.
+var retired = map[string]bool{"views": true}
 
 // Copying the example as-is must change nothing: every key it sets is a
 // built-in default or a zero the layering skips.

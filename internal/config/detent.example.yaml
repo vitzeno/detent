@@ -39,7 +39,6 @@ mcp_trust_hints:           # run tools a server marks read-only unasked (true)
 
 theme: ""                  # dark, light, solarized, dracula (dark)
 host_shell: ""             # sh, pwsh or gitbash (sh, on Windows pwsh then gitbash)
-views: saved               # saved, or generate to compose new views with Jev
 
 # --- Sandbox ---
 

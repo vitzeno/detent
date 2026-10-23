@@ -95,7 +95,7 @@ func Snippet(text string) string {
 	return fmt.Sprintf("%s... (%d bytes, set log_bodies to record)", text[:cut], len(text))
 }
 
-// DefaultDir is where session logs live, beside the saved views.
+// DefaultDir is where session logs live, beside the event store.
 func DefaultDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {

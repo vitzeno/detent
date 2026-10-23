@@ -241,12 +241,8 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 	// The model speaking, not a command: no status badge, because
 	// nothing ran and there is no exit code to report.
 	if r.prose != "" {
-		note := ""
-		if k := r.kind(); k != "" && k != event.RendersText {
-			note = styleFaint.Render("  " + status.KindLabel(k))
-		}
-		return []string{fmt.Sprintf("%s%s %s%s", mark, styleGoal.Render("❯"),
-			styleMuted.Render(layout.Truncate(plainProse(r.prose), m.blockWidth()-10)), note)}
+		return []string{fmt.Sprintf("%s%s %s", mark, styleGoal.Render("❯"),
+			styleMuted.Render(layout.Truncate(plainProse(r.prose), m.blockWidth()-10)))}
 	}
 	s := status.Row{}
 	switch {

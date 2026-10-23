@@ -11,7 +11,6 @@ import (
 	"github.com/vitzeno/detent/defuse"
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/search"
-	"github.com/vitzeno/detent/viewspec"
 )
 
 // What history is a list of: one turnBlock per prompt, holding the
@@ -109,9 +108,6 @@ type historyRow struct {
 	// the file was new, when created becomes that content as a diff.
 	wrote   *written
 	created string
-	// renders is the shape the tool declared, which beats a judged
-	// guess because the tool knows and the judge is estimating.
-	renders event.RenderKind
 	// executor is empty for a shell command. Anything else ran outside
 	// the sandbox, so no checkpoint can take it back.
 	executor string
@@ -133,19 +129,12 @@ type historyRow struct {
 	took   time.Duration
 	post   *verdict
 
-	expanded    bool
-	tableCursor int
+	expanded bool
 
 	// found is the row's text made ready for the finder, and foundOf the
 	// result it was made from, so a new result makes it again.
 	found   *search.Text
 	foundOf *event.Result
-
-	// view is this row's bound spec, resolved once. viewTried marks
-	// the attempt so a spec that does not fit is not retried per frame.
-	view       *viewspec.Bound
-	viewTried  bool
-	viewSource string
 }
 
 // agentState is one subagent, folded from its facts. Its rows are its own and
@@ -178,10 +167,9 @@ type agentState struct {
 
 // verdict is the post-execution read, when one arrived.
 type verdict struct {
-	status     event.Status
-	renderKind event.RenderKind
-	attention  float64
-	fromJudge  bool
+	status    event.Status
+	attention float64
+	fromJudge bool
 }
 
 // written is a write_file call's path and content, defused.
@@ -209,14 +197,6 @@ func (r *historyRow) text() string {
 // a call streams, since live output has its own path.
 func (r *historyRow) drawable() bool {
 	return r != nil && !r.running && (r.prose != "" || r.result != nil)
-}
-
-// kind is the judged render kind, or "" while pending.
-func (r *historyRow) kind() event.RenderKind {
-	if r == nil || r.running || r.post == nil {
-		return ""
-	}
-	return r.post.renderKind
 }
 
 // ok reports whether the call succeeded, for the row's status glyph.

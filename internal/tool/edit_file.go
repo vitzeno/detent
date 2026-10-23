@@ -33,7 +33,6 @@ func (EditFile) Describe() Spec {
 			{Name: "replace_all", Type: TypeBool, Desc: "replace every occurrence (default false)"},
 		},
 		Mutability: event.MutWorkspace,
-		Renders:    event.RendersDiff,
 	}
 }
 

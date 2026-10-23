@@ -87,24 +87,6 @@ var verdicts = map[event.Status]verdict{
 	event.StatusEmpty:    {"no output", "○", &muted},
 }
 
-// kindLabels names the render kinds worth naming. The rest read as output.
-var kindLabels = map[event.RenderKind]string{
-	event.RendersTable:   "table",
-	event.RendersError:   "errors",
-	event.RendersDiff:    "diff",
-	event.RendersJSON:    "json",
-	event.RendersContent: "file",
-	event.RendersFiles:   "files",
-}
-
-// KindLabel names a render kind for the viewport header.
-func KindLabel(k event.RenderKind) string {
-	if label, ok := kindLabels[k]; ok {
-		return label
-	}
-	return "output"
-}
-
 // Notice is the one-shot flash at the end of the bar: what just
 // happened and whether it worked.
 type Notice struct {

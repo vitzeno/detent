@@ -15,10 +15,6 @@ import (
 // The frame around the panes, in screen order: the session bar, each
 // pane's header, and the status line above the input bar.
 
-// viewSourceMark precedes anything worth saying about how the pane
-// was drawn.
-const viewSourceMark = "✦"
-
 func (m Model) sessionBar() string {
 	jev := styleFaint.Render("jev ○ off")
 	if m.run.Judge != "" {
@@ -126,33 +122,22 @@ func (m Model) viewportHeader() string {
 	}
 	label := "output"
 	switch {
+	case r.final:
+		label = "view"
+	case r.thinking:
+		label = "thinking"
 	case r.prose != "":
-		// The model talking, not a file or a command's output.
-		label = "summary"
-	case r.kind() != "":
-		label = status.KindLabel(r.kind())
+		label = "reply"
+	case diffHunk.MatchString(r.text()):
+		label = "diff"
 	}
-	mark, width := "", m.layout.outputColW-24
-	if note := viewNote(r); note != "" {
-		mark = styleFaint.Render(" " + viewSourceMark + " " + note)
-		width -= len(note) + 3
-	}
-	head := fmt.Sprintf("%s %s%s", paneMark(active), paneLabel(label, active), mark)
+	width := m.layout.outputColW - 24
+	head := fmt.Sprintf("%s %s", paneMark(active), paneLabel(label, active))
 	// Prose has no command, and a dangling dash reads as a truncation.
 	if r.command == "" {
 		return head
 	}
 	return head + " — " + styleGoal.Render(layout.Truncate(r.command, width))
-}
-
-// viewNote says how the pane was drawn, and usually says nothing: only
-// framing a model had a hand in is worth a word.
-func viewNote(r *historyRow) string {
-	switch r.viewSource {
-	case "composed", "saved":
-		return r.viewSource
-	}
-	return ""
 }
 
 // panelName is what the header calls an open page.

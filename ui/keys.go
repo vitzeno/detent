@@ -333,11 +333,6 @@ func (m Model) outputKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m, nil
 	case key.Matches(msg, k.expand):
 		if r := m.focused(); r != nil {
-			if key.Matches(msg, keymap.input.run) {
-				if nm, ok := m.seedFromView(r); ok {
-					return nm, nil
-				}
-			}
 			m.toggleExpand(r)
 		}
 		return m, nil

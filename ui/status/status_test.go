@@ -84,11 +84,7 @@ func TestTokens(t *testing.T) {
 	}
 }
 
-// Every status the judge can publish reads as itself rather than "done",
-// and every labelled kind is one event has.
+// Every status the judge can publish reads as itself rather than "done".
 func TestVocabulary_AgreesWithEvent(t *testing.T) {
 	assert.ElementsMatch(t, event.Statuses(), slices.Collect(maps.Keys(verdicts)))
-	for k := range kindLabels {
-		assert.Contains(t, event.RenderKinds(), k)
-	}
 }

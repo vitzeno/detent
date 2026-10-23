@@ -56,7 +56,6 @@ type detailKey struct {
 	panel         panelKind
 	mode          mode
 	row           *historyRow
-	tableCursor   int
 	focused       bool
 }
 
@@ -66,9 +65,6 @@ func (m Model) detailKey() detailKey {
 		width: paneInner(m.layout.outputColW), height: m.output.Height(),
 		panel: m.panel.open, mode: m.mode, row: m.focused(),
 		focused: m.nav.focus == focusOutput,
-	}
-	if k.row != nil {
-		k.tableCursor = k.row.tableCursor
 	}
 	return k
 }

@@ -26,8 +26,8 @@ func TestSetup_WritesOneQueryableStreamPerSession(t *testing.T) {
 	closer, err := logging.Setup("s1", logging.WithDir(dir))
 	require.NoError(t, err)
 
-	logging.For(logging.Viewgen).Info("declined",
-		logging.KeyEvent, logging.ViewDeclined, "candidates", 2)
+	logging.For(logging.Engine).Info("asked",
+		logging.KeyEvent, logging.LLMRequest, "candidates", 2)
 	logging.For(logging.LLM).Info("replied",
 		logging.KeyEvent, logging.LLMReply, logging.KeyMS, 190)
 	require.NoError(t, closer())
@@ -37,8 +37,8 @@ func TestSetup_WritesOneQueryableStreamPerSession(t *testing.T) {
 	for _, r := range got {
 		assert.Equal(t, "s1", r[logging.KeySession])
 	}
-	assert.Equal(t, logging.Viewgen, got[0][logging.KeyComponent])
-	assert.Equal(t, logging.ViewDeclined, got[0][logging.KeyEvent])
+	assert.Equal(t, logging.Engine, got[0][logging.KeyComponent])
+	assert.Equal(t, logging.LLMRequest, got[0][logging.KeyEvent])
 	assert.Equal(t, logging.LLM, got[1][logging.KeyComponent])
 }
 
@@ -173,8 +173,6 @@ func TestEvents_NoNameSaysGoal(t *testing.T) {
 var names = []string{
 	logging.SessionOpen,
 	logging.LLMRequest, logging.LLMReply, logging.LLMError,
-	logging.ViewLookup, logging.ViewSkipped, logging.ViewInvalid,
-	logging.ViewFit, logging.ViewAccepted, logging.ViewDeclined, logging.ViewDrawn,
 }
 
 // records reads what has been written so far, skipping a half-written

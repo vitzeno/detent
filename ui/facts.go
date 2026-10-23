@@ -219,9 +219,6 @@ func (m *Model) apply(ev event.Event) tea.Cmd {
 	case event.ToolCallJudged:
 		m.judged(v)
 
-	case event.ViewReady:
-		m.viewReady(v)
-
 	case event.AuthorizationWaiting:
 		m.addSignIn(v)
 
@@ -320,7 +317,7 @@ func newCallRow(v event.ToolCallProposed) *historyRow {
 	return &historyRow{
 		id: v.ToolCall, command: event.Command(v.Tool, v.Args), tool: v.Tool,
 		headline: headline(v.Tool, v.Args), wrote: wroteBy(v),
-		renders: v.Renders, executor: v.Executor,
+		executor: v.Executor,
 	}
 }
 
@@ -388,21 +385,9 @@ func (m *Model) judged(v event.ToolCallJudged) {
 	if r == nil {
 		return
 	}
-	r.post = &verdict{status: v.Status, renderKind: v.RenderKind,
-		attention: v.Attention, fromJudge: v.FromJudge}
+	r.post = &verdict{status: v.Status, attention: v.Attention, fromJudge: v.FromJudge}
 	if v.Attention >= status.AttentionThreshold {
 		r.expanded = true
-	}
-}
-
-func (m *Model) viewReady(v event.ViewReady) {
-	r := m.row(v.Owner())
-	if r == nil || v.Spec == nil {
-		return
-	}
-	if bound, ok := bindSpec(*v.Spec, r.text()); ok {
-		r.view, r.viewTried, r.viewSource = bound, true, v.Source
-		m.views++
 	}
 }
 
@@ -432,7 +417,7 @@ func (m *Model) clearHistory() {
 	clear(m.agents)
 	m.agentOrder = nil
 	m.nav = navState{follow: true}
-	m.calls, m.steps, m.errors, m.views, m.tokens = 0, 0, 0, 0, 0
+	m.calls, m.steps, m.errors, m.tokens = 0, 0, 0, 0
 	m.ctxTokens = 0
 }
 

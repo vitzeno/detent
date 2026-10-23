@@ -53,7 +53,7 @@ var keymap = struct {
 	},
 	output: outputKeys{
 		move:   lettered("scroll", "scroll a page", "the top", "the end"),
-		expand: bind("enter", "seed the prompt from a view's selection, or expand", "enter", "v", "space"),
+		expand: bind("enter", "expand", "enter", "v", "space"),
 	},
 	ask: askKeys{
 		yes:   bind("y", "yes", "y", "Y"),
