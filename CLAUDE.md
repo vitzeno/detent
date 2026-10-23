@@ -789,7 +789,7 @@ adding a fat dependency fails with the transitive import named.
   opinions to weigh and the human's as instructions, then closes it.
 
   **A thing leaves `ui` when it stops needing Model.** That is why
-  `island`, `layout`, `markdown`, `search`, `status`, `syntax`, `theme` and `welcome` are
+  `island`, `layout`, `markdown`, `search`, `status`, `syntax`, `theme`, `view` and `welcome` are
   subpackages and nothing else is: they take values and return
   strings. The compiler enforces it, since a subpackage importing
   `ui` would be an import cycle. Rendering could go the same way once
