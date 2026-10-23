@@ -52,6 +52,28 @@ func TestRender_ScalesBarsToTheLargest(t *testing.T) {
 	assert.Greater(t, big, small*5)
 }
 
+// Models write inline code and colons inside a block's text as they do in prose,
+// and a status block read as YAML refused both, so the first live one never drew.
+func TestRender_ReadsABlockWrittenAsAModelWritesIt(t *testing.T) {
+	block := "```status\n- pass: `go test ./ui/view/` passed (cached)\n- fail: TestX: boom\n" +
+		"- skip:\n  - sandbox\n  - `windows`\n```\n" +
+		"```chart\ntype: bar\ndata:\n  `ui`: 3\n  `engine`: 1\n```\n"
+	out := plain(Render(block, theme.Current(), 80))
+	assert.NotContains(t, out, "not drawn")
+	for _, want := range []string{"✓ pass  go test ./ui/view/ passed (cached)", "✗ fail  TestX: boom",
+		"○ skip  sandbox, windows", "ui     █"} {
+		assert.Contains(t, out, want)
+	}
+}
+
+// A word unit reads apart from its number, and a symbol stays on it.
+func TestRender_SpacesAWordUnit(t *testing.T) {
+	out := plain(Render("```chart\ntype: bar\nunit: lines\ndata: {a: 10}\n```\n```chart\ntype: bar\nunit: ms\ndata: {b: 5}\n```\n",
+		theme.Current(), 60))
+	assert.Contains(t, out, "10 lines")
+	assert.Contains(t, out, "5ms")
+}
+
 // A block that does not parse costs its drawing and never the reply: it is
 // shown as written, the reason above it, and what follows still draws.
 func TestRender_ShowsABadBlockAsWrittenWithWhy(t *testing.T) {

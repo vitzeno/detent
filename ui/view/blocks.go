@@ -235,30 +235,19 @@ func (s styles) of(t tone) lipgloss.Style {
 	}
 }
 
-// drawStatus reads a list of one-key maps, pass, fail, warn or skip, each
-// naming what had that outcome as a string or a list.
+// drawStatus reads its own lines rather than YAML, since its entries are free text
+// and YAML stops at the colon or the backtick a model puts in one.
 func drawStatus(body string, s styles, width int) ([]string, error) {
-	var entries []yaml.Node
-	if err := decode(body, &entries); err != nil {
+	entries, err := statusEntries(body)
+	if err != nil {
 		return nil, err
 	}
 	var lines []string
 	for _, e := range entries {
-		if e.Kind != yaml.MappingNode || len(e.Content) != 2 {
-			return nil, fmt.Errorf("line %d: each entry is one of pass, fail, warn or skip", e.Line)
-		}
-		kind, ok := statusKinds[e.Content[0].Value]
-		if !ok {
-			return nil, fmt.Errorf("line %d: %q is not pass, fail, warn or skip", e.Line, e.Content[0].Value)
-		}
-		items, err := strs(e.Content[1])
-		if err != nil {
-			return nil, err
-		}
-		head := s.of(kind.tone).Render(kind.glyph+" "+pad(e.Content[0].Value, 4)) + "  "
+		kind := statusKinds[e.kind]
+		head := s.of(kind.tone).Render(kind.glyph+" "+pad(e.kind, 4)) + "  "
 		indent := strings.Repeat(" ", ansi.StringWidth(head))
-		text := strings.Join(items, ", ")
-		for i, part := range strings.Split(ansi.Wrap(text, max(width-len(indent), 1), ""), "\n") {
+		for i, part := range strings.Split(ansi.Wrap(strings.Join(e.items, ", "), max(width-len(indent), 1), ""), "\n") {
 			if i == 0 {
 				lines = append(lines, head+part)
 			} else {
@@ -269,9 +258,64 @@ func drawStatus(body string, s styles, width int) ([]string, error) {
 	return lines, nil
 }
 
+type statusEntry struct {
+	kind  string
+	items []string
+}
+
+// statusEntries reads "- pass: text", "- pass: [a, b]", or "- pass:" over
+// indented "- item" lines, one entry per outcome named.
+func statusEntries(body string) ([]statusEntry, error) {
+	var out []statusEntry
+	n := 0
+	for line := range strings.SplitSeq(strings.ReplaceAll(body, "`", ""), "\n") {
+		n++
+		text := strings.TrimSpace(line)
+		if text == "" {
+			continue
+		}
+		item, ok := strings.CutPrefix(text, "- ")
+		if !ok {
+			return nil, fmt.Errorf("line %d: start each entry with - and one of pass, fail, warn or skip", n)
+		}
+		kind, rest, isKind := strings.Cut(item, ":")
+		if _, known := statusKinds[strings.TrimSpace(kind)]; isKind && known && line == strings.TrimLeft(line, " ") {
+			out = append(out, statusEntry{kind: strings.TrimSpace(kind), items: listed(strings.TrimSpace(rest))})
+			continue
+		}
+		if len(out) == 0 || line == strings.TrimLeft(line, " ") {
+			return nil, fmt.Errorf("line %d: %q is not pass, fail, warn or skip", n, strings.TrimSpace(kind))
+		}
+		last := &out[len(out)-1]
+		last.items = append(last.items, item)
+	}
+	if len(out) == 0 {
+		return nil, errors.New("the block is empty")
+	}
+	return out, nil
+}
+
+// listed reads "[a, b]" as two items and anything else as one, nothing as none.
+func listed(text string) []string {
+	if inner, ok := strings.CutPrefix(text, "["); ok && strings.HasSuffix(inner, "]") {
+		var items []string
+		for item := range strings.SplitSeq(strings.TrimSuffix(inner, "]"), ",") {
+			if item = strings.TrimSpace(item); item != "" {
+				items = append(items, item)
+			}
+		}
+		return items
+	}
+	if text == "" {
+		return nil
+	}
+	return []string{text}
+}
+
 // decode reads body strictly, so a misspelt key says so instead of drawing nothing.
+// Backticks go first: a model quotes code in a label as in prose, and YAML refuses it.
 func decode(body string, into any) error {
-	dec := yaml.NewDecoder(strings.NewReader(body))
+	dec := yaml.NewDecoder(strings.NewReader(strings.ReplaceAll(body, "`", "")))
 	dec.KnownFields(true)
 	if err := dec.Decode(into); err != nil {
 		if errors.Is(err, io.EOF) {
@@ -327,25 +371,11 @@ func number(n *yaml.Node) (float64, error) {
 	return v, nil
 }
 
-func strs(n *yaml.Node) ([]string, error) {
-	switch n.Kind {
-	case yaml.ScalarNode:
-		return []string{n.Value}, nil
-	case yaml.SequenceNode:
-		out := make([]string, 0, len(n.Content))
-		for _, c := range n.Content {
-			if c.Kind != yaml.ScalarNode {
-				return nil, fmt.Errorf("line %d: list what had the outcome as plain text", c.Line)
-			}
-			out = append(out, c.Value)
-		}
-		return out, nil
-	default:
-		return nil, fmt.Errorf("line %d: list what had the outcome as plain text", n.Line)
-	}
-}
-
+// amount spaces a word unit, 10 lines, and keeps a symbol on its number, 5ms.
 func amount(v float64, unit string) string {
+	if len(unit) > 2 {
+		unit = " " + unit
+	}
 	return strconv.FormatFloat(v, 'f', -1, 64) + unit
 }
 
