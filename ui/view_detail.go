@@ -284,7 +284,7 @@ func hunkLines(path string, lines []string, width int) []string {
 			out[i] = lineStyle(op).Render(layout.Truncate(l, width))
 			continue
 		}
-		out[i] = tinted(op, code[i], width)
+		out[i] = syntax.Tinted(byte(op), code[i], width, palette)
 	}
 	return out
 }

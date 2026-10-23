@@ -402,28 +402,7 @@ func (r *reviewModal) codeLine(hunk, line, width int) string {
 	if code == nil {
 		return lineStyle(l.Op).Render(layout.Truncate(string(rune(l.Op))+l.Text, width))
 	}
-	return tinted(l.Op, code[line], width)
-}
-
-// tinted is a line of coloured code behind its marker, an added or removed one
-// tinted the width of it. A command's diff in the output pane is drawn the same.
-func tinted(op event.LineOp, code string, width int) string {
-	marker, tint := " ", color.Color(nil)
-	switch op {
-	case event.LineAdded:
-		marker, tint = sgr(38, palette.Safe)+"+"+"\x1b[39m", palette.DiffAdded
-	case event.LineRemoved:
-		marker, tint = sgr(38, palette.Danger)+"-"+"\x1b[39m", palette.DiffRemoved
-	case event.LineContext:
-	}
-	// Not layout.Truncate, which defuses: the text was defused as the diff arrived,
-	// and all the colouring added is its own colour, which must reach the terminal.
-	body := marker + ansi.Truncate(code, max(1, width-1), "…") + "\x1b[22m\x1b[39m"
-	if tint == nil {
-		return body
-	}
-	pad := strings.Repeat(" ", max(0, width-ansi.StringWidth(body)))
-	return sgr(48, tint) + body + pad + "\x1b[49m"
+	return syntax.Tinted(byte(l.Op), code[line], width, palette)
 }
 
 // codeOf is a hunk of the selected file coloured by language, made once and
