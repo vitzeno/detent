@@ -19,8 +19,11 @@ Commands run on your machine, and anything flagged dangerous waits for you to ap
 
 <table>
   <tr>
-    <td width="50%"><img src=".github/assets/welcome.png" alt="detent's welcome screen: the model, where commands run, and the session it resumed"><br><sub><b>Welcome</b>: the model, where commands run, and what it resumed</sub></td>
-    <td width="50%"><img src=".github/assets/finder.png" alt="The finder over a session, matches on the left and the selected one drawn on the right"><br><sub><b>Finder</b>: ctrl+f over the session, then jump to it</sub></td>
+    <td colspan="2"><img src=".github/assets/timings.gif" alt="A request timing the ui test packages: the tool calls run, then its view lands, a bar chart of each package's test time growing in with a stat and a passing status"><br><sub><b>Views</b>: a request ends with its answer drawn as it lands, here a chart of test times</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src=".github/assets/choice.gif" alt="A question about which SQLite driver to keep, answered with two options side by side, the recommended one starred, and the facts behind it"><br><sub><b>A choice</b>: options side by side, the pick starred</sub></td>
+    <td width="50%"><img src=".github/assets/sizes.gif" alt="A question about why the ui package is largest, answered with a bar chart of lines per package, stat tiles and a card of what each part does"><br><sub><b>Sizes</b>: a chart, stats and a card of what lives where</sub></td>
   </tr>
   <tr>
     <td colspan="2"><img src=".github/assets/sub-agents.png" alt="The inspector over a session: one subagent's output on the left and its own history of calls on the right, with the main history's finished subagents behind it"><br><sub><b>Subagents</b>: <code>a</code> opens one's work, <code>←</code>/<code>→</code> moves between them</sub></td>
@@ -142,6 +145,8 @@ exit 0
 ## Finder
 
 `ctrl+f` opens a fuzzy finder over everything in this session, press enter to jump to it in history.
+
+<img src=".github/assets/finder.png" alt="The finder over a session, matches on the left and the selected one drawn on the right">
 
 Pressing `ctrl+f` again narrows search to requests, commands or outputs
 
@@ -266,6 +271,8 @@ A request ends with its view: the final reply, drawn as markdown with whatever f
 Plain markdown gets the same treatment: a table's number columns get bars, a task list becomes steps, a list of paths a tree, and a list of sizes or times a bar chart
 
 A view arrives as it lands: lines fade in, bars grow, numbers count up, headings shimmer and code types out. A resumed session's views are drawn at rest
+
+<img src=".github/assets/flow.gif" alt="A question about how a tool call reaches the screen, answered with a flow of boxes and arrows drawing down the pane, then scrolled through with the explanation under it">
 
 What the agent ran along the way is shown as it came, a diff coloured as `/review` colours one, and its reasoning is a faint `∴` line you can open
 

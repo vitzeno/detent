@@ -28,3 +28,6 @@ ui/zz_snapshot_test.go
 
 # go build ./cmd/detent in the root
 /detent
+
+# Screen recordings the README GIFs are cut from, too large for the repo.
+.github/assets/video/
