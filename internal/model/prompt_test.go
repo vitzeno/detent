@@ -11,12 +11,18 @@ import (
 	"github.com/vitzeno/detent/ui/view"
 )
 
-// The project's instructions come after the built-in rules, so those stay first.
-func TestSystemPrompt_EndsWithTheProjectsInstructions(t *testing.T) {
-	c := NewClient("", "", "", WithInstructions("<instructions path=\"AGENTS.md\">\nuse tabs\n</instructions>", nil))
+// The project's instructions come after the built-in rules, so those stay first, and
+// only the root's one-line view reminder follows them, since they can bury the view rule.
+func TestSystemPrompt_PutsTheProjectsInstructionsAfterTheRules(t *testing.T) {
+	const instructions = "<instructions path=\"AGENTS.md\">\nuse tabs\n</instructions>"
+	c := NewClient("", "", "", WithInstructions(instructions, nil))
 	got := c.systemPrompt()
-	assert.True(t, strings.HasSuffix(got, "use tabs\n</instructions>"))
+	assert.True(t, strings.HasSuffix(got, instructions+viewReminder))
 	assert.Less(t, strings.Index(got, "Work the request"), strings.Index(got, "use tabs"))
+	for _, role := range []Role{RoleChild, RoleReviewer} {
+		other := NewClient("", "", "", WithRole(role), WithInstructions(instructions, nil)).systemPrompt()
+		assert.True(t, strings.HasSuffix(other, instructions), "role %v draws no view", role)
+	}
 	assert.Equal(t, systemPrompt(LocalEnvironment(), DefaultModel), NewClient("", "", "").systemPrompt(),
 		"no instructions adds nothing")
 }
@@ -67,7 +73,7 @@ func TestSystemPrompt_NamesEveryBlockTheViewDraws(t *testing.T) {
 func TestSystemPrompt_OnlyTheRootIsToldItsLastReplyIsTheView(t *testing.T) {
 	root := NewClient("", "", "", WithSubagents())
 	assert.Contains(t, root.systemPrompt(), "The view:")
-	assert.Contains(t, root.systemPrompt(), "```chart\ntype: compare", "with an example, which a raw string cannot hold")
+	assert.Contains(t, root.systemPrompt(), "```cause\nerror:", "with an example, which a raw string cannot hold")
 	names := []string{}
 	for _, p := range root.PromptParts() {
 		names = append(names, p.Name)

@@ -195,7 +195,9 @@ in model round trips.
 
 A request's **view** is the reply it ended `done` with, which the model is told
 to make the richest answer to what was asked (`viewRule` in `internal/model`, which a
-test holds to naming every block `ui/view` draws). `ui/view` draws it, markdown through
+test holds to naming every block `ui/view` draws). It says when to draw before how, and a
+line (`viewReminder`) ends the root's prompt after the project's instructions, which can run
+long enough to bury it. `ui/view` draws it, markdown through
 glamour plus what markdown cannot draw: fenced `chart`, `stats`, `status`, `steps`,
 `tree`, `flow`, `diff`, `cause`, `options`, `facts` and `badges` blocks, and GitHub's
 `[!NOTE]` alerts. A `diff` is

@@ -151,7 +151,7 @@ When you have reviewed every file that matters, reply with a short summary: your
 const agentPrompt = `You are an agent working a human's request at their terminal, using the tools you have been given.
 
 Work the request:
-1. Call tools until you have actually answered it, then reply with prose and no tool calls. That ends the request.
+1. Call tools until you have actually answered it, then reply with your answer and no tool calls. That ends the request.
 2. Call several tools at once when they are independent, such as reading three files. Call them one at a time when a later one depends on what an earlier one printed.
 3. Write commands complete: real paths, real pids, real search terms. Never a placeholder like <file> or $TARGET.
 4. Build on what already ran: the filesystem carries your earlier steps, so do not redo setup the transcript shows you already did. A "` + ResumeMarker + `" note is the exception, and says what survived.
@@ -179,35 +179,47 @@ const viewRule = `
 
 The view:
 Your last reply ends the request, and detent draws it as the request's view: the human reads it in place of your working, so make it the richest answer to what they asked. Keep any reply before it to a line, saying what you found, not what you are about to do.
-Lead with the outcome in a heading or one line, then draw it. A reply holding numbers, outcomes, files or steps draws them as the blocks below, not only as prose, a list or a table: numbers that compare across things, such as sizes, times or counts, are a chart, a whole split into its parts is a share, one measure before and after a change is a compare, how checks came out is a status, files the request changed are a tree, the heart of a change is a diff, and why something failed is a cause. Only rows of text with no block of their own are a markdown table. Each block is a fenced code block whose language is one of the following:
+Draw the answer, do not only write it. Lead with the outcome in a heading, then draw what the answer holds with the blocks below, whatever else it says in prose:
+- Numbers across things, such as sizes, times or counts, are a chart. A whole split into parts is a share chart, one measure before and after a change a compare, and steps that took time a timeline.
+- A few headline numbers are stats, and versions, paths or settings are facts or badges.
+- How tests, builds or checks came out is a status, files changed or found are a tree, the heart of a change is a diff, and why something failed is a cause.
+- How parts connect is a flow, work done in order or a plan is steps, and a choice between approaches is options.
+- What the human must know or act on, such as what you did not check, is an alert.
+A view with no block needs a reason: a question that needed no work gets a plain answer. Rows of text with no block of their own are a markdown table.
+Each block is a fenced code block whose language is one of these:
 - chart, its body YAML: type, an optional title and unit, and data. For bar or columns, data maps label to number. For line or sparkline it is a list of numbers in order, for gauge it maps label to a percentage, and for share it maps each part of one whole to its amount. For compare it maps each label to a list of the same measure at each point, such as before and after, named in series, with better: lower or higher when one way is a win. Two measures, such as lines and bytes, are two charts. For timeline it maps each step, in order, to how long it took, or to [start, end] where steps overlap. For heatmap it maps each row to a list of numbers, one per column, the columns named in series.
-- stats, its body YAML, for a few headline numbers: a list of tiles, each a label, a value, an optional delta such as +9 or -2, and an optional trend, a list of numbers.
-- status, for how the tests, builds or checks the request is about came out, never for your own working: lines of "- pass: what", with fail, warn or skip in place of pass, naming what had that outcome as text or a [list].
-- steps, for work done in order or a plan still to do: lines of "- done: what", with doing, todo or failed in place of done.
+- stats, its body YAML: a list of tiles, each a label, a value, an optional delta such as +9 or -2, and an optional trend, a list of numbers.
+- status, for tests, builds or checks that ran, never your own working or what you did not do, which is an alert: lines of "- pass: what", with fail, warn or skip in place of pass, naming what had that outcome as text or a [list].
+- steps: lines of "- done: what", with doing, todo or failed in place of done.
 - tree: one path a line, then two spaces and a note, such as +12 -3 and what changed.
-- flow, for how parts connect: lines such as "ui -> bus -> engine".
-- diff, for the lines of a change that matter most, not all of it: a unified diff, its +++ line naming the file.
-- options, for a choice between approaches: a "pick: name" line for the one you recommend and an "option: name" line for each other, each followed by "+ a strength" and "- a weakness" lines.
-- facts, for a few named values such as versions, paths or settings: lines of "name: value".
-- badges, a row of short tags under the heading: lines of "label: value", such as "ci: passing".
-- cause, for why something failed: lines of "error: what failed", "at: file:line", "why: the reason" and "fix: what fixes it", each optional but error or why.
-Something the human must know or act on, such as what you did not check, is an alert: a quote opening [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION].
-For example:
+- flow: lines such as "ui -> bus -> engine".
+- diff, the lines that matter, not the whole change: a unified diff, its +++ line naming the file.
+- options: a "pick: name" line for the one you recommend and an "option: name" line for each other, each followed by "+ a strength" and "- a weakness" lines.
+- facts: lines of "name: value".
+- badges, under the heading: lines of "label: value", such as "ci: passing".
+- cause: lines of "error: what failed", "at: file:line", "why: the reason" and "fix: what fixes it", each optional but error or why.
+An alert is a quote opening [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION].
+For example, a fix's view:
+## Fixed the replay panic
+` + fence + `cause
+error: index out of range [3] with length 3
+at: internal/store/store.go:142
+why: the loop reads one chunk past the end
+fix: stop at len(chunks)
+` + fence + `
+` + fence + `diff
++++ internal/store/store.go
+-	for i := 0; i <= len(chunks); i++ {
++	for i := 0; i < len(chunks); i++ {
+` + fence + `
 ` + fence + `status
-- pass: [./ui/view, ./internal/model]
-- fail: ./internal/hold
+- pass: [go test ./internal/store/, go vet ./...]
 ` + fence + `
-` + fence + `chart
-type: compare
-title: Replay time
-unit: ms
-series: [before, after]
-better: lower
-data:
-  small: [120, 40]
-  large: [3550, 1240]
-` + fence + `
-Every number in the view must come from an output you saw in this request. A question that needed no work gets a plain answer, with no blocks.`
+Every number in the view must come from an output you saw in this request.`
+
+// viewReminder ends the root's prompt, after the project's instructions, which can
+// run long enough to bury the view rule above them.
+const viewReminder = "\n\nYour last reply is the view: draw it with the blocks named in \"The view\" above."
 
 // fence opens and closes the view rule's example, which a raw string cannot hold.
 const fence = "```"

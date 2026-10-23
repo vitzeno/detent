@@ -188,6 +188,10 @@ func (c *Client) PromptParts() []PromptPart {
 	if c.instructions != "" {
 		parts = append(parts, PromptPart{Name: "instructions", Detail: strings.Join(c.instructionFiles, ", "),
 			Bytes: len(c.instructions) + len(instructionsSep)})
+		// Only the root has a reminder, and it belongs to the root's view part.
+		if r := c.reminder(); r != "" {
+			parts[1].Bytes += len(r)
+		}
 	}
 	return parts
 }
@@ -312,7 +316,15 @@ func (c *Client) systemPrompt() string {
 	if c.instructions == "" {
 		return c.builtIn()
 	}
-	return c.builtIn() + instructionsSep + c.instructions
+	return c.builtIn() + instructionsSep + c.instructions + c.reminder()
+}
+
+// reminder is what ends the root's prompt after the project's instructions.
+func (c *Client) reminder() string {
+	if c.role == RoleAgent {
+		return viewReminder
+	}
+	return ""
 }
 
 // builtIn is the prompt detent writes for this client's role, before the
