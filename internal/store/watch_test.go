@@ -83,7 +83,9 @@ func TestWatch_StopWaitsForTheLastWrite(t *testing.T) {
 	for range n {
 		bus.Publish(event.Notice{Text: "x", Level: "info"})
 	}
-	bus.Drain(5 * time.Second)
+	// Drain returns once the queue is empty. Windows' runner writes about 40 a
+	// second, so 5s ran out twenty records short.
+	bus.Drain(30 * time.Second)
 	stop()
 
 	got, err := s.Replay(session)
