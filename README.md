@@ -250,7 +250,7 @@ A request ends with its view: the final reply, drawn as markdown with whatever f
 
 | Block | Draws |
 | ----- | ----- |
-| `chart` | bars, columns, a braille line, a sparkline, gauges, the share of a whole, or before against after |
+| `chart` | bars, columns, a braille line, a sparkline, gauges, the share of a whole, before against after, a timeline of what took how long, or a heatmap |
 | `stats` | headline numbers with their change and trend |
 | `status` | how tests, builds and checks came out |
 | `steps` | work in order, done to still to do |
@@ -258,6 +258,9 @@ A request ends with its view: the final reply, drawn as markdown with whatever f
 | `flow` | how parts connect, as boxes and arrows |
 | `diff` | the heart of a change, coloured as `/review` colours one |
 | `cause` | why something failed: the error, where, why and the fix |
+| `options` | a choice between approaches, side by side, the pick starred |
+| `facts` | a few named values, lined up |
+| `badges` | a row of tags, coloured by what they say |
 | `> [!WARNING]` | a note, tip or warning, as GitHub draws its alerts |
 
 Plain markdown gets the same treatment: a table's number columns get bars, a task list becomes steps, a list of paths a tree, and a list of sizes or times a bar chart

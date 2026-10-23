@@ -138,16 +138,31 @@ func diffNote(note string, s styles) string {
 // and down when it does not, each box arriving after the one before it.
 func drawFlow(body string, s styles, width int) (drawn, error) {
 	var chains [][]string
-	n := 0
+	n, open := 0, false
 	for line := range strings.SplitSeq(strings.ReplaceAll(body, "`", ""), "\n") {
 		n++
 		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "- "))
 		if line == "" {
 			continue
 		}
+		// A chain written a step a line, each after an arrow, is one chain.
+		lead := arrows.FindStringIndex(line)
+		continues := len(chains) > 0 && (open || lead != nil && lead[0] == 0)
+		if lead != nil && lead[0] == 0 {
+			line = line[lead[1]:]
+		}
+		trail := arrows.FindAllStringIndex(line, -1)
+		open = len(trail) > 0 && trail[len(trail)-1][1] == len(line)
+		if open {
+			line = line[:trail[len(trail)-1][0]]
+		}
 		steps := arrows.Split(line, -1)
 		if slices.Contains(steps, "") {
 			return nil, fmt.Errorf("line %d: a step between arrows is empty", n)
+		}
+		if continues {
+			chains[len(chains)-1] = append(chains[len(chains)-1], steps...)
+			continue
 		}
 		chains = append(chains, steps)
 	}

@@ -23,14 +23,17 @@ const margin = "  "
 
 // drawers are the fenced block languages view draws itself. Any other fence is code.
 var drawers = map[string]drawer{
-	"chart":  drawChart,
-	"stats":  drawStats,
-	"status": drawStatus,
-	"steps":  drawSteps,
-	"tree":   drawTree,
-	"flow":   drawFlow,
-	"diff":   drawDiff,
-	"cause":  drawCause,
+	"chart":   drawChart,
+	"stats":   drawStats,
+	"status":  drawStatus,
+	"steps":   drawSteps,
+	"tree":    drawTree,
+	"flow":    drawFlow,
+	"diff":    drawDiff,
+	"cause":   drawCause,
+	"options": drawOptions,
+	"facts":   drawFacts,
+	"badges":  drawBadges,
 }
 
 // Blocks names the fenced languages a view draws, which the model must be told of.
@@ -89,9 +92,12 @@ func Layout(text string, t theme.Theme, width int) Drawing {
 	return d
 }
 
-// sweep is the share of the arrival its top-down reveal takes. Each block then
-// grows over the rest, starting as the reveal reaches it.
-const sweep = 0.4
+// sweepPerLine is the share of the arrival the top-down reveal spends on each line, up
+// to maxSweep, so a short view shows at once and leaves its blocks the time to grow.
+const (
+	sweepPerLine = 0.03
+	maxSweep     = 0.4
+)
 
 // Frame draws the view n frames into its arrival, and at rest from Frames on.
 func (d Drawing) Frame(n int) string {
@@ -99,6 +105,7 @@ func (d Drawing) Frame(n int) string {
 		return d.final
 	}
 	t := float64(max(n, 0)) / Frames
+	sweep := min(maxSweep, sweepPerLine*float64(d.height))
 	out := make([]string, 0, d.height)
 	for i, p := range d.parts {
 		if i > 0 {

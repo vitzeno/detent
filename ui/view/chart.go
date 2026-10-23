@@ -28,6 +28,15 @@ type point struct {
 	value float64
 }
 
+// span is one step of a timeline, from its start to its end.
+type span struct {
+	label      string
+	start, end float64
+}
+
+// heatShades are a heatmap's cells from its lowest value to its highest.
+var heatShades = []string{"·", "░", "▒", "▓", "█"}
+
 // group is one label of a compare chart, a value per series.
 type group struct {
 	label  string
@@ -35,7 +44,7 @@ type group struct {
 }
 
 // chartTypes are the types a chart may be.
-var chartTypes = []string{"bar", "columns", "line", "sparkline", "gauge", "share", "compare"}
+var chartTypes = []string{"bar", "columns", "line", "sparkline", "gauge", "share", "compare", "timeline", "heatmap"}
 
 var sparkCells = []rune("▁▂▃▄▅▆▇█")
 
@@ -59,12 +68,22 @@ func drawChart(body string, s styles, width int) (drawn, error) {
 }
 
 func (c chart) draw(s styles, width int) (drawn, error) {
-	if c.Type == "compare" {
+	switch c.Type {
+	case "compare", "heatmap":
 		groups, err := series(c.Data)
 		if err != nil {
 			return nil, err
 		}
+		if c.Type == "heatmap" {
+			return heatmap(groups, c, s, width), nil
+		}
 		return compare(groups, c, s, width), nil
+	case "timeline":
+		spans, err := spans(c.Data)
+		if err != nil {
+			return nil, err
+		}
+		return timeline(spans, c.Unit, s, width), nil
 	}
 	pts, err := points(c.Data)
 	if err != nil {
@@ -410,6 +429,148 @@ func (c chart) change(from, to float64, s styles) string {
 		return s.safe.Render(text)
 	}
 	return s.danger.Render(text)
+}
+
+// timeline draws each step as a bar from its start to its end on one clock, a cursor
+// sweeping that clock as it arrives so each bar fills as its time passes.
+func timeline(steps []span, unit string, s styles, width int) drawn {
+	lo, hi, labelW, valueW := steps[0].start, steps[0].end, 0, 0
+	for _, st := range steps {
+		lo, hi = min(lo, st.start), max(hi, st.end)
+		labelW = max(labelW, ansi.StringWidth(st.label))
+		valueW = max(valueW, ansi.StringWidth(amount(st.end-st.start, unit)))
+	}
+	labelW = min(max(labelW, len("total")), width/3)
+	valueW = max(valueW, ansi.StringWidth(amount(hi-lo, unit)))
+	track := width - labelW - valueW - 2
+	at := func(v float64) float64 {
+		if hi <= lo {
+			return 0
+		}
+		return (v - lo) / (hi - lo) * float64(track)
+	}
+	return func(p float64) []string {
+		now := lo + p*(hi-lo)
+		lines := make([]string, 0, len(steps)+1)
+		for i, st := range steps {
+			label := pad(ansi.Truncate(st.label, labelW, "…"), labelW)
+			// What a step shows having taken follows the cursor, as its bar does.
+			done := 1.0
+			if st.end > st.start {
+				done = clamp((now - st.start) / (st.end - st.start))
+			}
+			value := s.faint.Render(amountAt(st.end-st.start, done, unit))
+			if track < 8 {
+				lines = append(lines, label+" "+value)
+				continue
+			}
+			from := int(at(st.start))
+			bar := ""
+			if now > st.start {
+				bar = hbar(max(at(min(st.end, now))-float64(from), 0.125))
+			}
+			lines = append(lines, label+" "+pad(strings.Repeat(" ", from)+s.hue(i).Render(bar), track)+" "+value)
+		}
+		total := pad("total", labelW) + " " + strings.Repeat(" ", max(track, 0)) + " " + amountAt(hi-lo, p, unit)
+		return append(lines, s.faint.Render(total))
+	}
+}
+
+// heatmap shades each row's values from the lowest in the chart to the highest, its
+// cells filling in a wave from the top left as it arrives.
+func heatmap(rows []group, c chart, s styles, width int) drawn {
+	lo, hi, labelW, cols := rows[0].values[0], rows[0].values[0], 0, 0
+	for _, r := range rows {
+		labelW = max(labelW, ansi.StringWidth(r.label))
+		cols = max(cols, len(r.values))
+		for _, v := range r.values {
+			lo, hi = min(lo, v), max(hi, v)
+		}
+	}
+	labelW = min(labelW, width/3)
+	cellW := 2
+	for _, name := range c.Series {
+		cellW = max(cellW, min(ansi.StringWidth(name), 6))
+	}
+	if labelW+1+cols*(cellW+1) > width {
+		cellW = max(1, (width-labelW-1)/cols-1)
+	}
+	var head string
+	if len(c.Series) > 0 && cellW >= 2 {
+		names := make([]string, cols)
+		for i := range names {
+			if i < len(c.Series) {
+				names[i] = centre(ansi.Truncate(c.Series[i], cellW, ""), cellW)
+			} else {
+				names[i] = strings.Repeat(" ", cellW)
+			}
+		}
+		head = s.faint.Render(strings.Repeat(" ", labelW+1) + strings.Join(names, " "))
+	}
+	key := s.faint.Render(strings.Repeat(" ", labelW+1)+amount(lo, c.Unit)+" ") +
+		s.accent.Render(strings.Join(heatShades, "")) + s.faint.Render(" "+amount(hi, c.Unit))
+	wave := float64(len(rows) + cols)
+	return func(p float64) []string {
+		var lines []string
+		if head != "" {
+			lines = append(lines, head)
+		}
+		for i, r := range rows {
+			cells := make([]string, cols)
+			for j := range cells {
+				cells[j] = strings.Repeat(" ", cellW)
+				if j >= len(r.values) || p < 1 && p*wave < float64(i+j) {
+					continue
+				}
+				// Only the lowest is the faintest, so a value above it never reads as it.
+				shade := 0
+				if v := r.values[j]; v > lo {
+					shade = 1 + int((v-lo)/(hi-lo)*float64(len(heatShades)-2))
+				}
+				cells[j] = s.accent.Render(strings.Repeat(heatShades[shade], cellW))
+			}
+			lines = append(lines, pad(ansi.Truncate(r.label, labelW, "…"), labelW)+" "+strings.Join(cells, " "))
+		}
+		return append(lines, key)
+	}
+}
+
+// spans reads a timeline's data: each step to how long it took, starting as the one
+// before ended, or to [start, end] for steps that overlap.
+func spans(n yaml.Node) ([]span, error) {
+	if n.Kind != yaml.MappingNode || len(n.Content) == 0 {
+		return nil, errors.New("data maps each step to how long it took, or to [start, end]")
+	}
+	var out []span
+	clock := 0.0
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		st := span{label: n.Content[i].Value}
+		switch v := n.Content[i+1]; v.Kind {
+		case yaml.SequenceNode:
+			if len(v.Content) != 2 {
+				return nil, fmt.Errorf("line %d: %s is [start, end]", v.Line, st.label)
+			}
+			var err error
+			if st.start, err = number(v.Content[0]); err != nil {
+				return nil, err
+			}
+			if st.end, err = number(v.Content[1]); err != nil {
+				return nil, err
+			}
+		default:
+			took, err := number(v)
+			if err != nil {
+				return nil, err
+			}
+			st.start, st.end = clock, clock+took
+		}
+		if st.end < st.start {
+			return nil, fmt.Errorf("line %d: %s ends before it starts", n.Content[i].Line, st.label)
+		}
+		clock = st.end
+		out = append(out, st)
+	}
+	return out, nil
 }
 
 func series(n yaml.Node) ([]group, error) {

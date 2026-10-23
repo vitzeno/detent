@@ -26,6 +26,8 @@ var (
 	stamped = regexp.MustCompile(`\d[.:/-]\d+[.:/-]\d|\d:\d`)
 	// amountNote is all that follows an item's label when the item is a measure of it.
 	amountNote = regexp.MustCompile(`^(?:[—–:-]\s*)?~?(\d[\d,]*(?:\.\d+)?)\s?([A-Za-z%]*)$`)
+	// boldLabel opens an item named in bold, as "**TUI:** Bubble Tea" or "**TUI**: Bubble Tea".
+	boldLabel = regexp.MustCompile(`^\*\*([^*:]{1,40}?):?\*\*\s*[:—–-]?\s*(.+)$`)
 	// pathLike leads a path: a file with an extension or a directory, nothing spaced.
 	pathLike = regexp.MustCompile(`^[\w.@~+-]*(/[\w.@~+-]*)*(\.[A-Za-z][\w]{0,7}|/)$`)
 	// numericCell is a table cell holding one amount, unsigned, with an optional unit.
@@ -104,7 +106,7 @@ func lift(text string) []piece {
 }
 
 // liftList reads a list of task boxes as steps, of measures in one unit as a bar chart,
-// and of paths, one of them in a directory, as a tree.
+// of values named in bold as facts, and of paths, one of them in a directory, as a tree.
 func liftList(lines []string) (piece, bool) {
 	source := strings.Join(lines, "")
 	var items []string
@@ -117,6 +119,9 @@ func liftList(lines []string) (piece, bool) {
 	}
 	if chart, ok := measures(items); ok {
 		return piece{kind: pieceBlock, lang: "chart", body: chart, source: source}, true
+	}
+	if facts, ok := named(items); ok {
+		return piece{kind: pieceBlock, lang: "facts", body: facts, source: source}, true
 	}
 	var steps, tree strings.Builder
 	tasks, paths, nested := true, len(items) >= 2, false
@@ -165,6 +170,22 @@ func measures(items []string) (string, bool) {
 		data.WriteString("  " + strconv.Quote(label) + ": " + strings.ReplaceAll(m[1], ",", "") + "\n")
 	}
 	return "type: bar\nunit: " + strconv.Quote(unit) + "\ndata:\n" + data.String(), true
+}
+
+// named reads items that each open with a name in bold as facts, two of them at least.
+func named(items []string) (string, bool) {
+	if len(items) < 2 {
+		return "", false
+	}
+	var facts strings.Builder
+	for _, item := range items {
+		m := boldLabel.FindStringSubmatch(item)
+		if m == nil {
+			return "", false
+		}
+		facts.WriteString(strings.TrimSpace(m[1]) + ": " + strings.ReplaceAll(m[2], "**", "") + "\n")
+	}
+	return facts.String(), true
 }
 
 // leadingLabel splits an item into the label it opens with, in backticks, in bold or

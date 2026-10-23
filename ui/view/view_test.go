@@ -223,6 +223,13 @@ func TestRender_DrawsAFlowAcrossOrDown(t *testing.T) {
 	down := plain(Render(block, theme.Current(), 20))
 	assert.Contains(t, down, "▼")
 	assert.Len(t, strings.Split(down, "\n"), 3*3+2*2, "three boxes, two arrows down")
+
+	// Models write a long chain a step a line, as both live runs did.
+	for _, written := range []string{"store\n  -> decode\n  -> bus\n", "store ->\ndecode ->\nbus\n"} {
+		lines := strings.Split(plain(Render("```flow\n"+written+"```\n", theme.Current(), 80)), "\n")
+		require.Len(t, lines, 3, "one chain, not three: %q", written)
+		assert.Equal(t, "  │ store │──▶│ decode │──▶│ bus │", lines[1])
+	}
 }
 
 // GitHub's alerts are drawn as callouts, and any other quote stays a quote.
@@ -279,6 +286,8 @@ func TestRender_DrawsAListAsWhatItIs(t *testing.T) {
 		"plain":      {"- go test ./... passed\n- nothing else changed\n", "• go test ./... passed", "█"},
 		"two units":  {"- tests: 412\n- coverage: 81%\n", "• tests: 412", "█"},
 		"flat paths": {"- `README.md` — updated\n- `go.mod` — bumped\n", "— updated", "├"},
+		"named":      {"- **TUI:** Bubble Tea, Glamour\n- **Storage**: `modernc.org/sqlite`\n", "TUI      Bubble Tea, Glamour", "**"},
+		"half named": {"- **TUI:** Bubble Tea\n- and a plain item\n", "• TUI: Bubble Tea", "TUI   "},
 	} {
 		t.Run(name, func(t *testing.T) {
 			out := plain(Render(c.list, theme.Current(), 80))
@@ -399,6 +408,94 @@ func TestRender_DrawsACauseAsACard(t *testing.T) {
 	}
 }
 
+// Options sit side by side while each box has room, every box the same width and
+// height, and the pick's star lands as the view does.
+func TestRender_DrawsOptionsAsBoxes(t *testing.T) {
+	block := "```options\npick: sqlite\n+ pure Go\n- slower\noption: cgo\n+ fast\n```\n"
+	across := strings.Split(plain(Render(block, theme.Current(), 80)), "\n")
+	require.Len(t, across, 4, "a top, two rows, a bottom: the shorter box padded to the taller")
+	for _, line := range across {
+		assert.Equal(t, ansi.StringWidth(across[0]), ansi.StringWidth(line), "every row as wide: %q", line)
+	}
+	assert.Contains(t, across[0], "╭ ★ sqlite ─")
+	assert.Contains(t, across[1], "+ pure Go")
+	assert.Contains(t, across[2], "− slower")
+
+	down := plain(Render(block, theme.Current(), 40))
+	assert.Len(t, strings.Split(down, "\n"), 8, "too narrow to sit side by side, they stack")
+
+	assert.Contains(t, plain(Layout(block, theme.Current(), 80).Frame(6)), "☆ sqlite", "the star has not landed")
+	assert.Contains(t, Render(block, theme.Current(), 80), lipgloss.NewStyle().Foreground(theme.Current().Accent).Render("╭ "),
+		"the pick is framed in the accent")
+	assert.Contains(t, plain(Render("```options\n+ fast\n```\n", theme.Current(), 80)), "start with pick or option")
+}
+
+// Facts line up on their names, a line under one continuing it, and type in as they arrive.
+func TestRender_DrawsFactsAligned(t *testing.T) {
+	block := "```facts\ngo: 1.26\nconfig: ~/.config/detent/config.yaml\n  and ./.detent.yaml\n```\n"
+	assert.Equal(t, "  go      1.26\n  config  ~/.config/detent/config.yaml\n          and ./.detent.yaml",
+		plain(Render(block, theme.Current(), 60)))
+	assert.NotContains(t, plain(Layout(block, theme.Current(), 60).Frame(3)), "config.yaml", "still typing")
+	assert.Contains(t, plain(Render("```facts\njust text\n```\n", theme.Current(), 80)), "each line is a name")
+}
+
+// A badge's value says how it is coloured, so passing is green and failing red, and
+// badges wrap to the width rather than run past it.
+func TestRender_ColoursBadgesByWhatTheySay(t *testing.T) {
+	th := theme.Current()
+	out := Render("```badges\nci: passing\nlint: failing\ngo: 1.26\n```\n", th, 80)
+	assert.Contains(t, out, pillStyle(th.Background, th.Safe).Render(" passing "))
+	assert.Contains(t, out, pillStyle(th.Background, th.Danger).Render(" failing "))
+	assert.Contains(t, out, pillStyle(th.Background, th.Accent).Render(" 1.26 "))
+	narrow := plain(Render("```badges\nalpha: one\nbeta: two\ngamma: three\n```\n", th, 24))
+	assert.Len(t, strings.Split(narrow, "\n"), 3)
+}
+
+// Steps given as durations run one after another, steps given as [start, end] overlap,
+// and as the chart arrives each fills only as far as its time has passed.
+func TestRender_DrawsATimelineOnOneClock(t *testing.T) {
+	block := "```chart\ntype: timeline\nunit: s\ndata:\n  build: 10\n  test: 30\n  lint: [10, 20]\n```\n"
+	lines := strings.Split(plain(Render(block, theme.Current(), 60)), "\n")
+	require.Len(t, lines, 4)
+	start := func(l string) int { return strings.IndexAny(l, "█▏▎▍▌▋▊▉") }
+	assert.Less(t, start(lines[0]), start(lines[1]), "test starts as build ends")
+	assert.Equal(t, start(lines[1]), start(lines[2]), "lint starts with test, at 10s")
+	assert.Contains(t, lines[3], "total")
+	assert.Contains(t, lines[3], "40s")
+
+	// Below a long reply the reveal passes the chart at once, leaving its clock to show.
+	d, waited := Layout(strings.Repeat("A line of the reply.\n\n", 30)+block, theme.Current(), 60), false
+	for n := range Frames {
+		frame := strings.Split(plain(d.Frame(n)), "\n")
+		build, test := frame[len(frame)-4], frame[len(frame)-3]
+		waited = waited || strings.Contains(build, "█") &&
+			!strings.ContainsAny(test, "█▏▎▍▌▋▊▉") && strings.HasSuffix(test, " 0s")
+	}
+	assert.True(t, waited, "test waits, at 0s, while build fills")
+
+	bad := plain(Render("```chart\ntype: timeline\ndata: {a: [5, 1]}\n```\n", theme.Current(), 80))
+	assert.Contains(t, bad, "a ends before it starts")
+}
+
+// A heatmap shades from its lowest value to its highest, never the lowest's shade for
+// a value above it, and fills in a wave from the top left.
+func TestRender_ShadesAHeatmap(t *testing.T) {
+	block := "```chart\ntype: heatmap\nseries: [Mon, Tue]\ndata:\n  a: [0, 1]\n  b: [5, 2]\n```\n"
+	lines := strings.Split(plain(Render(block, theme.Current(), 60)), "\n")
+	require.Len(t, lines, 4)
+	assert.Contains(t, lines[0], "Mon Tue")
+	assert.Equal(t, "  a ··· ░░░", lines[1], "1 is above the lowest, so it shows")
+	assert.Equal(t, "  b ███ ▒▒▒", lines[2])
+
+	d, held := Layout(strings.Repeat("A line of the reply.\n\n", 30)+block, theme.Current(), 60), false
+	for n := range Frames {
+		frame := strings.Split(plain(d.Frame(n)), "\n")
+		a, b := frame[len(frame)-3], frame[len(frame)-2]
+		held = held || strings.Contains(a, "···") && strings.HasPrefix(b, "  b") && !strings.Contains(b, "▒▒▒")
+	}
+	assert.True(t, held, "the top left fills while the bottom right, on screen, waits")
+}
+
 // every is a view holding one of each kind of block, for what all of them must keep.
 const every = sample + "```chart\ntype: columns\ndata: {a: 3, b: 9}\n```\n" +
 	"```chart\ntype: line\ndata: [1, 5, 2, 8]\n```\n```chart\ntype: sparkline\ndata: [1, 5, 2]\n```\n" +
@@ -411,7 +508,9 @@ const every = sample + "```chart\ntype: columns\ndata: {a: 3, b: 9}\n```\n" +
 	"- [x] done\n- [ ] not\n\n1. `a.go` — 3 lines\n2. `b.go` — 9 lines\n\n- `a/b.go` new\n- `a/c.go` gone\n\n" +
 	"```go\nfunc f() {}\n```\n" +
 	"```diff\n--- a/x.go\n+++ b/x.go\n@@ -1 +1 @@\n-old()\n+new()\n```\n" +
-	"```cause\nerror: boom\nat: x.go:1\nwhy: because\nfix: this\n```\n"
+	"```cause\nerror: boom\nat: x.go:1\nwhy: because\nfix: this\n```\n" +
+	"```options\npick: a\n+ good\noption: b\n- bad\n```\n```facts\ngo: 1.26\n```\n```badges\nci: passing\n```\n" +
+	"```chart\ntype: timeline\ndata: {a: 1, b: [0, 3]}\n```\n```chart\ntype: heatmap\ndata: {a: [1, 2], b: [3]}\n```\n"
 
 // A view arrives from nothing and rests as Render draws it, and no frame between
 // changes its height, which would make the pane jump as it arrives.
@@ -431,6 +530,21 @@ func TestLayout_ArrivesWithoutChangingHeight(t *testing.T) {
 	}
 	mid := plain(d.Frame(Frames / 2))
 	assert.Contains(t, mid, "Fixed undo", "the top has arrived halfway through")
+}
+
+// A short view shows at once and leaves its blocks the arrival to grow in, rather than
+// revealing them line by line until each has all but finished.
+func TestLayout_AShortViewLeavesItsBlocksTimeToGrow(t *testing.T) {
+	d := Layout("```chart\ntype: bar\ndata: {a: 3, b: 5, c: 10}\n```\n", theme.Current(), 40)
+	full := strings.Count(plain(d.Frame(Frames)), "█")
+	for n := range Frames {
+		frame := plain(d.Frame(n))
+		if strings.Contains(frame, "c ") {
+			assert.Less(t, strings.Count(frame, "█"), full/2, "frame %d, the first with every bar on screen", n)
+			return
+		}
+	}
+	t.Fatal("the last bar never showed")
 }
 
 // A value counts up from zero written as it is at rest, so the tile never
@@ -479,6 +593,8 @@ func FuzzRender(f *testing.F) {
 	f.Add("| a |\n|---|---|\n| 1 |\n\n|x|\n|-|\n|9|\n|1e99|\n\n| \\| | **b** |\n|:-:|--:|\n| `|` | 2 |\n", 7)
 	f.Add("- [x]\n- [ ] \n1. `a/b` — 1\n2. [x/](y) —\n# \n**1,2,3** **9.**", 3)
 	f.Add("```diff\n--- a\n+++ /dev/null\n@@\n\\ No newline\n+\n-\n--- x\n```\n```cause\nerror:\n  \nwhy:\n```", 2)
+	f.Add("```options\npick:\n+\n-\n−x\noption: \n```\n```facts\n:\n a\n```\n```badges\n:\n- \n```", 1)
+	f.Add("```chart\ntype: timeline\ndata: {a: 0, b: [0, 0], c: 1e15}\n```\n```chart\ntype: heatmap\nseries: []\ndata: {a: [7], b: [7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]}\n```", 6)
 	f.Fuzz(func(t *testing.T, text string, width int) {
 		width = width%200 + 1
 		if width < 1 {
