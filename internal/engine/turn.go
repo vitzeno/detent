@@ -19,7 +19,7 @@ const unfinishedNote = "[your last reply ended with no answer and no tool call] 
 // would end, since a model tends to check its own reading of a request.
 const finishNote = "[before you finish] Re-read the request and check each thing it asks for against what you " +
 	"actually produced: run it, test it or measure it. If anything is missing, wrong or unchecked, carry on. " +
-	"Otherwise give your final answer again."
+	"Otherwise give your final answer again, in full: the one before was not shown, and this one is what the human reads."
 
 // finishSuggestion is the judge's verdict as the model reads it. Advice only,
 // since the judge saw outputs and the model knows what it still meant to do.
@@ -177,20 +177,24 @@ func (e *Engine) runAgent(ctx context.Context, t *turnState, a *agent) (end agen
 		if a.root() {
 			e.bus.Publish(e.measure(used.PromptTokens))
 		}
-		if reply.Text != "" {
+		// What the check sends back is a draft, kept in the transcript but not shown, or
+		// the human read the request's view twice: once drafted and once checked.
+		nudging := reply.Unfinished() && nudges < maxNudges
+		checking := len(reply.Requests) == 0 && !nudging && a.root() && e.finishCheck && t.changed.Load() && !checked
+		if reply.Text != "" && !checking {
 			e.bus.Publish(event.ModelText{Turn: t.id, Step: stepID, Text: reply.Text, Agent: a.id})
 		}
 
 		// No calls means the model is finished asking, unless it stopped mid-thought.
 		if len(reply.Requests) == 0 {
 			e.appended(a, t.id, stepID, func() []event.Message { return a.tr.say(reply.Text) })
-			if reply.Unfinished() && nudges < maxNudges {
+			if nudging {
 				nudges++
 				e.noticeFrom(a, "info", fmt.Sprintf("the model stopped with no answer and no call (%s), so it was told to carry on", stopReason(reply.Stop)))
 				e.appended(a, t.id, uuid.Nil, func() []event.Message { return a.tr.note(unfinishedNote) })
 				continue
 			}
-			if a.root() && e.finishCheck && t.changed.Load() && !checked {
+			if checking {
 				checked = true
 				e.notice("info", "asked the model to check its work against the request before finishing")
 				e.appended(a, t.id, uuid.Nil, func() []event.Message { return a.tr.note(finishNote) })

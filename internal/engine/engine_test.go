@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -451,6 +452,26 @@ func TestTurn_AChangingTurnIsAskedToCheckOnce(t *testing.T) {
 	assert.Equal(t, 1, checks, "asked once, however the Turn goes on")
 	require.Len(t, r.of(event.NoticeKind), 1)
 	answered(t, r.eng)
+}
+
+// The answer the check sends back is a draft, kept in the transcript but never
+// shown: when it was, the human read the request's view twice.
+func TestTurn_TheDraftTheCheckSendsBackIsNotShown(t *testing.T) {
+	r := newRig(t, []model.Reply{
+		{Requests: []event.ToolRequest{bashCall("c1", "touch out.txt")}},
+		{Text: "made out.txt", Stop: "stop"},
+		{Text: "made out.txt, checked", Stop: "stop"},
+	}, WithFinishCheck(true))
+	end := r.run("make out.txt")
+
+	var shown []string
+	for _, e := range r.of(event.ModelTextKind) {
+		shown = append(shown, e.(event.ModelText).Text)
+	}
+	assert.Equal(t, []string{"made out.txt, checked"}, shown)
+	assert.Equal(t, "made out.txt, checked", end.Summary)
+	assert.True(t, slices.ContainsFunc(r.eng.messages(), func(m event.Message) bool { return m.Content == "made out.txt" }),
+		"the model still sees what it drafted")
 }
 
 // A Turn that only read is answered as it is, with no extra Step.
