@@ -53,6 +53,7 @@ func TestSystemPrompt_OnlyTheRootIsToldItsLastReplyIsTheView(t *testing.T) {
 	root := NewClient("", "", "", WithSubagents())
 	assert.Contains(t, root.systemPrompt(), "The view:")
 	assert.Contains(t, root.systemPrompt(), "chart: type (bar, sparkline or gauge)")
+	assert.Contains(t, root.systemPrompt(), "```chart\ntype: bar", "with an example, which a raw string cannot hold")
 	names := []string{}
 	for _, p := range root.PromptParts() {
 		names = append(names, p.Name)

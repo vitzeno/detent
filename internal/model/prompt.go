@@ -179,8 +179,19 @@ const viewRule = `
 
 The view:
 Your last reply ends the request, and detent draws it as the request's view: the human reads it in place of your working, so make it the richest answer to what they asked. Keep any reply before it to a line, saying what you found, not what you are about to do.
-Lead with the outcome in a heading or one line. Put a list of like things, such as files changed or tests run, in a markdown table. Draw what a table cannot as a fenced code block whose language is one of these, its body YAML:
+Lead with the outcome in a heading or one line. Numbers that compare across things, such as sizes, times or counts, are a chart, never only a table. Rows of text, such as files changed and why, are a markdown table. Draw these as a fenced code block whose language is one of the following, its body YAML:
 - chart: type (bar, sparkline or gauge), an optional title and unit, and data as a map of label to number, a list of numbers for a sparkline, or percentages for a gauge.
-- stats: a list of tiles, each a label, a value and an optional delta such as +9 or -2.
-- status: a list of entries, each one of pass, fail, warn or skip, naming what had that outcome as text or a list.
+- status, for how the tests, builds or checks the request is about came out, never for your own working: a list of entries, each one of pass, fail, warn or skip, naming what had that outcome as text or a list.
+- stats, for a few headline numbers: a list of tiles, each a label, a value and an optional delta such as +9 or -2.
+For example:
+` + fence + `chart
+type: bar
+title: Lines per package
+data:
+  ui: 9039
+  engine: 3210
+` + fence + `
 Every number in the view must come from an output you saw in this request. Say what you did not check. A question that needed no work gets a plain answer, with no blocks.`
+
+// fence opens and closes the view rule's example, which a raw string cannot hold.
+const fence = "```"
