@@ -108,15 +108,21 @@ func drawTree(body string, s styles, width int) (drawn, error) {
 		col = max(col, ansi.StringWidth(r.rail+r.name))
 	}
 	col = min(col+2, width*2/3)
-	lines := make([]string, 0, len(rows))
-	for _, r := range rows {
-		line := r.rail + r.name
-		if r.note != "" {
-			line = pad(ansi.Truncate(line, max(col-2, 1), "…"), col) + diffNote(r.note, s)
+	// It draws down its branches as it arrives, each row's note landing just after it.
+	return func(p float64) []string {
+		lines := make([]string, len(rows))
+		for i, r := range rows {
+			at := arrival(i, len(rows))
+			if p < at {
+				continue
+			}
+			lines[i] = r.rail + r.name
+			if r.note != "" && landed(p, at) {
+				lines[i] = pad(ansi.Truncate(lines[i], max(col-2, 1), "…"), col) + diffNote(r.note, s)
+			}
 		}
-		lines = append(lines, line)
-	}
-	return still(lines), nil
+		return lines
+	}, nil
 }
 
 func diffNote(note string, s styles) string {
@@ -181,8 +187,16 @@ func drawFlow(body string, s styles, width int) (drawn, error) {
 	}, nil
 }
 
+// flowLines draws one chain at p of its arrival: box i is there once the chain has got
+// that far along, and the arrow into it is drawn out cell by cell on the way.
 func flowLines(chain []string, s styles, width int, p float64) []string {
-	shown := int(math.Ceil(p * float64(len(chain))))
+	along := p * float64(len(chain)-1)
+	if p >= 1 {
+		along = float64(len(chain))
+	}
+	reached := func(i int) bool { return along >= float64(i) }
+	// arrowCells is how many of an arrow's three cells into box i are out.
+	arrowCells := func(i int) int { return min(3, max(0, int(math.Ceil((along-float64(i-1))*3)))) }
 	labels := make([]string, len(chain))
 	across := 0
 	for i, step := range chain {
@@ -194,13 +208,10 @@ func flowLines(chain []string, s styles, width int, p float64) []string {
 		rows := make([]string, 3)
 		for i, label := range labels {
 			box := flowBox(label, s)
-			arrow := [3]string{"   ", s.accent.Render("──▶"), "   "}
-			if i >= shown {
+			arrow := [3]string{"   ", s.accent.Render(pad([]string{"", "─", "──", "──▶"}[arrowCells(i)], 3)), "   "}
+			if !reached(i) {
 				w := ansi.StringWidth(box[0])
 				box = [3]string{strings.Repeat(" ", w), strings.Repeat(" ", w), strings.Repeat(" ", w)}
-			}
-			if i == 0 || i >= shown {
-				arrow = [3]string{"   ", "   ", "   "}
 			}
 			for r := range rows {
 				if i > 0 {
@@ -214,14 +225,17 @@ func flowLines(chain []string, s styles, width int, p float64) []string {
 	var rows []string
 	for i, label := range labels {
 		if i > 0 {
-			down := []string{s.accent.Render("  │"), s.accent.Render("  ▼")}
-			if i >= shown {
-				down = []string{"", ""}
+			down := []string{"", ""}
+			if arrowCells(i) > 0 {
+				down[0] = s.accent.Render("  │")
+			}
+			if arrowCells(i) == 3 {
+				down[1] = s.accent.Render("  ▼")
 			}
 			rows = append(rows, down...)
 		}
 		box := flowBox(label, s)
-		if i >= shown {
+		if !reached(i) {
 			box = [3]string{}
 		}
 		rows = append(rows, box[:]...)
@@ -256,8 +270,9 @@ func quoted(line string) (string, bool) {
 	return strings.TrimPrefix(rest, " "), ok
 }
 
-// callout draws an alert as a coloured rail beside its title and its markdown.
-func callout(kind, body string, s styles, style string, width int) []string {
+// callout draws an alert as a coloured rail beside its title and its markdown, the
+// rail sliding down as it arrives and carrying the text with it.
+func callout(kind, body string, s styles, style string, width int) drawn {
 	a := alertKinds[kind]
 	tone := s.of(a.tone)
 	rail := margin + tone.Render("▌") + " "
@@ -265,5 +280,13 @@ func callout(kind, body string, s styles, style string, width int) []string {
 	for _, line := range prose(body, style, max(width-ansi.StringWidth(rail)+len(margin), 1)) {
 		lines = append(lines, rail+strings.TrimPrefix(line, margin))
 	}
-	return lines
+	return func(p float64) []string {
+		out := make([]string, len(lines))
+		for i, line := range lines {
+			if p >= arrival(i, len(lines)) {
+				out[i] = line
+			}
+		}
+		return out
+	}
 }

@@ -189,7 +189,7 @@ func (p piece) draw(s styles, style string, width int) drawn {
 	case pieceProse:
 		return counting(p.body, style, width)
 	case pieceAlert:
-		return still(callout(p.alert, p.body, s, style, width))
+		return callout(p.alert, p.body, s, style, width)
 	case pieceHeading:
 		return shimmering(prose(p.body, style, width), s)
 	case pieceCode:

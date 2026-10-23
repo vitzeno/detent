@@ -121,6 +121,13 @@ type entry struct {
 	items []string
 }
 
+// landShare is how far into its block's arrival the last part starts, and landTime how
+// long a part takes to land once it has.
+const (
+	landShare = 0.6
+	landTime  = 0.2
+)
+
 // maxNumber is the largest magnitude a chart draws.
 const maxNumber = 1e15
 
@@ -235,57 +242,115 @@ func grouped(n string) string {
 	return b.String()
 }
 
-// drawStatus reads its own lines rather than YAML, since its entries are free text
-// and YAML stops at the colon or the backtick a model puts in one.
+// drawStatus reads its own lines, not YAML, which stops at a model's colons and backticks.
+// Its entries land one after another, each glyph faint until it has.
 func drawStatus(body string, s styles, width int) (drawn, error) {
 	entries, err := lineEntries(body, statusKinds)
 	if err != nil {
 		return nil, err
 	}
-	var lines []string
-	for _, e := range entries {
-		head := s.of(e.kind.tone).Render(e.kind.glyph+" "+pad(e.kind.name, 4)) + "  "
-		indent := strings.Repeat(" ", ansi.StringWidth(head))
+	type row struct {
+		entry int
+		text  string
+	}
+	var rows []row
+	for k, e := range entries {
+		indent := strings.Repeat(" ", ansi.StringWidth(e.kind.glyph+" "+pad(e.kind.name, 4)+"  "))
 		for i, part := range wrap(strings.Join(e.items, ", "), width-len(indent)) {
-			if i == 0 {
-				lines = append(lines, head+part)
-			} else {
-				lines = append(lines, indent+part)
+			if i > 0 {
+				part = indent + part
 			}
+			rows = append(rows, row{k, part})
 		}
 	}
-	return still(lines), nil
+	return func(p float64) []string {
+		lines := make([]string, len(rows))
+		for i, r := range rows {
+			at := arrival(r.entry, len(entries))
+			if p < at {
+				continue
+			}
+			if i > 0 && rows[i-1].entry == r.entry {
+				lines[i] = r.text
+				continue
+			}
+			k := entries[r.entry].kind
+			glyph, tone := "·", s.faint
+			if landed(p, at) {
+				glyph, tone = k.glyph, s.of(k.tone)
+			}
+			lines[i] = tone.Render(glyph+" "+pad(k.name, 4)) + "  " + r.text
+		}
+		return lines
+	}, nil
 }
 
-// drawSteps draws work in order as a timeline, what is still to do faint.
+// drawSteps draws work in order as a timeline drawing down, what is still to do faint,
+// each entry landing as its glyph and the rail on to the next one after it.
 func drawSteps(body string, s styles, width int) (drawn, error) {
 	entries, err := lineEntries(body, stepKinds)
 	if err != nil {
 		return nil, err
 	}
-	var lines []string
-	for i, e := range entries {
+	type row struct {
+		entry int
+		kind  byte // 'g' an entry's first line, 't' its others, 'r' the rail to the next
+		text  string
+	}
+	var rows []row
+	for k, e := range entries {
 		text := s.text
 		if e.kind.name == "todo" {
 			text = s.faint
 		}
-		rail := s.faint.Render("│") + " "
-		if i == len(entries)-1 {
-			rail = "  "
-		}
 		for j, part := range wrap(strings.Join(e.items, ", "), width-2) {
+			kind := byte('t')
 			if j == 0 {
-				lines = append(lines, s.of(e.kind.tone).Render(e.kind.glyph)+" "+text.Render(part))
-			} else {
-				lines = append(lines, rail+text.Render(part))
+				kind = 'g'
 			}
+			rows = append(rows, row{k, kind, text.Render(part)})
 		}
-		if i < len(entries)-1 {
-			lines = append(lines, s.faint.Render("│"))
+		if k < len(entries)-1 {
+			rows = append(rows, row{k, 'r', ""})
 		}
 	}
-	return still(lines), nil
+	rail := s.faint.Render("│")
+	return func(p float64) []string {
+		lines := make([]string, len(rows))
+		for i, r := range rows {
+			at := arrival(r.entry, len(entries))
+			last := r.entry == len(entries)-1
+			switch {
+			case p < at:
+			case r.kind == 'g':
+				glyph := s.faint.Render("○")
+				if landed(p, at) {
+					glyph = s.of(entries[r.entry].kind.tone).Render(entries[r.entry].kind.glyph)
+				}
+				lines[i] = glyph + " " + r.text
+			case r.kind == 't' && last:
+				lines[i] = "  " + r.text
+			case r.kind == 't':
+				lines[i] = rail + " " + r.text
+			case p >= arrival(r.entry+1, len(entries)):
+				lines[i] = rail
+			}
+		}
+		return lines
+	}, nil
 }
+
+// arrival is when the kth of a block's n parts starts to arrive, the last of them
+// starting at landShare of the block's own arrival, so even it has time to land.
+func arrival(k, n int) float64 {
+	if n <= 1 {
+		return 0
+	}
+	return landShare * float64(k) / float64(n-1)
+}
+
+// landed is whether a part that started arriving at at has landed by p.
+func landed(p, at float64) bool { return p >= 1 || p >= at+landTime }
 
 // lineEntries reads "- pass: text", "- pass: [a, b]", or "- pass:" over
 // indented "- item" lines, one entry per kind named, in the order written.

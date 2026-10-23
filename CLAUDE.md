@@ -207,7 +207,8 @@ a model miscounts a hunk's header. Plain markdown is lifted too
 task list is steps, a list of paths is a tree and a list of measures is bars, a heading
 shimmers, code types out and a bold number counts up. History leads it with `▤` and
 its title. A view landing live arrives over `view.Frames` frames, its lines fading in from
-the top, its bars growing and its numbers counting up, while a replayed one is drawn at rest.
+the top, its bars growing, its numbers counting up and each block's parts landing in turn,
+while a replayed one is drawn at rest.
 Reasoning an endpoint sends in place of an answer is `ModelText.Thinking`: a faint
 `∴` row titled by its leading bold, shown dimmed when selected, and in a headless
 run only that title, so the working stays background to the view.

@@ -3,6 +3,7 @@ package view
 import (
 	"fmt"
 	"image/color"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -494,6 +495,46 @@ func TestRender_ShadesAHeatmap(t *testing.T) {
 		held = held || strings.Contains(a, "···") && strings.HasPrefix(b, "  b") && !strings.Contains(b, "▒▒▒")
 	}
 	assert.True(t, held, "the top left fills while the bottom right, on screen, waits")
+}
+
+// Each still block arrives in its own way: some frame shows what only its arrival can,
+// and the view at rest shows none of it.
+func TestLayout_StillBlocksArriveInTheirOwnWays(t *testing.T) {
+	for name, c := range map[string]struct {
+		block   string
+		arrives func(frame string) bool
+	}{
+		"a status entry lands before its glyph does": {
+			"```status\n- pass: a\n- fail: b\n- skip: c\n```\n",
+			func(f string) bool { return strings.Contains(f, "· fail  b") },
+		},
+		"a step shows before it lands": {
+			"```steps\n- done: one\n- done: two\n- done: three\n```\n",
+			func(f string) bool { return strings.Contains(f, "○ two") },
+		},
+		"a tree's row shows before its note": {
+			"```tree\na/one.go  +3\na/two.go  +4\na/three.go  +5\n```\n",
+			func(f string) bool { return regexp.MustCompile(`(?m)one\.go$`).MatchString(f) },
+		},
+		"an alert's rail slides down before its text": {
+			"> [!WARNING]\n> first line\n>\n> second paragraph\n\nAfter.\n",
+			func(f string) bool { return strings.Contains(f, "After.") && !strings.Contains(f, "second paragraph") },
+		},
+		"a flow's arrow is drawn out before the next box": {
+			"```flow\nalpha -> beta -> gamma\n```\n",
+			func(f string) bool { return regexp.MustCompile(`(?m)│ alpha │──? *$`).MatchString(f) },
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			d := Layout(c.block, theme.Current(), 60)
+			assert.False(t, c.arrives(plain(d.Frame(Frames))), "at rest")
+			seen := false
+			for n := range Frames {
+				seen = seen || c.arrives(plain(d.Frame(n)))
+			}
+			assert.True(t, seen)
+		})
+	}
 }
 
 // every is a view holding one of each kind of block, for what all of them must keep.
