@@ -57,7 +57,6 @@ const (
 	OutputChunkKind      Kind = "output.chunk"
 	ToolCallEndedKind    Kind = "tool_call.ended"
 	ToolCallJudgedKind   Kind = "tool_call.judged"
-	ViewReadyKind        Kind = "view.ready"
 
 	UserCommandStartedKind Kind = "user_command.started"
 	UserCommandEndedKind   Kind = "user_command.ended"

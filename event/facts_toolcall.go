@@ -4,8 +4,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/vitzeno/detent/viewspec"
 )
 
 // A tool call is one tool invocation.
@@ -18,9 +16,6 @@ type ToolCallProposed struct {
 	Tool      ToolName       `json:"Tool"`
 	Args      map[string]any `json:"Args"`
 	Rationale string         `json:"Rationale"`
-	// Renders is how the tool says its output should be read, which beats
-	// a judged guess.
-	Renders RenderKind `json:"Renders"`
 	// Executor is empty for a shell command, and otherwise names what
 	// runs it. Nothing a checkpoint can undo.
 	Executor string `json:"Executor"`
@@ -104,35 +99,14 @@ type Result struct {
 	Err string `json:"Err"`
 }
 
-// ToolCallJudged is how it went and how to draw it. Async: may land late.
+// ToolCallJudged is how it went. Async: may land late.
 type ToolCallJudged struct {
 	fact
-	ToolCall     uuid.UUID  `json:"ToolCall"`
-	Status       Status     `json:"Status"`
-	RenderKind   RenderKind `json:"RenderKind"`
-	Attention    float64    `json:"Attention"`
-	GoalAchieved float64    `json:"GoalAchieved"`
-	FromJudge    bool       `json:"FromJudge"`
+	ToolCall     uuid.UUID `json:"ToolCall"`
+	Status       Status    `json:"Status"`
+	Attention    float64   `json:"Attention"`
+	GoalAchieved float64   `json:"GoalAchieved"`
+	FromJudge    bool      `json:"FromJudge"`
 }
 
 func (ToolCallJudged) Kind() Kind { return ToolCallJudgedKind }
-
-// ViewReady is a spec for a tool call's output.
-type ViewReady struct {
-	fact
-	// Exactly one is set, as on OutputChunk.
-	ToolCall    uuid.UUID      `json:"ToolCall"`
-	UserCommand uuid.UUID      `json:"UserCommand"`
-	Spec        *viewspec.Spec `json:"Spec"`
-	Source      string         `json:"Source"` // shipped, saved, composed
-}
-
-func (ViewReady) Kind() Kind { return ViewReadyKind }
-
-// Owner is whichever of ToolCall and UserCommand the view is for.
-func (v ViewReady) Owner() uuid.UUID {
-	if v.UserCommand != uuid.Nil {
-		return v.UserCommand
-	}
-	return v.ToolCall
-}

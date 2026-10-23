@@ -366,17 +366,6 @@ func TestToolCallProposed_AShellToolCallHasNoExecutor(t *testing.T) {
 	assert.Empty(t, proposed[0].(event.ToolCallProposed).Executor)
 }
 
-// No tool ships with an opinion, and inventing one would send ordinary
-// command output through a markdown renderer.
-func TestToolCallProposed_LeavesRendersEmptyWhenTheToolHasNoOpinion(t *testing.T) {
-	r := newRig(t, []model.Reply{{Requests: []event.ToolRequest{bashCall("c1", "ls")}}})
-	r.run("go")
-
-	proposed := r.of(event.ToolCallProposedKind)
-	require.Len(t, proposed, 1)
-	assert.Empty(t, proposed[0].(event.ToolCallProposed).Renders)
-}
-
 // A front-end measures a Step's prompt tokens against the budget, so
 // the budget has to be on the fact that describes the run.
 func TestSessionStarted_CarriesTheContextBudget(t *testing.T) {

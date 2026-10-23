@@ -132,10 +132,8 @@ func describe(e event.Event) (slog.Level, []any) {
 			KeyReason, Snippet(v.Result.Err)}
 	case event.ToolCallJudged:
 		return slog.LevelDebug, []any{KeyToolCall, v.ToolCall, "status", v.Status,
-			"kind", v.RenderKind, "attention", v.Attention,
+			"attention", v.Attention,
 			"goal_achieved", v.GoalAchieved, "from_judge", v.FromJudge}
-	case event.ViewReady:
-		return slog.LevelDebug, []any{KeyToolCall, v.ToolCall, "source", v.Source}
 	case event.UserCommandStarted:
 		// The command through Body like any other: it is the human's
 		// content, not the harness's metadata.

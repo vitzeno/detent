@@ -70,21 +70,8 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                # go test -fuzz takes one target at a time.
-                target:
-                    - FuzzExtractLines
-                    - FuzzExtractColumns
-                    - FuzzExtractJSON
-                    - FuzzExtractFixed
-                    - FuzzExtractPairs
-                    - FuzzExtractDelimited
-                    - FuzzExtractIndent
-                    - FuzzExtractPrefix
-                    - FuzzExtractBox
-                    - FuzzExtractNone
-                    - FuzzNumber
+                # go test -fuzz takes one target at a time, each over input nothing controls.
                 include:
-                    # The finder's matcher reads output nothing controls, as viewspec does.
                     - target: FuzzMatch
                       pkg: ./ui/search/
                     - target: FuzzText
@@ -105,7 +92,7 @@ jobs:
               uses: ./.github/actions/go/setup
 
             - name: Fuzz ${{ matrix.target }}
-              run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 20s ${{ matrix.pkg || './viewspec/' }}
+              run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 20s ${{ matrix.pkg }}
 
     lint:
         name: Format and vet

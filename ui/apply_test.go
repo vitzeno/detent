@@ -642,7 +642,7 @@ func TestWriteFile_ANewFileIsShownAsADiff(t *testing.T) {
 	ended := func(stdout string, code int) Model {
 		turn, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 		return sized(t, 120, 40, event.TurnStarted{Turn: turn, N: 1, Prompt: "go"},
-			event.ToolCallProposed{ToolCall: call, Tool: "write_file", Renders: event.RendersDiff,
+			event.ToolCallProposed{ToolCall: call, Tool: "write_file",
 				Args: map[string]any{"path": "notes.md", "content": "one\ntwo\x1b]52;c;x\x07\n"}},
 			event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: stdout, ExitCode: code}})
 	}

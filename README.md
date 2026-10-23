@@ -188,12 +188,12 @@ Either can come from anyone. The engine publishes most facts, but the store, the
     ├── model                  │  ──→  logging    the JSONL stream
     └── routing                │  ──→  store      SQLite allows resume
           ├── host             │  ──→  judge      how the tool call went
-          └── sandbox          │  ──→  viewgen    how to draw it
+          └── sandbox          │  ──→  review     the diffs /review reads
                                │
   anyone ───── intents ─────→  │
 ```
 
-`ui` imports nothing under `internal/`, both sides import `event`, which depends on the standard library and `viewspec`
+`ui` imports nothing under `internal/`, both sides import `event`, which depends on the standard library and `google/uuid`
 
 All extensions listen, publish, or both
 
@@ -244,19 +244,11 @@ detent -resume <id>                 # or a specific one
 detent -resume "the sandbox bug"    # or one you named
 ```
 
-## Generative Output (**Experimental**)
+## Views
 
-Currently thirty widgets over ten parse kinds, including
-gauges, histograms, box plots, gantt charts, braille scatter plots and
-heatmaps
+A request ends with its view: the final reply, drawn as markdown with tables, and with charts, stats and status where the answer holds numbers or checks
 
-With `views: generate` and a Jev key it designs a spec for output nothing
-covers
-
-Jev answers closed questions rather than writing JSON, so it cannot
-name a widget or field that does not exist
-
-All takes about 600ms, then cached
+What the agent ran along the way is shown as it came, a diff coloured as `/review` colours one, and its reasoning is a faint `∴` line you can open
 
 ## Logs
 

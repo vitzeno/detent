@@ -59,7 +59,7 @@ skip themselves when no daemon answers.
 
 CI (`.github/workflows/ci.yaml`) runs `go test -race -cover` on ubuntu
 and macos, `go test -cover` on windows (the race detector needs cgo
-there), gofmt/vet/`go mod tidy`, lint, viewspec and finder fuzzing and a five-target
+there), gofmt/vet/`go mod tidy`, lint, fuzzing of what reads input nothing controls, and a five-target
 cross-build with `CGO_ENABLED=0`. The Windows job is allowed to fail
 until it has been green for a while: its PowerShell, Git Bash and Job
 Object code had never run on Windows when it was added. The sandbox
@@ -200,9 +200,9 @@ to make the richest answer to what was asked (`viewRule` in `internal/model`).
 Reasoning an endpoint sends in place of an answer is `ModelText.Thinking`: a faint
 `∴` row titled by its leading bold, shown dimmed when selected, and in a headless
 run only that title, so the working stays background to the view.
-The word once meant a spec drawing one command's output, which `viewspec` still
-does until those per-output views go (`docs/views.md`), so code says
-"per-output view" for that one.
+The word once meant a spec drawing one command's output. Those per-output views
+are gone: a command's output is drawn as it came, a diff in it coloured as
+`/review` colours one.
 
 What the model sends is a **tool request** (`event.ToolRequest`, the
 wire's `tool_calls` entry, carrying the endpoint's id). Each becomes one
@@ -213,11 +213,10 @@ transcript must still answer it.
 A **user command** is none of the other five: no model asked for it, so
 nothing assesses, approves or judges it, and it opens no Turn. It is
 its own noun precisely so it cannot be bolted onto a tool call and quietly
-break those three at once, which is why `OutputChunk` and `ViewReady`
-carry a `UserCommand` id beside `ToolCall` rather than reuse it.
+break those three at once, which is why `OutputChunk` carries a
+`UserCommand` id beside `ToolCall` rather than reuse it.
 `internal/usercommand` owns it, and the human starts one in the TUI's
-shell mode (shift+tab). Its output is still drawn: `viewgen` asks Jev
-its shape, never how it went.
+shell mode (shift+tab).
 
 Sessions saved under the old names (Call, Shell) were rewritten by store
 migration 0003, which v0.5.0 runs and the baseline now holds, so nothing on
@@ -254,13 +253,13 @@ undo refuses before touching the sandbox or the files.
 
 ## Architecture
 
-**Everything is an event.** 37 facts and 24 intents are the entire
+**Everything is an event.** 36 facts and 24 intents are the entire
 interface between components. Facts are past tense, intents are
 imperative, and either may come from anyone: the engine publishes most
 facts, but a subscriber answering a question publishes one too. An extension
 listens, publishes, or both. There is no second mechanism.
 
-Nothing calls the engine. Every part of the program is one of eleven
+Nothing calls the engine. Every part of the program is one of ten
 subscribers:
 
 | Subscriber | Does | Remove it and |
@@ -271,7 +270,6 @@ subscribers:
 | `logging` | the JSONL stream | nothing else notices |
 | `internal/store` | the SQLite log, answers `ListSessions` and `LoadSession` | resume stops, nothing else |
 | `internal/judge` | scores a finished tool call, may `SuggestFinish` | rows lose their verdict |
-| `internal/viewgen` | composes the view for an output, and draws shipped and saved ones with no key | rows fall back to text |
 | `internal/mcp` | answers `ListServers`, signs in on `AuthorizeServer` | `/mcp` draws nothing, no server signs in |
 | `internal/forget` | answers `DeleteSession` | `/delete` does nothing |
 | `internal/usercommand` | runs `RunCommand`, the human's own | shift+tab stops working |
@@ -312,7 +310,7 @@ shape was worth the rework:
 
 ```
 cmd/detent  →  ui, engine, model, tool, classify, config, routing, headless, trust, worktree, hold
-ui          →  event, viewspec, views, version, logging, defuse + its own subpackages
+ui          →  event, version, logging, defuse + its own subpackages
 engine      →  event, tool, model, capture, classify (via an interface)
 mcp         →  event, tool, capture, the MCP SDK
 forget      →  event (the store and sandbox arrive as arguments)
@@ -320,13 +318,11 @@ review      →  event, worktree
 usercommand →  event, capture (the runner arrives as an argument)
 tool        →  event
 model       →  event
-event       →  the standard library, plus viewspec and google/uuid
-viewspec    →  the standard library, nothing else
+event       →  the standard library, plus google/uuid
 defuse      →  the standard library, nothing else
 gitroot     →  the standard library (instructions and skills share it)
 private     →  the standard library, nothing else
 hold        →  the standard library, plus google/uuid and x/sys
-views       →  viewspec, event
 logging     →  the standard library, plus event
 config      →  engine, model, classify, sandbox, host (for defaults and names only)
 host        →  capture, winjob
@@ -339,8 +335,7 @@ translation layer (`internal/resolver`) mirroring every type. Now both
 sides import `event` directly and the layer is gone. `event` earns
 that by depending on almost nothing, and the rule is a property rather
 than a list: **every non-stdlib package `event` imports must itself
-import only the standard library.** `viewspec` and `google/uuid` both
-qualify. `event/event_test.go` walks the imports and checks it, so
+import only the standard library.** `google/uuid` qualifies. `event/event_test.go` walks the imports and checks it, so
 adding a fat dependency fails with the transitive import named.
 
 - **`event`**: the shared vocabulary and the `Bus`. A tool's name is an
@@ -385,7 +380,7 @@ adding a fat dependency fails with the transitive import named.
   declares `Delegates`, so Jev skips it and it never marks the Turn
   changed. The child's own calls go through the whole chain and mark it
   changed, a flagged one waits for the human while its siblings run, and the judge
-  and viewgen leave them alone. `New` subscribes to
+  leaves them alone. `New` subscribes to
   intents, not `Run`, so a caller that publishes the moment it returns
   cannot lose the intent.
   `Abort` is handled in `dispatch` rather than queued to the Turn: a
@@ -671,17 +666,6 @@ adding a fat dependency fails with the transitive import named.
   sequence is shown rather than sent to the terminal. A subagent's lines
   are prefixed with its name, since several interleave.
 
-- **`internal/viewgen`**: writes a spec by asking the judge closed
-  questions and assembling the answers, rather than asking a model to
-  write JSON. That path existed, ran 31s median against 300ms, and
-  could name a widget, a role or a field that did not exist. All three
-  happened. None is representable from a list the program built.
-  Without a key it still draws shipped and saved views (`Unjudged`),
-  and `views: generate` sends a user command and up to 4KB of its
-  output to the judge. A subagent's calls are never judged, so they
-  resolve as they end, from views that exist, and nothing is composed
-  for them.
-
 - **`ui`**: the TUI, and nothing but a projection of the event
   stream. `SessionStarted` is the one description of a run: model,
   sandbox, network, step bound, whether anything is recording it and
@@ -736,8 +720,7 @@ adding a fat dependency fails with the transitive import named.
   move, a clipboard write, a link) is shown rather than sent, so no pane
   or preview has to remember to. The model's own words are drawn by
   `ui/view` and kept on the row (`proseDrawing`), so a block that does not parse
-  shows as the YAML it is, with why, and costs nothing else. A view that panics while drawing falls
-  back to plain text.
+  shows as the YAML it is, with why, and costs nothing else.
 
   **A subagent is drawn in one place at a time.** While its request runs
   it is a row in the agents block below history (`view_agents.go`),
@@ -809,32 +792,6 @@ adding a fat dependency fails with the transitive import named.
   Model's state is passed to it as values. Worth doing if a second
   front-end ever wants the same drawing, not for one.
 
-- **`viewspec`**: the view interpreter, outside `internal/` and
-  stricter than anything else: it imports **only the standard
-  library**, enforced by `TestPackage_DependsOnStdlibOnly`. A `Spec`
-  says how to read a command's output (`Parse`) and how to draw what
-  was read (`Blocks`, over a closed widget vocabulary). Ten parse
-  kinds and thirty widgets, each widget in its own `widget_*.go`. Numbers are
-  read by `number`, not `strconv.ParseFloat`, which rejected every
-  column `df` prints: `45%`, `1.2G` and `1,024` all came back 0 and
-  drew an empty bar rather than an error anyone could see. Three calls
-  priced by frequency: `Compile` once per spec, `Bind` once per
-  output, `Draw` per frame, though a few widgets still read numbers
-  and times as they draw. `Painter` is on `Frame`, not `Compiled`, so
-  the first two are pure data and test with no styling at all. `Bind`
-  leaves `Compiled` untouched, so one may be bound from several
-  goroutines, and no drawn line is wider than `Frame.Width`. Ordinary
-  output never panics: every extractor and `number` has a fuzz target
-  in `fuzz_test.go`.
-  `Frame.Height` says how tall the pane is for widgets that can grow
-  into it and **clips nothing**, because clipping is what would stop a
-  long view scrolling. A widget must implement `Widget`. `Validator`,
-  `Selector`, `Described` and `Container` are optional and found by
-  type assertion. `Selector` is load-bearing: only a kind that can say
-  which line the cursor is on may carry `on_enter`, because accepting
-  it elsewhere drew a spec that looked right and did nothing when the
-  human pressed enter.
-
 - **`logging`**: the structured log, importing only the standard
   library and `event`, so anything but `event` may import it
   (`TestPackage_ImportsOnlyStdlibAndEvent`). Files are owner-only. **One JSONL stream per session**, never one file per
@@ -845,14 +802,6 @@ adding a fat dependency fails with the transitive import named.
   query cannot match free text reliably. `Body` withholds prompts,
   replies and output unless `log_bodies` is set, and free text such as
   a notice or an error is cut to a snippet.
-
-- **`views`**: every spec detent ships, keyed by command name
-  (`ForCommand`) and by judged output shape (`ForKind`, an
-  `event.RenderKind`). Imports `viewspec` and `event` and nothing else,
-  which is what lets both `ui` and `viewgen` read it without either
-  importing the other. Result statuses and render kinds are typed
-  constants in `event/verdict.go`, and judge, viewgen, views and
-  `ui/status` each have a test that their copy agrees with it.
 
 - **`internal/store`**: a session's events on disk, so it can be
   replayed rather than reconstructed. Speaks `event.Record` and knows
@@ -907,40 +856,6 @@ update, since an old record decodes it as zero, and so does giving a field a
 named type over the same kind (`string` to `event.ToolName`), which stores
 the same bytes.
 
-### Adding or changing a widget
-
-Four files can decide something about a widget, and it is worth knowing
-which, because three of them fail *silently* when missed. Adding
-`markdown` needed all four and had only one, for months.
-
-| Decides | Where | Missed it? |
-| ------- | ----- | ---------- |
-| the widget exists and draws | `viewspec/widget_<name>.go` | compile error |
-| what it is for, and whether it summarises | its own `Describe()` | **absent from every choice list** |
-| which output shapes may use it | `internal/viewgen/kinds.go` | **never offered** |
-| anything needing more than stdlib | registered in `ui/spec.go` | n/a |
-
-`Describe()` is optional so a consumer can register a plain function as
-a widget, which is right. The cost is that a widget without one is
-registered, drawable, and invisible to the judge with no error
-anywhere. `Summarises` lives there too, rather than in a list in
-viewgen, so registering a widget is enough to have it offered as a
-summary: the fact belongs beside the widget, not somewhere that has to
-be kept in step with it.
-
-The fourth row is `markdown`: it needs glamour, which is 126 packages,
-and `viewspec` imports only the standard library
-(`TestPackage_DependsOnStdlibOnly`). So `ui` registers it over the
-standard set. That is the extension point working as intended, and it
-is safe in one direction only: `ui` adds to `viewspec.Standard()` and
-never removes, so the composer can only pick what `ui` can draw.
-`TestRegistry_ComposerCannotPickWhatUiCannotDraw` pins that.
-
-`ui`'s `markdown.Wants` heuristic is not a fifth place. It is the same
-two-layer split `render_kind` already has: a heuristic when no judge
-has spoken, the judge's answer when one has. `fallbackChain` runs
-before anything is judged and with no Driver at all.
-
 ### Adding a new feature
 
 Start from what the feature actually is:
@@ -957,16 +872,9 @@ Start from what the feature actually is:
   it in `ui/facts.go`. Three edits, each provable on its own, and the
   compiler catches the first two.
 
-A tool that knows how its output should be read says so in
-`Spec.Renders`, which rides on `ToolCallProposed` and beats a judged
-render kind, because the tool knows and the judge is estimating. No
-shipped tool claims one: `web_search` returns markdown but glamour
-prints every link's destination, and DuckDuckGo's redirects double the
-output.
-
 There is no DTO mirror to keep in step any more. The thing that
 replaced it is the rule that `event` may import nothing but the
-standard library and `viewspec`. Break that and the boundary is back.
+standard library and `google/uuid`. Break that and the boundary is back.
 
 ## Conventions
 
@@ -986,13 +894,13 @@ The rules the code already follows, so new code reads like the old.
 
 - **A type with behaviour or dependencies is built through `New...`.** A
   client, a judge, a store, a generator, a selector: `model.NewClient`,
-  `viewgen.New`, `classify.NewRiskJudge`. Its fields are unexported, so a
+  `hold.New`, `classify.NewRiskJudge`. Its fields are unexported, so a
   literal in another package cannot skip the defaults. Plain data stays a
-  literal: events, `capture.Result`, viewspec specs, `config.Config`.
+  literal: events, `capture.Result`, `config.Config`.
 - **Required values are arguments, optional ones are options.** An option
   is `type XOption func(*X)` with constructors named `WithY`
   (`model.WithHeaders`, `engine.WithMaxSteps`), applied in order, and a
-  switch that only turns something on reads as one (`viewgen.WithoutVerdicts`).
+  switch that only turns something on reads as one (`mcp.WithoutHints`).
   Several values that belong together go in one option (`WithInstructions(text, files)`).
 - **Defaults are applied once, in the constructor**, after the options, with
   `cmp.Or` where it fits (`NewClient`), never re-derived on every call by an
@@ -1064,10 +972,10 @@ The rules the code already follows, so new code reads like the old.
 ### Interfaces
 
 - **An interface found by type assertion gets a compile-time assertion**
-  beside the implementation (`var _ Selector = gaugeWidget{}`), because a
+  beside the implementation (`var _ Native = WriteFile{}`), because a
   renamed method otherwise degrades silently instead of failing the build:
-  `engine.Snapshotter` losing its name removes rollback entirely, and a
-  widget losing `Validate` simply stops validating. One proved by an
+  `engine.Snapshotter` losing its name removes rollback entirely, and a file
+  tool losing `Run` quietly goes back to running through the shell. One proved by an
   argument, a struct field or a return type needs no assertion and should
   not get one.
 - An interface is declared where it is used, and kept to the methods that

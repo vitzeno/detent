@@ -17,14 +17,10 @@ import (
 // missing from one would pass there unchecked.
 func TestVerdict_ListsHoldEveryConstant(t *testing.T) {
 	declared := declaredConsts(t)
-	var kinds, statuses []string
-	for _, k := range RenderKinds() {
-		kinds = append(kinds, string(k))
-	}
+	var statuses []string
 	for _, s := range Statuses() {
 		statuses = append(statuses, string(s))
 	}
-	assert.ElementsMatch(t, declared["RenderKind"], kinds)
 	assert.ElementsMatch(t, declared["Status"], statuses)
 }
 

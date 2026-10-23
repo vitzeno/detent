@@ -15,8 +15,6 @@ type kind struct {
 	name     event.ToolName
 	runner   string
 	executor string // what ran a tool call that is not a shell command
-	render   event.RenderKind
-	renders  event.RenderKind
 	args     func(*rand.Rand) map[string]any
 	risk     func(*rand.Rand) event.Risk
 	result   func(*rand.Rand) event.Result
@@ -25,7 +23,6 @@ type kind struct {
 // gen is the made-up half of a kind, keyed by tool name.
 type gen struct {
 	runner string
-	render event.RenderKind // the kind a judge would give its output
 	args   func(*rand.Rand) map[string]any
 	result func(*rand.Rand) event.Result
 }
@@ -51,20 +48,20 @@ func kinds() []kind {
 			continue
 		}
 		spec := t.Describe()
-		out = append(out, kind{name: name, runner: g.runner, render: g.render,
+		out = append(out, kind{name: name, runner: g.runner,
 			args: g.args, result: g.result, risk: riskFor(spec.Mutability)})
 	}
 	// Two MCP tools, which no registry holds until a server answers.
 	return append(out,
 		kind{
-			name: "github__create_issue", runner: "host", executor: "mcp:github", render: event.RendersText,
+			name: "github__create_issue", runner: "host", executor: "mcp:github",
 			args: func(r *rand.Rand) map[string]any {
 				return map[string]any{"repo": "vitzeno/detent", "title": pick(r, prompts)}
 			},
 			risk: mcpRisk, result: issueResult,
 		},
 		kind{
-			name: "docs__search_docs", runner: "host", executor: "mcp:docs", render: event.RendersMarkdown, renders: event.RendersMarkdown,
+			name: "docs__search_docs", runner: "host", executor: "mcp:docs",
 			args: func(r *rand.Rand) map[string]any {
 				return map[string]any{"q": pick(r, queries), "limit": 5}
 			},
@@ -85,28 +82,28 @@ func riskFor(mutability string) func(*rand.Rand) event.Risk {
 
 var gens = map[event.ToolName]gen{
 	"bash": {
-		runner: "sandbox", render: event.RendersText,
+		runner: "sandbox",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"command": pick(r, commands)}
 		},
 		result: shellResult,
 	},
 	"read_file": {
-		runner: "sandbox", render: event.RendersContent,
+		runner: "sandbox",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"path": pick(r, paths)}
 		},
 		result: fileResult,
 	},
 	"write_file": {
-		runner: "sandbox", render: event.RendersText,
+		runner: "sandbox",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"path": pick(r, paths), "content": pick(r, prose)}
 		},
 		result: wroteResult,
 	},
 	"edit_file": {
-		runner: "sandbox", render: event.RendersDiff,
+		runner: "sandbox",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"path": pick(r, paths), "old_string": pick(r, codeLines),
 				"new_string": pick(r, codeLines), "replace_all": r.IntN(5) == 0}
@@ -114,14 +111,14 @@ var gens = map[event.ToolName]gen{
 		result: diffResult,
 	},
 	"list_dir": {
-		runner: "sandbox", render: event.RendersTable,
+		runner: "sandbox",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"path": pick(r, dirs), "all": r.IntN(4) == 0}
 		},
 		result: listResult,
 	},
 	"grep": {
-		runner: "sandbox", render: event.RendersContent,
+		runner: "sandbox",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"pattern": pick(r, []string{"Publish", "func New", "TODO"}),
 				"path": pick(r, dirs), "include": "*.go", "ignore_case": false, "max_results": 200}
@@ -129,21 +126,21 @@ var gens = map[event.ToolName]gen{
 		result: grepResult,
 	},
 	"find_files": {
-		runner: "sandbox", render: event.RendersTable,
+		runner: "sandbox",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"pattern": "*_test.go", "path": pick(r, dirs), "max_results": 200}
 		},
 		result: listResult,
 	},
 	"web_search": {
-		runner: "sandbox", render: event.RendersMarkdown,
+		runner: "sandbox",
 		args: func(r *rand.Rand) map[string]any {
 			return map[string]any{"query": pick(r, queries)}
 		},
 		result: searchResult,
 	},
 	"skill": {
-		runner: "sandbox", render: event.RendersMarkdown,
+		runner: "sandbox",
 		args: func(*rand.Rand) map[string]any {
 			return map[string]any{"name": "release"}
 		},

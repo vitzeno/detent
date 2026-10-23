@@ -88,7 +88,6 @@ var codecs = map[Kind]func([]byte) (Event, error){
 	OutputChunkKind:      codec[OutputChunk],
 	ToolCallEndedKind:    codec[ToolCallEnded],
 	ToolCallJudgedKind:   codec[ToolCallJudged],
-	ViewReadyKind:        codec[ViewReady],
 
 	UserCommandStartedKind: codec[UserCommandStarted],
 	UserCommandEndedKind:   codec[UserCommandEnded],

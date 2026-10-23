@@ -143,14 +143,12 @@ tool_call.ended ToolCall uuid.UUID
 tool_call.judged Attention float64
 tool_call.judged FromJudge bool
 tool_call.judged GoalAchieved float64
-tool_call.judged RenderKind event.RenderKind
 tool_call.judged Status event.Status
 tool_call.judged ToolCall uuid.UUID
 tool_call.proposed Agent uuid.UUID
 tool_call.proposed Args{} interface {}
 tool_call.proposed Executor string
 tool_call.proposed Rationale string
-tool_call.proposed Renders event.RenderKind
 tool_call.proposed Step uuid.UUID
 tool_call.proposed Tool event.ToolName
 tool_call.proposed ToolCall uuid.UUID
@@ -221,7 +219,3 @@ user_command.ended UserCommand uuid.UUID
 user_command.started Command string
 user_command.started Runner string
 user_command.started UserCommand uuid.UUID
-view.ready Source string
-view.ready Spec viewspec.Spec
-view.ready ToolCall uuid.UUID
-view.ready UserCommand uuid.UUID

@@ -44,24 +44,18 @@ func TestShapes_StoredFactsKeepTheirShape(t *testing.T) {
 		"what a stored fact writes changed. If that was meant, add a store migration that rewrites old records, then run: go test ./event -run TestShapes -update")
 }
 
-// Status and RenderKind were plain strings when sessions were stored, so
-// a named type must write and read the very same JSON.
+// Status was a plain string when sessions were stored, so a named type must
+// write and read the very same JSON, and a key a fact no longer has is ignored.
 func TestShapes_NamedStringsStoreAsPlainStrings(t *testing.T) {
-	data, err := json.Marshal(ToolCallJudged{Status: StatusFailed, RenderKind: RendersError})
+	data, err := json.Marshal(ToolCallJudged{Status: StatusFailed})
 	require.NoError(t, err)
 	var stored map[string]any
 	require.NoError(t, json.Unmarshal(data, &stored))
 	assert.Equal(t, "failed", stored["Status"])
-	assert.Equal(t, "error_text", stored["RenderKind"])
 
 	e, err := Decode(ToolCallJudgedKind, []byte(`{"Status":"failed","RenderKind":"error_text"}`))
 	require.NoError(t, err)
 	assert.Equal(t, StatusFailed, e.(ToolCallJudged).Status)
-	assert.Equal(t, RendersError, e.(ToolCallJudged).RenderKind)
-
-	e, err = Decode(ToolCallProposedKind, []byte(`{"Renders":"markdown"}`))
-	require.NoError(t, err)
-	assert.Equal(t, RendersMarkdown, e.(ToolCallProposed).Renders)
 }
 
 var (
@@ -81,7 +75,7 @@ func shape(t *testing.T, ty reflect.Type, path string) []string {
 	case ty.Implements(jsonMarshaler) || ty.Implements(textMarshaler):
 		return []string{leaf(path, ty.String())}
 	case ty.Kind() == reflect.Struct && ty.PkgPath() != eventPkg:
-		// Another package's struct carries its own version, as viewspec.Spec does.
+		// Another package's struct carries its own version, so it is one leaf here.
 		return []string{leaf(path, ty.String())}
 	}
 	switch ty.Kind() {

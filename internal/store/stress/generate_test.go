@@ -170,7 +170,7 @@ func (w *writer) call(step uuid.UUID) (event.ToolRequest, event.Message) {
 
 	w.emit(event.ToolCallProposed{
 		ToolCall: call, Step: step, Tool: t.name, Args: args,
-		Rationale: risk.Note, Renders: t.renders, Executor: t.executor,
+		Rationale: risk.Note, Executor: t.executor,
 	})
 	w.emit(event.ToolCallAssessed{ToolCall: call, Risk: risk})
 	// Only a Dangerous verdict asks: the gate is conditional.
@@ -185,7 +185,7 @@ func (w *writer) call(step uuid.UUID) (event.ToolRequest, event.Message) {
 		Took: time.Duration(50+w.rng.IntN(9000)) * time.Millisecond,
 	})
 	w.emit(event.ToolCallJudged{
-		ToolCall: call, Status: status(res), RenderKind: t.render,
+		ToolCall: call, Status: status(res),
 		Attention: w.rng.Float64(), GoalAchieved: w.rng.Float64(), FromJudge: true,
 	})
 

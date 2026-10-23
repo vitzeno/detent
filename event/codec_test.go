@@ -13,8 +13,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/vitzeno/detent/viewspec"
 )
 
 // A type with a Kind method but no codec fails only on replay, so read the
@@ -62,7 +60,6 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 	turn, step, call := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	agent := uuid.Must(uuid.NewV7())
 	shell := uuid.Must(uuid.NewV7())
-	spec := &viewspec.Spec{Blocks: []viewspec.Block{{Kind: "log"}}}
 
 	cases := []Event{
 		SessionStarted{Session: turn, Model: "m", Sandbox: true, Network: true, MaxSteps: 50, Instructions: []string{"AGENTS.md"},
@@ -90,7 +87,7 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 			Fixed:   []ContextPart{{Name: "tools", Detail: "9 built-in", Tokens: 3}},
 			History: []ContextPart{{Name: "fix it", Tokens: 9, N: 4, Open: true}}},
 		ToolCallProposed{ToolCall: call, Step: step, Tool: "bash", Args: map[string]any{"command": "ls"},
-			Rationale: "why", Renders: RendersMarkdown, Executor: "github"},
+			Rationale: "why", Executor: "github"},
 		ToolCallAssessed{ToolCall: call, Risk: Risk{Dangerous: true, Mutability: MutSystem,
 			ScopeRisk: 0.8, Note: "n", FromJudge: true}},
 		ApprovalAsked{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "rm"},
@@ -99,9 +96,8 @@ func TestCodec_RoundTripsEveryField(t *testing.T) {
 		OutputChunk{ToolCall: call, Line: "a line", Stderr: true},
 		ToolCallEnded{ToolCall: call, Took: 21 * time.Millisecond, Result: Result{
 			ExitCode: 2, Stdout: "o", Stderr: "e", Truncated: true, Err: "x"}},
-		ToolCallJudged{ToolCall: call, Status: "failed", RenderKind: "errors",
+		ToolCallJudged{ToolCall: call, Status: "failed",
 			Attention: 0.9, GoalAchieved: 0.1, FromJudge: true},
-		ViewReady{ToolCall: call, Spec: spec, Source: "composed"},
 		UserCommandStarted{UserCommand: shell, Command: "git status", Runner: "sandbox"},
 		UserCommandEnded{UserCommand: shell, Took: 8 * time.Millisecond, Result: Result{
 			ExitCode: 1, Stdout: "o", Stderr: "e", Truncated: true, Err: "x"}},

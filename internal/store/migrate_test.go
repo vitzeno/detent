@@ -9,9 +9,12 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/google/uuid"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/vitzeno/detent/event"
 )
 
 func TestMigrate_BringsAFreshDatabaseUpToDate(t *testing.T) {
@@ -92,17 +95,19 @@ func TestMigrate_NumberingHasNoGaps(t *testing.T) {
 	}
 }
 
-// A database v0.5.0 left is at the baseline, so it is already up to date, and
-// one from before is refused rather than half rebuilt.
+// A database v0.5.0 left is at the baseline, so it is migrated on and never rebuilt,
+// and one from before is refused rather than half rebuilt.
 func TestMigrate_StartsFromTheBaseline(t *testing.T) {
 	db := memory(t)
-	_, err := db.Exec(`PRAGMA user_version = 4`)
+	_, err := shipped(t, db).UpTo(t.Context(), 4)
+	require.NoError(t, err)
+	_, err = db.Exec(`CREATE TABLE marker (x INTEGER)`)
 	require.NoError(t, err)
 	at, err := migrate(db, "")
 	require.NoError(t, err)
-	assert.Equal(t, 4, at)
-	_, err = db.Exec(`SELECT 1 FROM events LIMIT 1`)
-	require.Error(t, err, "nothing ran: v0.5.0 made the tables")
+	assert.Positive(t, at)
+	_, err = db.Exec(`SELECT 1 FROM marker LIMIT 1`)
+	require.NoError(t, err, "nothing rebuilt what v0.5.0 made, so what it held stays")
 
 	old := memory(t)
 	_, err = old.Exec(`PRAGMA user_version = 2`)
@@ -110,6 +115,36 @@ func TestMigrate_StartsFromTheBaseline(t *testing.T) {
 	_, err = migrate(old, "")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "open it once with v0.5.0")
+}
+
+// A session stored while per-output views existed holds view.ready records, which
+// nothing decodes any more, so migrating drops them and the session replays.
+func TestMigrate_0005DropsTheViewsASessionStored(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "events.db")
+	db, err := sql.Open("sqlite", file+pragmas)
+	require.NoError(t, err)
+	_, err = shipped(t, db).UpTo(t.Context(), 4)
+	require.NoError(t, err)
+	session := uuid.Must(uuid.NewV7())
+	_, err = db.Exec(`INSERT INTO sessions (id, started, model, sandbox, network) VALUES (?, 0, 'm', 0, 0)`, session.String())
+	require.NoError(t, err)
+	for i, r := range []struct{ kind, payload string }{
+		{"notice", `{"Level":"info","Text":"kept"}`},
+		{"view.ready", `{"ToolCall":"01a101e1-fc16-7dcb-a97a-a4d28284b10d","Source":"shipped"}`},
+	} {
+		_, err = db.Exec(`INSERT INTO events (session, ordinal, at, kind, payload) VALUES (?, ?, 0, ?, ?)`,
+			session.String(), i+1, r.kind, []byte(r.payload))
+		require.NoError(t, err)
+	}
+	require.NoError(t, db.Close())
+
+	s, err := Open(file)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	got, err := s.Replay(session)
+	require.NoError(t, err, "a view.ready record left behind fails the whole replay")
+	require.Len(t, got, 1)
+	assert.Equal(t, event.Notice{Level: "info", Text: "kept"}, got[0].Event)
 }
 
 // shipped is goose over the migrations this build carries.
