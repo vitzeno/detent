@@ -155,32 +155,65 @@ func Title(text string) string {
 	return first
 }
 
-// piece is a run of markdown, one typed block when lang is set, or a callout when alert is.
+// piece is one part of a view, drawn as its kind says. lang is a block's language
+// and alert a callout's kind. source is the markdown a lifted piece was read from.
 type piece struct {
-	lang, alert, body string
+	kind                      pieceKind
+	lang, alert, body, source string
 }
 
+type pieceKind int
+
+const (
+	pieceProse pieceKind = iota
+	pieceBlock
+	pieceAlert
+	pieceTable
+	pieceHeading
+	pieceCode
+)
+
 func (p piece) draw(s styles, style string, width int) drawn {
-	switch {
-	case p.alert != "":
+	switch p.kind {
+	case pieceProse:
+		return counting(p.body, style, width)
+	case pieceAlert:
 		return still(callout(p.alert, p.body, s, style, width))
-	case p.lang == "":
+	case pieceHeading:
+		return shimmering(prose(p.body, style, width), s)
+	case pieceCode:
+		return typing(prose(p.body, style, width))
+	case pieceTable:
+		if d, ok := drawTable(p.body, s, max(width-len(margin), 1)); ok {
+			return indented(d)
+		}
 		return still(prose(p.body, style, width))
+	case pieceBlock:
+		// Drawn below, by its language.
 	}
 	d, err := drawers[p.lang](p.body, s, max(width-len(margin), 1))
 	if err == nil {
-		return func(t float64) []string {
-			lines := d(t)
-			out := make([]string, len(lines))
-			for i, line := range lines {
-				out[i] = margin + line
-			}
-			return out
-		}
+		return indented(d)
+	}
+	// A block lifted from markdown is drawn as the markdown it was, never as an error.
+	if p.source != "" {
+		return still(prose(p.source, style, width))
 	}
 	// Shown as written, so a bad block costs its drawing and never the reply.
 	note := margin + s.faint.Render(p.lang+" block not drawn: "+err.Error())
 	return still(append([]string{note}, prose("```yaml\n"+p.body+"```\n", style, width)...))
+}
+
+// indented sets a block in glamour's margin, so it lines up with the text.
+func indented(d drawn) drawn {
+	return func(t float64) []string {
+		lines := d(t)
+		out := make([]string, len(lines))
+		for i, line := range lines {
+			out[i] = margin + line
+		}
+		return out
+	}
 }
 
 func prose(body, style string, width int) []string {
@@ -191,7 +224,16 @@ func prose(body, style string, width int) []string {
 	if err != nil {
 		return strings.Split(strings.TrimRight(body, "\n"), "\n")
 	}
-	return strings.Split(strings.Trim(out, "\n"), "\n")
+	// Glamour pads a piece with blank lines, which would stack with the gap between pieces.
+	lines := strings.Split(out, "\n")
+	blank := func(line string) bool { return strings.TrimSpace(ansi.Strip(line)) == "" }
+	for len(lines) > 0 && blank(lines[0]) {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && blank(lines[len(lines)-1]) {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
 }
 
 // split cuts text into markdown runs, typed blocks and callouts. A fence closes only
@@ -202,7 +244,7 @@ func split(text string) []piece {
 	marker, lang, alert := "", "", ""
 	flush := func() {
 		if run.Len() > 0 {
-			pieces = append(pieces, piece{body: run.String()})
+			pieces = append(pieces, lift(run.String())...)
 			run.Reset()
 		}
 	}
@@ -213,7 +255,7 @@ func split(text string) []piece {
 				block.WriteString(rest + "\n")
 				continue
 			}
-			pieces = append(pieces, piece{alert: alert, body: block.String()})
+			pieces = append(pieces, piece{kind: pieceAlert, alert: alert, body: block.String()})
 			block.Reset()
 			alert = ""
 		}
@@ -239,7 +281,7 @@ func split(text string) []piece {
 			run.WriteString(line)
 		case closes(trimmed, marker):
 			if lang != "" {
-				pieces = append(pieces, piece{lang: lang, body: block.String()})
+				pieces = append(pieces, piece{kind: pieceBlock, lang: lang, body: block.String()})
 				block.Reset()
 			} else {
 				run.WriteString(line)
@@ -254,9 +296,9 @@ func split(text string) []piece {
 	// An unclosed typed block is drawn as far as it goes, as markdown draws an unclosed fence.
 	switch {
 	case lang != "":
-		pieces = append(pieces, piece{lang: lang, body: block.String()})
+		pieces = append(pieces, piece{kind: pieceBlock, lang: lang, body: block.String()})
 	case alert != "":
-		pieces = append(pieces, piece{alert: alert, body: block.String()})
+		pieces = append(pieces, piece{kind: pieceAlert, alert: alert, body: block.String()})
 	}
 	flush()
 	return pieces

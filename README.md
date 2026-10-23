@@ -258,7 +258,9 @@ A request ends with its view: the final reply, drawn as markdown with whatever f
 | `flow` | how parts connect, as boxes and arrows |
 | `> [!WARNING]` | a note, tip or warning, as GitHub draws its alerts |
 
-A view arrives as it lands: lines fade in, bars grow and numbers count up. A resumed session's views are drawn at rest
+Plain markdown gets the same treatment: a table's number columns get bars, a task list becomes steps, a list of paths a tree, and a list of sizes or times a bar chart
+
+A view arrives as it lands: lines fade in, bars grow, numbers count up, headings shimmer and code types out. A resumed session's views are drawn at rest
 
 What the agent ran along the way is shown as it came, a diff coloured as `/review` colours one, and its reasoning is a faint `∴` line you can open
 

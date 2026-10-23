@@ -197,7 +197,10 @@ A request's **view** is the reply it ended `done` with, which the model is told
 to make the richest answer to what was asked (`viewRule` in `internal/model`, which a
 test holds to naming every block `ui/view` draws). `ui/view` draws it, markdown through
 glamour plus what markdown cannot draw: fenced `chart`, `stats`, `status`, `steps`,
-`tree` and `flow` blocks, and GitHub's `[!NOTE]` alerts. History leads it with `▤` and
+`tree` and `flow` blocks, and GitHub's `[!NOTE]` alerts. Plain markdown is lifted too
+(`lift`), since a model often writes no block: a table gets bars in its number columns, a
+task list is steps, a list of paths is a tree and a list of measures is bars, a heading
+shimmers, code types out and a bold number counts up. History leads it with `▤` and
 its title. A view landing live arrives over `view.Frames` frames, its lines fading in from
 the top, its bars growing and its numbers counting up, while a replayed one is drawn at rest.
 Reasoning an endpoint sends in place of an answer is `ModelText.Thinking`: a faint

@@ -242,6 +242,98 @@ func TestRender_DrawsATilesTrend(t *testing.T) {
 	assert.Equal(t, "  1.2s\n  Replay\n  █▅▁", out)
 }
 
+// A table is drawn by the view, its columns of amounts each with a bar scaled to
+// the column, and a column of row numbers left without one.
+func TestRender_DrawsATableWithBarsForItsAmounts(t *testing.T) {
+	table := "| # | Package | Lines | Notes |\n|---|---|---:|---|\n" +
+		"| 1 | `ui/` | 18,008 | the **TUI** |\n| 2 | `internal/` | 34,511 | engine |\n"
+	lines := strings.Split(plain(Render(table, theme.Current(), 80)), "\n")
+	require.Len(t, lines, 4, "a header, a rule and two rows")
+	assert.Contains(t, lines[1], "┼")
+	assert.Contains(t, lines[2], "ui/", "a cell's markdown is drawn, not shown")
+	assert.Contains(t, lines[2], "the TUI")
+	assert.NotContains(t, lines[2], "`")
+	assert.Equal(t, 6, strings.Count(lines[3], "█"), "the largest fills the bar")
+	assert.Less(t, strings.Count(lines[2], "█"), 6)
+	number, _, _ := strings.Cut(lines[2], "ui/")
+	assert.NotContains(t, number, "█", "row numbers measure nothing")
+}
+
+// A table that cannot fit, however its text is cut, is left to glamour.
+func TestDrawTable_GivesUpOnATableTooWideToFit(t *testing.T) {
+	_, ok := drawTable("| a | b | c |\n|---|---|---|\n| 1 | 2 | 3 |\n", newStyles(theme.Current()), 6)
+	assert.False(t, ok)
+	_, ok = drawTable("| a | b |\n|---|\n| 1 | 2 |\n", newStyles(theme.Current()), 80)
+	assert.False(t, ok, "a rule that does not match the header is not a table")
+}
+
+// Lists that are something else are drawn as it: task boxes as steps, measures in
+// one unit as bars, and paths, one in a directory, as a tree.
+func TestRender_DrawsAListAsWhatItIs(t *testing.T) {
+	for name, c := range map[string]struct{ list, want, not string }{
+		"tasks":      {"- [x] profile it\n- [ ] measure it\n", "● profile it\n  │\n  ○ measure it", "[x]"},
+		"measures":   {"1. `view.go` — 167 lines\n2. `blocks.go` — 361 lines\n", "blocks.go █", "167 lines\n  2."},
+		"paths":      {"- `ui/view/view.go` — frames\n- `ui/view/lift.go`: new\n", "├── view.go", "•"},
+		"plain":      {"- go test ./... passed\n- nothing else changed\n", "• go test ./... passed", "█"},
+		"two units":  {"- tests: 412\n- coverage: 81%\n", "• tests: 412", "█"},
+		"flat paths": {"- `README.md` — updated\n- `go.mod` — bumped\n", "— updated", "├"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			out := plain(Render(c.list, theme.Current(), 80))
+			assert.Contains(t, out, c.want)
+			assert.NotContains(t, out, c.not)
+		})
+	}
+}
+
+// A lifted piece sits one blank line from the next, as glamour spaces them, however
+// glamour pads it on its own.
+func TestRender_SpacesLiftedPiecesAsGlamourDoes(t *testing.T) {
+	lines := strings.Split(plain(Render("# Title\n\nText.\n\n```\ncode\n```\n\nAfter.\n", theme.Current(), 40)), "\n")
+	require.Len(t, lines, 7, "%q", lines)
+	for _, i := range []int{1, 3, 5} {
+		assert.Empty(t, lines[i], "line %d", i)
+	}
+}
+
+// Only top-level markdown is lifted: a table or heading inside code stays the code it is.
+func TestRender_LiftsNothingInsideCode(t *testing.T) {
+	out := plain(Render("```\n# not a heading\n| a | b |\n|---|---|\n```\n", theme.Current(), 60))
+	assert.Contains(t, out, "# not a heading")
+	assert.Contains(t, out, "| a | b |")
+}
+
+// A bold amount counts up in place as it arrives, a version does not, and a heading
+// and a code block arrive in their own ways, each resting as glamour draws it.
+func TestLayout_MarkdownArrivesInItsOwnWays(t *testing.T) {
+	text := "# Faster now\n\nFrom **1,240ms** on **v2.40.7**.\n\n```go\nfunc replayAllTheSessions() {}\n```\n"
+	d := Layout(text, theme.Current(), 60)
+	rest, mid := plain(d.Frame(Frames)), plain(d.Frame(Frames/2))
+	assert.Contains(t, rest, "From 1,240ms on v2.40.7.")
+	assert.NotContains(t, mid, "1,240ms", "it is still counting")
+	assert.Regexp(t, `From +\d[\d,]*ms on v2\.40\.7\.`, mid, "in place, and the version left alone")
+	at := strings.Index(rest, "ms on")
+	for n := range Frames {
+		if frame := plain(d.Frame(n)); strings.Contains(frame, "ms on") {
+			assert.Equal(t, at, strings.Index(frame, "ms on"), "frame %d: the line moved as it counted", n)
+		}
+	}
+
+	early := plain(d.Frame(5))
+	assert.NotContains(t, early, "replayAllTheSessions() {}", "the code is still typing out")
+	assert.Contains(t, rest, "replayAllTheSessions() {}")
+	heading, _, _ := strings.Cut(d.Frame(4), "\n")
+	resting, _, _ := strings.Cut(d.Frame(Frames), "\n")
+	assert.NotEqual(t, resting, heading, "the heading shimmers")
+	assert.Equal(t, strings.TrimSpace(plain(resting)), strings.TrimSpace(plain(heading)))
+}
+
+// Escape parameters are digits too, so counting must never reach inside one.
+func TestOutsideEscapes_LeavesEscapesAlone(t *testing.T) {
+	got := outsideEscapes("\x1b[38;2;12;3m12 of 12\x1b[m", func(s string) string { return strings.ReplaceAll(s, "12", "99") })
+	assert.Equal(t, "\x1b[38;2;12;3m99 of 99\x1b[m", got)
+}
+
 // every is a view holding one of each kind of block, for what all of them must keep.
 const every = sample + "```chart\ntype: columns\ndata: {a: 3, b: 9}\n```\n" +
 	"```chart\ntype: line\ndata: [1, 5, 2, 8]\n```\n```chart\ntype: sparkline\ndata: [1, 5, 2]\n```\n" +
@@ -250,7 +342,9 @@ const every = sample + "```chart\ntype: columns\ndata: {a: 3, b: 9}\n```\n" +
 	"```stats\n- label: Replay\n  value: 1,240ms\n  trend: [3, 1]\n```\n" +
 	"```tree\na/b.go  +1\na/c.go\n```\n```steps\n- done: one\n- todo: two\n```\n" +
 	"```flow\na -> b -> c\n```\n```flow\nalpha -> beta -> gamma -> delta -> epsilon -> zeta\n```\n" +
-	"> [!NOTE]\n> noted\n"
+	"> [!NOTE]\n> noted\n\n# Heading\n\nFrom **3,550ms**.\n\n| a | n |\n|---|---|\n| x | 1 |\n| y | 20 |\n\n" +
+	"- [x] done\n- [ ] not\n\n1. `a.go` — 3 lines\n2. `b.go` — 9 lines\n\n- `a/b.go` new\n- `a/c.go` gone\n\n" +
+	"```go\nfunc f() {}\n```\n"
 
 // A view arrives from nothing and rests as Render draws it, and no frame between
 // changes its height, which would make the pane jump as it arrives.
@@ -315,6 +409,8 @@ func FuzzRender(f *testing.F) {
 	f.Add("```chart\ntype: columns\ndata: {a: 1, b: -2, c: 0}\n```\n```chart\ntype: share\ndata: {a: 0}\n```", 4)
 	f.Add("```tree\na/b/c  +1 -2\na/\n/\n```\n```flow\na -> -> b\n```\n```steps\n- done:\n  - x\n```", 2)
 	f.Add("> [!NOTE]\n> ```chart\n> type: bar\n\n> [!tip] inline", 5)
+	f.Add("| a |\n|---|---|\n| 1 |\n\n|x|\n|-|\n|9|\n|1e99|\n\n| \\| | **b** |\n|:-:|--:|\n| `|` | 2 |\n", 7)
+	f.Add("- [x]\n- [ ] \n1. `a/b` — 1\n2. [x/](y) —\n# \n**1,2,3** **9.**", 3)
 	f.Fuzz(func(t *testing.T, text string, width int) {
 		width = width%200 + 1
 		if width < 1 {
