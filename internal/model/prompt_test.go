@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/vitzeno/detent/internal/usercommand"
+	"github.com/vitzeno/detent/ui/view"
 )
 
 // The project's instructions come after the built-in rules, so those stay first.
@@ -47,13 +48,26 @@ func TestSystemPrompt_MentionsSubagentsOnlyWhenTheyExist(t *testing.T) {
 	assert.Contains(t, NewClient("", "", "", WithSubagents()).systemPrompt(), "Hand work to spawn_agent")
 }
 
+// A block the prompt never names is one the model never writes, as the first
+// blocks went unused until the prompt showed one.
+func TestSystemPrompt_NamesEveryBlockTheViewDraws(t *testing.T) {
+	prompt := NewClient("", "", "").systemPrompt()
+	for _, lang := range view.Blocks() {
+		assert.Regexp(t, `\n- `+lang+`[,:]`, prompt, "the view draws %s blocks", lang)
+	}
+	_, bullet, _ := strings.Cut(prompt, "\n- chart")
+	bullet, _, _ = strings.Cut(bullet, "\n")
+	for _, chart := range view.ChartTypes() {
+		assert.Regexp(t, `\b`+chart+`\b`, bullet, "the view draws %s charts", chart)
+	}
+}
+
 // The root's last reply is the request's view, so only it is told how the view
 // draws. Another model reads a subagent's or a reviewer's reply, as plain text.
 func TestSystemPrompt_OnlyTheRootIsToldItsLastReplyIsTheView(t *testing.T) {
 	root := NewClient("", "", "", WithSubagents())
 	assert.Contains(t, root.systemPrompt(), "The view:")
-	assert.Contains(t, root.systemPrompt(), "chart: type (bar, sparkline or gauge)")
-	assert.Contains(t, root.systemPrompt(), "```chart\ntype: bar", "with an example, which a raw string cannot hold")
+	assert.Contains(t, root.systemPrompt(), "```chart\ntype: compare", "with an example, which a raw string cannot hold")
 	names := []string{}
 	for _, p := range root.PromptParts() {
 		names = append(names, p.Name)

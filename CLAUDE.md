@@ -194,9 +194,12 @@ nothing mistakes them for the root's. Steps are never shown, since a human does 
 in model round trips.
 
 A request's **view** is the reply it ended `done` with, which the model is told
-to make the richest answer to what was asked (`viewRule` in `internal/model`).
-`ui/view` draws it, markdown through glamour plus the fenced `chart`, `stats` and
-`status` blocks markdown cannot draw, and history leads it with `▤` and its title.
+to make the richest answer to what was asked (`viewRule` in `internal/model`, which a
+test holds to naming every block `ui/view` draws). `ui/view` draws it, markdown through
+glamour plus what markdown cannot draw: fenced `chart`, `stats`, `status`, `steps`,
+`tree` and `flow` blocks, and GitHub's `[!NOTE]` alerts. History leads it with `▤` and
+its title. A view landing live arrives over `view.Frames` frames, its lines fading in from
+the top, its bars growing and its numbers counting up, while a replayed one is drawn at rest.
 Reasoning an endpoint sends in place of an answer is `ModelText.Thinking`: a faint
 `∴` row titled by its leading bold, shown dimmed when selected, and in a headless
 run only that title, so the working stays background to the view.
@@ -718,9 +721,11 @@ adding a fat dependency fails with the transitive import named.
   bar always leads with what `esc` will do (`escHint`, which mirrors `onEscape`). A command's output is defused once, as `facts.go` folds it
   (`defuse.Styled`): its colour stays, and any other escape (a cursor
   move, a clipboard write, a link) is shown rather than sent, so no pane
-  or preview has to remember to. The model's own words are drawn by
+  or preview has to remember to. The model's own words are laid out once by
   `ui/view` and kept on the row (`proseDrawing`), so a block that does not parse
-  shows as the YAML it is, with why, and costs nothing else.
+  shows as the YAML it is, with why, and costs nothing else, and each frame of a view's
+  arrival (`revealState`) redraws only its blocks, never glamour. The frame is part of
+  `blockKey`, `histKey` and `detailKey`.
 
   **A subagent is drawn in one place at a time.** While its request runs
   it is a row in the agents block below history (`view_agents.go`),
