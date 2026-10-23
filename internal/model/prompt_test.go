@@ -47,6 +47,22 @@ func TestSystemPrompt_MentionsSubagentsOnlyWhenTheyExist(t *testing.T) {
 	assert.Contains(t, NewClient("", "", "", WithSubagents()).systemPrompt(), "Hand work to spawn_agent")
 }
 
+// The root's last reply is the request's view, so only it is told how the view
+// draws. Another model reads a subagent's or a reviewer's reply, as plain text.
+func TestSystemPrompt_OnlyTheRootIsToldItsLastReplyIsTheView(t *testing.T) {
+	root := NewClient("", "", "", WithSubagents())
+	assert.Contains(t, root.systemPrompt(), "The view:")
+	assert.Contains(t, root.systemPrompt(), "chart: type (bar, sparkline or gauge)")
+	names := []string{}
+	for _, p := range root.PromptParts() {
+		names = append(names, p.Name)
+	}
+	assert.Contains(t, names, "view", "/context shows what it costs")
+	for _, role := range []Role{RoleChild, RoleReviewer} {
+		assert.NotContains(t, NewClient("", "", "", WithRole(role)).systemPrompt(), "The view:")
+	}
+}
+
 // A subagent has its own role, still told where it runs and still given the
 // project's instructions, and never the root's rules.
 func TestSystemPrompt_AChildHasItsOwnRoleAndTheProjectsInstructions(t *testing.T) {

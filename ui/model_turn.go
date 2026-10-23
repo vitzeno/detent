@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vitzeno/detent/defuse"
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/search"
 	"github.com/vitzeno/detent/viewspec"
@@ -61,6 +62,28 @@ func (b *turnBlock) shown() []*historyRow {
 	return slices.DeleteFunc(slices.Clone(b.rows), func(r *historyRow) bool { return r.agent != nil })
 }
 
+// markView marks the request's final reply as its view. It must be the reply
+// the request ended with, or a working note would stand in for a missing one.
+func (b *turnBlock) markView(summary string) {
+	want := defuse.Text(summary)
+	for _, r := range slices.Backward(b.rows) {
+		if r.prose == "" {
+			continue
+		}
+		if r.prose == want && strings.TrimSpace(want) != "" {
+			r.final = true
+			b.rev++
+		}
+		return
+	}
+}
+
+// proseDrawing is a prose row as view.Render left it.
+type proseDrawing struct {
+	width       int
+	style, text string
+}
+
 // historyRow is one tool call, or the model's own words. Exactly one of
 // command and prose is set.
 type historyRow struct {
@@ -68,6 +91,10 @@ type historyRow struct {
 	// command is what the human reads: the tool's arguments, rendered.
 	command string
 	prose   string
+	// final marks the reply a request ended done with, drawn as the request's
+	// view, and drawn caches its rendering for the width and style it was drawn at.
+	final bool
+	drawn proseDrawing
 	// tool is the tool's name, empty for a command the human ran, and
 	// headline its arguments as history leads with them.
 	tool     event.ToolName

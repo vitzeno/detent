@@ -281,6 +281,9 @@ func (m *Model) endTurn(v event.TurnEnded) {
 		if v.Reason == event.EndError {
 			b.err = v.Summary
 		}
+		if v.Reason == event.EndDone {
+			b.markView(v.Summary)
+		}
 	}
 	m.setCur(nil)
 	m.asked, m.childAsks, m.bound = nil, nil, nil

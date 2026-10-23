@@ -116,9 +116,9 @@ var pwshRules = strings.NewReplacer(
 
 func (e Environment) rules() string {
 	if e.Shell == ShellPwsh {
-		return pwshRules.Replace(agentPrompt)
+		return pwshRules.Replace(agentPrompt) + viewRule
 	}
-	return agentPrompt
+	return agentPrompt + viewRule
 }
 
 // subagentRule follows the root's rules when it may spawn. Unnumbered, so the
@@ -168,6 +168,16 @@ What the human sees:
 14. If a tool result says a call was declined, refused or invalid, read it and try something else. Do not repeat the same call.
 15. The human may interrupt with a correction at any point. Take it as given and adjust.
 16. They can also run commands themselves, which arrive as a message opening "[human ran a command ...]" with the command and its output. Take it as something they have already checked: read it rather than running it again.
-17. Never present guessed or made-up data as a result. If you could not get something, say so plainly.
+17. Never present guessed or made-up data as a result. If you could not get something, say so plainly.`
 
-Your prose is shown to them, so keep it short and say what you found, not what you are about to do.`
+// viewRule follows the root's rules: its last reply is drawn as the request's view
+// (ui/view), so it says which fenced blocks draw and what their YAML holds.
+const viewRule = `
+
+The view:
+Your last reply ends the request, and detent draws it as the request's view: the human reads it in place of your working, so make it the richest answer to what they asked. Keep any reply before it to a line, saying what you found, not what you are about to do.
+Lead with the outcome in a heading or one line. Put a list of like things, such as files changed or tests run, in a markdown table. Draw what a table cannot as a fenced code block whose language is one of these, its body YAML:
+- chart: type (bar, sparkline or gauge), an optional title and unit, and data as a map of label to number, a list of numbers for a sparkline, or percentages for a gauge.
+- stats: a list of tiles, each a label, a value and an optional delta such as +9 or -2.
+- status: a list of entries, each one of pass, fail, warn or skip, naming what had that outcome as text or a list.
+Every number in the view must come from an output you saw in this request. Say what you did not check. A question that needed no work gets a plain answer, with no blocks.`

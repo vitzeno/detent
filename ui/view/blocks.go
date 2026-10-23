@@ -201,15 +201,38 @@ func deltaStyle(d string, s styles) lipgloss.Style {
 	return s.faint
 }
 
-// statusKinds are a ```status block's keys, each with its glyph and colour.
+// statusKinds are a ```status block's keys, each with its glyph and tone.
 var statusKinds = map[string]struct {
 	glyph string
-	style func(styles) lipgloss.Style
+	tone  tone
 }{
-	"pass": {"✓", func(s styles) lipgloss.Style { return s.safe }},
-	"fail": {"✗", func(s styles) lipgloss.Style { return s.danger }},
-	"warn": {"!", func(s styles) lipgloss.Style { return s.caution }},
-	"skip": {"○", func(s styles) lipgloss.Style { return s.faint }},
+	"pass": {"✓", toneSafe},
+	"fail": {"✗", toneDanger},
+	"warn": {"!", toneCaution},
+	"skip": {"○", toneFaint},
+}
+
+// tone names a style, so a package var can say which without baking one.
+type tone int
+
+const (
+	toneFaint tone = iota
+	toneSafe
+	toneCaution
+	toneDanger
+)
+
+func (s styles) of(t tone) lipgloss.Style {
+	switch t {
+	case toneSafe:
+		return s.safe
+	case toneCaution:
+		return s.caution
+	case toneDanger:
+		return s.danger
+	default:
+		return s.faint
+	}
 }
 
 // drawStatus reads a list of one-key maps, pass, fail, warn or skip, each
@@ -232,7 +255,7 @@ func drawStatus(body string, s styles, width int) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		head := kind.style(s).Render(kind.glyph+" "+pad(e.Content[0].Value, 4)) + "  "
+		head := s.of(kind.tone).Render(kind.glyph+" "+pad(e.Content[0].Value, 4)) + "  "
 		indent := strings.Repeat(" ", ansi.StringWidth(head))
 		text := strings.Join(items, ", ")
 		for i, part := range strings.Split(ansi.Wrap(text, max(width-len(indent), 1), ""), "\n") {

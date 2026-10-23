@@ -182,6 +182,8 @@ func (c *Client) PromptParts() []PromptPart {
 	case RoleReviewer:
 		parts = []PromptPart{{Name: "reviewer", Detail: "environment and how to review", Bytes: len(c.builtIn())}}
 	case RoleAgent:
+		parts = []PromptPart{{Name: "detent", Detail: "environment and rules", Bytes: len(c.builtIn()) - len(viewRule)},
+			{Name: "view", Detail: "how the last reply is drawn", Bytes: len(viewRule)}}
 	}
 	if c.instructions != "" {
 		parts = append(parts, PromptPart{Name: "instructions", Detail: strings.Join(c.instructionFiles, ", "),

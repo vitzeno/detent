@@ -193,6 +193,14 @@ subagent's Steps belong to its spawn call's Turn, carrying `Agent` so
 nothing mistakes them for the root's. Steps are never shown, since a human does not think
 in model round trips.
 
+A request's **view** is the reply it ended `done` with, which the model is told
+to make the richest answer to what was asked (`viewRule` in `internal/model`).
+`ui/view` draws it, markdown through glamour plus the fenced `chart`, `stats` and
+`status` blocks markdown cannot draw, and history leads it with `▤` and its title.
+The word once meant a spec drawing one command's output, which `viewspec` still
+does until those per-output views go (`docs/views.md`), so code says
+"per-output view" for that one.
+
 What the model sends is a **tool request** (`event.ToolRequest`, the
 wire's `tool_calls` entry, carrying the endpoint's id). Each becomes one
 tool call with an id of ours. Two names because they are two things: a
@@ -723,7 +731,9 @@ adding a fat dependency fails with the transitive import named.
   bar always leads with what `esc` will do (`escHint`, which mirrors `onEscape`). A command's output is defused once, as `facts.go` folds it
   (`defuse.Styled`): its colour stays, and any other escape (a cursor
   move, a clipboard write, a link) is shown rather than sent, so no pane
-  or preview has to remember to. A view that panics while drawing falls
+  or preview has to remember to. The model's own words are drawn by
+  `ui/view` and kept on the row (`proseDrawing`), so a block that does not parse
+  shows as the YAML it is, with why, and costs nothing else. A view that panics while drawing falls
   back to plain text.
 
   **A subagent is drawn in one place at a time.** While its request runs

@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/logging"
+	"github.com/vitzeno/detent/ui/theme"
+	"github.com/vitzeno/detent/ui/view"
 	"github.com/vitzeno/detent/ui/welcome"
 	"github.com/vitzeno/detent/version"
 	"github.com/vitzeno/detent/viewspec"
@@ -117,6 +119,8 @@ func (m *Model) refreshViewport() {
 	var body string
 	cursor := -1
 	switch {
+	case r.prose != "":
+		body = m.proseBody(r)
 	case r.running:
 		body = strings.Join(r.live, "\n")
 	case r.drawable():
@@ -164,6 +168,16 @@ func wrapWide(s string, width int) string {
 		out = append(out, painter{}.Wrap(l, width)...)
 	}
 	return strings.Join(out, "\n")
+}
+
+// proseBody draws the model's words through ui/view, kept on the row since the
+// pane redraws on every focus change and glamour is the slow part.
+func (m Model) proseBody(r *historyRow) string {
+	width, style := paneInner(m.layout.outputColW), theme.Current().Markdown
+	if r.drawn.width != width || r.drawn.style != style {
+		r.drawn = proseDrawing{width: width, style: style, text: view.Render(r.prose, theme.Current(), width)}
+	}
+	return r.drawn.text
 }
 
 // viewBody draws the row's view whole. Height lets a plot grow into the

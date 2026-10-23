@@ -122,6 +122,23 @@ func TestWelcome_OffersOnlyRealCommands(t *testing.T) {
 	}
 }
 
+// A request's view leads history by its title, and the output pane, which
+// follows onto it, draws its blocks rather than showing their YAML.
+func TestRender_ARequestsViewIsDrawnInPlaceOfItsText(t *testing.T) {
+	const final = "## Tests pass\n\n```chart\ntype: bar\ndata: {engine: 4, ui: 6}\n```\n"
+	turn, evs := oneTurn("run the tests", "go test ./...", "ok\n")
+	evs = append(evs[:len(evs)-1],
+		event.ModelText{Turn: turn, Text: final},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: final})
+	m := sized(t, 120, 40, evs...)
+
+	history, _ := m.historyLines()
+	assert.Contains(t, stripANSI(strings.Join(history, "\n")), "▤ Tests pass")
+	pane := stripANSI(m.viewContent)
+	assert.Contains(t, pane, "█", "the chart is drawn")
+	assert.NotContains(t, pane, "type: bar", "not shown as code")
+}
+
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 func stripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }

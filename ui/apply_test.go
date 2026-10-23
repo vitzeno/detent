@@ -46,6 +46,35 @@ func TestApply_BuildsABlockPerRequest(t *testing.T) {
 	assert.Nil(t, m.cur, "the block closes")
 }
 
+// The reply a request ends with is its view. A note the model wrote while it
+// worked is not, and a request that ended any other way has none.
+func TestApply_TheReplyARequestEndsWithIsItsView(t *testing.T) {
+	const final = "# Done\n\nTwo files."
+	view := func(reason event.EndReason, summary string) []*historyRow {
+		turn, evs := aTurn("count the go files")
+		call := uuid.Must(uuid.NewV7())
+		m := feed(t, append(evs,
+			event.ModelText{Turn: turn, Text: "looking"},
+			event.ToolCallProposed{ToolCall: call, Tool: "bash", Args: map[string]any{"command": "ls"}},
+			event.ToolCallEnded{ToolCall: call, Result: event.Result{Stdout: "a.go\nb.go\n"}},
+			event.ModelText{Turn: turn, Text: final},
+			event.TurnEnded{Turn: turn, Reason: reason, Summary: summary},
+		)...)
+		var finals []*historyRow
+		for _, r := range m.blocks[0].rows {
+			if r.final {
+				finals = append(finals, r)
+			}
+		}
+		return finals
+	}
+	got := view(event.EndDone, final)
+	require.Len(t, got, 1)
+	assert.Equal(t, final, got[0].prose)
+	assert.Empty(t, view(event.EndAborted, final))
+	assert.Empty(t, view(event.EndDone, ""), "a request that ended with no reply has no view")
+}
+
 func TestApply_CountsWhatStatusReports(t *testing.T) {
 	turn, evs := aTurn("go")
 	bad, good := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())

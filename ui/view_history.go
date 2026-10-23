@@ -14,6 +14,7 @@ import (
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/layout"
 	"github.com/vitzeno/detent/ui/status"
+	"github.com/vitzeno/detent/ui/view"
 )
 
 // The history pane: one block per request, its calls under it. View
@@ -228,6 +229,10 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 	}
 	if r.review != uuid.Nil {
 		return []string{m.reviewRowLine(mark, r)}
+	}
+	if r.final {
+		return []string{fmt.Sprintf("%s%s %s", mark, styleBrand.Render("▤"),
+			styleGoal.Render(layout.Truncate(view.Title(r.prose), m.blockWidth()-10)))}
 	}
 	// The model speaking, not a command: no status badge, because
 	// nothing ran and there is no exit code to report.
