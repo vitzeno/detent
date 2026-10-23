@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"io"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -134,7 +135,7 @@ const maxNumber = 1e15
 // drawStats lays tiles out in rows as wide as fit, each value counting up as it arrives.
 func drawStats(body string, s styles, width int) (drawn, error) {
 	var stats []stat
-	if err := decode(body, &stats); err != nil {
+	if err := decode(unwrapped(body, "tiles", "stats"), &stats); err != nil {
 		return nil, err
 	}
 	const gap = "    "
@@ -428,6 +429,25 @@ func decode(body string, into any) error {
 		return err
 	}
 	return nil
+}
+
+// unwrapped is a block's list without the one key a model puts over it, as in "tiles:",
+// so the list is still decoded strictly. Anything else comes back as written.
+func unwrapped(body string, keys ...string) string {
+	var n yaml.Node
+	if yaml.Unmarshal([]byte(strings.ReplaceAll(body, "`", "")), &n) != nil || len(n.Content) != 1 {
+		return body
+	}
+	top := n.Content[0]
+	if top.Kind != yaml.MappingNode || len(top.Content) != 2 || !slices.Contains(keys, top.Content[0].Value) ||
+		top.Content[1].Kind != yaml.SequenceNode {
+		return body
+	}
+	out, err := yaml.Marshal(top.Content[1])
+	if err != nil {
+		return body
+	}
+	return string(out)
 }
 
 func points(n yaml.Node) ([]point, error) {

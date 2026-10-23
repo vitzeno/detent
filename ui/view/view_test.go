@@ -246,6 +246,15 @@ func TestRender_DrawsAnAlertAsACallout(t *testing.T) {
 	assert.Contains(t, out, "just a quote")
 }
 
+// A model puts its tiles under a key, as one did live, and they still draw, while a
+// misspelt key inside them still says so.
+func TestRender_DrawsStatsUnderAKey(t *testing.T) {
+	out := plain(Render("```stats\ntiles:\n  - label: Go files\n    value: 323\n```\n", theme.Current(), 60))
+	assert.Equal(t, "  323\n  Go files", out)
+	bad := plain(Render("```stats\ntiles:\n  - lable: Go files\n```\n", theme.Current(), 120))
+	assert.Contains(t, bad, "field lable not found")
+}
+
 // A tile's trend is a sparkline under its label.
 func TestRender_DrawsATilesTrend(t *testing.T) {
 	out := plain(Render("```stats\n- label: Replay\n  value: 1.2s\n  trend: [4, 3, 1]\n```\n", theme.Current(), 60))

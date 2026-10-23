@@ -188,7 +188,7 @@ Draw the answer, do not only write it. Lead with the outcome in a heading, then 
 A view with no block needs a reason: a question that needed no work gets a plain answer. Rows of text with no block of their own are a markdown table.
 Each block is a fenced code block whose language is one of these:
 - chart, its body YAML: type, an optional title and unit, and data. For bar or columns, data maps label to number. For line or sparkline it is a list of numbers in order, for gauge it maps label to a percentage, and for share it maps each part of one whole to its amount. For compare it maps each label to a list of the same measure at each point, such as before and after, named in series, with better: lower or higher when one way is a win. Two measures, such as lines and bytes, are two charts. For timeline it maps each step, in order, to how long it took, or to [start, end] where steps overlap. For heatmap it maps each row to a list of numbers, one per column, the columns named in series.
-- stats, its body YAML: a list of tiles, each a label, a value, an optional delta such as +9 or -2, and an optional trend, a list of numbers.
+- stats, its body a YAML list with no key over it, each item a label, a value, an optional delta such as +9 or -2, and an optional trend, a list of numbers.
 - status, for tests, builds or checks that ran, never your own working or what you did not do, which is an alert: lines of "- pass: what", with fail, warn or skip in place of pass, naming what had that outcome as text or a [list].
 - steps: lines of "- done: what", with doing, todo or failed in place of done.
 - tree: one path a line, then two spaces and a note, such as +12 -3 and what changed.
