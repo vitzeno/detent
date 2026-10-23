@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/ui/view"
 )
 
 const welcomeFrameEvery = 90 * time.Millisecond
@@ -47,6 +48,8 @@ type Model struct { //nolint:recvcheck // Bubble Tea updates by value, while mut
 	pulse int
 	// fadeTicking is a fadeMsg on its way, so a fade runs one tick, not one per fact.
 	fadeTicking bool
+	// reveal is the view arriving as its request ends.
+	reveal revealState
 	// escArmed is when an esc asked to stop what runs, which a second soon after does.
 	escArmed time.Time
 
@@ -238,6 +241,14 @@ func (m Model) route(msg tea.Msg) (Model, tea.Cmd) {
 		m.fadeTicking = false
 		return m, m.fadeTick()
 
+	case revealMsg:
+		m.reveal.ticking = false
+		m.reveal.frame++
+		if m.reveal.frame >= view.Frames {
+			m.reveal = revealState{}
+		}
+		return m, m.revealTick()
+
 	case welcomeTickMsg:
 		m.welcomeTicking = false
 		if m.showWelcome() {
@@ -282,6 +293,21 @@ func nextFact(facts <-chan event.Record) tea.Cmd {
 		}
 		return factMsg{batch}
 	}
+}
+
+// revealMsg draws the next frame of a view arriving.
+type revealMsg struct{}
+
+// revealEvery paces a view's arrival, Frames of them in about two thirds of a second.
+const revealEvery = 35 * time.Millisecond
+
+// revealTick keeps one tick going while a view arrives, and none otherwise.
+func (m *Model) revealTick() tea.Cmd {
+	if m.reveal.ticking || m.reveal.row == nil {
+		return nil
+	}
+	m.reveal.ticking = true
+	return tea.Tick(revealEvery, func(time.Time) tea.Msg { return revealMsg{} })
 }
 
 type welcomeTickMsg struct{}

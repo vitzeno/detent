@@ -11,6 +11,7 @@ import (
 	"github.com/vitzeno/detent/defuse"
 	"github.com/vitzeno/detent/event"
 	"github.com/vitzeno/detent/ui/search"
+	"github.com/vitzeno/detent/ui/view"
 )
 
 // What history is a list of: one turnBlock per prompt, holding the
@@ -61,9 +62,9 @@ func (b *turnBlock) shown() []*historyRow {
 	return slices.DeleteFunc(slices.Clone(b.rows), func(r *historyRow) bool { return r.agent != nil })
 }
 
-// markView marks the request's final reply as its view. It must be the reply
-// the request ended with, or a working note would stand in for a missing one.
-func (b *turnBlock) markView(summary string) {
+// markView marks the request's final reply as its view, and returns it. It must be
+// the reply the request ended with, or a working note would stand in for a missing one.
+func (b *turnBlock) markView(summary string) *historyRow {
 	want := defuse.Text(summary)
 	for _, r := range slices.Backward(b.rows) {
 		if r.prose == "" {
@@ -72,15 +73,19 @@ func (b *turnBlock) markView(summary string) {
 		if r.prose == want && strings.TrimSpace(want) != "" {
 			r.final = true
 			b.rev++
+			return r
 		}
-		return
+		return nil
 	}
+	return nil
 }
 
-// proseDrawing is a prose row as view.Render left it.
+// proseDrawing is a prose row as view.Layout left it, or as reasoning is drawn.
 type proseDrawing struct {
-	width       int
-	style, text string
+	width   int
+	style   string
+	drawing view.Drawing
+	thought string
 }
 
 // historyRow is one tool call, or the model's own words. Exactly one of

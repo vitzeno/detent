@@ -3,6 +3,8 @@
 package view
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -12,39 +14,125 @@ import (
 	"github.com/vitzeno/detent/ui/theme"
 )
 
+// Frames is how many frames a view takes to arrive. Frame(Frames) is the view at rest.
+const Frames = 18
+
 // margin is glamour's own left margin, which blocks take too so they line up with the text.
 const margin = "  "
 
 // drawers are the fenced block languages view draws itself. Any other fence is code.
-var drawers = map[string]func(body string, s styles, width int) ([]string, error){
+var drawers = map[string]drawer{
 	"chart":  drawChart,
 	"stats":  drawStats,
 	"status": drawStatus,
+	"steps":  drawSteps,
+	"tree":   drawTree,
+	"flow":   drawFlow,
 }
 
-// Render draws text width cells wide in t's colours. No line is wider, and a
-// typed block that does not parse is drawn as the code it is, with the reason.
+// Blocks names the fenced languages a view draws, which the model must be told of.
+func Blocks() []string { return slices.Sorted(maps.Keys(drawers)) }
+
+// drawer parses a block once and returns how to draw it at any point of its arrival.
+type drawer func(body string, s styles, width int) (drawn, error)
+
+// drawn draws a block p of the way in, 0 as it starts and 1 at rest. Its height
+// must not change with p, so a view never jumps while it arrives.
+type drawn func(p float64) []string
+
+func still(lines []string) drawn { return func(float64) []string { return lines } }
+
+// Render draws text width cells wide in t's colours, at rest. No line is wider,
+// and a typed block that does not parse is drawn as the code it is, with the reason.
 func Render(text string, t theme.Theme, width int) string {
+	return Layout(text, t, width).Frame(Frames)
+}
+
+// Drawing is a view laid out at one width with its markdown already rendered,
+// so a frame of its arrival costs only its blocks.
+type Drawing struct {
+	parts         []part
+	final         string
+	width, height int
+	faint         func(string) string
+}
+
+// part is one piece of a drawing, starting at line at.
+type part struct {
+	draw drawn
+	at   int
+}
+
+// Layout renders text's markdown once, leaving its blocks to draw each frame.
+func Layout(text string, t theme.Theme, width int) Drawing {
 	width = max(width, 1)
 	s := newStyles(t)
-	var out []string
-	for i, p := range split(defuse.Text(text)) {
-		lines := p.draw(s, t.Markdown, width)
+	d := Drawing{width: width, faint: func(line string) string { return s.faint.Render(ansi.Strip(line)) }}
+	var final []string
+	for _, p := range split(defuse.Text(text)) {
+		draw := p.draw(s, t.Markdown, width)
+		lines := draw(1)
 		if len(lines) == 0 {
 			continue
 		}
-		if i > 0 && len(out) > 0 {
+		if len(d.parts) > 0 {
+			final = append(final, "")
+		}
+		d.parts = append(d.parts, part{draw: draw, at: len(final)})
+		final = append(final, lines...)
+	}
+	d.height = len(final)
+	d.final = strings.Join(d.fit(final), "\n")
+	return d
+}
+
+// sweep is the share of the arrival its top-down reveal takes. Each block then
+// grows over the rest, starting as the reveal reaches it.
+const sweep = 0.4
+
+// Frame draws the view n frames into its arrival, and at rest from Frames on.
+func (d Drawing) Frame(n int) string {
+	if n >= Frames || d.height == 0 {
+		return d.final
+	}
+	t := float64(max(n, 0)) / Frames
+	out := make([]string, 0, d.height)
+	for i, p := range d.parts {
+		if i > 0 {
 			out = append(out, "")
 		}
-		out = append(out, lines...)
+		start := sweep * float64(p.at) / float64(d.height)
+		out = append(out, p.draw(ease(clamp((t-start)/(1-sweep))))...)
 	}
-	for i, line := range out {
-		if ansi.StringWidth(line) > width {
-			out[i] = ansi.Truncate(line, width, "…")
+	// The front of the reveal is drawn faint, so lines fade in rather than appear.
+	shown := int(t / sweep * float64(d.height))
+	for i := range out {
+		switch {
+		case i >= shown:
+			out[i] = ""
+		case i >= shown-2:
+			out[i] = d.faint(out[i])
 		}
 	}
-	return strings.Join(out, "\n")
+	return strings.Join(d.fit(out), "\n")
 }
+
+func (d Drawing) fit(lines []string) []string {
+	for i, line := range lines {
+		if ansi.StringWidth(line) > d.width {
+			lines[i] = ansi.Truncate(line, d.width, "…")
+		}
+	}
+	return lines
+}
+
+// ease starts fast and settles, as a thing does arriving under its own weight.
+func ease(p float64) float64 {
+	q := 1 - p
+	return 1 - q*q*q
+}
+
+func clamp(p float64) float64 { return min(max(p, 0), 1) }
 
 // Title is what history names a view by: its first heading, else its first line,
 // whose leading bold is a title of its own, as a model opens its reasoning.
@@ -67,25 +155,32 @@ func Title(text string) string {
 	return first
 }
 
-// piece is a run of markdown, or one typed block when lang is set.
+// piece is a run of markdown, one typed block when lang is set, or a callout when alert is.
 type piece struct {
-	lang, body string
+	lang, alert, body string
 }
 
-func (p piece) draw(s styles, style string, width int) []string {
-	if p.lang == "" {
-		return prose(p.body, style, width)
+func (p piece) draw(s styles, style string, width int) drawn {
+	switch {
+	case p.alert != "":
+		return still(callout(p.alert, p.body, s, style, width))
+	case p.lang == "":
+		return still(prose(p.body, style, width))
 	}
-	lines, err := drawers[p.lang](p.body, s, max(width-len(margin), 1))
+	d, err := drawers[p.lang](p.body, s, max(width-len(margin), 1))
 	if err == nil {
-		for i, line := range lines {
-			lines[i] = margin + line
+		return func(t float64) []string {
+			lines := d(t)
+			out := make([]string, len(lines))
+			for i, line := range lines {
+				out[i] = margin + line
+			}
+			return out
 		}
-		return lines
 	}
 	// Shown as written, so a bad block costs its drawing and never the reply.
 	note := margin + s.faint.Render(p.lang+" block not drawn: "+err.Error())
-	return append([]string{note}, prose("```yaml\n"+p.body+"```\n", style, width)...)
+	return still(append([]string{note}, prose("```yaml\n"+p.body+"```\n", style, width)...))
 }
 
 func prose(body, style string, width int) []string {
@@ -99,12 +194,12 @@ func prose(body, style string, width int) []string {
 	return strings.Split(strings.Trim(out, "\n"), "\n")
 }
 
-// split cuts text into markdown runs and typed blocks. A fence closes only on
-// its own marker at least as long, so a chart quoted inside another fence stays code.
+// split cuts text into markdown runs, typed blocks and callouts. A fence closes only
+// on its own marker at least as long, so a chart quoted inside another fence stays code.
 func split(text string) []piece {
 	var pieces []piece
 	var run, block strings.Builder
-	marker, lang := "", ""
+	marker, lang, alert := "", "", ""
 	flush := func() {
 		if run.Len() > 0 {
 			pieces = append(pieces, piece{body: run.String()})
@@ -113,8 +208,25 @@ func split(text string) []piece {
 	}
 	for line := range strings.SplitAfterSeq(text, "\n") {
 		trimmed := strings.TrimRight(line, "\r\n")
+		if alert != "" {
+			if rest, ok := quoted(trimmed); ok {
+				block.WriteString(rest + "\n")
+				continue
+			}
+			pieces = append(pieces, piece{alert: alert, body: block.String()})
+			block.Reset()
+			alert = ""
+		}
 		switch {
 		case marker == "":
+			if kind, rest := alertOpens(trimmed); kind != "" {
+				flush()
+				alert = kind
+				if rest != "" {
+					block.WriteString(rest + "\n")
+				}
+				continue
+			}
 			m, l := fence(trimmed)
 			if m != "" && drawers[l] != nil {
 				flush()
@@ -140,8 +252,11 @@ func split(text string) []piece {
 		}
 	}
 	// An unclosed typed block is drawn as far as it goes, as markdown draws an unclosed fence.
-	if lang != "" {
+	switch {
+	case lang != "":
 		pieces = append(pieces, piece{lang: lang, body: block.String()})
+	case alert != "":
+		pieces = append(pieces, piece{alert: alert, body: block.String()})
 	}
 	flush()
 	return pieces

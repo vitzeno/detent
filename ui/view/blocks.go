@@ -3,7 +3,9 @@ package view
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 
@@ -16,137 +18,69 @@ import (
 
 // styles are built from the theme each call, so nothing here needs restyling.
 type styles struct {
-	heading, accent, value, faint, safe, caution, danger lipgloss.Style
+	heading, text, accent, value, faint, safe, caution, danger, vivid lipgloss.Style
+	// palette tells apart the parts of a share or the series of a compare.
+	palette []lipgloss.Style
 }
 
 func newStyles(t theme.Theme) styles {
-	return styles{
+	fg := func(c color.Color) lipgloss.Style { return lipgloss.NewStyle().Foreground(c) }
+	s := styles{
 		heading: lipgloss.NewStyle().Foreground(t.TextPrimary).Bold(true),
-		accent:  lipgloss.NewStyle().Foreground(t.Accent),
+		text:    fg(t.TextPrimary),
+		accent:  fg(t.Accent),
 		value:   lipgloss.NewStyle().Foreground(t.Accent).Bold(true),
-		faint:   lipgloss.NewStyle().Foreground(t.TextFaint),
-		safe:    lipgloss.NewStyle().Foreground(t.Safe),
-		caution: lipgloss.NewStyle().Foreground(t.Caution),
-		danger:  lipgloss.NewStyle().Foreground(t.Danger),
+		faint:   fg(t.TextFaint),
+		safe:    fg(t.Safe),
+		caution: fg(t.Caution),
+		danger:  fg(t.Danger),
+		vivid:   fg(t.Tools.Agent),
+	}
+	for _, c := range []color.Color{t.Accent, t.Tools.Read, t.Tools.Write, t.Tools.Shell, t.Tools.Web,
+		t.Tools.Server, t.Tools.Review, t.Tools.Agent, t.Tools.Other} {
+		s.palette = append(s.palette, fg(c))
+	}
+	return s
+}
+
+func (s styles) hue(i int) lipgloss.Style { return s.palette[i%len(s.palette)] }
+
+func (s styles) of(t tone) lipgloss.Style {
+	switch t {
+	case toneAccent:
+		return s.accent
+	case toneSafe:
+		return s.safe
+	case toneCaution:
+		return s.caution
+	case toneDanger:
+		return s.danger
+	case toneVivid:
+		return s.vivid
+	default:
+		return s.faint
 	}
 }
 
-// chart is a ```chart block. data is a map of label to number, or for a
-// sparkline a list of numbers, kept in the order written.
-type chart struct {
-	Type  string    `yaml:"type"`
-	Title string    `yaml:"title"`
-	Unit  string    `yaml:"unit"`
-	Data  yaml.Node `yaml:"data"`
-}
+// tone names a style, so a package var can say which without baking one.
+type tone int
 
-type point struct {
-	label string
-	value float64
-}
-
-func drawChart(body string, s styles, width int) ([]string, error) {
-	var c chart
-	if err := decode(body, &c); err != nil {
-		return nil, err
-	}
-	pts, err := points(c.Data)
-	if err != nil {
-		return nil, err
-	}
-	var lines []string
-	if c.Title != "" {
-		lines = append(lines, s.heading.Render(c.Title))
-	}
-	switch c.Type {
-	case "bar":
-		return append(lines, bars(pts, c.Unit, s, width)...), nil
-	case "sparkline":
-		return append(lines, sparkline(pts, c.Unit, s)), nil
-	case "gauge":
-		return append(lines, gauges(pts, s, width)...), nil
-	}
-	return nil, fmt.Errorf("type %q is not bar, sparkline or gauge", c.Type)
-}
-
-// bars scale to the largest value, so the longest bar is always the largest.
-func bars(pts []point, unit string, s styles, width int) []string {
-	labelW, valueW, hi := 0, 0, 0.0
-	for _, p := range pts {
-		labelW = max(labelW, ansi.StringWidth(p.label))
-		valueW = max(valueW, ansi.StringWidth(amount(p.value, unit)))
-		hi = max(hi, p.value)
-	}
-	labelW = min(labelW, width/3)
-	barW := width - labelW - valueW - 2
-	lines := make([]string, 0, len(pts))
-	for _, p := range pts {
-		label := pad(ansi.Truncate(p.label, labelW, "…"), labelW)
-		if barW < 4 {
-			lines = append(lines, label+" "+s.faint.Render(amount(p.value, unit)))
-			continue
-		}
-		n := 0
-		if hi > 0 && p.value > 0 {
-			n = max(1, int(p.value/hi*float64(barW)))
-		}
-		lines = append(lines, label+" "+s.accent.Render(strings.Repeat("█", n))+
-			strings.Repeat(" ", barW-n)+" "+s.faint.Render(amount(p.value, unit)))
-	}
-	return lines
-}
-
-var sparkCells = []rune("▁▂▃▄▅▆▇█")
-
-func sparkline(pts []point, unit string, s styles) string {
-	if len(pts) == 0 {
-		return ""
-	}
-	lo, hi := pts[0].value, pts[0].value
-	for _, p := range pts {
-		lo, hi = min(lo, p.value), max(hi, p.value)
-	}
-	var strip strings.Builder
-	for _, p := range pts {
-		i := 0
-		if hi > lo {
-			i = int((p.value - lo) / (hi - lo) * float64(len(sparkCells)-1))
-		}
-		strip.WriteRune(sparkCells[i])
-	}
-	return s.accent.Render(strip.String()) + s.faint.Render("  "+amount(lo, unit)+"–"+amount(hi, unit))
-}
-
-// gauges read each value as a percentage, clamped to 0–100.
-func gauges(pts []point, s styles, width int) []string {
-	labelW := 0
-	for _, p := range pts {
-		labelW = max(labelW, ansi.StringWidth(p.label))
-	}
-	labelW = min(labelW, width/3)
-	cells := width - labelW - 6
-	lines := make([]string, 0, len(pts))
-	for _, p := range pts {
-		v := min(max(p.value, 0), 100)
-		label := pad(ansi.Truncate(p.label, labelW, "…"), labelW)
-		pct := s.faint.Render(fmt.Sprintf(" %3.0f%%", v))
-		if cells < 4 {
-			lines = append(lines, label+pct)
-			continue
-		}
-		n := int(v * float64(cells) / 100)
-		lines = append(lines, label+" "+s.accent.Render(strings.Repeat("█", n))+
-			s.faint.Render(strings.Repeat("░", cells-n))+pct)
-	}
-	return lines
-}
+const (
+	toneFaint tone = iota
+	toneAccent
+	toneSafe
+	toneCaution
+	toneDanger
+	toneVivid
+)
 
 // stat is one tile of a ```stats block. A delta starting + is drawn safe and
-// one starting - is drawn as danger.
+// one starting - is drawn as danger, and a trend is a sparkline under the label.
 type stat struct {
-	Label string `yaml:"label"`
-	Value scalar `yaml:"value"`
-	Delta scalar `yaml:"delta"`
+	Label string    `yaml:"label"`
+	Value scalar    `yaml:"value"`
+	Delta scalar    `yaml:"delta"`
+	Trend yaml.Node `yaml:"trend"`
 }
 
 // scalar takes any YAML scalar as written, so value: 412 and value: 81% both read.
@@ -160,35 +94,88 @@ func (s *scalar) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
-func drawStats(body string, s styles, width int) ([]string, error) {
-	var tiles []stat
-	if err := decode(body, &tiles); err != nil {
+// tile is a stat laid out: its width, and its trend drawn once.
+type tile struct {
+	stat
+	width int
+	trend string
+}
+
+// kind is one outcome a line block's entries may name, with its glyph and tone.
+type kind struct {
+	name, glyph string
+	tone        tone
+}
+
+// statusKinds are a ```status block's outcomes, and stepKinds a ```steps block's.
+var (
+	statusKinds = []kind{{"pass", "✓", toneSafe}, {"fail", "✗", toneDanger}, {"warn", "!", toneCaution}, {"skip", "○", toneFaint}}
+	stepKinds   = []kind{{"done", "●", toneSafe}, {"doing", "◉", toneAccent}, {"todo", "○", toneFaint}, {"failed", "✗", toneDanger}}
+)
+
+type entry struct {
+	kind  kind
+	items []string
+}
+
+// maxNumber is the largest magnitude a chart draws.
+const maxNumber = 1e15
+
+// drawStats lays tiles out in rows as wide as fit, each value counting up as it arrives.
+func drawStats(body string, s styles, width int) (drawn, error) {
+	var stats []stat
+	if err := decode(body, &stats); err != nil {
 		return nil, err
 	}
 	const gap = "    "
-	var lines []string
-	var top, bottom []string
+	var rows [][]tile
 	used := 0
-	emit := func() {
-		if len(top) > 0 {
-			lines = append(lines, strings.Join(top, gap), strings.Join(bottom, gap), "")
+	for _, st := range stats {
+		t := tile{stat: st}
+		if !st.Trend.IsZero() {
+			pts, err := points(st.Trend)
+			if err != nil {
+				return nil, err
+			}
+			t.trend = s.accent.Render(strip(pts))
 		}
-		top, bottom, used = nil, nil, 0
+		t.width = max(ansi.StringWidth(statValue(st, s, 1)), ansi.StringWidth(st.Label), ansi.StringWidth(t.trend))
+		if len(rows) == 0 || used > 0 && used+len(gap)+t.width > width {
+			rows, used = append(rows, nil), 0
+		}
+		rows[len(rows)-1] = append(rows[len(rows)-1], t)
+		used += t.width + len(gap)
 	}
-	for _, t := range tiles {
-		value := s.value.Render(string(t.Value))
-		if t.Delta != "" {
-			value += " " + deltaStyle(string(t.Delta), s).Render(string(t.Delta))
+	return func(p float64) []string {
+		var lines []string
+		for i, row := range rows {
+			if i > 0 {
+				lines = append(lines, "")
+			}
+			var top, bottom, under []string
+			trended := false
+			for _, t := range row {
+				top = append(top, pad(statValue(t.stat, s, p), t.width))
+				bottom = append(bottom, pad(s.faint.Render(t.Label), t.width))
+				under = append(under, pad(t.trend, t.width))
+				trended = trended || t.trend != ""
+			}
+			lines = append(lines, strings.Join(top, gap), strings.Join(bottom, gap))
+			if trended {
+				lines = append(lines, strings.Join(under, gap))
+			}
 		}
-		w := max(ansi.StringWidth(value), ansi.StringWidth(t.Label))
-		if used > 0 && used+len(gap)+w > width {
-			emit()
-		}
-		top, bottom = append(top, pad(value, w)), append(bottom, pad(s.faint.Render(t.Label), w))
-		used += w + len(gap)
+		return lines
+	}, nil
+}
+
+// statValue is a tile's value p of the way up, its delta once it has landed.
+func statValue(st stat, s styles, p float64) string {
+	value := s.value.Render(countUp(string(st.Value), p))
+	if st.Delta != "" && p >= 1 {
+		value += " " + deltaStyle(string(st.Delta), s).Render(string(st.Delta))
 	}
-	emit()
-	return trimBlank(lines), nil
+	return value
 }
 
 func deltaStyle(d string, s styles) lipgloss.Style {
@@ -201,53 +188,62 @@ func deltaStyle(d string, s styles) lipgloss.Style {
 	return s.faint
 }
 
-// statusKinds are a ```status block's keys, each with its glyph and tone.
-var statusKinds = map[string]struct {
-	glyph string
-	tone  tone
-}{
-	"pass": {"✓", toneSafe},
-	"fail": {"✗", toneDanger},
-	"warn": {"!", toneCaution},
-	"skip": {"○", toneFaint},
+// countUp is a value's number p of the way from zero, keeping whatever surrounds
+// it and how it was written, so $1,024 counts as $512 and 81% as 40%.
+func countUp(value string, p float64) string {
+	start := strings.IndexAny(value, "0123456789")
+	if p >= 1 || start < 0 {
+		return value
+	}
+	end := start
+	for end < len(value) && strings.IndexByte("0123456789,.", value[end]) >= 0 {
+		end++
+	}
+	number := strings.TrimRight(value[start:end], ",.")
+	end = start + len(number)
+	v, err := strconv.ParseFloat(strings.ReplaceAll(number, ",", ""), 64)
+	if err != nil {
+		return value
+	}
+	decimals := 0
+	if _, frac, ok := strings.Cut(number, "."); ok {
+		decimals = len(frac)
+	}
+	out := strconv.FormatFloat(v*p, 'f', decimals, 64)
+	if strings.Contains(number, ",") {
+		out = grouped(out)
+	}
+	return value[:start] + out + value[end:]
 }
 
-// tone names a style, so a package var can say which without baking one.
-type tone int
-
-const (
-	toneFaint tone = iota
-	toneSafe
-	toneCaution
-	toneDanger
-)
-
-func (s styles) of(t tone) lipgloss.Style {
-	switch t {
-	case toneSafe:
-		return s.safe
-	case toneCaution:
-		return s.caution
-	case toneDanger:
-		return s.danger
-	default:
-		return s.faint
+// grouped puts thousands commas into a formatted number.
+func grouped(n string) string {
+	whole, frac, dot := strings.Cut(n, ".")
+	var b strings.Builder
+	for i, r := range whole {
+		if i > 0 && (len(whole)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(r)
 	}
+	if dot {
+		return b.String() + "." + frac
+	}
+	return b.String()
 }
 
 // drawStatus reads its own lines rather than YAML, since its entries are free text
 // and YAML stops at the colon or the backtick a model puts in one.
-func drawStatus(body string, s styles, width int) ([]string, error) {
-	entries, err := statusEntries(body)
+func drawStatus(body string, s styles, width int) (drawn, error) {
+	entries, err := lineEntries(body, statusKinds)
 	if err != nil {
 		return nil, err
 	}
 	var lines []string
 	for _, e := range entries {
-		kind := statusKinds[e.kind]
-		head := s.of(kind.tone).Render(kind.glyph+" "+pad(e.kind, 4)) + "  "
+		head := s.of(e.kind.tone).Render(e.kind.glyph+" "+pad(e.kind.name, 4)) + "  "
 		indent := strings.Repeat(" ", ansi.StringWidth(head))
-		for i, part := range strings.Split(ansi.Wrap(strings.Join(e.items, ", "), max(width-len(indent), 1), ""), "\n") {
+		for i, part := range wrap(strings.Join(e.items, ", "), width-len(indent)) {
 			if i == 0 {
 				lines = append(lines, head+part)
 			} else {
@@ -255,18 +251,48 @@ func drawStatus(body string, s styles, width int) ([]string, error) {
 			}
 		}
 	}
-	return lines, nil
+	return still(lines), nil
 }
 
-type statusEntry struct {
-	kind  string
-	items []string
+// drawSteps draws work in order as a timeline, what is still to do faint.
+func drawSteps(body string, s styles, width int) (drawn, error) {
+	entries, err := lineEntries(body, stepKinds)
+	if err != nil {
+		return nil, err
+	}
+	var lines []string
+	for i, e := range entries {
+		text := s.text
+		if e.kind.name == "todo" {
+			text = s.faint
+		}
+		rail := s.faint.Render("│") + " "
+		if i == len(entries)-1 {
+			rail = "  "
+		}
+		for j, part := range wrap(strings.Join(e.items, ", "), width-2) {
+			if j == 0 {
+				lines = append(lines, s.of(e.kind.tone).Render(e.kind.glyph)+" "+text.Render(part))
+			} else {
+				lines = append(lines, rail+text.Render(part))
+			}
+		}
+		if i < len(entries)-1 {
+			lines = append(lines, s.faint.Render("│"))
+		}
+	}
+	return still(lines), nil
 }
 
-// statusEntries reads "- pass: text", "- pass: [a, b]", or "- pass:" over
-// indented "- item" lines, one entry per outcome named.
-func statusEntries(body string) ([]statusEntry, error) {
-	var out []statusEntry
+// lineEntries reads "- pass: text", "- pass: [a, b]", or "- pass:" over
+// indented "- item" lines, one entry per kind named, in the order written.
+func lineEntries(body string, kinds []kind) ([]entry, error) {
+	names := make([]string, len(kinds))
+	for i, k := range kinds {
+		names[i] = k.name
+	}
+	oneOf := strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
+	var out []entry
 	n := 0
 	for line := range strings.SplitSeq(strings.ReplaceAll(body, "`", ""), "\n") {
 		n++
@@ -276,15 +302,16 @@ func statusEntries(body string) ([]statusEntry, error) {
 		}
 		item, ok := strings.CutPrefix(text, "- ")
 		if !ok {
-			return nil, fmt.Errorf("line %d: start each entry with - and one of pass, fail, warn or skip", n)
+			return nil, fmt.Errorf("line %d: start each entry with - and one of %s", n, oneOf)
 		}
-		kind, rest, isKind := strings.Cut(item, ":")
-		if _, known := statusKinds[strings.TrimSpace(kind)]; isKind && known && line == strings.TrimLeft(line, " ") {
-			out = append(out, statusEntry{kind: strings.TrimSpace(kind), items: listed(strings.TrimSpace(rest))})
+		name, rest, named := strings.Cut(item, ":")
+		k, known := kindNamed(kinds, strings.TrimSpace(name))
+		if named && known && line == strings.TrimLeft(line, " ") {
+			out = append(out, entry{kind: k, items: listed(strings.TrimSpace(rest))})
 			continue
 		}
 		if len(out) == 0 || line == strings.TrimLeft(line, " ") {
-			return nil, fmt.Errorf("line %d: %q is not pass, fail, warn or skip", n, strings.TrimSpace(kind))
+			return nil, fmt.Errorf("line %d: %q is not %s", n, strings.TrimSpace(name), oneOf)
 		}
 		last := &out[len(out)-1]
 		last.items = append(last.items, item)
@@ -293,6 +320,15 @@ func statusEntries(body string) ([]statusEntry, error) {
 		return nil, errors.New("the block is empty")
 	}
 	return out, nil
+}
+
+func kindNamed(kinds []kind, name string) (kind, bool) {
+	for _, k := range kinds {
+		if k.name == name {
+			return k, true
+		}
+	}
+	return kind{}, false
 }
 
 // listed reads "[a, b]" as two items and anything else as one, nothing as none.
@@ -368,24 +404,39 @@ func number(n *yaml.Node) (float64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("line %d: %q is not a number", n.Line, n.Value)
 	}
+	// Bounded, so a difference of two can never overflow into a NaN cell count.
+	if math.Abs(v) > maxNumber {
+		return 0, fmt.Errorf("line %d: %q is too large to draw", n.Line, n.Value)
+	}
 	return v, nil
 }
 
 // amount spaces a word unit, 10 lines, and keeps a symbol on its number, 5ms.
 func amount(v float64, unit string) string {
+	return amountAt(v, 1, unit)
+}
+
+// amountAt is v's amount at of the way up from zero, with the decimals it has at rest.
+func amountAt(v, at float64, unit string) string {
 	if len(unit) > 2 {
 		unit = " " + unit
 	}
-	return strconv.FormatFloat(v, 'f', -1, 64) + unit
+	exact := strconv.FormatFloat(v, 'f', -1, 64)
+	if at >= 1 {
+		return exact + unit
+	}
+	decimals := 0
+	if _, frac, ok := strings.Cut(exact, "."); ok {
+		decimals = len(frac)
+	}
+	return strconv.FormatFloat(v*at, 'f', decimals, 64) + unit
+}
+
+// wrap breaks text to width at spaces, and mid-word only for a word wider than it.
+func wrap(text string, width int) []string {
+	return strings.Split(ansi.Wrap(text, max(width, 1), ""), "\n")
 }
 
 func pad(s string, w int) string {
 	return s + strings.Repeat(" ", max(0, w-ansi.StringWidth(s)))
-}
-
-func trimBlank(lines []string) []string {
-	for len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
-	return lines
 }

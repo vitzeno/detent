@@ -189,13 +189,17 @@ func (m Model) rowBody(r *historyRow, width int) []string {
 func (m Model) proseBody(r *historyRow, width int) string {
 	style := theme.Current().Markdown
 	if r.drawn.width != width || r.drawn.style != style {
-		text := view.Render(r.prose, theme.Current(), width)
+		r.drawn = proseDrawing{width: width, style: style}
 		if r.thinking {
-			text = thoughtBody(r.prose, width)
+			r.drawn.thought = thoughtBody(r.prose, width)
+		} else {
+			r.drawn.drawing = view.Layout(r.prose, theme.Current(), width)
 		}
-		r.drawn = proseDrawing{width: width, style: style, text: text}
 	}
-	return r.drawn.text
+	if r.thinking {
+		return r.drawn.thought
+	}
+	return r.drawn.drawing.Frame(m.reveal.frameOf(r))
 }
 
 // thoughtBody is reasoning wrapped and dimmed, read as background to the view.

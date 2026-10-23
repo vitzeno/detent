@@ -76,7 +76,7 @@ func (m Model) historyWindow() (window []string, offset int) {
 func (m Model) historyAll() (lines []string, cursorLine int) {
 	key := histKey{
 		rev: m.histRev, width: m.blockWidth(),
-		cursor: m.nav.cursor, spinner: m.spinnerFrame(),
+		cursor: m.nav.cursor, spinner: m.spinnerFrame(), reveal: m.reveal.key(),
 	}
 	if m.hist != nil && m.hist.lines != nil && m.hist.key == key {
 		return m.hist.lines, m.hist.cursorLine
@@ -235,8 +235,9 @@ func (m Model) rowLines(r, focused *historyRow) []string {
 			styleFaint.Render(layout.Truncate(view.Title(r.prose), m.blockWidth()-10)))}
 	}
 	if r.final {
-		return []string{fmt.Sprintf("%s%s %s", mark, styleBrand.Render("▤"),
-			styleGoal.Render(layout.Truncate(view.Title(r.prose), m.blockWidth()-10)))}
+		title := layout.Truncate(view.Title(r.prose), m.blockWidth()-10)
+		return []string{fmt.Sprintf("%s%s %s", mark, styleBrand.Render(viewGlyph(m.reveal.frameOf(r))),
+			shimmer(title, m.reveal.frameOf(r)))}
 	}
 	// The model speaking, not a command: no status badge, because
 	// nothing ran and there is no exit code to report.
@@ -597,4 +598,29 @@ func plainProse(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.TrimLeft(s, "#-*> \t")
 	return strings.NewReplacer("`", "", "**", "", "__", "").Replace(s)
+}
+
+// viewGlyph is a view's mark in history, building up to ▤ as the view arrives.
+func viewGlyph(frame int) string {
+	steps := []string{"·", "▫", "□", "▣", "▤"}
+	return steps[min(frame/2, len(steps)-1)]
+}
+
+// shimmer draws a view's title with a light passing across it as the view
+// arrives, and plainly once it rests.
+func shimmer(title string, frame int) string {
+	if frame >= view.Frames {
+		return styleGoal.Render(title)
+	}
+	runes := []rune(title)
+	at := frame*(len(runes)+6)/view.Frames - 3
+	var b strings.Builder
+	for i, r := range runes {
+		style := styleGoal
+		if i >= at-1 && i <= at+1 {
+			style = styleBrand
+		}
+		b.WriteString(style.Render(string(r)))
+	}
+	return b.String()
 }

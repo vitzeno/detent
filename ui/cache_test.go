@@ -64,6 +64,14 @@ func TestBlockCache_NeverGoesStale(t *testing.T) {
 			*m, _ = m.sendPrompt("and again")
 		}},
 		{"an old turn is undone", func(m *Model) { m.apply(event.RolledBack{Turn: turn}) }},
+		{"a view lands", func(m *Model) {
+			done := uuid.Must(uuid.NewV7())
+			m.apply(event.TurnStarted{Turn: done, N: 8, Prompt: "finish"})
+			m.apply(event.ModelText{Turn: done, Text: "## Done"})
+			m.apply(event.TurnEnded{Turn: done, Reason: event.EndDone, Summary: "## Done"})
+		}},
+		{"the view arrives a frame further", func(m *Model) { *m, _ = m.update(revealMsg{}) }},
+		{"the view rests", func(m *Model) { *m = rested(*m) }},
 	}
 
 	for _, s := range steps {
@@ -204,6 +212,7 @@ func TestBlockKey_CoversEverythingABlockDrawsFrom(t *testing.T) {
 		{"the spinner while live", func(m *Model, _ *turnBlock) {
 			m.spinner, _ = m.spinner.Update(m.spinner.Tick())
 		}},
+		{"a view arriving in it", func(m *Model, b *turnBlock) { m.reveal = revealState{row: b.rows[0]} }},
 	}
 	for _, in := range inputs {
 		t.Run(in.name, func(t *testing.T) {
@@ -238,6 +247,7 @@ func TestHistKey_CoversEverythingHistoryAssemblesFrom(t *testing.T) {
 			_, _ = m.historyAll()
 			m.spinner, _ = m.spinner.Update(m.spinner.Tick())
 		}},
+		{"a view arriving", func(m *Model) { m.reveal = revealState{row: m.rows()[0], frame: 3} }},
 	}
 	for _, in := range inputs {
 		t.Run(in.name, func(t *testing.T) {
@@ -301,6 +311,16 @@ func TestDetailCache_NeverGoesStale(t *testing.T) {
 		{"focus moves to the pane", func(m *Model) { m.nav.focus = focusOutput }},
 		{"undo opens", func(m *Model) { m.mode = modeUndo }},
 		{"undo closes", func(m *Model) { m.mode = modeInput }},
+		{"a view lands on the shown row", func(m *Model) {
+			turn := uuid.Must(uuid.NewV7())
+			m.apply(event.TurnStarted{Turn: turn, N: 9, Prompt: "chart it"})
+			m.apply(event.ModelText{Turn: turn, Text: "```chart\ntype: bar\ndata: {a: 1, b: 9}\n```\n"})
+			m.apply(event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: "```chart\ntype: bar\ndata: {a: 1, b: 9}\n```\n"})
+			m.nav.cursor = len(m.rows()) - 1
+		}},
+		{"the view arrives a frame further", func(m *Model) { *m, _ = m.update(revealMsg{}) }},
+		{"and another", func(m *Model) { *m, _ = m.update(revealMsg{}) }},
+		{"the view rests", func(m *Model) { *m = rested(*m) }},
 	}
 
 	for _, s := range steps {
@@ -337,6 +357,7 @@ func TestDetailKey_CoversEverythingThePaneDrawsFrom(t *testing.T) {
 		{"a panel opens", func(m *Model) { m.panel.open = panelContext }},
 		{"the mode", func(m *Model) { m.mode = modeUndo }},
 		{"which pane has focus", func(m *Model) { m.nav.focus = focusOutput }},
+		{"a view arriving on the focused row", func(m *Model) { m.reveal = revealState{row: m.focused()} }},
 	}
 
 	for _, in := range inputs {

@@ -1,6 +1,9 @@
 package ui
 
-import "github.com/vitzeno/detent/event"
+import (
+	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/ui/view"
+)
 
 // The small state values Model is composed of. Grouped rather than
 // spread across Model's own fields, so a handler takes one thing.
@@ -80,6 +83,30 @@ type confirmState struct {
 // files go back with the container.
 type undoState struct {
 	target *turnBlock
+}
+
+// revealState is a view arriving live, drawn a frame at a time until it rests.
+// ticking is a revealMsg on its way, so one arrival runs one chain of ticks.
+type revealState struct {
+	row     *historyRow
+	frame   int
+	ticking bool
+}
+
+// key is what a cache keys an arrival on: its frame, and 0 when nothing arrives.
+func (s revealState) key() int {
+	if s.row == nil {
+		return 0
+	}
+	return s.frame + 1
+}
+
+// frameOf is how far into its arrival r is drawn, view.Frames once it rests.
+func (s revealState) frameOf(r *historyRow) int {
+	if r == nil || r != s.row {
+		return view.Frames
+	}
+	return s.frame
 }
 
 // noticeState is the one-shot status flash: text and outcome in one

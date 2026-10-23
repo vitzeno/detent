@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vitzeno/detent/event"
+	"github.com/vitzeno/detent/ui/theme"
+	"github.com/vitzeno/detent/ui/view"
 )
 
 // The whole screen must render at any size without panicking or
@@ -48,6 +51,7 @@ func TestSummary_WrapsInTheOutputPane(t *testing.T) {
 	m := sized(t, 120, 40, append(evs[:len(evs)-1],
 		event.ModelText{Turn: turn, Text: said},
 		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: said})...)
+	m = rested(m)
 
 	require.Len(t, m.rows(), 2)
 	m.nav.cursor = 1
@@ -79,6 +83,7 @@ func TestSummary_RendersAsMarkdownAndScrolls(t *testing.T) {
 	m := sized(t, 120, 40, append(evs[:len(evs)-1],
 		event.ModelText{Turn: turn, Text: said},
 		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: said})...)
+	m = rested(m)
 
 	m.nav.cursor = 1
 	m.refreshViewport()
@@ -130,13 +135,60 @@ func TestRender_ARequestsViewIsDrawnInPlaceOfItsText(t *testing.T) {
 	evs = append(evs[:len(evs)-1],
 		event.ModelText{Turn: turn, Text: final},
 		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: final})
-	m := sized(t, 120, 40, evs...)
+	m := rested(sized(t, 120, 40, evs...))
 
 	history, _ := m.historyLines()
 	assert.Contains(t, stripANSI(strings.Join(history, "\n")), "▤ Tests pass")
 	pane := stripANSI(m.viewContent)
 	assert.Contains(t, pane, "█", "the chart is drawn")
 	assert.NotContains(t, pane, "type: bar", "not shown as code")
+}
+
+// A view that lands live arrives, a frame at a time, and then rests: the ticks
+// stop, and what rests is the view drawn whole.
+func TestReveal_ALiveViewArrivesThenRests(t *testing.T) {
+	const final = "## Tests pass\n\n```chart\ntype: bar\ndata: {engine: 4, ui: 6}\n```\n"
+	turn, evs := oneTurn("run the tests", "go test ./...", "ok\n")
+	m := sized(t, 120, 40, append(evs[:len(evs)-1],
+		event.ModelText{Turn: turn, Text: final},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: final})...)
+
+	require.NotNil(t, m.reveal.row, "a view landing live arrives")
+	require.True(t, m.reveal.ticking, "and its first frame is on its way")
+	assert.NotContains(t, stripANSI(m.viewContent), "ui     ██████", "it starts with nothing grown")
+
+	frames := 0
+	for m.reveal.row != nil {
+		var cmd tea.Cmd
+		m, cmd = m.update(revealMsg{})
+		frames++
+		require.LessOrEqual(t, frames, view.Frames, "an arrival must end")
+		if m.reveal.row == nil {
+			assert.Nil(t, cmd, "a view at rest asks for no more frames")
+		} else {
+			require.NotNil(t, cmd, "each frame asks for the next")
+		}
+	}
+	m.sizeViewport()
+	m.refreshViewport()
+	assert.Equal(t, view.Render(final, theme.Current(), paneInner(m.layout.outputColW)), m.viewContent)
+	history, _ := m.historyLines()
+	assert.Contains(t, stripANSI(strings.Join(history, "\n")), "▤ Tests pass")
+}
+
+// Resuming a session must not replay its views arriving: they are history.
+func TestReveal_AReplayedViewIsDrawnAtRest(t *testing.T) {
+	const final = "## Tests pass\n"
+	turn, evs := oneTurn("run the tests", "go test ./...", "ok\n")
+	evs = append(evs[:len(evs)-1],
+		event.ModelText{Turn: turn, Text: final},
+		event.TurnEnded{Turn: turn, Reason: event.EndDone, Summary: final})
+	records := make([]event.Record, len(evs))
+	for i, e := range evs {
+		records[i] = event.Record{Ordinal: uint64(i + 1), Event: e}
+	}
+	m := New(t.Context(), event.New(), SessionInfo{}).Restore(records)
+	assert.Nil(t, m.reveal.row)
 }
 
 // A command's output is drawn as it came, except a diff, coloured as /review colours
@@ -174,6 +226,16 @@ func sized(t *testing.T, w, h int, evs ...event.Event) Model {
 		m.apply(e)
 	}
 	m.sizeViewport()
+	return m
+}
+
+// rested lets a view that landed live finish arriving, as its ticks would.
+func rested(m Model) Model {
+	for m.reveal.row != nil {
+		m, _ = m.update(revealMsg{})
+	}
+	m.sizeViewport()
+	m.refreshViewport()
 	return m
 }
 

@@ -105,7 +105,7 @@ func (m *Model) apply(ev event.Event) tea.Cmd {
 		}
 
 	case event.TurnEnded:
-		m.endTurn(v)
+		return m.endTurn(v)
 
 	case event.BoundReached:
 		m.bound = &v
@@ -265,9 +265,10 @@ func (m *Model) apply(ev event.Event) tea.Cmd {
 	return nil
 }
 
-func (m *Model) endTurn(v event.TurnEnded) {
+func (m *Model) endTurn(v event.TurnEnded) tea.Cmd {
 	// The block may be gone already, but the Turn still ended and
 	// nothing may be left waiting on it.
+	var arrived *historyRow
 	if b := m.block(v.Turn); b != nil {
 		b.ended, b.end, b.summary, b.used, b.tree = true, v.Reason, v.Summary, v.Usage, v.Tree
 		for _, r := range b.rows {
@@ -279,7 +280,7 @@ func (m *Model) endTurn(v event.TurnEnded) {
 			b.err = v.Summary
 		}
 		if v.Reason == event.EndDone {
-			b.markView(v.Summary)
+			arrived = b.markView(v.Summary)
 		}
 	}
 	m.setCur(nil)
@@ -290,6 +291,12 @@ func (m *Model) endTurn(v event.TurnEnded) {
 	if !m.askingOwn() {
 		m.backToInput()
 	}
+	// A replayed view is history, so only one arriving now is drawn arriving.
+	if arrived == nil || m.replaying {
+		return nil
+	}
+	m.reveal = revealState{row: arrived}
+	return m.revealTick()
 }
 
 // addProse gives the model's words a row of their own: it is the

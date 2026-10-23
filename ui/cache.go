@@ -11,6 +11,7 @@ type blockKey struct {
 	rev, width int
 	focused    *historyRow // nil unless the cursor is in this block
 	spinner    string      // only the live block ever draws one
+	reveal     int         // the frame of a view arriving in this block
 }
 
 // blockKey carries focused only when the cursor is inside, so a
@@ -24,6 +25,9 @@ func (m Model) blockKey(b *turnBlock, focused *historyRow) blockKey {
 	// line, so the frame is part of the key whenever either shows.
 	if !b.ended && (anyRunning(b) || (b == m.cur && m.waiting)) {
 		k.spinner = m.spinner.View()
+	}
+	if slices.Contains(b.rows, m.reveal.row) {
+		k.reveal = m.reveal.key()
 	}
 	return k
 }
@@ -39,6 +43,7 @@ type blockCache struct {
 type histKey struct {
 	rev, width, cursor int
 	spinner            string // only while a block is still live
+	reveal             int    // the frame of a view arriving
 }
 
 type histCache struct {
@@ -57,6 +62,7 @@ type detailKey struct {
 	mode          mode
 	row           *historyRow
 	focused       bool
+	reveal        int
 }
 
 func (m Model) detailKey() detailKey {
@@ -65,6 +71,9 @@ func (m Model) detailKey() detailKey {
 		width: paneInner(m.layout.outputColW), height: m.output.Height(),
 		panel: m.panel.open, mode: m.mode, row: m.focused(),
 		focused: m.nav.focus == focusOutput,
+	}
+	if k.row != nil && k.row == m.reveal.row {
+		k.reveal = m.reveal.key()
 	}
 	return k
 }
